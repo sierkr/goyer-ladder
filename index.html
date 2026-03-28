@@ -1411,6 +1411,7 @@ async function initFirestore() {
     if (activePage === 'admin') renderAdmin();
     if (activePage === 'ronde') renderRonde();
     if (activePage === 'profiel') renderProfiel();
+    if (activePage === 'toernooi') renderToernooi();
   });
 
   _firestoreReady = true;
@@ -1450,6 +1451,7 @@ function showPage(name) {
   if (name === 'toernooi') renderToernooi();
   if (name === 'profiel') renderProfiel();
   if (name === 'archief') renderArchief();
+  if (name === 'admin') { renderAdmin(); renderAdminUsers(); }
 }
 
 // ============================================================
@@ -2481,7 +2483,11 @@ function verwijderActievePartij() {
 function renderAdmin() {
   const sorted = [...state.spelers].sort((a,b) => a.rank - b.rank);
   const list = document.getElementById('admin-player-list');
-  list.innerHTML = sorted.map(s => `
+  if (!list) return;
+  if (sorted.length === 0) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">👤</div><p>Geen spelers. Voeg een speler toe via + Speler.</p></div>';
+  } else {
+    list.innerHTML = sorted.map(s => `
     <div class="admin-row">
       <span style="font-family:'Bebas Neue';font-size:18px;color:var(--light);min-width:28px">${s.rank}</span>
       <span class="name">${s.naam}</span>
@@ -2494,6 +2500,7 @@ function renderAdmin() {
       <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removePlayer(${s.id})">✕</button>
     </div>
   `).join('');
+  }
   renderAdminUsers();
 }
 
