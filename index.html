@@ -3376,13 +3376,13 @@ function renderTScorecard() {
       const tabIdx = si * t.holes.length + i + 1;
       bodyHtml += `<td><input type="number" min="1" max="12" value="${val !== null && val !== undefined ? val : ''}"
         tabindex="${tabIdx}"
-        oninput="updateTScore(${s.id},${i},this.value);if(this.value.length>0)autoAdvance(this)"
+        oninput="updateTScore(${s.id},${i},this.value);if(this.value.length>0)setTimeout(()=>autoAdvance(this),0)"
         style="width:42px;padding:4px;text-align:center;font-size:14px;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--dark)"></td>`;
     });
     bodyHtml += '</tr>';
   });
   // Totaalrij
-  bodyHtml += '<tr style="background:var(--green-pale)"><td class="player-col" style="font-weight:700">Tot</td>';
+  bodyHtml += '<tr id="t-totaal-rij" style="background:var(--green-pale)"><td class="player-col" style="font-weight:700">Tot</td>';
   t.spelers.forEach(s => {
     const scores = t.scores[s.id] || t.scores[String(s.id)] || [];
     const filled = scores.filter(v => v !== null && v !== undefined);
@@ -3399,10 +3399,28 @@ function updateTScore(spelerId, holeIdx, val) {
   const key = String(spelerId);
   if (!toernooiData.scores[key]) toernooiData.scores[key] = Array(toernooiData.holes.length).fill(null);
   toernooiData.scores[key][holeIdx] = val === '' ? null : parseInt(val);
-  clearTimeout(window._tSaveTimer);
-  window._tSaveTimer = setTimeout(() => setDoc(TOERNOOI_DOC, toernooiData), 1500);
+  // Update totaalrij direct zonder volledige herrender
+  updateTTotalen();
   renderTRanglijst();
   renderTMatrix();
+  // Sla op in Firestore (debounced)
+  clearTimeout(window._tSaveTimer);
+  window._tSaveTimer = setTimeout(() => setDoc(TOERNOOI_DOC, toernooiData), 1500);
+}
+
+function updateTTotalen() {
+  const t = toernooiData;
+  if (!t) return;
+  const totaalRij = document.getElementById('t-totaal-rij');
+  if (!totaalRij) return;
+  let html = '<td class="player-col" style="font-weight:700">Tot</td>';
+  t.spelers.forEach(s => {
+    const scores = t.scores[s.id] || t.scores[String(s.id)] || [];
+    const filled = scores.filter(v => v !== null && v !== undefined);
+    const tot = filled.length ? filled.reduce((a,b) => a + Number(b), 0) : null;
+    html += `<td style="font-family:'DM Mono',monospace;font-weight:700;text-align:center">${tot !== null ? tot : '—'}</td>`;
+  });
+  totaalRij.innerHTML = html;
 }
 
 function toggleTScorecard() {
