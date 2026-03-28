@@ -3153,7 +3153,12 @@ function renderToernooi() {
 function initToernooiSetup() {
   // Baan select
   const baanSel = document.getElementById('t-baan');
-  baanSel.innerHTML = Object.keys(BANEN_DB).map(n => `<option value="${n}">${n}</option>`).join('');
+  baanSel.innerHTML = Object.keys(BANEN_DB).filter(n => n !== 'Handmatig invoeren').map(n =>
+    `<option value="${n}">${n}</option>`
+  ).join('');
+  aangepasteBanen.forEach(b => {
+    baanSel.innerHTML += `<option value="${b.naam}">⭐ ${b.naam}</option>`;
+  });
 
   // Datum vandaag als default
   document.getElementById('t-datum').value = new Date().toISOString().split('T')[0];
@@ -3161,14 +3166,20 @@ function initToernooiSetup() {
   // Speler tags
   const sorted = [...state.spelers].sort((a,b) => a.rank - b.rank);
   const tagsEl = document.getElementById('t-speler-tags');
+
+  if (sorted.length === 0) {
+    tagsEl.innerHTML = '<p style="font-size:13px;color:var(--light)">Geen spelers gevonden. Voeg eerst spelers toe via Beheer.</p>';
+    return;
+  }
+
   tagsEl.innerHTML = sorted.map(s =>
-    `<span class="tag" id="ttag-${s.id}" onclick="toggleTSpeler(${s.id})">${s.naam.split(' ')[0]} (${Math.round(s.hcp)})</span>`
+    `<span class="tag" id="ttag-${s.id}" onclick="toggleTSpeler('${s.id}')">${s.naam.split(' ')[0]} (${Math.round(s.hcp)})</span>`
   ).join('');
 }
 
 function toggleTSpeler(id) {
   const tag = document.getElementById('ttag-' + id);
-  tag.classList.toggle('selected');
+  if (tag) tag.classList.toggle('selected');
 }
 
 async function startToernooi() {
@@ -3190,8 +3201,14 @@ async function startToernooi() {
   );
   if (geselecteerd.length < 2) { toast('Selecteer minimaal 2 spelers'); return; }
 
-  // Holes
-  const holes = BANEN_DB[baanNaam]?.holes?.slice(0, holesCount) || [];
+  // Holes ophalen — ingebouwd of aangepast
+  let holes = [];
+  if (BANEN_DB[baanNaam]?.holes) {
+    holes = BANEN_DB[baanNaam].holes.slice(0, holesCount);
+  } else {
+    const aangepast = aangepasteBanen.find(b => b.naam === baanNaam);
+    if (aangepast) holes = aangepast.holes.slice(0, holesCount);
+  }
   if (!holes.length) { toast('Baan heeft geen holes geconfigureerd'); return; }
 
   // Init scores object: { spelerId: [null, null, ...] }
