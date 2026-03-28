@@ -4016,8 +4016,11 @@ async function laadSnapshots() {
 }
 
 async function herstelSnapshot(snapId) {
-  if (!confirm('Ladderstand herstellen naar dit moment? De huidige stand wordt overschreven.')) return;
+  if (!confirm('Ladderstand herstellen naar dit moment? De huidige stand wordt eerst opgeslagen als snapshot.')) return;
   try {
+    // Sla huidige stand op voordat we herstellen
+    await slaSnapshotOp('⚠️ Voor herstel op ' + new Date().toLocaleString('nl-NL'));
+
     const snapDoc = await getDoc(doc(db, 'snapshots', snapId));
     if (!snapDoc.exists()) { toast('Snapshot niet gevonden'); return; }
     const data = snapDoc.data();
