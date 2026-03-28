@@ -1981,11 +1981,11 @@ function renderMatchOverview() {
 
     let scoreText, scoreLeadA, scoreLeadB;
     if (standA === 0) {
-      scoreText = 'AS'; scoreLeadA = false; scoreLeadB = false;
+      scoreText = 'TIED'; scoreLeadA = false; scoreLeadB = false;
     } else if (standA > 0) {
       scoreText = `${standA} UP`; scoreLeadA = true; scoreLeadB = false;
     } else {
-      scoreText = `${Math.abs(standA)} UP`; scoreLeadA = false; scoreLeadB = true;
+      scoreText = `${Math.abs(standA)} DOWN`; scoreLeadA = false; scoreLeadB = true;
     }
 
     // Statusregel
@@ -2004,15 +2004,15 @@ function renderMatchOverview() {
     const hcpInfo = m.hcpSlagen > 0 ? `<span style="font-size:10px;color:var(--light)">${(m.hcpOntvanger === m.spelerA.id ? nA : nB) + ' +' + m.hcpSlagen + ' slag' + (m.hcpSlagen > 1 ? 'en' : '')}</span>` : '';
 
     html += `<div class="match-card">
-      <div>
-        <div class="match-player" style="${naamA_style}">${nA}</div>
+      <div style="flex:1;min-width:0">
+        <div class="match-player" style="${naamA_style};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nA}</div>
         ${hcpInfo}
       </div>
-      <div style="text-align:center;flex:1">
-        <div class="match-score" style="${scoreStyle}">${scoreText}</div>
-        <div style="font-size:10px;color:${status === 'beslist' ? 'var(--green)' : 'var(--light)'};margin-top:2px;font-weight:${status === 'beslist' ? '600' : '400'}">${statusLabel}</div>
+      <div style="text-align:center;flex:0 0 90px">
+        <div class="match-score" style="${scoreStyle};font-size:13px;padding:4px 6px">${scoreText}</div>
+        <div style="font-size:10px;color:${status === 'beslist' ? 'var(--green)' : 'var(--light)'};margin-top:2px;font-weight:${status === 'beslist' ? '600' : '400'};white-space:nowrap">${statusLabel}</div>
       </div>
-      <div class="match-player right" style="${naamB_style}">${nB}</div>
+      <div class="match-player right" style="${naamB_style};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right">${nB}</div>
     </div>`;
   });
   document.getElementById('match-overview').innerHTML = html || '<div class="empty"><p>Voer scores in om de stand te zien.</p></div>';
