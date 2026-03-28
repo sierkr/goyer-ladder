@@ -2464,17 +2464,9 @@ function toonScorekaartModal(data) {
     html += `<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:5px 8px;font-weight:600">${i+1}<span style="font-size:10px;color:var(--light);margin-left:4px">p${h.par} SI${h.si}</span></td>`;
     spelers.forEach((s, si) => {
-      // Scores zijn opgeslagen met speler-ID als key
-      const spelerId = data.spelerIds?.[si];
-      let val = null;
-      if (spelerId !== undefined) {
-        val = data.scores?.[spelerId]?.[i] ?? data.scores?.[String(spelerId)]?.[i];
-      }
-      // Fallback: probeer alle keys
-      if (val === null || val === undefined) {
-        const keys = Object.keys(data.scores || {});
-        if (keys[si]) val = data.scores[keys[si]]?.[i];
-      }
+      // Scores zijn opgeslagen met speler-ID als string key
+      const spelerId = String(data.spelerIds?.[si] ?? si);
+      const val = data.scores?.[spelerId]?.[i] ?? null;
       if (val) totalen[si] += Number(val);
       const kleur = val && val <= h.par - 2 ? '#d4edda' : val && val === h.par - 1 ? '#d8f3dc' : val && val === h.par + 1 ? '#fff3cd' : val && val >= h.par + 2 ? '#f8d7da' : '';
       html += `<td style="text-align:center;padding:5px;background:${kleur}">${val || '—'}</td>`;
