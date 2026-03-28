@@ -2404,13 +2404,13 @@ async function saveNewPlayer() {
     // Maak Firebase Auth account aan via secundaire app
     let uid = null;
     try {
-      const { initializeApp: initApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
+      const { initializeApp: initApp, deleteApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
       const { getAuth: getSecAuth, createUserWithEmailAndPassword: createUser } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
       const tijdApp = initApp(firebaseConfig, `tmp_${Date.now()}`);
       const tijdAuth = getSecAuth(tijdApp);
       const cred = await createUser(tijdAuth, email, pass);
       uid = cred.user.uid;
-      try { await tijdApp.delete(); } catch(e) {} // delete mag falen
+      try { await deleteApp(tijdApp); } catch(e) {}
     } catch(authErr) {
       if (authErr.code === 'auth/email-already-in-use') {
         toast('E-mailadres al in gebruik in Firebase. Verwijder het eerst via Firebase Console → Authentication.'); return;
@@ -2700,7 +2700,7 @@ async function saveNewUser() {
 
   try {
     // Maak Firebase Auth account aan via secundaire app-instantie
-    const { initializeApp: initApp2 } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
+    const { initializeApp: initApp2, deleteApp: deleteApp2 } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
     const { getAuth: getSecAuth2, createUserWithEmailAndPassword: createUser2 } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
 
     const tijdelijkeApp2 = initApp2(firebaseConfig, `temp_user_${Date.now()}`);
@@ -2710,9 +2710,9 @@ async function saveNewUser() {
     try {
       const userCred = await createUser2(tijdelijkeAuth2, email, pass);
       uid = userCred.user.uid;
-      try { await tijdelijkeApp2.delete(); } catch(e) {}
+      try { await deleteApp2(tijdelijkeApp2); } catch(e) {}
     } catch(authErr) {
-      try { await tijdelijkeApp2.delete(); } catch(e) {}
+      try { await deleteApp2(tijdelijkeApp2); } catch(e) {}
       if (authErr.code === 'auth/email-already-in-use') { toast('Dit e-mailadres is al in gebruik'); return; }
       else if (authErr.code === 'auth/invalid-email') { toast('Ongeldig e-mailadres'); return; }
       else { toast('Fout bij aanmaken: ' + authErr.message); return; }
