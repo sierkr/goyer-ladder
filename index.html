@@ -1252,7 +1252,21 @@ async function setIngelogd(firebaseUser) {
     }
 
     const displayNaam = profiel.gebruikersnaam || firebaseUser.displayName || firebaseUser.email.split('@')[0];
-    huidigeBruiker = { uid: firebaseUser.uid, email: firebaseUser.email, gebruikersnaam: displayNaam, rol: profiel.rol };
+
+    // Als gebruikersnaam een e-mailadres of prefix lijkt, probeer de echte naam te herstellen
+    // via de spelersnaam in de ladder (naam match op voornaam)
+    let besteNaam = displayNaam;
+    if (displayNaam.includes('@') || !displayNaam.includes(' ')) {
+      // Zoek speler in ladder op basis van emailPrefix
+      const emailPfx = firebaseUser.email.split('@')[0].toLowerCase();
+      const gekoppeldeSpeler = state.spelers.find(s => {
+        const voornaam = s.naam.toLowerCase().split(' ')[0];
+        return emailPfx.startsWith(voornaam) || voornaam.startsWith(emailPfx.substring(0, 4));
+      });
+      if (gekoppeldeSpeler) besteNaam = gekoppeldeSpeler.naam;
+    }
+
+    huidigeBruiker = { uid: firebaseUser.uid, email: firebaseUser.email, gebruikersnaam: besteNaam, rol: profiel.rol };
 
   } catch(e) {
     console.error('setIngelogd error:', e);
@@ -1577,15 +1591,15 @@ function initPartijForm() {
   // Auto-selecteer ingelogde speler in slot 1
   if (huidigeBruiker) {
     const gebruiker = huidigeBruiker.gebruikersnaam.toLowerCase().trim();
+    const emailPrefix = huidigeBruiker.email?.split('@')[0]?.toLowerCase() || '';
     const gekoppeld = state.spelers.find(s => {
       const naam = s.naam.toLowerCase().trim();
       const voornaam = naam.split(' ')[0];
-      const gebruikerVoornaam = gebruiker.split(' ')[0];
       return naam === gebruiker ||
-             voornaam === gebruiker ||
-             voornaam === gebruikerVoornaam ||
-             naam.includes(gebruiker) ||
-             gebruiker.includes(voornaam);
+             voornaam === gebruiker.split(' ')[0] ||
+             voornaam === emailPrefix ||
+             naam.includes(emailPrefix) ||
+             emailPrefix.includes(voornaam);
     });
     if (gekoppeld) {
       const slot1 = document.getElementById('player-1');
