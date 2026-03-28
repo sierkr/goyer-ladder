@@ -1413,7 +1413,7 @@ async function wijzigWachtwoord() {
 }
 
 // Sla volledige state op naar Firestore
-async function await slaState() {
+async function slaState() {
   try {
     await setDoc(STATE_DOC, JSON.parse(JSON.stringify(state)));
   } catch(e) { console.error('Firestore save error:', e); }
