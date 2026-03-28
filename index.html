@@ -695,6 +695,7 @@
   <button onclick="showPage('ronde')">📋 Ronde</button>
   <button onclick="showPage('uitslagen')">📊 Uitslagen</button>
   <button onclick="showPage('archief')" id="nav-archief-btn" style="display:none">📁 Archief</button>
+  <button onclick="showPage('toernooi')" id="nav-toernooi-btn" style="display:none">🏅 Toernooi</button>
   <button id="nav-profiel-btn" onclick="showPage('profiel')" style="display:none">👤 Profiel</button>
   <button id="nav-admin-btn" onclick="showPage('admin')" style="display:none">⚙️ Beheer</button>
 </nav>
@@ -883,6 +884,120 @@
   </div>
 </div>
 
+<!-- ==================== TOERNOOI ==================== -->
+<div id="page-toernooi" class="page">
+
+  <!-- Geen actief toernooi -->
+  <div id="toernooi-setup-wrap">
+    <div class="card">
+      <div class="card-header"><h2>Nieuw Toernooi</h2></div>
+      <div class="card-body">
+        <div class="form-group">
+          <label>Naam</label>
+          <input type="text" id="t-naam" placeholder="bijv. Clubkampioenschap 2025">
+        </div>
+        <div class="form-group">
+          <label>Datum</label>
+          <input type="date" id="t-datum">
+        </div>
+        <div class="form-group">
+          <label>Baan</label>
+          <select id="t-baan"></select>
+        </div>
+        <div class="form-group">
+          <label>Aantal holes</label>
+          <select id="t-holes">
+            <option value="18">18 holes</option>
+            <option value="9">9 holes</option>
+          </select>
+        </div>
+        <div class="divider"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+          <div class="form-group" style="margin:0">
+            <label>Winst</label>
+            <input type="number" id="t-pt-win" value="2" style="text-align:center">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Gelijk</label>
+            <input type="number" id="t-pt-tie" value="0" style="text-align:center">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Verlies</label>
+            <input type="number" id="t-pt-loss" value="-2" style="text-align:center">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>HCP verrekening %</label>
+          <input type="number" id="t-hcp-pct" value="75" min="0" max="100" style="width:90px">
+        </div>
+        <div class="divider"></div>
+        <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px">Deelnemers selecteren</label>
+        <div id="t-speler-tags" class="tag-list" style="margin-bottom:12px"></div>
+        <button class="btn btn-primary btn-block" onclick="startToernooi()">Toernooi starten →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actief toernooi -->
+  <div id="toernooi-actief-wrap" style="display:none">
+    <div class="card">
+      <div class="card-header">
+        <h2 id="t-actief-naam">Toernooi</h2>
+        <span class="badge badge-gold" id="t-actief-badge">Bezig</span>
+      </div>
+      <div class="card-body" style="padding:10px 16px;font-size:13px;color:var(--mid)">
+        <span id="t-actief-info"></span>
+      </div>
+    </div>
+
+    <!-- Ranglijst -->
+    <div class="card">
+      <div class="card-header"><h2>Ranglijst</h2></div>
+      <div id="t-ranglijst"></div>
+    </div>
+
+    <!-- Scorekaart -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Scores invoeren</h2>
+        <button class="btn btn-sm btn-ghost" onclick="toggleTScorecard()">Toon/verberg</button>
+      </div>
+      <div id="t-scorecard-wrap" style="overflow-x:auto">
+        <table class="scorecard" id="t-scorecard-table">
+          <thead id="t-scorecard-head"></thead>
+          <tbody id="t-scorecard-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Onderlinge matrix -->
+    <div class="card">
+      <div class="card-header"><h2>Onderlinge stand</h2></div>
+      <div id="t-matrix" style="overflow-x:auto;padding:8px"></div>
+    </div>
+
+    <button class="btn btn-gold btn-block" onclick="openToernooiAfsluiten()" style="margin-bottom:8px">
+      ✓ Toernooi afsluiten
+    </button>
+    <button class="btn btn-ghost btn-block" onclick="annuleerToernooi()" style="margin-bottom:16px;color:var(--red)">
+      Toernooi annuleren
+    </button>
+  </div>
+</div>
+
+<!-- Toernooi afsluiten modal -->
+<div class="modal-overlay" id="modal-toernooi-afsluiten">
+  <div class="modal">
+    <h3>Toernooi afsluiten</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">De eindstand wordt opgeslagen en de ladder rankings worden aangepast.</p>
+    <div id="t-eindstand"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-toernooi-afsluiten')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="bevestigToernooiAfsluiten()">✓ Bevestigen</button>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
   <div class="card">
@@ -1023,6 +1138,7 @@ const USERS_DOC = doc(db, 'ladder', 'users');
 const BANEN_DOC = doc(db, 'ladder', 'banen');
 const ARCHIEF_DOC = doc(db, 'ladder', 'archief');
 const UITDAGINGEN_DOC = doc(db, 'ladder', 'uitdagingen');
+const TOERNOOI_DOC = doc(db, 'ladder', 'toernooi');
 
 // Ingelogde gebruiker (alleen in geheugen, niet in Firestore)
 let huidigeBruiker = null; // { gebruikersnaam, rol }
@@ -1089,6 +1205,7 @@ let _firestoreReady = false;
 let _highlights = new Set();
 let archiefData = [];
 let uitdagingenData = []; // { id, van, naar, status, timestamp }
+let toernooiData = null;  // actief toernooi object
 
 // ============================================================
 //  AUTH / LOGIN — Firebase Authentication
@@ -1135,6 +1252,7 @@ async function setIngelogd(firebaseUser) {
   if (huidigeBruiker.rol === 'beheerder') {
     adminBtn.style.display = '';
     document.getElementById('nav-archief-btn').style.display = '';
+    document.getElementById('nav-toernooi-btn').style.display = '';
   }
   profielBtn.style.display = '';
   logoutBtn.style.display = '';
@@ -1189,6 +1307,7 @@ function uitloggen() {
   document.getElementById('login-scherm').classList.add('actief');
   document.getElementById('nav-admin-btn').style.display = 'none';
   document.getElementById('nav-archief-btn').style.display = 'none';
+  document.getElementById('nav-toernooi-btn').style.display = 'none';
   document.getElementById('nav-profiel-btn').style.display = 'none';
   document.getElementById('logout-btn').style.display = 'none';
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -1273,6 +1392,10 @@ async function initFirestore() {
     // Laad uitdagingen
     const uitdSnap = await getDoc(UITDAGINGEN_DOC);
     uitdagingenData = uitdSnap.exists() ? (uitdSnap.data().lijst || []) : [];
+
+    // Laad toernooi
+    const toernooiSnap = await getDoc(TOERNOOI_DOC);
+    toernooiData = toernooiSnap.exists() ? toernooiSnap.data() : null;
   } catch(e) {
     console.error('Firestore init error:', e);
   }
@@ -1324,7 +1447,7 @@ function showPage(name) {
   if (name === 'partij') initPartijForm();
   if (name === 'ronde') renderRonde();
   if (name === 'uitslagen') renderUitslagen();
-  if (name === 'admin') renderAdmin();
+  if (name === 'toernooi') renderToernooi();
   if (name === 'profiel') renderProfiel();
   if (name === 'archief') renderArchief();
 }
@@ -3013,6 +3136,346 @@ async function verwijderUitdaging(uitdagingId) {
 }
 
 // ============================================================
+//  TOERNOOI
+// ============================================================
+function renderToernooi() {
+  if (toernooiData && toernooiData.status === 'actief') {
+    document.getElementById('toernooi-setup-wrap').style.display = 'none';
+    document.getElementById('toernooi-actief-wrap').style.display = 'block';
+    renderToernooiActief();
+  } else {
+    document.getElementById('toernooi-setup-wrap').style.display = 'block';
+    document.getElementById('toernooi-actief-wrap').style.display = 'none';
+    initToernooiSetup();
+  }
+}
+
+function initToernooiSetup() {
+  // Baan select
+  const baanSel = document.getElementById('t-baan');
+  baanSel.innerHTML = Object.keys(BANEN_DB).map(n => `<option value="${n}">${n}</option>`).join('');
+
+  // Datum vandaag als default
+  document.getElementById('t-datum').value = new Date().toISOString().split('T')[0];
+
+  // Speler tags
+  const sorted = [...state.spelers].sort((a,b) => a.rank - b.rank);
+  const tagsEl = document.getElementById('t-speler-tags');
+  tagsEl.innerHTML = sorted.map(s =>
+    `<span class="tag" id="ttag-${s.id}" onclick="toggleTSpeler(${s.id})">${s.naam.split(' ')[0]} (${Math.round(s.hcp)})</span>`
+  ).join('');
+}
+
+function toggleTSpeler(id) {
+  const tag = document.getElementById('ttag-' + id);
+  tag.classList.toggle('selected');
+}
+
+async function startToernooi() {
+  const naam = document.getElementById('t-naam').value.trim();
+  const datum = document.getElementById('t-datum').value;
+  const baanNaam = document.getElementById('t-baan').value;
+  const holesCount = parseInt(document.getElementById('t-holes').value);
+  const ptWin = parseFloat(document.getElementById('t-pt-win').value);
+  const ptTie = parseFloat(document.getElementById('t-pt-tie').value);
+  const ptLoss = parseFloat(document.getElementById('t-pt-loss').value);
+  const hcpPct = parseFloat(document.getElementById('t-hcp-pct').value) / 100;
+
+  if (!naam) { toast('Voer een naam in'); return; }
+  if (!datum) { toast('Voer een datum in'); return; }
+
+  // Geselecteerde spelers
+  const geselecteerd = state.spelers.filter(s =>
+    document.getElementById('ttag-' + s.id)?.classList.contains('selected')
+  );
+  if (geselecteerd.length < 2) { toast('Selecteer minimaal 2 spelers'); return; }
+
+  // Holes
+  const holes = BANEN_DB[baanNaam]?.holes?.slice(0, holesCount) || [];
+  if (!holes.length) { toast('Baan heeft geen holes geconfigureerd'); return; }
+
+  // Init scores object: { spelerId: [null, null, ...] }
+  const scores = {};
+  geselecteerd.forEach(s => { scores[s.id] = Array(holes.length).fill(null); });
+
+  toernooiData = {
+    status: 'actief',
+    naam, datum, baan: baanNaam, holes,
+    ptWin, ptTie, ptLoss, hcpPct,
+    spelers: geselecteerd.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp })),
+    scores,
+    timestamp: Date.now()
+  };
+
+  await setDoc(TOERNOOI_DOC, toernooiData);
+  toast('Toernooi gestart! 🏅');
+  renderToernooi();
+}
+
+function renderToernooiActief() {
+  const t = toernooiData;
+  if (!t) return;
+
+  document.getElementById('t-actief-naam').textContent = t.naam;
+  document.getElementById('t-actief-info').textContent =
+    `${t.datum} · ${t.baan} · ${t.holes.length} holes · ${t.spelers.length} spelers · W=${t.ptWin} T=${t.ptTie} L=${t.ptLoss}`;
+
+  renderTScorecard();
+  renderTRanglijst();
+  renderTMatrix();
+}
+
+function renderTScorecard() {
+  const t = toernooiData;
+
+  // HEAD: rijen = holes, kolommen = spelers
+  let headHtml = '<tr><th class="player-col">Hole</th>';
+  t.spelers.forEach(s => {
+    headHtml += `<th class="player-col">${s.naam.split(' ')[0]}<span class="hole-par" style="display:block">hcp ${Math.round(s.hcp)}</span></th>`;
+  });
+  headHtml += '</tr>';
+  document.getElementById('t-scorecard-head').innerHTML = headHtml;
+
+  // BODY: één rij per hole
+  let bodyHtml = '';
+  t.holes.forEach((h, i) => {
+    bodyHtml += `<tr><td class="player-col" style="font-weight:600">${i+1}<span class="hole-par">p${h.par} SI${h.si}</span></td>`;
+    t.spelers.forEach(s => {
+      const val = t.scores[s.id]?.[i];
+      bodyHtml += `<td><input type="number" min="1" max="12" value="${val !== null && val !== undefined ? val : ''}"
+        onchange="updateTScore(${s.id},${i},this.value)"
+        style="width:42px;padding:4px;text-align:center;font-size:14px;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--dark)"></td>`;
+    });
+    bodyHtml += '</tr>';
+  });
+  // Totaalrij
+  bodyHtml += '<tr style="background:var(--green-pale)"><td class="player-col" style="font-weight:700">Tot</td>';
+  t.spelers.forEach(s => {
+    const scores = t.scores[s.id] || [];
+    const filled = scores.filter(v => v !== null && v !== undefined);
+    const tot = filled.length ? filled.reduce((a,b) => a+b, 0) : null;
+    bodyHtml += `<td style="font-family:'DM Mono',monospace;font-weight:700;text-align:center">${tot !== null ? tot : '—'}</td>`;
+  });
+  bodyHtml += '</tr>';
+
+  document.getElementById('t-scorecard-body').innerHTML = bodyHtml;
+}
+
+function updateTScore(spelerId, holeIdx, val) {
+  if (!toernooiData) return;
+  if (!toernooiData.scores[spelerId]) toernooiData.scores[spelerId] = Array(toernooiData.holes.length).fill(null);
+  toernooiData.scores[spelerId][holeIdx] = val === '' ? null : parseInt(val);
+  // Sla op in Firestore (debounced)
+  clearTimeout(window._tSaveTimer);
+  window._tSaveTimer = setTimeout(() => setDoc(TOERNOOI_DOC, toernooiData), 1500);
+  renderTRanglijst();
+  renderTMatrix();
+}
+
+function toggleTScorecard() {
+  const w = document.getElementById('t-scorecard-wrap');
+  w.style.display = w.style.display === 'none' ? '' : 'none';
+}
+
+// Bereken netto HCP slagen die speler B krijgt tov A op een hole
+function getTHcpSlagen(spelerA, spelerB, hole, hcpPct) {
+  const diff = Math.round(Math.abs(spelerA.hcp - spelerB.hcp) * hcpPct);
+  const ontvanger = spelerA.hcp < spelerB.hcp ? spelerB : spelerA; // hogere hcp krijgt slag
+  const slagOpHole = hole.si <= diff ? 1 : 0;
+  return { diff, ontvanger, slagOpHole };
+}
+
+// Bereken punten voor alle onderlinge matchups
+function berekenTPunten() {
+  const t = toernooiData;
+  const n = t.spelers.length;
+
+  // punten[i] = totale punten speler i
+  const punten = new Array(n).fill(0);
+  const won = new Array(n).fill(0);
+  const tied = new Array(n).fill(0);
+  const lost = new Array(n).fill(0);
+  // matrix[i][j] = resultaat van i vs j: 'W','L','T',null
+  const matrix = Array.from({length: n}, () => new Array(n).fill(null));
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i+1; j < n; j++) {
+      const sA = t.spelers[i];
+      const sB = t.spelers[j];
+      let standA = 0;
+      let gespeeld = false;
+
+      for (let h = 0; h < t.holes.length; h++) {
+        const scoreA = t.scores[sA.id]?.[h];
+        const scoreB = t.scores[sB.id]?.[h];
+        if (scoreA == null || scoreB == null) continue;
+        gespeeld = true;
+        const hole = t.holes[h];
+        // HCP slagen
+        const diffRaw = Math.abs(sA.hcp - sB.hcp) * t.hcpPct;
+        const diff = Math.round(diffRaw);
+        const aKrijgtSlag = sA.hcp > sB.hcp && hole.si <= diff ? 1 : 0;
+        const bKrijgtSlag = sB.hcp > sA.hcp && hole.si <= diff ? 1 : 0;
+        const nettoA = scoreA - aKrijgtSlag;
+        const nettoB = scoreB - bKrijgtSlag;
+        if (nettoA < nettoB) standA++;
+        else if (nettoB < nettoA) standA--;
+      }
+
+      if (!gespeeld) continue;
+
+      // Bepaal winnaar
+      if (standA > 0) {
+        punten[i] += t.ptWin; punten[j] += t.ptLoss;
+        won[i]++; lost[j]++;
+        matrix[i][j] = 'W'; matrix[j][i] = 'L';
+      } else if (standA < 0) {
+        punten[j] += t.ptWin; punten[i] += t.ptLoss;
+        won[j]++; lost[i]++;
+        matrix[i][j] = 'L'; matrix[j][i] = 'W';
+      } else {
+        punten[i] += t.ptTie; punten[j] += t.ptTie;
+        tied[i]++; tied[j]++;
+        matrix[i][j] = 'T'; matrix[j][i] = 'T';
+      }
+    }
+  }
+
+  return { punten, won, tied, lost, matrix };
+}
+
+function renderTRanglijst() {
+  const t = toernooiData;
+  const { punten, won, tied, lost } = berekenTPunten();
+
+  // Sorteer op punten desc
+  const volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]}))
+    .sort((a,b) => b.pt - a.pt || b.w - a.w);
+
+  document.getElementById('t-ranglijst').innerHTML = volgorde.map((entry, rank) => `
+    <div class="ladder-item">
+      <div class="rank-badge ${rank < 3 ? 'top3' : ''}">${rank+1}</div>
+      <div class="player-name">${entry.s.naam}</div>
+      <div style="font-size:12px;color:var(--light);text-align:right;line-height:1.6">
+        ${entry.w}W ${entry.ti}T ${entry.l}L<br>
+        <strong style="color:var(--dark)">${entry.pt > 0 ? '+' : ''}${entry.pt} pt</strong>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderTMatrix() {
+  const t = toernooiData;
+  const n = t.spelers.length;
+  const { matrix } = berekenTPunten();
+
+  const kleur = { W: '#d4edda', L: '#f8d7da', T: '#fff3cd' };
+  const tekst = { W: '✓', L: '✗', T: '½' };
+
+  let html = `<table style="border-collapse:collapse;font-size:11px;width:100%">`;
+  // Header
+  html += `<tr><th style="padding:4px;background:var(--green);color:white"></th>`;
+  t.spelers.forEach(s => {
+    html += `<th style="padding:4px 6px;background:var(--green);color:white;text-align:center">${s.naam.split(' ')[0]}</th>`;
+  });
+  html += '</tr>';
+
+  // Rijen
+  t.spelers.forEach((sA, i) => {
+    html += `<tr><td style="padding:4px 8px;font-weight:600;font-size:12px;white-space:nowrap">${sA.naam.split(' ')[0]}</td>`;
+    t.spelers.forEach((sB, j) => {
+      if (i === j) {
+        html += `<td style="background:#f0ede4;text-align:center;padding:4px">—</td>`;
+      } else {
+        const res = matrix[i][j];
+        const bg = res ? kleur[res] : 'transparent';
+        const tx = res ? tekst[res] : '';
+        html += `<td style="background:${bg};text-align:center;padding:4px;font-weight:700">${tx}</td>`;
+      }
+    });
+    html += '</tr>';
+  });
+  html += '</table>';
+  document.getElementById('t-matrix').innerHTML = html;
+}
+
+function openToernooiAfsluiten() {
+  const t = toernooiData;
+  const { punten, won, tied, lost } = berekenTPunten();
+  const volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]}))
+    .sort((a,b) => b.pt - a.pt || b.w - a.w);
+
+  let html = '<div style="margin-bottom:12px">';
+  volgorde.forEach((entry, rank) => {
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <span style="font-family:'Bebas Neue';font-size:18px;color:${rank===0?'var(--gold)':'var(--light)'};margin-right:8px">${rank+1}</span>
+        <strong>${entry.s.naam}</strong>
+      </div>
+      <span style="font-family:'DM Mono',monospace;color:var(--green);font-weight:700">${entry.pt > 0 ? '+' : ''}${entry.pt} pt</span>
+    </div>`;
+  });
+  html += '</div><p style="font-size:12px;color:var(--light)">De winnaar klimt op de ladder. Overige posities worden ook aangepast.</p>';
+
+  document.getElementById('t-eindstand').innerHTML = html;
+  document.getElementById('modal-toernooi-afsluiten').classList.add('open');
+}
+
+async function bevestigToernooiAfsluiten() {
+  const t = toernooiData;
+  const { punten, won, tied, lost } = berekenTPunten();
+  const volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i]}))
+    .sort((a,b) => b.pt - a.pt || b.w - a.w);
+
+  // Pas ladder ranking aan — winnaar stijgt, rest in volgorde
+  // Simpel: winnaar gaat naar positie van hoogst gerankte deelnemer
+  const deelnemerIds = volgorde.map(e => e.s.id);
+  const deelnemerSpelers = deelnemerIds.map(id => state.spelers.find(s => s.id === id)).filter(Boolean);
+  const sortedRanks = [...deelnemerSpelers].map(s => s.rank).sort((a,b) => a-b);
+
+  // Wijs ranks toe in volgorde van toernooi eindstand
+  deelnemerSpelers.forEach((speler, idx) => {
+    speler.rank = sortedRanks[idx];
+    speler.partijen += (t.spelers.length - 1);
+    speler.gewonnen += volgorde.find(e => e.s.id === speler.id)?.w || 0;
+  });
+
+  // Normaliseer ranks
+  [...state.spelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
+  await slaState();
+
+  // Sla toernooi op in archief
+  const archiefSnap = await getDoc(ARCHIEF_DOC);
+  const archief = archiefSnap.exists() ? archiefSnap.data() : { seizoenen: [] };
+  if (!archief.toernooien) archief.toernooien = [];
+  archief.toernooien.unshift({
+    naam: t.naam,
+    datum: t.datum,
+    baan: t.baan,
+    spelers: volgorde.map(e => ({ naam: e.s.naam, punten: e.pt, won: e.w })),
+    timestamp: Date.now()
+  });
+  await setDoc(ARCHIEF_DOC, archief);
+
+  // Verwijder actief toernooi
+  await setDoc(TOERNOOI_DOC, { status: 'afgerond' });
+  toernooiData = null;
+
+  closeModal('modal-toernooi-afsluiten');
+  toast('Toernooi afgerond! 🏅 Ladder bijgewerkt.');
+  renderToernooi();
+  renderLadder();
+}
+
+async function annuleerToernooi() {
+  if (!confirm('Toernooi annuleren? Alle scores gaan verloren.')) return;
+  await setDoc(TOERNOOI_DOC, { status: 'geannuleerd' });
+  toernooiData = null;
+  renderToernooi();
+  toast('Toernooi geannuleerd');
+}
+
+// ============================================================
 //  WINDOW EXPORTS
 // ============================================================
 
@@ -3059,7 +3522,13 @@ window.saveNewUser = saveNewUser;
 window.removeUser = removeUser;
 window.openEditUser = openEditUser;
 window.saveEditUser = saveEditUser;
-window.openNieuwSeizoenModal = openNieuwSeizoenModal;
+window.startToernooi = startToernooi;
+window.toggleTSpeler = toggleTSpeler;
+window.updateTScore = updateTScore;
+window.toggleTScorecard = toggleTScorecard;
+window.openToernooiAfsluiten = openToernooiAfsluiten;
+window.bevestigToernooiAfsluiten = bevestigToernooiAfsluiten;
+window.annuleerToernooi = annuleerToernooi;
 window.bevestigNieuwSeizoen = bevestigNieuwSeizoen;
 window.openArchiefDetail = openArchiefDetail;
 window.stuurUitdaging = stuurUitdaging;
