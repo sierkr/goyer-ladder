@@ -604,6 +604,16 @@
   </div>
 </div>
 
+<!-- Snapshots modal -->
+<div class="modal-overlay" id="modal-snapshots">
+  <div class="modal">
+    <h3>Ladderstand herstellen</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:12px">Kies een moment om naar terug te keren. Snapshots worden 30 dagen bewaard.</p>
+    <div id="snapshots-list"></div>
+    <button class="btn btn-ghost btn-block" style="margin-top:16px" onclick="closeModal('modal-snapshots')">Sluiten</button>
+  </div>
+</div>
+
 <!-- Wachtwoord vergeten modal -->
 <div class="modal-overlay" id="modal-wachtwoord-vergeten" style="z-index:600">
   <div class="modal">
@@ -1083,6 +1093,15 @@
   </div>
   <div class="card">
     <div class="card-header">
+      <h2>Ladder herstellen</h2>
+      <button class="btn btn-sm btn-ghost" onclick="openSnapshotsModal()">Bekijk snapshots</button>
+    </div>
+    <div class="card-body">
+      <p style="font-size:13px;color:var(--mid)">Na elke afgeronde partij wordt automatisch een snapshot opgeslagen. Je kunt de ladderstand terugzetten naar elk moment van de afgelopen 30 dagen.</p>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
       <h2>Uitnodigingslink</h2>
     </div>
     <div class="card-body">
@@ -1219,6 +1238,7 @@ const UITDAGINGEN_DOC = doc(db, 'ladder', 'uitdagingen');
 const TOERNOOI_DOC = doc(db, 'ladder', 'toernooi');
 const UITSLAGEN_COL = collection(db, 'uitslagen');
 const INVITE_DOC = doc(db, 'ladder', 'invite');
+const SNAPSHOTS_COL = collection(db, 'snapshots');
 
 // Ingelogde gebruiker (alleen in geheugen, niet in Firestore)
 let huidigeBruiker = null; // { gebruikersnaam, rol }
@@ -2446,6 +2466,7 @@ async function bevestigUitslag() {
   _highlights = new Set(p.spelers.map(s => s.id));
 
   await slaState();
+  slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam.split(' ')[0]).join(' vs ')}`);
 
   showLadderChanges(changes);
 }
@@ -2735,6 +2756,7 @@ async function bevestigBeheerUitslag() {
   state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== _beheerPartijId);
   _highlights = new Set(p.spelers.map(s => s.id));
   await slaState();
+  slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam.split(' ')[0]).join(' vs ')}`);
   showLadderChanges(changes);
 }
 
@@ -3945,6 +3967,69 @@ async function annuleerToernooi() {
 }
 
 // ============================================================
+//  LADDER SNAPSHOTS
+// ============================================================
+function openSnapshotsModal() {
+  document.getElementById('modal-snapshots').classList.add('open');
+  laadSnapshots();
+}
+
+async function slaSnapshotOp(label) {
+  try {
+    // Verwijder snapshots ouder dan 30 dagen
+    const dertig = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const oudeSnaps = await getDocs(query(SNAPSHOTS_COL, where('timestamp', '<', dertig)));
+    oudeSnaps.forEach(d => deleteDoc(d.ref));
+
+    // Sla nieuwe snapshot op
+    await addDoc(SNAPSHOTS_COL, {
+      label,
+      timestamp: Date.now(),
+      datum: new Date().toLocaleString('nl-NL'),
+      spelers: JSON.parse(JSON.stringify(state.spelers))
+    });
+  } catch(e) { console.log('Snapshot mislukt:', e); }
+}
+
+async function laadSnapshots() {
+  const wrap = document.getElementById('snapshots-list');
+  if (!wrap) return;
+  try {
+    const snaps = await getDocs(query(SNAPSHOTS_COL, orderBy('timestamp', 'desc')));
+    if (snaps.empty) {
+      wrap.innerHTML = '<p style="font-size:13px;color:var(--light);padding:12px 16px">Nog geen snapshots.</p>';
+      return;
+    }
+    wrap.innerHTML = snaps.docs.map(d => {
+      const data = d.data();
+      return `<div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);gap:10px">
+        <div style="flex:1">
+          <div style="font-weight:500;font-size:13px">${data.label}</div>
+          <div style="font-size:11px;color:var(--light)">${data.datum}</div>
+        </div>
+        <button class="btn btn-sm btn-ghost" onclick="herstelSnapshot('${d.id}')">↩ Herstel</button>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    wrap.innerHTML = '<p style="font-size:13px;color:var(--light);padding:12px 16px">Snapshots laden mislukt.</p>';
+  }
+}
+
+async function herstelSnapshot(snapId) {
+  if (!confirm('Ladderstand herstellen naar dit moment? De huidige stand wordt overschreven.')) return;
+  try {
+    const snapDoc = await getDoc(doc(db, 'snapshots', snapId));
+    if (!snapDoc.exists()) { toast('Snapshot niet gevonden'); return; }
+    const data = snapDoc.data();
+    state.spelers = data.spelers;
+    await slaState();
+    renderLadder();
+    toast('Ladderstand hersteld ✓');
+    closeModal('modal-snapshots');
+  } catch(e) { toast('Herstel mislukt: ' + e.message); }
+}
+
+// ============================================================
 //  UITNODIGINGSLINK
 // ============================================================
 async function genereerInviteLink() {
@@ -4149,6 +4234,8 @@ window.reageerUitdaging = reageerUitdaging;
 window.verwijderUitdaging = verwijderUitdaging;
 window.editPartijHcp = editPartijHcp;
 window.editToernooiHcp = editToernooiHcp;
+window.openSnapshotsModal = openSnapshotsModal;
+window.herstelSnapshot = herstelSnapshot;
 window.genereerInviteLink = genereerInviteLink;
 window.kopieerInviteLink = kopieerInviteLink;
 window.registreerSpeler = registreerSpeler;
