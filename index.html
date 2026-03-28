@@ -92,6 +92,11 @@
     font-size: 26px;
     letter-spacing: 2px;
     color: var(--gold-light);
+    line-height: 1.15;
+  }
+  @media (max-width: 380px) {
+    header h1 { font-size: 21px; }
+    header h1 #h1-second { display: block; padding-left: 1.65em; }
   }
   header .subtitle { font-size: 11px; color: rgba(255,255,255,0.6); letter-spacing: 1px; text-transform: uppercase; }
 
@@ -694,7 +699,7 @@
 
 <header>
   <div>
-    <h1>⛳ Goyer Golf MP Ladder</h1>
+    <h1><span>⛳ Goyer Golf</span><span id="h1-second"> MP Ladder</span></h1>
   </div>
   <div style="display:flex;align-items:center;gap:10px">
     <div class="subtitle" id="header-info">100 spelers</div>
