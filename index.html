@@ -799,7 +799,7 @@
             <button class="btn btn-sm btn-ghost" onclick="toggleScorecard()">Toon/verberg</button>
           </div>
         </div>
-        <div id="scorecard-sticky-header" style="overflow-x:hidden;background:var(--green)"></div>
+        <div id="scorecard-sticky-header" style="overflow-x:auto;background:var(--green);scrollbar-width:none;-webkit-overflow-scrolling:touch"></div>
       </div>
       <div id="scorecard-wrap" style="overflow-x:auto;overflow-y:visible">
         <form onsubmit="return false" action="#">
@@ -1927,9 +1927,9 @@ function renderScorecard() {
   const naamMap = kortNaamMap(p.spelers);
 
   // HEAD — sticky versie in card-header
-  let stickyHeadHtml = '<table class="scorecard" style="width:100%"><tr><th class="player-col" style="text-align:left;min-width:70px">Hole</th>';
+  let stickyHeadHtml = '<table class="scorecard" style="width:100%;table-layout:fixed"><tr><th class="player-col" style="text-align:left;width:90px">Hole</th>';
   p.spelers.forEach(s => {
-    stickyHeadHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px">
+    stickyHeadHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px;width:70px">
       ${naamMap[s.id]}<br>
       <span style="font-size:10px;font-weight:400;color:rgba(255,255,255,0.7)">hcp ${Math.round(s.partijHcp)}</span><br>
       <button onclick="verwijderSpelerUitRonde(${s.id})" style="background:rgba(255,255,255,0.15);border:none;border-radius:4px;color:rgba(255,255,255,0.8);font-size:10px;cursor:pointer;padding:2px 5px;margin-top:2px">✕ verwijder</button>
