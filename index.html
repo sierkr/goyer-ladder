@@ -545,6 +545,16 @@
     <button onclick="openWachtwoordVergeten()" style="background:none;border:none;color:var(--light);font-size:13px;margin-top:12px;width:100%;cursor:pointer;font-family:'DM Sans',sans-serif">
       Wachtwoord vergeten?
     </button>
+    <!-- Wachtwoord reset inline -->
+    <div id="reset-wrap" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid #e0ddd4">
+      <p style="font-size:13px;color:var(--mid);margin-bottom:10px">Voer je e-mailadres in voor een reset-link:</p>
+      <input type="email" id="reset-email" placeholder="naam@email.com" inputmode="email"
+        style="width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:16px;margin-bottom:10px;font-family:'DM Sans',sans-serif">
+      <div style="display:flex;gap:8px">
+        <button onclick="sluitResetWrap()" style="flex:1;padding:10px;background:none;border:1.5px solid #ccc;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif">Annuleren</button>
+        <button onclick="stuurResetEmail()" style="flex:2;padding:10px;background:var(--green);color:white;border:none;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600">Verstuur link</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1334,8 +1344,13 @@ function uitloggen() {
 }
 
 function openWachtwoordVergeten() {
-  document.getElementById('reset-email').value = document.getElementById('login-email').value || '';
-  document.getElementById('modal-wachtwoord-vergeten').classList.add('open');
+  const email = document.getElementById('login-email').value || '';
+  document.getElementById('reset-email').value = email;
+  document.getElementById('reset-wrap').style.display = 'block';
+}
+
+function sluitResetWrap() {
+  document.getElementById('reset-wrap').style.display = 'none';
 }
 
 async function stuurResetEmail() {
@@ -1343,7 +1358,7 @@ async function stuurResetEmail() {
   if (!email) { toast('Voer een e-mailadres in'); return; }
   try {
     await sendPasswordResetEmail(auth, email);
-    closeModal('modal-wachtwoord-vergeten');
+    sluitResetWrap();
     toast('Reset-link verstuurd! Check je e-mail ✓');
   } catch(e) {
     toast('Kon e-mail niet versturen — controleer het adres');
@@ -3610,6 +3625,7 @@ window.loginSubmit = loginSubmit;
 window.loginMetGoogle = loginMetGoogle;
 window.uitloggen = uitloggen;
 window.openWachtwoordVergeten = openWachtwoordVergeten;
+window.sluitResetWrap = sluitResetWrap;
 window.stuurResetEmail = stuurResetEmail;
 window.openWachtwoordWijzigen = openWachtwoordWijzigen;
 window.wijzigWachtwoord = wijzigWachtwoord;
