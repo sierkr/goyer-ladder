@@ -522,6 +522,44 @@
   <div style="font-size:13px;color:var(--light)">Verbinden met database…</div>
 </div>
 
+<!-- REGISTRATIE SCHERM (via uitnodigingslink) -->
+<div id="registratie-scherm" style="display:none;position:fixed;inset:0;background:var(--cream);z-index:300;overflow-y:auto;padding:24px 16px">
+  <div style="max-width:400px;margin:0 auto">
+    <div class="login-logo" style="margin-bottom:4px">⛳ Goyer Golf MP Ladder</div>
+    <div class="login-sub" style="margin-bottom:24px">Registreren</div>
+
+    <div id="reg-fout" style="background:#fde8e8;color:var(--red);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:12px;display:none"></div>
+    <div id="reg-succes" style="background:var(--green-pale);color:var(--green);border-radius:8px;padding:14px;font-size:13px;margin-bottom:12px;display:none"></div>
+
+    <div id="reg-formulier">
+      <div class="form-group">
+        <label>Voornaam</label>
+        <input type="text" id="reg-voornaam" placeholder="Jan" autocomplete="given-name">
+      </div>
+      <div class="form-group">
+        <label>Achternaam</label>
+        <input type="text" id="reg-achternaam" placeholder="de Vries" autocomplete="family-name">
+      </div>
+      <div class="form-group">
+        <label>E-mailadres</label>
+        <input type="email" id="reg-email" placeholder="jan@email.com" autocomplete="email" inputmode="email">
+      </div>
+      <div class="form-group">
+        <label>Wachtwoord</label>
+        <input type="password" id="reg-pass" placeholder="minimaal 6 tekens" autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label>Playing handicap (Goyer)</label>
+        <input type="number" id="reg-hcp" placeholder="bijv. 12" min="-10" max="54" inputmode="numeric">
+      </div>
+      <button class="btn btn-primary btn-block" onclick="registreerSpeler()" style="margin-top:8px">Registreren →</button>
+      <p style="font-size:12px;color:var(--light);text-align:center;margin-top:16px">
+        Al een account? <button onclick="document.getElementById('registratie-scherm').style.display='none';document.getElementById('login-scherm').classList.add('actief')" style="background:none;border:none;color:var(--green);cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif">Ga naar inloggen</button>
+      </p>
+    </div>
+  </div>
+</div>
+
 <!-- LOGIN SCHERM -->
 <div id="login-scherm" class="actief">
   <div class="login-box">
@@ -1045,6 +1083,20 @@
   </div>
   <div class="card">
     <div class="card-header">
+      <h2>Uitnodigingslink</h2>
+    </div>
+    <div class="card-body">
+      <p style="font-size:13px;color:var(--mid);margin-bottom:14px">Genereer een link om via WhatsApp te versturen. Nieuwe spelers kunnen zich 14 dagen registreren.</p>
+      <div id="invite-status" style="font-size:13px;color:var(--light);margin-bottom:12px">Geen actieve uitnodiging.</div>
+      <button class="btn btn-primary btn-block" onclick="genereerInviteLink()">🔗 Nieuwe uitnodigingslink genereren</button>
+      <div id="invite-link-wrap" style="display:none;margin-top:12px">
+        <div style="background:#f5f2ea;border-radius:8px;padding:10px 12px;font-size:12px;font-family:'DM Mono',monospace;word-break:break-all;margin-bottom:8px" id="invite-link-text"></div>
+        <button class="btn btn-ghost btn-block btn-sm" onclick="kopieerInviteLink()">📋 Kopieer link</button>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
       <h2>Seizoen</h2>
     </div>
     <div class="card-body">
@@ -1166,6 +1218,7 @@ const ARCHIEF_DOC = doc(db, 'ladder', 'archief');
 const UITDAGINGEN_DOC = doc(db, 'ladder', 'uitdagingen');
 const TOERNOOI_DOC = doc(db, 'ladder', 'toernooi');
 const UITSLAGEN_COL = collection(db, 'uitslagen');
+const INVITE_DOC = doc(db, 'ladder', 'invite');
 
 // Ingelogde gebruiker (alleen in geheugen, niet in Firestore)
 let huidigeBruiker = null; // { gebruikersnaam, rol }
@@ -1504,7 +1557,7 @@ function showPage(name) {
   if (name === 'toernooi') renderToernooi();
   if (name === 'profiel') renderProfiel();
   if (name === 'archief') { renderArchief(); verwijderOudeUitslagen(); }
-  if (name === 'admin') { renderAdmin(); renderAdminUsers(); }
+  if (name === 'admin') { renderAdmin(); renderAdminUsers(); laadInviteStatus(); }
 }
 
 // ============================================================
@@ -3891,6 +3944,131 @@ async function annuleerToernooi() {
   toast('Toernooi geannuleerd');
 }
 
+// ============================================================
+//  UITNODIGINGSLINK
+// ============================================================
+async function genereerInviteLink() {
+  const token = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+  const verloopt = Date.now() + 14 * 24 * 60 * 60 * 1000;
+  await setDoc(INVITE_DOC, { token, verloopt, aangemaakt: Date.now() });
+  const url = `${location.origin}${location.pathname}?invite=${token}`;
+  document.getElementById('invite-link-text').textContent = url;
+  document.getElementById('invite-link-wrap').style.display = 'block';
+  document.getElementById('invite-status').textContent = `Geldig tot ${new Date(verloopt).toLocaleDateString('nl-NL')}`;
+  toast('Uitnodigingslink aangemaakt ✓');
+}
+
+function kopieerInviteLink() {
+  const tekst = document.getElementById('invite-link-text').textContent;
+  navigator.clipboard.writeText(tekst).then(() => toast('Link gekopieerd! ✓'));
+}
+
+async function checkInviteLink() {
+  const params = new URLSearchParams(location.search);
+  const token = params.get('invite');
+  if (!token) return;
+  document.getElementById('login-scherm').classList.remove('actief');
+  document.getElementById('registratie-scherm').style.display = 'block';
+  const snap = await getDoc(INVITE_DOC);
+  if (!snap.exists() || snap.data().token !== token || snap.data().verloopt < Date.now()) {
+    document.getElementById('reg-formulier').style.display = 'none';
+    const fout = document.getElementById('reg-fout');
+    fout.textContent = 'Deze uitnodigingslink is verlopen of ongeldig. Vraag de beheerder om een nieuwe link.';
+    fout.style.display = 'block';
+  }
+}
+
+async function registreerSpeler() {
+  const voornaam = document.getElementById('reg-voornaam').value.trim();
+  const achternaam = document.getElementById('reg-achternaam').value.trim();
+  const email = document.getElementById('reg-email').value.trim().toLowerCase();
+  const pass = document.getElementById('reg-pass').value;
+  const hcp = parseInt(document.getElementById('reg-hcp').value);
+  const fout = document.getElementById('reg-fout');
+  const succes = document.getElementById('reg-succes');
+
+  fout.style.display = 'none';
+  succes.style.display = 'none';
+
+  if (!voornaam) { fout.textContent = 'Vul je voornaam in'; fout.style.display = 'block'; return; }
+  if (!achternaam) { fout.textContent = 'Vul je achternaam in'; fout.style.display = 'block'; return; }
+  if (!email || !email.includes('@')) { fout.textContent = 'Vul een geldig e-mailadres in'; fout.style.display = 'block'; return; }
+  if (pass.length < 6) { fout.textContent = 'Wachtwoord moet minimaal 6 tekens zijn'; fout.style.display = 'block'; return; }
+  if (isNaN(hcp)) { fout.textContent = 'Vul je playing handicap in'; fout.style.display = 'block'; return; }
+
+  const naam = `${voornaam} ${achternaam}`;
+
+  try {
+    const usersSnap = await getDoc(USERS_DOC);
+    const users = usersSnap.exists() ? (usersSnap.data().lijst || []) : [];
+    if (users.find(u => u.email === email)) {
+      fout.innerHTML = `Dit e-mailadres is al geregistreerd.<br><br>
+        <strong>Wachtwoord vergeten?</strong> Ga naar de <a href="${location.origin}${location.pathname}" style="color:var(--green)">inlogpagina</a> 
+        en klik op "Wachtwoord vergeten?". Je ontvangt een reset-link per e-mail. 
+        <em>Controleer ook je spambox.</em>`;
+      fout.style.display = 'block';
+      return;
+    }
+
+    // Maak Firebase Auth account via secundaire app instantie
+    const { initializeApp: initApp2 } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
+    const { getAuth: getAuth2, createUserWithEmailAndPassword: createUser2, deleteApp: delApp2 } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+    const app2 = initApp2({ apiKey:"AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens", authDomain:"goyer-golf-mp-ladder.firebaseapp.com", projectId:"goyer-golf-mp-ladder" }, 'reg-' + Date.now());
+    const auth2 = getAuth2(app2);
+    const cred = await createUser2(auth2, email, pass);
+    const uid = cred.user.uid;
+    try { await delApp2(app2); } catch(e) {}
+
+    // Voeg toe aan users lijst
+    users.push({ naam, email, uid, rol: 'speler' });
+    await setDoc(USERS_DOC, { lijst: users });
+
+    // Voeg toe aan ladder
+    const stateSnap = await getDoc(STATE_DOC);
+    const st = stateSnap.exists() ? stateSnap.data() : { spelers: [], nextId: 1, uitslagen: [], actievePartijen: [] };
+    st.spelers = st.spelers || [];
+    const newRank = st.spelers.length + 1;
+    const newId = st.nextId || (newRank + 100);
+    st.spelers.push({ id: newId, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
+    st.nextId = newId + 1;
+    await setDoc(STATE_DOC, st);
+
+    document.getElementById('reg-formulier').style.display = 'none';
+    succes.innerHTML = `<strong>Welkom ${voornaam}!</strong> Je bent succesvol geregistreerd en staat nu op de ladder.<br><br>
+      <a href="${location.origin}${location.pathname}" style="color:var(--green);font-weight:600">Klik hier om in te loggen →</a>`;
+    succes.style.display = 'block';
+
+  } catch(e) {
+    if (e.code === 'auth/email-already-in-use') {
+      fout.innerHTML = `Dit e-mailadres is al geregistreerd.<br><br>
+        <strong>Wachtwoord vergeten?</strong> Ga naar de <a href="${location.origin}${location.pathname}" style="color:var(--green)">inlogpagina</a> 
+        en klik op "Wachtwoord vergeten?". Je ontvangt een reset-link per e-mail. 
+        <em>Controleer ook je spambox.</em>`;
+    } else {
+      fout.textContent = 'Registratie mislukt: ' + e.message;
+    }
+    fout.style.display = 'block';
+  }
+}
+
+async function laadInviteStatus() {
+  try {
+    const snap = await getDoc(INVITE_DOC);
+    if (!snap.exists()) return;
+    const data = snap.data();
+    const el = document.getElementById('invite-status');
+    if (!el) return;
+    if (data.verloopt > Date.now()) {
+      const url = `${location.origin}${location.pathname}?invite=${data.token}`;
+      el.textContent = `Actief — geldig tot ${new Date(data.verloopt).toLocaleDateString('nl-NL')}`;
+      document.getElementById('invite-link-text').textContent = url;
+      document.getElementById('invite-link-wrap').style.display = 'block';
+    } else {
+      el.textContent = 'Verlopen — genereer een nieuwe link.';
+    }
+  } catch(e) {}
+}
+
 function autoAdvance(input) {
   const tabIdx = parseInt(input.getAttribute('tabindex'));
   if (!tabIdx) {
@@ -3971,11 +4149,15 @@ window.reageerUitdaging = reageerUitdaging;
 window.verwijderUitdaging = verwijderUitdaging;
 window.editPartijHcp = editPartijHcp;
 window.editToernooiHcp = editToernooiHcp;
+window.genereerInviteLink = genereerInviteLink;
+window.kopieerInviteLink = kopieerInviteLink;
+window.registreerSpeler = registreerSpeler;
 window.autoAdvance = autoAdvance;
 window.slaProfielHcpOp = slaProfielHcpOp;
 window.vraagNotificatieToestemming = vraagNotificatieToestemming;
 
 initFirestore();
+checkInviteLink();
 </script>
 </body>
 </html>
