@@ -1413,7 +1413,7 @@ async function wijzigWachtwoord() {
 }
 
 // Sla volledige state op naar Firestore
-async function slaState() {
+async function await slaState() {
   try {
     await setDoc(STATE_DOC, JSON.parse(JSON.stringify(state)));
   } catch(e) { console.error('Firestore save error:', e); }
@@ -2001,11 +2001,11 @@ function renderScorecard() {
   }
 }
 
-function updateScore(spelerId, holeIdx, val) {
+async function updateScore(spelerId, holeIdx, val) {
   const p = mijnPartij();
   if (!p) return;
   p.scores[spelerId][holeIdx] = val === '' ? null : parseInt(val);
-  slaState();
+  await slaState();
   renderMatchOverview();
 }
 
@@ -2123,7 +2123,7 @@ function openToevoegenModal() {
   document.getElementById('modal-toevoegen-ronde').classList.add('open');
 }
 
-function bevestigToevoegenRonde() {
+async function bevestigToevoegenRonde() {
   const p = mijnPartij();
   if (!p) return;
   const sel = document.getElementById('toevoegen-speler-select');
@@ -2154,13 +2154,13 @@ function bevestigToevoegenRonde() {
   p.spelers.push(nieuweSpeler);
   p.scores[speler.id] = Array(p.holes.length).fill(null);
 
-  slaState();
+  await slaState();
   closeModal('modal-toevoegen-ronde');
   renderRonde();
   toast(`${speler.naam.split(' ')[0]} toegevoegd ✓`);
 }
 
-function editPartijHcp(spelerId) {
+async function editPartijHcp(spelerId) {
   const p = mijnPartij();
   if (!p) return;
   const speler = p.spelers.find(s => s.id == spelerId);
@@ -2180,12 +2180,12 @@ function editPartijHcp(spelerId) {
     m.hcpOntvanger = hoger.id;
     m.hcpSlagen = hcpDiff;
   });
-  slaState();
+  await slaState();
   renderRonde();
   toast(`Handicap ${speler.naam.split(' ')[0]} bijgewerkt ✓`);
 }
 
-function verwijderSpelerUitRonde(spelerId) {
+async function verwijderSpelerUitRonde(spelerId) {
   const p = mijnPartij();
   if (!p) return;
   const speler = p.spelers.find(s => s.id === spelerId);
@@ -2197,7 +2197,7 @@ function verwijderSpelerUitRonde(spelerId) {
   p.matchups = p.matchups.filter(m => m.spelerA.id !== spelerId && m.spelerB.id !== spelerId);
   delete p.scores[spelerId];
 
-  slaState();
+  await slaState();
   renderRonde();
   toast(`${speler.naam.split(' ')[0]} verwijderd uit partij`);
 }
@@ -2392,7 +2392,7 @@ async function bevestigUitslag() {
   // Onthoud welke spelers zojuist gespeeld hebben voor highlight in ladder
   _highlights = new Set(p.spelers.map(s => s.id));
 
-  slaState();
+  await slaState();
 
   showLadderChanges(changes);
 }
@@ -2464,9 +2464,6 @@ async function openScorekaartDetail(uitslag) {
 }
 
 function toonScorekaartModal(data) {
-  console.log('Scorekaart data:', JSON.stringify(data).substring(0, 500));
-  console.log('Scores keys:', Object.keys(data.scores || {}));
-  console.log('SpelerIds:', data.spelerIds);
   const spelers = data.spelers || [];
   const holes = data.holes || [];
 
@@ -2629,7 +2626,7 @@ function setBeheerWinnaar(idx, kant) {
   });
 }
 
-function bevestigBeheerUitslag() {
+async function bevestigBeheerUitslag() {
   const p = (state.actievePartijen || []).find(ap => ap.partijId === _beheerPartijId);
   if (!p) return;
   if (_beheerWinnaars.some(w => w === null)) { toast('Wijs voor elke match een winnaar aan'); return; }
@@ -2684,25 +2681,25 @@ function bevestigBeheerUitslag() {
 
   state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== _beheerPartijId);
   _highlights = new Set(p.spelers.map(s => s.id));
-  slaState();
+  await slaState();
   showLadderChanges(changes);
 }
 
-function annuleerEigenPartij() {
+async function annuleerEigenPartij() {
   if (!confirm('Partij annuleren? De scores worden niet opgeslagen en de ladder wordt niet aangepast.')) return;
   const p = mijnPartij();
   if (!p) return;
   state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== p.partijId);
-  slaState();
+  await slaState();
   closeModal('modal-uitslag');
   renderRonde();
   toast('Partij geannuleerd');
 }
 
-function verwijderActievePartij() {
+async function verwijderActievePartij() {
   if (!confirm('Partij verwijderen? Dit kan niet ongedaan worden.')) return;
   state.actievePartijen = (state.actievePartijen || []).filter(ap => ap.partijId !== _beheerPartijId);
-  slaState();
+  await slaState();
   closeModal('modal-beheer-partij');
   renderUitslagen();
   toast('Partij verwijderd');
@@ -2838,12 +2835,12 @@ async function saveEditPlayer() {
   toast('Speler bijgewerkt ✓');
 }
 
-function removePlayer(id) {
+async function removePlayer(id) {
   if (!confirm('Speler verwijderen?')) return;
   state.spelers = state.spelers.filter(s => s.id !== id);
   // Re-rank
   state.spelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
-  slaState();
+  await slaState();
   renderAdmin();
   toast('Speler verwijderd');
 }
@@ -3147,7 +3144,7 @@ async function removeUser(idx) {
 //  HELPERS
 // ============================================================
 
-function verschuifRank(id, delta) {
+async function verschuifRank(id, delta) {
   const speler = state.spelers.find(s => s.id === id);
   if (!speler) return;
 
@@ -3159,7 +3156,7 @@ function verschuifRank(id, delta) {
   if (ander) ander.rank = speler.rank;
   speler.rank = nieuwRank;
 
-  slaState();
+  await slaState();
   renderAdmin();
 }
 
@@ -3964,6 +3961,7 @@ window.toggleTScorecard = toggleTScorecard;
 window.openToernooiAfsluiten = openToernooiAfsluiten;
 window.bevestigToernooiAfsluiten = bevestigToernooiAfsluiten;
 window.annuleerToernooi = annuleerToernooi;
+window.openNieuwSeizoenModal = openNieuwSeizoenModal;
 window.bevestigNieuwSeizoen = bevestigNieuwSeizoen;
 window.openScorekaartDetail = openScorekaartDetail;
 window.openToernooiDetail = openToernooiDetail;
