@@ -2397,32 +2397,23 @@ async function saveNewPlayer() {
     const snap = await getDoc(USERS_DOC);
     const users = snap.exists() ? (snap.data().lijst || []) : [];
 
-    // Check of e-mail al in gebruik is
     if (users.find(u => u.email === email)) {
       toast('Dit e-mailadres is al in gebruik'); return;
     }
 
-    // Maak Firebase Auth account aan via een tijdelijke secundaire app-instantie
-    // zodat de beheerder sessie niet wordt onderbroken
+    // Maak Firebase Auth account aan via secundaire app
     let uid = null;
     try {
-      const { initializeApp: initApp, getApps } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
+      const { initializeApp: initApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
       const { getAuth: getSecAuth, createUserWithEmailAndPassword: createUser } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-
-      // Gebruik een aparte app-instantie zodat de huidige auth sessie intact blijft
-      const bestaandeApps = getApps();
-      const tijdelijkeApp = initApp(firebaseConfig, `temp_${Date.now()}`);
-      const tijdelijkeAuth = getSecAuth(tijdelijkeApp);
-
-      const userCred = await createUser(tijdelijkeAuth, email, pass);
-      uid = userCred.user.uid;
-
-      // Verwijder tijdelijke app
-      await tijdelijkeApp.delete();
+      const tijdApp = initApp(firebaseConfig, `tmp_${Date.now()}`);
+      const tijdAuth = getSecAuth(tijdApp);
+      const cred = await createUser(tijdAuth, email, pass);
+      uid = cred.user.uid;
+      try { await tijdApp.delete(); } catch(e) {} // delete mag falen
     } catch(authErr) {
       if (authErr.code === 'auth/email-already-in-use') {
-        toast('E-mailadres al in gebruik. Verwijder eerst het account via Firebase Console → Authentication.');
-        return;
+        toast('E-mailadres al in gebruik in Firebase. Verwijder het eerst via Firebase Console → Authentication.'); return;
       }
       throw authErr;
     }
@@ -2433,16 +2424,14 @@ async function saveNewPlayer() {
     await slaState();
 
     // Voeg account toe aan users lijst
-    // Gebruikersnaam = volledige naam voor mooie weergave
-    const gebruikersnaam = naam;
-    users.push({ uid, email, gebruikersnaam, rol: 'speler' });
+    users.push({ uid, email, gebruikersnaam: naam, rol: 'speler' });
     await setDoc(USERS_DOC, { lijst: sorteerUsers(users) });
 
     closeModal('modal-add-player');
     renderAdmin();
     toast(`${naam} toegevoegd ✓`);
   } catch(e) {
-    console.error(e);
+    console.error('saveNewPlayer error:', e);
     toast('Fout bij opslaan: ' + e.message);
   }
 }
@@ -2721,9 +2710,9 @@ async function saveNewUser() {
     try {
       const userCred = await createUser2(tijdelijkeAuth2, email, pass);
       uid = userCred.user.uid;
-      await tijdelijkeApp2.delete();
+      try { await tijdelijkeApp2.delete(); } catch(e) {}
     } catch(authErr) {
-      await tijdelijkeApp2.delete();
+      try { await tijdelijkeApp2.delete(); } catch(e) {}
       if (authErr.code === 'auth/email-already-in-use') { toast('Dit e-mailadres is al in gebruik'); return; }
       else if (authErr.code === 'auth/invalid-email') { toast('Ongeldig e-mailadres'); return; }
       else { toast('Fout bij aanmaken: ' + authErr.message); return; }
