@@ -3104,31 +3104,109 @@ async function renderArchief() {
   const list = document.getElementById('archief-list');
   document.getElementById('archief-count').textContent = archiefData.length;
 
-  if (archiefData.length === 0) {
-    list.innerHTML = '<div class="empty"><div class="empty-icon">📁</div><p>Nog geen afgesloten seizoenen.</p></div>';
-    return;
+  // Laad toernooien uit archief
+  const archiefSnap = await getDoc(ARCHIEF_DOC);
+  const archiefDoc = archiefSnap.exists() ? archiefSnap.data() : {};
+  const toernooien = archiefDoc.toernooien || [];
+
+  let html = '';
+
+  // Toernooien
+  if (toernooien.length > 0) {
+    html += `<div style="padding:10px 16px 6px"><p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Toernooien</p></div>`;
+    html += toernooien.map((t, idx) => `
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-weight:600">🏅 ${t.naam}</span>
+          <span style="font-size:12px;color:var(--light)">${t.datum}</span>
+        </div>
+        <div style="font-size:12px;color:var(--mid);margin-bottom:8px">${t.baan} · ${t.holes} holes · W=${t.ptWin} T=${t.ptTie} L=${t.ptLoss}</div>
+        <div style="margin-bottom:8px">
+          ${t.ranglijst?.slice(0,3).map((r,i) => `
+            <span style="font-size:13px;margin-right:12px">${i===0?'🥇':i===1?'🥈':'🥉'} ${r.naam} <span style="color:var(--light)">${r.punten>0?'+':''}${r.punten}pt</span></span>
+          `).join('')}
+        </div>
+        <button class="btn btn-sm btn-ghost" onclick="openToernooiDetail(${idx})">Bekijk uitslag →</button>
+      </div>
+    `).join('');
   }
 
-  list.innerHTML = archiefData.map((s, idx) => {
-    const winnaar = s.eindstand?.[0];
-    return `
-    <div style="padding:14px 16px;border-bottom:1px solid #f0ede4">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <span style="font-weight:600;font-size:16px">${s.naam}</span>
-        <span style="font-size:12px;color:var(--light)">${s.datum}</span>
-      </div>
-      ${winnaar ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-        <span style="font-family:'Bebas Neue';font-size:18px;color:var(--gold)">🏆</span>
-        <span style="font-weight:600">${winnaar.naam}</span>
-        <span style="font-size:12px;color:var(--light)">${winnaar.partijen}P ${winnaar.gewonnen}W</span>
-      </div>` : ''}
-      <div style="display:flex;gap:8px">
-        <span class="badge badge-grey">${s.eindstand?.length || 0} spelers</span>
-        <span class="badge badge-grey">${s.uitslagen?.length || 0} partijen</span>
-        <button class="btn btn-sm btn-ghost" onclick="openArchiefDetail(${idx})" style="margin-left:auto">Bekijk →</button>
-      </div>
+  // Seizoenen
+  if (archiefData.length > 0) {
+    html += `<div style="padding:10px 16px 6px;margin-top:8px"><p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Seizoenen</p></div>`;
+    html += archiefData.map((s, idx) => {
+      const winnaar = s.eindstand?.[0];
+      return `
+      <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-weight:600;font-size:16px">${s.naam}</span>
+          <span style="font-size:12px;color:var(--light)">${s.datum}</span>
+        </div>
+        ${winnaar ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="font-family:'Bebas Neue';font-size:18px;color:var(--gold)">🏆</span>
+          <span style="font-weight:600">${winnaar.naam}</span>
+        </div>` : ''}
+        <div style="display:flex;gap:8px">
+          <span class="badge badge-grey">${s.eindstand?.length || 0} spelers</span>
+          <button class="btn btn-sm btn-ghost" onclick="openArchiefDetail(${idx})" style="margin-left:auto">Bekijk →</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  if (!html) {
+    html = '<div class="empty"><div class="empty-icon">📁</div><p>Nog geen afgesloten seizoenen of toernooien.</p></div>';
+  }
+
+  list.innerHTML = html;
+}
+
+async function openToernooiDetail(idx) {
+  const archiefSnap = await getDoc(ARCHIEF_DOC);
+  const t = archiefSnap.exists() ? (archiefSnap.data().toernooien || [])[idx] : null;
+  if (!t) return;
+
+  document.getElementById('archief-detail-titel').textContent = `🏅 ${t.naam}`;
+
+  let html = `<p style="font-size:13px;color:var(--light);margin-bottom:16px">${t.datum} · ${t.baan} · ${t.holes} holes</p>`;
+
+  // Ranglijst
+  html += `<p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:8px">Eindranglijst</p>`;
+  html += `<div style="margin-bottom:16px">`;
+  t.ranglijst?.forEach((r, i) => {
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+    html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:16px;min-width:28px">${medal}</span>
+      <span style="flex:1;font-weight:500">${r.naam}</span>
+      <span style="font-size:12px;color:var(--light)">${r.won}W ${r.tied}T ${r.lost}L</span>
+      <span style="font-family:'DM Mono',monospace;font-weight:700;color:var(--green);min-width:40px;text-align:right">${r.punten>0?'+':''}${r.punten}pt</span>
     </div>`;
-  }).join('');
+  });
+  html += '</div>';
+
+  // Matrix
+  if (t.matrix && t.spelerNamen) {
+    html += `<p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:8px">Onderlinge stand</p>`;
+    html += `<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:11px;width:100%">`;
+    html += `<tr><th style="padding:4px;background:var(--green);color:white"></th>`;
+    t.spelerNamen.forEach(n => {
+      html += `<th style="padding:4px 6px;background:var(--green);color:white;text-align:center">${n}</th>`;
+    });
+    html += '</tr>';
+    t.matrix.forEach((rij, i) => {
+      html += `<tr><td style="padding:4px 8px;font-weight:600">${t.spelerNamen[i]}</td>`;
+      rij.forEach(cel => {
+        const bg = cel === 'W' ? '#d4edda' : cel === 'L' ? '#f8d7da' : cel === 'T' ? '#fff3cd' : '#f0ede4';
+        const tx = cel === 'W' ? '✓' : cel === 'L' ? '✗' : cel === 'T' ? '½' : '—';
+        html += `<td style="background:${bg};text-align:center;padding:4px;font-weight:700">${tx}</td>`;
+      });
+      html += '</tr>';
+    });
+    html += '</table></div>';
+  }
+
+  document.getElementById('archief-detail-inhoud').innerHTML = html;
+  document.getElementById('modal-archief-detail').classList.add('open');
 }
 
 function openArchiefDetail(idx) {
@@ -3637,15 +3715,26 @@ async function bevestigToernooiAfsluiten() {
   [...state.spelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
   await slaState();
 
-  // Sla toernooi op in archief
+  // Sla toernooi op in archief met volledige uitslag en matrix
   const archiefSnap = await getDoc(ARCHIEF_DOC);
   const archief = archiefSnap.exists() ? archiefSnap.data() : { seizoenen: [] };
   if (!archief.toernooien) archief.toernooien = [];
+
+  // Bereken matrix voor archief
+  const { matrix } = berekenTPunten();
+  const matrixArchief = t.spelers.map((sA, i) =>
+    t.spelers.map((sB, j) => i === j ? 'X' : (matrix[i][j] || '-'))
+  );
+
   archief.toernooien.unshift({
     naam: t.naam,
     datum: t.datum,
     baan: t.baan,
-    spelers: volgorde.map(e => ({ naam: e.s.naam, punten: e.pt, won: e.w })),
+    holes: t.holes.length,
+    ptWin: t.ptWin, ptTie: t.ptTie, ptLoss: t.ptLoss,
+    ranglijst: volgorde.map(e => ({ naam: e.s.naam, hcp: Math.round(e.s.hcp), punten: e.pt, won: e.w, tied: e.ti, lost: e.l })),
+    spelerNamen: t.spelers.map(s => s.naam.split(' ')[0]),
+    matrix: matrixArchief,
     timestamp: Date.now()
   });
   await setDoc(ARCHIEF_DOC, archief);
@@ -3739,6 +3828,7 @@ window.openToernooiAfsluiten = openToernooiAfsluiten;
 window.bevestigToernooiAfsluiten = bevestigToernooiAfsluiten;
 window.annuleerToernooi = annuleerToernooi;
 window.bevestigNieuwSeizoen = bevestigNieuwSeizoen;
+window.openToernooiDetail = openToernooiDetail;
 window.openArchiefDetail = openArchiefDetail;
 window.stuurUitdaging = stuurUitdaging;
 window.reageerUitdaging = reageerUitdaging;
