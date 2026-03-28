@@ -1,0 +1,3086 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Goyer Golf MP Ladder">
+<meta name="theme-color" content="#2d6a4f">
+<title>Goyer Golf MP Ladder</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+  :root {
+    --green: #2d6a4f;
+    --green-light: #40916c;
+    --green-pale: #d8f3dc;
+    --gold: #b5882a;
+    --gold-light: #e9c46a;
+    --cream: #f8f4e9;
+    --dark: #1a1a1a;
+    --mid: #4a4a4a;
+    --light: #9a9a9a;
+    --white: #ffffff;
+    --red: #c0392b;
+    --blue: #2471a3;
+    --radius: 12px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.10);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--cream);
+    color: var(--dark);
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    overscroll-behavior-y: none;
+  }
+
+  /* Prevent iOS double-tap zoom on buttons */
+  button, input, select { touch-action: manipulation; }
+
+  /* HEADER */
+  header {
+    background: var(--green);
+    color: white;
+    padding: 0 16px;
+    padding-top: env(safe-area-inset-top);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: calc(56px + env(safe-area-inset-top));
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+  }
+  header h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 26px;
+    letter-spacing: 2px;
+    color: var(--gold-light);
+  }
+  header .subtitle { font-size: 11px; color: rgba(255,255,255,0.6); letter-spacing: 1px; text-transform: uppercase; }
+
+  /* NAV TABS */
+  nav {
+    display: flex;
+    background: var(--white);
+    border-bottom: 2px solid #e0ddd4;
+    overflow-x: auto;
+    scrollbar-width: none;
+    position: sticky;
+    top: calc(56px + env(safe-area-inset-top));
+    z-index: 99;
+  }
+  nav::-webkit-scrollbar { display: none; }
+  nav button {
+    flex: 1;
+    min-width: 72px;
+    padding: 14px 6px;
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--light);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: all 0.2s;
+    white-space: nowrap;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  nav button.active {
+    color: var(--green);
+    border-bottom-color: var(--green);
+  }
+
+  /* PAGES */
+  .page { display: none; padding: 16px; max-width: 600px; margin: 0 auto; }
+  .page.active { display: block; }
+
+  /* CARDS */
+  .card {
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .card-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid #f0ede4;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card-header h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    letter-spacing: 1px;
+    color: var(--green);
+  }
+  .card-body { padding: 16px; }
+
+  /* BUTTONS */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 18px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    transition: all 0.15s;
+    -webkit-user-select: none;
+    user-select: none;
+    min-height: 44px; /* iOS minimum touch target */
+  }
+  .btn-primary { background: var(--green); color: white; }
+  .btn-primary:active { background: var(--green-light); }
+  .btn-gold { background: var(--gold); color: white; }
+  .btn-gold:active { background: var(--gold-light); color: var(--dark); }
+  .btn-sm { padding: 8px 14px; font-size: 13px; min-height: 36px; }
+  .btn-ghost { background: transparent; border: 1.5px solid #ccc; color: var(--mid); }
+  .btn-ghost:active { border-color: var(--green); color: var(--green); }
+  .btn-danger { background: var(--red); color: white; }
+  .btn-block { width: 100%; justify-content: center; }
+
+  /* INPUTS */
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--mid); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+  input, select {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1.5px solid #ddd;
+    border-radius: 10px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px; /* 16px prevents iOS auto-zoom */
+    background: white;
+    color: var(--dark);
+    transition: border 0.2s;
+    -webkit-appearance: none;
+    min-height: 44px;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--green); }
+  input[type=number] { font-family: 'DM Mono', monospace; }
+
+  /* LADDER */
+  .ladder-item {
+    display: flex;
+    align-items: center;
+    padding: 14px 16px;
+    border-bottom: 1px solid #f5f2ea;
+    gap: 12px;
+    min-height: 56px;
+  }
+  .ladder-item:last-child { border-bottom: none; }
+  .ladder-item:active { background: #fafaf7; }
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    color: var(--light);
+    min-width: 32px;
+    text-align: center;
+  }
+  .rank-badge.top3 { color: var(--gold); }
+  .player-name { flex: 1; font-weight: 500; font-size: 15px; }
+  .player-hcp {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--light);
+    background: #f0ede4;
+    padding: 2px 7px;
+    border-radius: 4px;
+  }
+  .player-stats { font-size: 12px; color: var(--light); text-align: right; line-height: 1.4; }
+  .delta-up { color: #27ae60; font-size: 11px; font-weight: 700; }
+  .delta-down { color: var(--red); font-size: 11px; font-weight: 700; }
+
+  /* PARTIJ SETUP */
+  .player-slot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .player-slot select { flex: 1; }
+  .hcp-input { width: 70px !important; text-align: center; }
+
+  /* SCOREKAART */
+  .scorecard {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .scorecard th {
+    background: var(--green);
+    color: white;
+    padding: 7px 6px;
+    text-align: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .scorecard th.player-col { text-align: left; font-family: 'DM Sans', sans-serif; font-size: 12px; }
+  .scorecard td {
+    padding: 6px;
+    text-align: center;
+    border-bottom: 1px solid #f0ede4;
+  }
+  .scorecard td.player-col { text-align: left; padding-left: 8px; font-weight: 500; font-size: 13px; }
+  .scorecard input[type=number] {
+    width: 42px;
+    padding: 4px;
+    text-align: center;
+    font-size: 14px;
+    font-family: 'DM Mono', monospace;
+    border: 1.5px solid #e0ddd4;
+    border-radius: 6px;
+  }
+  .scorecard input[type=number]:focus { border-color: var(--green); outline: none; }
+  .hole-par { font-size: 10px; color: var(--light); display: block; }
+  .hole-si { font-size: 9px; color: var(--gold); }
+
+  /* RESULT CELL */
+  .res-W { background: #d4edda; color: #155724; font-weight: 700; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
+  .res-L { background: #f8d7da; color: #721c24; font-weight: 700; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
+  .res-T { background: #fff3cd; color: #856404; font-weight: 700; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
+
+  /* MATCH OVERZICHT */
+  .match-card {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #f0ede4;
+    gap: 8px;
+  }
+  .match-card:last-child { border-bottom: none; }
+  .match-player { flex: 1; font-size: 14px; font-weight: 500; }
+  .match-player.right { text-align: right; }
+  .match-vs { font-family: 'Bebas Neue', sans-serif; font-size: 16px; color: var(--light); padding: 0 8px; }
+  .match-score {
+    font-family: 'DM Mono', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    min-width: 50px;
+    text-align: center;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: #f0ede4;
+  }
+  .match-score.leading { background: var(--green-pale); color: var(--green); }
+
+  /* BADGES */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .badge-green { background: var(--green-pale); color: var(--green); }
+  .badge-gold { background: #fef3cd; color: var(--gold); }
+  .badge-red { background: #fde8e8; color: var(--red); }
+  .badge-grey { background: #f0ede4; color: var(--light); }
+
+  /* SECTION TITLE */
+  .section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 15px;
+    letter-spacing: 1px;
+    color: var(--light);
+    text-transform: uppercase;
+    margin: 20px 0 8px;
+  }
+
+  /* TOAST */
+  #toast {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--dark);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    opacity: 0;
+    transition: all 0.3s;
+    z-index: 999;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 200;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: white;
+    border-radius: 20px 20px 0 0;
+    padding: 24px 20px;
+    width: 100%;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  .modal h3 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    color: var(--green);
+    margin-bottom: 16px;
+    letter-spacing: 1px;
+  }
+  .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+
+  /* STANDING CHANGE */
+  .standing-result {
+    background: linear-gradient(135deg, var(--green) 0%, var(--green-light) 100%);
+    color: white;
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .standing-result .name { font-size: 16px; font-weight: 600; }
+  .standing-result .change { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 1px; }
+
+  /* EMPTY STATE */
+  .empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--light);
+  }
+  .empty-icon { font-size: 40px; margin-bottom: 10px; }
+  .empty p { font-size: 14px; }
+
+  /* ADMIN */
+  .admin-row {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid #f5f2ea;
+    gap: 10px;
+  }
+  .admin-row:last-child { border-bottom: none; }
+  .admin-row .name { flex: 1; font-weight: 500; }
+  .admin-row .hcp { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--light); }
+
+  .divider { height: 1px; background: #f0ede4; margin: 12px 0; }
+
+  .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .tag {
+    background: var(--green-pale);
+    color: var(--green);
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+  }
+  .tag.selected { background: var(--green); color: white; }
+  .tag:hover:not(.selected) { border-color: var(--green); }
+
+  /* LAAD OVERLAY */
+  #laad-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--cream);
+    z-index: 999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+  }
+  #laad-overlay .laad-logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 32px;
+    letter-spacing: 3px;
+    color: var(--green);
+  }
+  #laad-overlay .laad-spinner {
+    width: 36px; height: 36px;
+    border: 3px solid #d8f3dc;
+    border-top-color: var(--green);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* LOGIN SCHERM */
+  #login-scherm {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: var(--green);
+    z-index: 500;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  #login-scherm.actief { display: flex; }
+  .login-box {
+    background: white;
+    border-radius: 20px;
+    padding: 32px 24px;
+    width: 100%;
+    max-width: 360px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.25);
+  }
+  .login-logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    letter-spacing: 2px;
+    color: var(--green);
+    text-align: center;
+    margin-bottom: 4px;
+  }
+  .login-sub {
+    text-align: center;
+    font-size: 12px;
+    color: var(--light);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 24px;
+  }
+  .login-fout {
+    background: #fde8e8;
+    color: var(--red);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    margin-bottom: 12px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="laad-overlay">
+  <div class="laad-logo">⛳ Goyer Golf MP Ladder</div>
+  <div class="laad-spinner"></div>
+  <div style="font-size:13px;color:var(--light)">Verbinden met database…</div>
+</div>
+
+<!-- LOGIN SCHERM -->
+<div id="login-scherm" class="actief">
+  <div class="login-box">
+    <div class="login-logo">⛳ Goyer Golf MP Ladder</div>
+    <div class="login-sub">Goyer Golf Club</div>
+    <div class="login-fout" id="login-fout"></div>
+
+    <!-- Google login -->
+    <button class="btn btn-block" onclick="loginMetGoogle()" style="background:white;color:#444;border:1.5px solid #ddd;margin-bottom:12px;gap:10px;font-size:15px">
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.8 2.4 30.2 0 24 0 14.6 0 6.6 5.4 2.6 13.3l7.8 6C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/><path fill="#FBBC05" d="M10.4 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l7.8-6z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.2-7.7 2.2-6.3 0-11.6-3.7-13.6-9.2l-7.8 6C6.6 42.6 14.6 48 24 48z"/></svg>
+      Inloggen met Google
+    </button>
+
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div style="flex:1;height:1px;background:#e0ddd4"></div>
+      <span style="font-size:12px;color:var(--light)">of</span>
+      <div style="flex:1;height:1px;background:#e0ddd4"></div>
+    </div>
+
+    <div class="form-group">
+      <label>E-mailadres</label>
+      <input type="email" id="login-email" placeholder="naam@email.com" autocomplete="email" inputmode="email">
+    </div>
+    <div class="form-group">
+      <label>Wachtwoord</label>
+      <input type="password" id="login-pass" placeholder="••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter') loginSubmit()">
+    </div>
+    <button class="btn btn-primary btn-block" onclick="loginSubmit()" style="margin-top:4px">Inloggen →</button>
+    <button onclick="openWachtwoordVergeten()" style="background:none;border:none;color:var(--light);font-size:13px;margin-top:12px;width:100%;cursor:pointer;font-family:'DM Sans',sans-serif">
+      Wachtwoord vergeten?
+    </button>
+  </div>
+</div>
+
+<!-- Wachtwoord vergeten modal -->
+<div class="modal-overlay" id="modal-wachtwoord-vergeten">
+  <div class="modal">
+    <h3>Wachtwoord herstellen</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">Voer je e-mailadres in. Je ontvangt een link om je wachtwoord te resetten.</p>
+    <div class="form-group">
+      <label>E-mailadres</label>
+      <input type="email" id="reset-email" placeholder="naam@email.com" inputmode="email">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-wachtwoord-vergeten')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="stuurResetEmail()">Verstuur link</button>
+    </div>
+  </div>
+</div>
+
+<!-- Wachtwoord wijzigen modal (ingelogd) -->
+<div class="modal-overlay" id="modal-wachtwoord-wijzigen">
+  <div class="modal">
+    <h3>Wachtwoord wijzigen</h3>
+    <div class="form-group">
+      <label>Huidig wachtwoord</label>
+      <input type="password" id="huidig-wachtwoord" placeholder="••••••">
+    </div>
+    <div class="form-group">
+      <label>Nieuw wachtwoord</label>
+      <input type="password" id="nieuw-wachtwoord" placeholder="minimaal 6 tekens">
+    </div>
+    <div class="form-group">
+      <label>Bevestig nieuw wachtwoord</label>
+      <input type="password" id="bevestig-wachtwoord" placeholder="••••••">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-wachtwoord-wijzigen')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="wijzigWachtwoord()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Nieuw seizoen modal -->
+<div class="modal-overlay" id="modal-nieuw-seizoen">
+  <div class="modal">
+    <h3>Nieuw seizoen starten</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">De huidige ladder en uitslagen worden opgeslagen in het archief. Rankings en statistieken worden gereset.</p>
+    <div class="form-group">
+      <label>Naam huidig seizoen</label>
+      <input type="text" id="seizoen-naam" placeholder="bijv. Seizoen 2024">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-nieuw-seizoen')">Annuleren</button>
+      <button class="btn btn-gold" style="flex:2" onclick="bevestigNieuwSeizoen()">🏆 Archiveren & resetten</button>
+    </div>
+  </div>
+</div>
+
+<!-- Archief seizoen detail modal -->
+<div class="modal-overlay" id="modal-archief-detail">
+  <div class="modal">
+    <h3 id="archief-detail-titel">Seizoen</h3>
+    <div id="archief-detail-inhoud"></div>
+    <button class="btn btn-primary btn-block" style="margin-top:16px" onclick="closeModal('modal-archief-detail')">Sluiten</button>
+  </div>
+</div>
+
+<!-- Beheer actieve partij modal (beheerder) -->
+<div class="modal-overlay" id="modal-beheer-partij">
+  <div class="modal">
+    <h3 id="beheer-partij-titel">Partij beheren</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">Wijs winnaars aan of verwijder de partij.</p>
+    <div id="beheer-partij-matches"></div>
+    <div class="modal-actions" style="flex-direction:column;gap:8px">
+      <button class="btn btn-primary btn-block" onclick="bevestigBeheerUitslag()">✓ Uitslag verwerken</button>
+      <button class="btn btn-block" style="background:#fde8e8;color:var(--red);border:none" onclick="verwijderActievePartij()">✕ Partij verwijderen</button>
+      <button class="btn btn-ghost btn-block" onclick="closeModal('modal-beheer-partij')">Annuleren</button>
+    </div>
+  </div>
+</div>
+
+<!-- GEBRUIKER BEWERKEN MODAL -->
+<div class="modal-overlay" id="modal-edit-user">
+  <div class="modal">
+    <h3>Account bewerken</h3>
+    <div class="form-group">
+      <label>Gebruikersnaam</label>
+      <input type="text" id="edit-user-name" placeholder="bijv. jan.devries">
+    </div>
+    <div class="form-group">
+      <label>Nieuw wachtwoord <span style="color:var(--light);font-weight:400">(leeg = ongewijzigd)</span></label>
+      <input type="password" id="edit-user-pass" placeholder="minimaal 4 tekens">
+    </div>
+    <div class="form-group">
+      <label>Rol</label>
+      <select id="edit-user-rol">
+        <option value="speler">Speler</option>
+        <option value="beheerder">Beheerder</option>
+      </select>
+    </div>
+    <input type="hidden" id="edit-user-idx">
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-edit-user')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="saveEditUser()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- GEBRUIKER TOEVOEGEN MODAL -->
+<div class="modal-overlay" id="modal-add-user">
+  <div class="modal">
+    <h3>Account aanmaken</h3>
+    <div class="form-group">
+      <label>E-mailadres</label>
+      <input type="email" id="new-user-name" placeholder="naam@email.com" inputmode="email">
+    </div>
+    <div class="form-group">
+      <label>Wachtwoord</label>
+      <input type="password" id="new-user-pass" placeholder="minimaal 6 tekens">
+    </div>
+    <div class="form-group">
+      <label>Rol</label>
+      <select id="new-user-rol">
+        <option value="speler">Speler</option>
+        <option value="beheerder">Beheerder</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-add-user')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="saveNewUser()">Account aanmaken</button>
+    </div>
+  </div>
+</div>
+
+<header>
+  <div>
+    <h1>⛳ Goyer Golf MP Ladder</h1>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div class="subtitle" id="header-info">100 spelers</div>
+    <button id="logout-btn" onclick="uitloggen()" style="display:none;background:rgba(255,255,255,0.15);border:none;color:white;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">Uitloggen</button>
+  </div>
+</header>
+
+<nav>
+  <button class="active" onclick="showPage('ladder')">🏆 Ladder</button>
+  <button onclick="showPage('partij')">🏌️ Partij</button>
+  <button onclick="showPage('ronde')">📋 Ronde</button>
+  <button onclick="showPage('uitslagen')">📊 Uitslagen</button>
+  <button onclick="showPage('archief')">📁 Archief</button>
+  <button id="nav-profiel-btn" onclick="showPage('profiel')" style="display:none">👤 Profiel</button>
+  <button id="nav-admin-btn" onclick="showPage('admin')" style="display:none">⚙️ Beheer</button>
+</nav>
+
+<!-- ==================== LADDER ==================== -->
+<div id="page-ladder" class="page active">
+  <div class="card">
+    <div class="card-header">
+      <h2>Ladderstand</h2>
+      <span class="badge badge-green" id="ladder-count">0 spelers</span>
+    </div>
+    <div id="ladder-list"></div>
+  </div>
+</div>
+
+<!-- ==================== PARTIJ ==================== -->
+<div id="page-partij" class="page">
+  <div class="card">
+    <div class="card-header">
+      <h2>Nieuwe Partij</h2>
+    </div>
+    <div class="card-body">
+      <div class="form-group">
+        <label>Baan</label>
+        <select id="baan-select" onchange="onBaanSelect()">
+          <option value="">— Selecteer baan —</option>
+        </select>
+      </div>
+      <div id="baan-handmatig" style="display:none">
+        <div id="holes-handmatig"></div>
+      </div>
+      <div id="baan-beheer-wrap" style="display:none;margin-top:8px">
+        <button class="btn btn-ghost btn-sm" onclick="verwijderAangepasteBaan()" style="color:var(--red);border-color:#f5c6cb">✕ Baan verwijderen</button>
+      </div>
+      <div class="divider"></div>
+      <div class="form-group">
+        <label>Aantal holes</label>
+        <select id="holes-count">
+          <option value="18">18 holes</option>
+          <option value="9">9 holes</option>
+          <option value="custom">Aangepast...</option>
+        </select>
+      </div>
+      <div id="custom-holes-wrap" style="display:none">
+        <div class="form-group">
+          <label>Starthole</label>
+          <input type="number" id="start-hole" min="1" max="18" value="1" style="width:80px">
+        </div>
+        <div class="form-group">
+          <label>Eindholes</label>
+          <input type="number" id="end-hole" min="1" max="18" value="18" style="width:80px">
+        </div>
+      </div>
+      <div class="divider"></div>
+      <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px;">Spelers (2–4)</label>
+      <div id="player-slots"></div>
+      <button class="btn btn-ghost btn-sm" onclick="addPlayerSlot()" id="add-player-btn">+ Speler toevoegen</button>
+      <div class="divider"></div>
+      <button class="btn btn-primary btn-block" onclick="startPartij()">Partij starten →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== RONDE (live scorekaart) ==================== -->
+<div id="page-ronde" class="page">
+  <div id="ronde-empty" class="empty">
+    <div class="empty-icon">🏌️</div>
+    <p>Geen actieve partij.<br>Start een nieuwe partij via het Partij-tabblad.</p>
+  </div>
+  <div id="ronde-content" style="display:none">
+    <div class="card" id="ronde-info-card">
+      <div class="card-header">
+        <h2 id="ronde-baan-naam">—</h2>
+        <span class="badge badge-gold" id="ronde-holes-badge">18 holes</span>
+      </div>
+    </div>
+
+    <!-- Match overzicht -->
+    <div class="card">
+      <div class="card-header"><h2>Onderlinge stand</h2></div>
+      <div id="match-overview"></div>
+    </div>
+
+    <!-- Scorekaart -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Scorekaart</h2>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm btn-primary" onclick="openToevoegenModal()">+ Speler</button>
+          <button class="btn btn-sm btn-ghost" onclick="toggleScorecard()">Toon/verberg</button>
+        </div>
+      </div>
+      <div id="scorecard-wrap" style="overflow-x:auto">
+        <form onsubmit="return false" action="#">
+        <table class="scorecard" id="scorecard-table">
+          <thead id="scorecard-head"></thead>
+          <tbody id="scorecard-body"></tbody>
+        </table>
+        </form>
+      </div>
+    </div>
+
+    <button class="btn btn-gold btn-block" onclick="openUitslagModal()" style="margin-bottom:16px">
+      ✓ Partij afsluiten & uitslag verwerken
+    </button>
+  </div>
+</div>
+
+<!-- Speler toevoegen tijdens ronde modal -->
+<div class="modal-overlay" id="modal-toevoegen-ronde">
+  <div class="modal">
+    <h3>Speler toevoegen</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">Kies een speler die vanaf nu meedoet. Nieuwe matchups worden aangemaakt tegen alle huidige spelers.</p>
+    <div class="form-group">
+      <label>Speler</label>
+      <select id="toevoegen-speler-select">
+        <option value="">— Kies speler —</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Handicap</label>
+      <input type="number" id="toevoegen-speler-hcp" step="1" min="-10" max="54" placeholder="hcp">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-toevoegen-ronde')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="bevestigToevoegenRonde()">Toevoegen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== UITSLAGEN ==================== -->
+<div id="page-uitslagen" class="page">
+  <div class="card" id="actieve-partijen-card">
+    <div class="card-header">
+      <h2>Bezig</h2>
+      <span class="badge badge-gold" id="actief-count">0</span>
+    </div>
+    <div id="actieve-partijen-list">
+      <div class="empty"><div class="empty-icon">🏌️</div><p>Geen actieve partijen.</p></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <h2>Gespeelde partijen</h2>
+      <span class="badge badge-grey" id="uitslagen-count">0</span>
+    </div>
+    <div id="uitslagen-list">
+      <div class="empty"><div class="empty-icon">📋</div><p>Nog geen uitslagen.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PROFIEL ==================== -->
+<div id="page-profiel" class="page">
+  <div class="card">
+    <div class="card-header">
+      <h2>Mijn profiel</h2>
+    </div>
+    <div class="card-body">
+      <div id="profiel-info"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h2>Statistieken</h2></div>
+    <div id="profiel-stats" class="card-body"></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h2>Instellingen</h2></div>
+    <div class="card-body">
+      <button class="btn btn-ghost btn-block" onclick="vraagNotificatieToestemming()" id="notif-btn" style="margin-bottom:10px">🔔 Notificaties inschakelen</button>
+      <button class="btn btn-ghost btn-block" onclick="openWachtwoordWijzigen()" style="margin-bottom:10px">🔑 Wachtwoord wijzigen</button>
+      <button class="btn btn-ghost btn-block" onclick="uitloggen()" style="color:var(--red);border-color:#f5c6cb">↩ Uitloggen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== ARCHIEF ==================== -->
+<div id="page-archief" class="page">
+  <div class="card">
+    <div class="card-header">
+      <h2>Seizoensarchief</h2>
+      <span class="badge badge-grey" id="archief-count">0</span>
+    </div>
+    <div id="archief-list">
+      <div class="empty"><div class="empty-icon">📁</div><p>Nog geen afgesloten seizoenen.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== ADMIN ==================== -->
+<div id="page-admin" class="page">
+  <div class="card">
+    <div class="card-header">
+      <h2>Spelers beheren</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm btn-primary" onclick="openAddPlayer()">+ Speler</button>
+        <button class="btn btn-sm btn-ghost" style="color:var(--light);border-color:#e0ddd4;cursor:not-allowed;opacity:0.5" title="Niet beschikbaar">↺ Reset</button>
+      </div>
+    </div>
+    <div id="admin-player-list"></div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <h2>Accounts beheren</h2>
+      <button class="btn btn-sm btn-primary" onclick="openAddUser()">+ Account</button>
+    </div>
+    <div id="admin-user-list"></div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <h2>Seizoen</h2>
+    </div>
+    <div class="card-body">
+      <p style="font-size:13px;color:var(--mid);margin-bottom:14px">Start een nieuw seizoen om de huidige ladder en uitslagen te archiveren. De rankings en statistieken worden gereset.</p>
+      <button class="btn btn-gold btn-block" onclick="openNieuwSeizoenModal()">🏆 Nieuw seizoen starten</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MODALS ==================== -->
+
+<!-- Uitslag modal -->
+<div class="modal-overlay" id="modal-uitslag">
+  <div class="modal">
+    <h3>Partij afsluiten</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:16px;">Controleer de uitslagen en bevestig. Bij gelijke stand: kies de winnaar.</p>
+    <div id="modal-matches"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-uitslag')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="bevestigUitslag()">✓ Uitslag verwerken</button>
+    </div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0ede4;text-align:center">
+      <button class="btn btn-ghost btn-block" onclick="annuleerEigenPartij()" style="color:var(--red);border-color:#f5c6cb;font-size:13px">
+        ✕ Partij annuleren zonder uitslag op te slaan
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Ladder wijziging modal -->
+<div class="modal-overlay" id="modal-ladder-result">
+  <div class="modal">
+    <h3>Ladderwijzigingen</h3>
+    <div id="ladder-changes"></div>
+    <button class="btn btn-primary btn-block" onclick="sluitUitslagEnGaNaarLadder()">Bekijk ladder →</button>
+  </div>
+</div>
+
+<!-- Add player modal -->
+<div class="modal-overlay" id="modal-add-player">
+  <div class="modal">
+    <h3>Speler toevoegen</h3>
+    <div class="form-group">
+      <label>Naam</label>
+      <input type="text" id="new-player-name" placeholder="Voornaam Achternaam" oninput="updateAccountPreview()">
+    </div>
+    <div class="form-group">
+      <label>Handicap</label>
+      <input type="number" id="new-player-hcp" step="1" min="-10" max="54" placeholder="bijv. 12">
+    </div>
+    <div class="divider"></div>
+    <div class="form-group">
+      <label>E-mailadres <span style="color:var(--light);font-weight:400">(voor inloggen)</span></label>
+      <input type="email" id="new-player-account" placeholder="naam@email.com" inputmode="email">
+    </div>
+    <div class="form-group">
+      <label>Wachtwoord</label>
+      <input type="password" id="new-player-pass" placeholder="minimaal 6 tekens">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-add-player')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="saveNewPlayer()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast">Opgeslagen</div>
+
+<script type="module">
+// ============================================================
+//  FIREBASE SETUP
+// ============================================================
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import {
+  getAuth, onAuthStateChanged, signInWithEmailAndPassword,
+  signOut, GoogleAuthProvider, signInWithPopup,
+  sendPasswordResetEmail, updatePassword, EmailAuthProvider,
+  reauthenticateWithCredential, createUserWithEmailAndPassword
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
+  authDomain: "goyer-golf-mp-ladder.firebaseapp.com",
+  projectId: "goyer-golf-mp-ladder",
+  storageBucket: "goyer-golf-mp-ladder.firebasestorage.app",
+  messagingSenderId: "124116031878",
+  appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+const googleProvider = new GoogleAuthProvider();
+const messaging = getMessaging(app);
+
+// VAPID key — haal op uit Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
+const VAPID_KEY = 'BF20GLaKF1VNib8FaktBVUSdMyCmw9xF6WfVjXU1joH5fOXwBcrOWRNQh3TYcdULioF_RlaIV7u5ylKMYbNeuCk';
+
+// Firestore refs
+const STATE_DOC = doc(db, 'ladder', 'state');
+const USERS_DOC = doc(db, 'ladder', 'users');
+const BANEN_DOC = doc(db, 'ladder', 'banen');
+const ARCHIEF_DOC = doc(db, 'ladder', 'archief');
+const TOKENS_DOC = doc(db, 'ladder', 'fcm_tokens');
+const UITDAGINGEN_DOC = doc(db, 'ladder', 'uitdagingen');
+
+// Ingelogde gebruiker (alleen in geheugen, niet in Firestore)
+let huidigeBruiker = null; // { gebruikersnaam, rol }
+let aangepasteBanen = []; // { naam, aangemaakt_door, holes: [{par, si}] }
+
+// ============================================================
+//  DATA
+// ============================================================
+
+// Banen database (NL selectie, PAR + SI per hole)
+const BANEN_DB = {
+  "De Goyer (thuisbaan)": {
+    holes: [
+      {par:4,si:16},{par:3,si:10},{par:4,si:6},{par:5,si:2},{par:3,si:18},
+      {par:4,si:14},{par:5,si:4},{par:4,si:8},{par:4,si:12},
+      {par:4,si:17},{par:3,si:13},{par:4,si:5},{par:5,si:1},{par:3,si:15},
+      {par:4,si:11},{par:4,si:7},{par:5,si:3},{par:4,si:9}
+    ]
+  },
+  "Hilversumsche Golf Club": {
+    holes: [
+      {par:4,si:7},{par:4,si:3},{par:3,si:15},{par:5,si:11},{par:4,si:1},
+      {par:3,si:17},{par:4,si:5},{par:4,si:9},{par:5,si:13},
+      {par:4,si:8},{par:4,si:2},{par:3,si:16},{par:5,si:12},{par:4,si:4},
+      {par:3,si:18},{par:4,si:6},{par:4,si:10},{par:5,si:14}
+    ]
+  },
+  "Kennemer Golf & Country Club": {
+    holes: [
+      {par:4,si:9},{par:4,si:5},{par:3,si:17},{par:5,si:1},{par:4,si:13},
+      {par:4,si:3},{par:3,si:15},{par:5,si:7},{par:4,si:11},
+      {par:4,si:10},{par:4,si:6},{par:3,si:18},{par:5,si:2},{par:4,si:14},
+      {par:4,si:4},{par:3,si:16},{par:5,si:8},{par:4,si:12}
+    ]
+  },
+  "Haagsche Golf & Country Club": {
+    holes: [
+      {par:5,si:3},{par:4,si:9},{par:3,si:15},{par:4,si:1},{par:4,si:11},
+      {par:3,si:17},{par:4,si:7},{par:5,si:5},{par:4,si:13},
+      {par:4,si:4},{par:4,si:10},{par:3,si:16},{par:5,si:2},{par:4,si:12},
+      {par:4,si:8},{par:3,si:18},{par:4,si:6},{par:5,si:14}
+    ]
+  },
+  "Amsterdamsche Golf Club": {
+    holes: [
+      {par:4,si:11},{par:3,si:17},{par:4,si:5},{par:5,si:1},{par:4,si:9},
+      {par:3,si:15},{par:4,si:7},{par:5,si:3},{par:4,si:13},
+      {par:4,si:12},{par:3,si:18},{par:4,si:6},{par:5,si:2},{par:4,si:10},
+      {par:3,si:16},{par:4,si:8},{par:5,si:4},{par:4,si:14}
+    ]
+  },
+  "Handmatig invoeren": { holes: null }
+};
+
+const DEFAULT_STATE = {
+  spelers: [
+    {id:1,naam:"Jan de Vries",hcp:12.4,rank:1,partijen:0,gewonnen:0},
+    {id:2,naam:"Piet Bakker",hcp:18.2,rank:2,partijen:2,gewonnen:1},
+    {id:3,naam:"Kees Jansen",hcp:7.6,rank:3,partijen:3,gewonnen:2},
+    {id:4,naam:"Henk Smit",hcp:24.1,rank:4,partijen:1,gewonnen:0},
+    {id:5,naam:"Rob van Dijk",hcp:15.0,rank:5,partijen:4,gewonnen:3},
+    {id:6,naam:"Sjoerd Mulder",hcp:9.8,rank:6,partijen:2,gewonnen:1},
+    {id:7,naam:"Frank Visser",hcp:21.3,rank:7,partijen:0,gewonnen:0},
+    {id:8,naam:"Thomas Groot",hcp:5.2,rank:8,partijen:5,gewonnen:4},
+  ],
+  nextId: 9,
+  actievePartijen: [],  // meerdere partijen tegelijk
+  uitslagen: []
+};
+
+let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+let _firestoreReady = false;
+let _highlights = new Set();
+let archiefData = [];
+let uitdagingenData = []; // { id, van, naar, status, timestamp }
+
+// ============================================================
+//  AUTH / LOGIN — Firebase Authentication
+// ============================================================
+
+// Zet UI in ingelogde staat
+async function setIngelogd(firebaseUser) {
+  try {
+    const snap = await getDoc(USERS_DOC);
+    const users = snap.exists() ? (snap.data().lijst || []) : [];
+
+    // Whitelist check — alleen bekende e-mailadressen mogen inloggen
+    const profiel = users.find(u => u.uid === firebaseUser.uid || u.email?.toLowerCase() === firebaseUser.email?.toLowerCase());
+
+    if (!profiel) {
+      // Niet in de whitelist — uitloggen en melding tonen
+      await signOut(auth);
+      toonLoginFout('Je hebt geen toegang. Neem contact op met de beheerder.');
+      return;
+    }
+
+    // Koppel uid automatisch als die nog niet ingevuld is
+    if (!profiel.uid && firebaseUser.uid) {
+      profiel.uid = firebaseUser.uid;
+      await setDoc(USERS_DOC, { lijst: users });
+    }
+
+    const displayNaam = profiel.gebruikersnaam || firebaseUser.displayName || firebaseUser.email.split('@')[0];
+    huidigeBruiker = { uid: firebaseUser.uid, email: firebaseUser.email, gebruikersnaam: displayNaam, rol: profiel.rol };
+
+  } catch(e) {
+    console.error('setIngelogd error:', e);
+    toonLoginFout('Verbindingsfout, probeer opnieuw');
+    return;
+  }
+
+  document.getElementById('login-scherm').classList.remove('actief');
+  document.getElementById('login-fout').style.display = 'none';
+  document.getElementById('login-pass').value = '';
+
+  const adminBtn = document.getElementById('nav-admin-btn');
+  const profielBtn = document.getElementById('nav-profiel-btn');
+  const logoutBtn = document.getElementById('logout-btn');
+  if (huidigeBruiker.rol === 'beheerder') adminBtn.style.display = '';
+  profielBtn.style.display = '';
+  logoutBtn.style.display = '';
+  logoutBtn.textContent = huidigeBruiker.gebruikersnaam + ' ↩';
+
+  renderLadder();
+  registreerNotificatieToken();
+  laadUitdagingen();
+}
+
+function toonLoginFout(msg) {
+  const fout = document.getElementById('login-fout');
+  fout.textContent = msg;
+  fout.style.display = 'block';
+}
+
+async function loginSubmit() {
+  const email = document.getElementById('login-email').value.trim();
+  const wachtwoord = document.getElementById('login-pass').value;
+  document.getElementById('login-fout').style.display = 'none';
+  if (!email || !wachtwoord) { toonLoginFout('Vul e-mail en wachtwoord in'); return; }
+  try {
+    await signInWithEmailAndPassword(auth, email, wachtwoord);
+    // onAuthStateChanged handelt de rest af
+  } catch(e) {
+    const berichten = {
+      'auth/user-not-found': 'Geen account gevonden met dit e-mailadres',
+      'auth/wrong-password': 'Onjuist wachtwoord',
+      'auth/invalid-email': 'Ongeldig e-mailadres',
+      'auth/too-many-requests': 'Te veel pogingen, probeer later opnieuw',
+      'auth/invalid-credential': 'E-mail of wachtwoord onjuist',
+    };
+    toonLoginFout(berichten[e.code] || 'Inloggen mislukt, probeer opnieuw');
+  }
+}
+
+async function loginMetGoogle() {
+  document.getElementById('login-fout').style.display = 'none';
+  try {
+    await signInWithPopup(auth, googleProvider);
+    // onAuthStateChanged handelt de rest af
+  } catch(e) {
+    if (e.code !== 'auth/popup-closed-by-user') {
+      toonLoginFout('Google inloggen mislukt, probeer opnieuw');
+    }
+  }
+}
+
+function uitloggen() {
+  signOut(auth);
+  huidigeBruiker = null;
+  document.getElementById('login-scherm').classList.add('actief');
+  document.getElementById('nav-admin-btn').style.display = 'none';
+  document.getElementById('nav-profiel-btn').style.display = 'none';
+  document.getElementById('logout-btn').style.display = 'none';
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-ladder').classList.add('active');
+  document.querySelector('nav button').classList.add('active');
+}
+
+function openWachtwoordVergeten() {
+  document.getElementById('reset-email').value = document.getElementById('login-email').value || '';
+  document.getElementById('modal-wachtwoord-vergeten').classList.add('open');
+}
+
+async function stuurResetEmail() {
+  const email = document.getElementById('reset-email').value.trim();
+  if (!email) { toast('Voer een e-mailadres in'); return; }
+  try {
+    await sendPasswordResetEmail(auth, email);
+    closeModal('modal-wachtwoord-vergeten');
+    toast('Reset-link verstuurd! Check je e-mail ✓');
+  } catch(e) {
+    toast('Kon e-mail niet versturen — controleer het adres');
+  }
+}
+
+function openWachtwoordWijzigen() {
+  document.getElementById('huidig-wachtwoord').value = '';
+  document.getElementById('nieuw-wachtwoord').value = '';
+  document.getElementById('bevestig-wachtwoord').value = '';
+  document.getElementById('modal-wachtwoord-wijzigen').classList.add('open');
+}
+
+async function wijzigWachtwoord() {
+  const huidig = document.getElementById('huidig-wachtwoord').value;
+  const nieuw = document.getElementById('nieuw-wachtwoord').value;
+  const bevestig = document.getElementById('bevestig-wachtwoord').value;
+  if (nieuw.length < 6) { toast('Nieuw wachtwoord minimaal 6 tekens'); return; }
+  if (nieuw !== bevestig) { toast('Wachtwoorden komen niet overeen'); return; }
+  try {
+    const user = auth.currentUser;
+    const credential = EmailAuthProvider.credential(user.email, huidig);
+    await reauthenticateWithCredential(user, credential);
+    await updatePassword(user, nieuw);
+    closeModal('modal-wachtwoord-wijzigen');
+    toast('Wachtwoord gewijzigd ✓');
+  } catch(e) {
+    if (e.code === 'auth/wrong-password') toast('Huidig wachtwoord onjuist');
+    else toast('Wijzigen mislukt, probeer opnieuw');
+  }
+}
+
+// Sla volledige state op naar Firestore
+async function slaState() {
+  try {
+    await setDoc(STATE_DOC, JSON.parse(JSON.stringify(state)));
+  } catch(e) { console.error('Firestore save error:', e); }
+}
+
+// Initieel laden + live listener instellen
+async function initFirestore() {
+  toonLaadOverlay(true);
+  try {
+    const snap = await getDoc(STATE_DOC);
+    if (snap.exists()) {
+      state = snap.data();
+      if (!state.actievePartijen) {
+        state.actievePartijen = state.actievePartij ? [{ ...state.actievePartij, partijId: `p_${Date.now()}` }] : [];
+        delete state.actievePartij;
+      }
+    } else {
+      await setDoc(STATE_DOC, JSON.parse(JSON.stringify(DEFAULT_STATE)));
+    }
+
+    // Laad aangepaste banen
+    const baanSnap = await getDoc(BANEN_DOC);
+    aangepasteBanen = baanSnap.exists() ? (baanSnap.data().lijst || []) : [];
+
+    // Laad archief
+    const archiefSnap = await getDoc(ARCHIEF_DOC);
+    archiefData = archiefSnap.exists() ? (archiefSnap.data().seizoenen || []) : [];
+
+    // Laad uitdagingen
+    const uitdSnap = await getDoc(UITDAGINGEN_DOC);
+    uitdagingenData = uitdSnap.exists() ? (uitdSnap.data().lijst || []) : [];
+  } catch(e) {
+    console.error('Firestore init error:', e);
+  }
+
+  // Live listener — update UI bij elke wijziging door anderen
+  onSnapshot(STATE_DOC, (snap) => {
+    if (!snap.exists() || !huidigeBruiker) return;
+    state = snap.data();
+    if (!state.actievePartijen) state.actievePartijen = [];
+    const activePage = document.querySelector('.page.active')?.id?.replace('page-','');
+    if (activePage === 'ladder') renderLadder();
+    if (activePage === 'uitslagen') renderUitslagen();
+    if (activePage === 'admin') renderAdmin();
+    if (activePage === 'ronde') renderRonde();
+    if (activePage === 'profiel') renderProfiel();
+  });
+
+  _firestoreReady = true;
+  toonLaadOverlay(false);
+
+  // Firebase Auth state — handelt login/refresh/uitloggen af
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      await setIngelogd(user);
+    } else {
+      // Niet ingelogd
+      huidigeBruiker = null;
+      document.getElementById('login-scherm').classList.add('actief');
+    }
+  });
+}
+
+function toonLaadOverlay(toon) {
+  document.getElementById('laad-overlay').style.display = toon ? 'flex' : 'none';
+}
+
+let playerSlotCount = 0;
+
+// ============================================================
+//  NAVIGATION
+// ============================================================
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  event.currentTarget.classList.add('active');
+
+  if (name === 'ladder') renderLadder();
+  if (name === 'partij') initPartijForm();
+  if (name === 'ronde') renderRonde();
+  if (name === 'uitslagen') renderUitslagen();
+  if (name === 'admin') renderAdmin();
+  if (name === 'profiel') renderProfiel();
+  if (name === 'archief') renderArchief();
+}
+
+// ============================================================
+//  LADDER
+// ============================================================
+function renderLadder() {
+  const sorted = [...state.spelers].sort((a,b) => a.rank - b.rank);
+  document.getElementById('ladder-count').textContent = sorted.length + ' spelers';
+  document.getElementById('header-info').textContent = sorted.length + ' spelers';
+
+  const list = document.getElementById('ladder-list');
+  if (sorted.length === 0) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">🏆</div><p>Nog geen spelers.</p></div>';
+    return;
+  }
+
+  list.innerHTML = sorted.map(s => {
+    const winpct = s.partijen > 0 ? Math.round(s.gewonnen/s.partijen*100) : 0;
+    const highlighted = _highlights.has(s.id);
+    let deltaHtml = '';
+    if (s.prevRank != null && s.prevRank !== s.rank) {
+      const d = s.prevRank - s.rank;
+      deltaHtml = d > 0
+        ? `<span class="delta-up" style="font-size:12px">▲${d}</span>`
+        : `<span class="delta-down" style="font-size:12px">▼${Math.abs(d)}</span>`;
+    } else if (s.prevRank != null) {
+      deltaHtml = `<span style="font-size:11px;color:var(--light)">—</span>`;
+    }
+
+    // Uitdaging knop — niet voor jezelf
+    const isZelf = huidigeBruiker && (
+      s.naam.toLowerCase().includes(huidigeBruiker.gebruikersnaam.toLowerCase()) ||
+      huidigeBruiker.gebruikersnaam.toLowerCase().includes(s.naam.split(' ')[0].toLowerCase())
+    );
+    const openUitdaging = uitdagingenData?.find(u =>
+      u.status === 'open' && (
+        (u.vanEmail === huidigeBruiker?.email && u.naarNaam?.toLowerCase().includes(s.naam.split(' ')[0].toLowerCase())) ||
+        (u.naarEmail === huidigeBruiker?.email && u.vanNaam?.toLowerCase().includes(s.naam.split(' ')[0].toLowerCase()))
+      )
+    );
+    const uitdagingBtn = huidigeBruiker && !isZelf
+      ? `<button onclick="stuurUitdaging(${s.id})" style="background:none;border:1px solid #e0ddd4;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:${openUitdaging ? 'var(--gold)' : 'var(--light)'}" title="${openUitdaging ? 'Uitdaging loopt' : 'Uitdagen'}">${openUitdaging ? '⚔️' : '⚔️'}</button>`
+      : '';
+
+    return `<div class="ladder-item" style="${highlighted ? 'background:var(--green-pale);' : ''}">
+      <div class="rank-badge ${s.rank <= 3 ? 'top3' : ''}">${s.rank}</div>
+      <div class="player-name" style="${highlighted ? 'font-weight:700;color:var(--green)' : ''}">${s.naam}</div>
+      <div style="min-width:30px;text-align:center">${deltaHtml}</div>
+      <div class="player-stats">${s.partijen}P ${s.gewonnen}W<br>${winpct}%</div>
+      ${uitdagingBtn}
+    </div>`;
+  }).join('');
+}
+
+// ============================================================
+//  PARTIJ SETUP
+// ============================================================
+function alleBANEN() {
+  const result = {};
+  Object.entries(BANEN_DB).filter(([n]) => n !== 'Handmatig invoeren').forEach(([n,v]) => { result[n] = v; });
+  aangepasteBanen.forEach(b => { result[b.naam] = { holes: b.holes, custom: true, aangemaakt_door: b.aangemaakt_door }; });
+  result['Handmatig invoeren'] = { holes: null };
+  return result;
+}
+
+function initPartijForm() {
+  const sel = document.getElementById('baan-select');
+  sel.innerHTML = '<option value="">— Selecteer baan —</option>';
+
+  // Ingebouwde banen
+  Object.keys(BANEN_DB).filter(n => n !== 'Handmatig invoeren').forEach(naam => {
+    sel.innerHTML += `<option value="${naam}">${naam}</option>`;
+  });
+
+  // Aangepaste banen
+  if (aangepasteBanen.length > 0) {
+    sel.innerHTML += `<optgroup label="Opgeslagen banen">`;
+    aangepasteBanen.forEach(b => {
+      sel.innerHTML += `<option value="${b.naam}">⭐ ${b.naam}</option>`;
+    });
+    sel.innerHTML += `</optgroup>`;
+  }
+  sel.innerHTML += `<option value="Handmatig invoeren">+ Handmatig invoeren / nieuwe baan</option>`;
+
+  // Player slots
+  playerSlotCount = 0;
+  document.getElementById('player-slots').innerHTML = '';
+  addPlayerSlot();
+  addPlayerSlot();
+
+  // Auto-selecteer ingelogde speler in slot 1
+  if (huidigeBruiker) {
+    const gebruiker = huidigeBruiker.gebruikersnaam.toLowerCase();
+    const gekoppeld = state.spelers.find(s => {
+      const naam = s.naam.toLowerCase();
+      const voornaam = naam.split(' ')[0];
+      return naam === gebruiker || voornaam === gebruiker ||
+             naam.replace(/\s/g,'') === gebruiker.replace(/\./g,'').replace(/\s/g,'') ||
+             naam.replace(/\s/g,'.') === gebruiker;
+    });
+    if (gekoppeld) {
+      const slot1 = document.getElementById('player-1');
+      if (slot1) {
+        slot1.value = gekoppeld.id;
+        document.getElementById('hcp-1').value = Math.round(gekoppeld.hcp);
+      }
+    }
+  }
+
+  document.getElementById('holes-count').addEventListener('change', function() {
+    document.getElementById('custom-holes-wrap').style.display = this.value === 'custom' ? 'block' : 'none';
+  });
+}
+
+function addPlayerSlot() {
+  if (playerSlotCount >= 4) return;
+  playerSlotCount++;
+  const opts = state.spelers.sort((a,b)=>a.rank-b.rank).map(s =>
+    `<option value="${s.id}">${s.naam} (hcp ${Math.round(s.hcp)})</option>`
+  ).join('');
+  const div = document.createElement('div');
+  div.className = 'player-slot';
+  div.id = 'slot-' + playerSlotCount;
+  div.innerHTML = `
+    <select class="player-select" id="player-${playerSlotCount}">
+      <option value="">— Kies speler —</option>
+      ${opts}
+    </select>
+    <input type="number" class="hcp-input" id="hcp-${playerSlotCount}" placeholder="hcp" step="1" min="-10" max="54">
+    ${playerSlotCount > 2 ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;padding:8px;border-radius:6px;cursor:pointer" onclick="removeSlot(${playerSlotCount})">✕</button>` : ''}
+  `;
+  document.getElementById('player-slots').appendChild(div);
+  if (playerSlotCount >= 4) document.getElementById('add-player-btn').style.display = 'none';
+
+  // Auto-fill hcp when player selected, en voorkom dubbele spelers
+  div.querySelector('select').addEventListener('change', function() {
+    const speler = state.spelers.find(s => s.id == this.value);
+    if (speler) div.querySelector('.hcp-input').value = Math.round(speler.hcp);
+
+    // Controleer of deze speler al in een ander slot zit
+    if (this.value) {
+      const alleSelects = document.querySelectorAll('.player-select');
+      alleSelects.forEach(other => {
+        if (other !== this && other.value === this.value) {
+          toast('Deze speler is al toegevoegd');
+          this.value = '';
+          div.querySelector('.hcp-input').value = '';
+        }
+      });
+    }
+  });
+}
+
+function removeSlot(n) {
+  document.getElementById('slot-' + n).remove();
+  playerSlotCount--;
+  document.getElementById('add-player-btn').style.display = '';
+}
+
+function onBaanSelect() {
+  const val = document.getElementById('baan-select').value;
+  const hw = document.getElementById('baan-handmatig');
+  const beheerWrap = document.getElementById('baan-beheer-wrap');
+  const banen = alleBANEN();
+  beheerWrap.style.display = 'none';
+  if (val === 'Handmatig invoeren') {
+    hw.style.display = 'block';
+    renderHandmatigHoles();
+  } else if (banen[val]?.custom) {
+    hw.style.display = 'none';
+    const kanBeheren = huidigeBruiker?.rol === 'beheerder' || banen[val].aangemaakt_door === huidigeBruiker?.gebruikersnaam;
+    if (kanBeheren) beheerWrap.style.display = 'block';
+  } else {
+    hw.style.display = 'none';
+  }
+}
+
+function renderHandmatigHoles() {
+  let html = `<div class="form-group" style="margin-bottom:10px">
+    <label>Naam van de baan</label>
+    <input type="text" id="baan-naam-nieuw" placeholder="bijv. Golfbaan de Poel" style="font-size:16px">
+  </div>`;
+  html += '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:13px;width:100%">';
+  html += '<tr><th style="padding:6px 4px;text-align:left">Hole</th><th style="padding:6px 4px">PAR</th><th style="padding:6px 4px">SI</th></tr>';
+  for (let i = 1; i <= 18; i++) {
+    html += `<tr>
+      <td style="padding:4px;font-weight:600">${i}</td>
+      <td><input type="number" id="mpar-${i}" min="3" max="6" value="4" inputmode="numeric" style="width:54px;padding:6px;border:1.5px solid #ddd;border-radius:6px;text-align:center;font-size:15px"></td>
+      <td><input type="number" id="msi-${i}" min="1" max="18" value="${i}" inputmode="numeric" style="width:54px;padding:6px;border:1.5px solid #ddd;border-radius:6px;text-align:center;font-size:15px"></td>
+    </tr>`;
+  }
+  html += '</table></div>';
+  html += `<button class="btn btn-ghost btn-block" onclick="slaAangepasteBaanOp()" style="margin-top:12px;color:var(--green);border-color:var(--green-pale)">
+    ⭐ Baan opslaan voor iedereen
+  </button>`;
+  document.getElementById('holes-handmatig').innerHTML = html;
+}
+
+// ============================================================
+//  AANGEPASTE BANEN
+// ============================================================
+async function slaAangepasteBaanOp() {
+  const naam = document.getElementById('baan-naam-nieuw')?.value?.trim();
+  if (!naam) { toast('Geef de baan eerst een naam'); return; }
+
+  // Lees holes
+  const holes = [];
+  for (let i = 1; i <= 18; i++) {
+    const par = parseInt(document.getElementById('mpar-'+i)?.value || 4);
+    const si = parseInt(document.getElementById('msi-'+i)?.value || i);
+    holes.push({ par, si });
+  }
+
+  // Check dubbele naam
+  if (aangepasteBanen.find(b => b.naam.toLowerCase() === naam.toLowerCase())) {
+    toast('Er bestaat al een baan met deze naam'); return;
+  }
+
+  const nieuweBaan = { naam, holes, aangemaakt_door: huidigeBruiker.gebruikersnaam };
+  aangepasteBanen.push(nieuweBaan);
+
+  try {
+    await setDoc(BANEN_DOC, { lijst: aangepasteBanen });
+    toast(`${naam} opgeslagen ⭐`);
+    // Update de select en selecteer de nieuwe baan
+    initPartijForm();
+    document.getElementById('baan-select').value = naam;
+    document.getElementById('baan-handmatig').style.display = 'none';
+  } catch(e) { toast('Fout bij opslaan'); aangepasteBanen.pop(); }
+}
+
+async function verwijderAangepasteBaan() {
+  const baanNaam = document.getElementById('baan-select').value;
+  const baan = aangepasteBanen.find(b => b.naam === baanNaam);
+  if (!baan) return;
+  if (!confirm(`"${baanNaam}" verwijderen?`)) return;
+
+  aangepasteBanen = aangepasteBanen.filter(b => b.naam !== baanNaam);
+  try {
+    await setDoc(BANEN_DOC, { lijst: aangepasteBanen });
+    toast('Baan verwijderd');
+    initPartijForm();
+  } catch(e) { toast('Fout bij verwijderen'); }
+}
+
+// Geeft de actieve partij terug waar de ingelogde speler in zit
+function mijnPartij() {
+  if (!huidigeBruiker || !state.actievePartijen) return null;
+  const gebruiker = huidigeBruiker.gebruikersnaam.toLowerCase();
+  return state.actievePartijen.find(p =>
+    p.spelers.some(s => {
+      const naam = s.naam.toLowerCase();
+      const voornaam = naam.split(' ')[0];
+      return naam === gebruiker || voornaam === gebruiker ||
+             naam.replace(/\s/g,' ') === gebruiker ||
+             naam.replace(/\s/g,'.') === gebruiker;
+    })
+  ) || null;
+}
+
+function startPartij() {
+  const baanNaam = document.getElementById('baan-select').value;
+  if (!baanNaam) { toast('Selecteer eerst een baan'); return; }
+
+  // Collect players
+  const spelers = [];
+  for (let i = 1; i <= 4; i++) {
+    const sel = document.getElementById('player-' + i);
+    const hcpEl = document.getElementById('hcp-' + i);
+    if (!sel) continue;
+    if (!sel.value) continue;
+    const speler = state.spelers.find(s => s.id == sel.value);
+    if (!speler) continue;
+    const partijHcp = Math.round(parseFloat(hcpEl.value));
+    if (!isNaN(partijHcp) && partijHcp !== speler.hcp) {
+      const sv = state.spelers.find(s => s.id === speler.id);
+      if (sv) sv.hcp = partijHcp;
+    }
+    spelers.push({ ...speler, hcp: isNaN(partijHcp) ? speler.hcp : partijHcp, partijHcp: isNaN(partijHcp) ? speler.hcp : partijHcp });
+  }
+
+  if (spelers.length < 2) { toast('Minimaal 2 spelers nodig'); return; }
+
+  // Check: zit een van deze spelers al in een actieve partij?
+  if (!state.actievePartijen) state.actievePartijen = [];
+  const bezet = spelers.find(s =>
+    state.actievePartijen.some(p => p.spelers.some(ps => ps.id === s.id))
+  );
+  if (bezet) { toast(`${bezet.naam.split(' ')[0]} speelt al een actieve partij`); return; }
+
+  // Baan holes
+  let holes = [];
+  const banen = alleBANEN();
+  if (baanNaam === 'Handmatig invoeren') {
+    for (let i = 1; i <= 18; i++) {
+      holes.push({ par: parseInt(document.getElementById('mpar-'+i)?.value||4), si: parseInt(document.getElementById('msi-'+i)?.value||i) });
+    }
+  } else {
+    holes = banen[baanNaam].holes;
+  }
+
+  // Holes range
+  const holesCount = document.getElementById('holes-count').value;
+  let startH = 0, endH = 17;
+  if (holesCount === '9') { startH = 0; endH = 8; }
+  else if (holesCount === 'custom') {
+    startH = (parseInt(document.getElementById('start-hole').value) || 1) - 1;
+    endH = (parseInt(document.getElementById('end-hole').value) || 18) - 1;
+  }
+  const activeHoles = holes.slice(startH, endH + 1);
+
+  // Generate matchups
+  const matchups = [];
+  for (let i = 0; i < spelers.length; i++) {
+    for (let j = i + 1; j < spelers.length; j++) {
+      const a = spelers[i], b = spelers[j];
+      const hcpDiff = Math.round(Math.abs(a.partijHcp - b.partijHcp) * 0.75);
+      const hoger = a.partijHcp > b.partijHcp ? a : b;
+      matchups.push({
+        id: `${a.id}-${b.id}`,
+        spelerA: a, spelerB: b,
+        hcpOntvanger: hoger.id,
+        hcpSlagen: hcpDiff
+      });
+    }
+  }
+
+  const nieuwePartij = {
+    partijId: `p_${Date.now()}`,
+    baan: baanNaam,
+    holes: activeHoles,
+    startHole: startH + 1,
+    spelers,
+    matchups,
+    scores: {},
+    timestamp: Date.now()
+  };
+
+  // Init scores
+  spelers.forEach(s => { nieuwePartij.scores[s.id] = Array(activeHoles.length).fill(null); });
+
+  state.actievePartijen.push(nieuwePartij);
+
+  toast('Partij gestart! ⛳');
+  slaState();
+
+  // Go to ronde tab
+  document.querySelectorAll('nav button')[2].click();
+}
+
+// ============================================================
+//  NAAM HELPER — unieke korte namen binnen een groep spelers
+// ============================================================
+// Geeft de voornaam terug, maar voegt letters van de achternaam toe
+// totdat alle namen binnen de gegeven lijst uniek zijn.
+// Voorbeeld: ["Jan de Vries", "Jan Jansen"] → ["Jan d", "Jan J"]
+function kortNaam(speler, alleSpelers) {
+  const voornaam = speler.naam.split(' ')[0];
+  // Controleer of er iemand anders is met dezelfde voornaam
+  const duplicaten = alleSpelers.filter(s => s.id !== speler.id && s.naam.split(' ')[0] === voornaam);
+  if (duplicaten.length === 0) return voornaam;
+
+  // Bepaal de achternaam (alles na de voornaam)
+  const achternaam = speler.naam.slice(voornaam.length).trim();
+  // Verzamel alle achternamen van spelers met dezelfde voornaam
+  const andereAchternamen = duplicaten.map(s => s.naam.slice(s.naam.split(' ')[0].length).trim());
+
+  // Voeg steeds één letter toe totdat de naam uniek is
+  for (let i = 1; i <= achternaam.length; i++) {
+    const kandidaat = voornaam + ' ' + achternaam.slice(0, i);
+    const nogSteeds = andereAchternamen.filter(a => a.slice(0, i) === achternaam.slice(0, i));
+    if (nogSteeds.length === 0) return kandidaat;
+  }
+  // Fallback: volledige naam
+  return speler.naam;
+}
+
+// Bouw een map van spelerId → korte unieke naam voor een lijst spelers
+function kortNaamMap(spelers) {
+  const map = {};
+  spelers.forEach(s => { map[s.id] = kortNaam(s, spelers); });
+  return map;
+}
+
+// ============================================================
+//  RONDE (live scorekaart)
+// ============================================================
+function renderRonde() {
+  const p = mijnPartij();
+  if (!p) {
+    document.getElementById('ronde-empty').style.display = 'block';
+    document.getElementById('ronde-content').style.display = 'none';
+    return;
+  }
+  document.getElementById('ronde-empty').style.display = 'none';
+  document.getElementById('ronde-content').style.display = 'block';
+  document.getElementById('ronde-baan-naam').textContent = p.baan;
+  document.getElementById('ronde-holes-badge').textContent = p.holes.length + ' holes';
+  renderScorecard();
+  renderMatchOverview();
+}
+
+function renderScorecard() {
+  const p = mijnPartij();
+  if (!p) return;
+
+  const naamMap = kortNaamMap(p.spelers);
+
+  // HEAD — eerste kolom = hole info, dan een kolom per speler
+  let headHtml = '<tr><th class="player-col" style="text-align:left">Hole</th>';
+  p.spelers.forEach(s => {
+    headHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px">
+      ${naamMap[s.id]}<br>
+      <span style="font-size:10px;font-weight:400;color:rgba(255,255,255,0.7)">hcp ${Math.round(s.partijHcp)}</span><br>
+      <button onclick="verwijderSpelerUitRonde(${s.id})" style="background:rgba(255,255,255,0.15);border:none;border-radius:4px;color:rgba(255,255,255,0.8);font-size:10px;cursor:pointer;padding:2px 5px;margin-top:2px">✕ verwijder</button>
+    </th>`;
+  });
+  headHtml += '</tr>';
+  document.getElementById('scorecard-head').innerHTML = headHtml;
+
+  // BODY — rijen = holes, kolommen = spelers
+  // DOM-volgorde: hole1/speler1, hole1/speler2, hole2/speler1 ...
+  // Zodat iOS pijltjes per hole langs alle spelers gaan
+  let bodyHtml = '';
+  let firstEmptyId = null;
+  const totalen = {};
+  p.spelers.forEach(s => { totalen[s.id] = 0; });
+
+  p.holes.forEach((h, holeIdx) => {
+    bodyHtml += `<tr>
+      <td style="padding:6px 8px;font-family:'DM Mono',monospace;font-size:12px;white-space:nowrap">
+        <span style="font-weight:600">${p.startHole + holeIdx}</span>
+        <span class="hole-par"> p${h.par}</span>
+        <span class="hole-si"> SI${h.si}</span>
+      </td>`;
+    p.spelers.forEach(s => {
+      const val = p.scores[s.id][holeIdx];
+      if (val !== null) totalen[s.id] += val;
+      const inputId = `score-${s.id}-${holeIdx}`;
+      if (val === null && firstEmptyId === null) firstEmptyId = inputId;
+      bodyHtml += `<td style="text-align:center"><input
+        id="${inputId}"
+        type="number"
+        inputmode="numeric"
+        pattern="[0-9]*"
+        min="1" max="12"
+        value="${val !== null ? val : ''}"
+        onchange="updateScore(${s.id},${holeIdx},this.value)"
+        style="width:38px;padding:3px;text-align:center;font-size:13px;font-family:'DM Mono',monospace;border:1.5px solid #e0ddd4;border-radius:5px"
+      ></td>`;
+    });
+    bodyHtml += '</tr>';
+  });
+
+  // Totaalrij
+  bodyHtml += '<tr style="border-top:2px solid #e0ddd4">';
+  bodyHtml += `<td style="padding:6px 8px;font-size:12px;font-weight:600;color:var(--mid)">Totaal</td>`;
+  p.spelers.forEach(s => {
+    const filled = p.scores[s.id].filter(v => v !== null).length;
+    bodyHtml += `<td style="text-align:center;font-family:'DM Mono',monospace;font-weight:700;font-size:14px">${filled > 0 ? totalen[s.id] : '—'}</td>`;
+  });
+  bodyHtml += '</tr>';
+
+  document.getElementById('scorecard-body').innerHTML = bodyHtml;
+
+  // Autofocus eerste lege veld
+  if (firstEmptyId) {
+    const el = document.getElementById(firstEmptyId);
+    if (el) el.focus({ preventScroll: true });
+  }
+}
+
+function updateScore(spelerId, holeIdx, val) {
+  const p = mijnPartij();
+  if (!p) return;
+  p.scores[spelerId][holeIdx] = val === '' ? null : parseInt(val);
+  slaState();
+  renderMatchOverview();
+}
+
+function toggleScorecard() {
+  const w = document.getElementById('scorecard-wrap');
+  w.style.display = w.style.display === 'none' ? '' : 'none';
+}
+
+function getHcpSlagenOpHole(matchup, holeIdx) {
+  const p = mijnPartij();
+  const hole = p.holes[holeIdx];
+  return hole.si <= matchup.hcpSlagen ? 1 : 0;
+}
+
+function berekenMatchStand(matchup) {
+  const p = mijnPartij();
+  let standA = 0;
+  let gespeeld = 0;
+  let resultatenPerHole = [];
+
+  for (let i = 0; i < p.holes.length; i++) {
+    const sA = p.scores[matchup.spelerA.id][i];
+    const sB = p.scores[matchup.spelerB.id][i];
+    if (sA === null || sB === null) { resultatenPerHole.push(null); continue; }
+    gespeeld++;
+    const slagA = matchup.hcpOntvanger === matchup.spelerA.id ? getHcpSlagenOpHole(matchup, i) : 0;
+    const slagB = matchup.hcpOntvanger === matchup.spelerB.id ? getHcpSlagenOpHole(matchup, i) : 0;
+    const nettoA = sA - slagA;
+    const nettoB = sB - slagB;
+    if (nettoA < nettoB) { standA++; resultatenPerHole.push('A'); }
+    else if (nettoB < nettoA) { standA--; resultatenPerHole.push('B'); }
+    else { resultatenPerHole.push('T'); }
+  }
+
+  const resterend = p.holes.length - gespeeld;
+  // Wiskundig beslist: voorsprong groter dan resterend holes
+  const beslist = Math.abs(standA) > resterend;
+  const klaar = gespeeld === p.holes.length;
+
+  return { standA, gespeeld, resterend, resultatenPerHole, status: klaar ? 'klaar' : beslist ? 'beslist' : 'lopend' };
+}
+
+function renderMatchOverview() {
+  const p = mijnPartij();
+  if (!p) return;
+  const naamMap = kortNaamMap(p.spelers);
+  let html = '';
+  p.matchups.forEach(m => {
+    const { standA, resterend, status } = berekenMatchStand(m);
+    const nA = naamMap[m.spelerA.id];
+    const nB = naamMap[m.spelerB.id];
+
+    let scoreText, scoreLeadA, scoreLeadB;
+    if (standA === 0) {
+      scoreText = 'AS'; scoreLeadA = false; scoreLeadB = false;
+    } else if (standA > 0) {
+      scoreText = `${standA} UP`; scoreLeadA = true; scoreLeadB = false;
+    } else {
+      scoreText = `${Math.abs(standA)} UP`; scoreLeadA = false; scoreLeadB = true;
+    }
+
+    // Statusregel
+    let statusLabel;
+    if (status === 'klaar') statusLabel = 'Klaar';
+    else if (status === 'beslist') {
+      const winnaarNaam = standA > 0 ? nA : nB;
+      statusLabel = `${winnaarNaam} wint • ${resterend} hole${resterend > 1 ? 's' : ''} resterend`;
+    } else {
+      statusLabel = resterend + ' te gaan';
+    }
+
+    const naamA_style = scoreLeadA ? 'font-weight:700;color:var(--green)' : '';
+    const naamB_style = scoreLeadB ? 'font-weight:700;color:var(--green)' : '';
+    const scoreStyle = scoreLeadA ? 'background:var(--green-pale);color:var(--green)' : scoreLeadB ? 'background:var(--green-pale);color:var(--green)' : '';
+    const hcpInfo = m.hcpSlagen > 0 ? `<span style="font-size:10px;color:var(--light)">${(m.hcpOntvanger === m.spelerA.id ? nA : nB) + ' +' + m.hcpSlagen + ' slag' + (m.hcpSlagen > 1 ? 'en' : '')}</span>` : '';
+
+    html += `<div class="match-card">
+      <div>
+        <div class="match-player" style="${naamA_style}">${nA}</div>
+        ${hcpInfo}
+      </div>
+      <div style="text-align:center;flex:1">
+        <div class="match-score" style="${scoreStyle}">${scoreText}</div>
+        <div style="font-size:10px;color:${status === 'beslist' ? 'var(--green)' : 'var(--light)'};margin-top:2px;font-weight:${status === 'beslist' ? '600' : '400'}">${statusLabel}</div>
+      </div>
+      <div class="match-player right" style="${naamB_style}">${nB}</div>
+    </div>`;
+  });
+  document.getElementById('match-overview').innerHTML = html || '<div class="empty"><p>Voer scores in om de stand te zien.</p></div>';
+}
+
+// ============================================================
+//  SPELER TOEVOEGEN / VERWIJDEREN TIJDENS RONDE
+// ============================================================
+function openToevoegenModal() {
+  const p = mijnPartij();
+  if (!p) return;
+  const bezig = new Set(p.spelers.map(s => s.id));
+  const beschikbaar = state.spelers
+    .filter(s => !bezig.has(s.id))
+    .sort((a,b) => a.rank - b.rank);
+
+  if (beschikbaar.length === 0) { toast('Alle spelers zijn al in de partij'); return; }
+
+  const sel = document.getElementById('toevoegen-speler-select');
+  sel.innerHTML = '<option value="">— Kies speler —</option>' +
+    beschikbaar.map(s => `<option value="${s.id}">${s.naam} (hcp ${Math.round(s.hcp)})</option>`).join('');
+  document.getElementById('toevoegen-speler-hcp').value = '';
+
+  sel.onchange = function() {
+    const s = state.spelers.find(x => x.id == this.value);
+    if (s) document.getElementById('toevoegen-speler-hcp').value = Math.round(s.hcp);
+  };
+
+  document.getElementById('modal-toevoegen-ronde').classList.add('open');
+}
+
+function bevestigToevoegenRonde() {
+  const p = mijnPartij();
+  if (!p) return;
+  const sel = document.getElementById('toevoegen-speler-select');
+  const hcpVal = Math.round(parseFloat(document.getElementById('toevoegen-speler-hcp').value));
+  const speler = state.spelers.find(s => s.id == sel.value);
+  if (!speler) { toast('Kies een speler'); return; }
+  if (isNaN(hcpVal)) { toast('Voer een handicap in'); return; }
+
+  const nieuweSpeler = { ...speler, hcp: hcpVal, partijHcp: hcpVal };
+
+  // Sla hcp op
+  const sv = state.spelers.find(s => s.id === speler.id);
+  if (sv && hcpVal !== sv.hcp) sv.hcp = hcpVal;
+
+  // Nieuwe matchups aanmaken met alle huidige spelers
+  p.spelers.forEach(bestaande => {
+    const hcpDiff = Math.round(Math.abs(bestaande.partijHcp - hcpVal) * 0.75);
+    const hoger = bestaande.partijHcp > hcpVal ? bestaande : nieuweSpeler;
+    p.matchups.push({
+      id: `${bestaande.id}-${speler.id}`,
+      spelerA: bestaande, spelerB: nieuweSpeler,
+      hcpOntvanger: hoger.id,
+      hcpSlagen: hcpDiff
+    });
+  });
+
+  // Speler en lege scores toevoegen
+  p.spelers.push(nieuweSpeler);
+  p.scores[speler.id] = Array(p.holes.length).fill(null);
+
+  slaState();
+  closeModal('modal-toevoegen-ronde');
+  renderRonde();
+  toast(`${speler.naam.split(' ')[0]} toegevoegd ✓`);
+}
+
+function verwijderSpelerUitRonde(spelerId) {
+  const p = mijnPartij();
+  if (!p) return;
+  const speler = p.spelers.find(s => s.id === spelerId);
+  if (!speler) return;
+  if (p.spelers.length <= 2) { toast('Minimaal 2 spelers nodig'); return; }
+  if (!confirm(`${speler.naam.split(' ')[0]} verwijderen uit de partij?`)) return;
+
+  p.spelers = p.spelers.filter(s => s.id !== spelerId);
+  p.matchups = p.matchups.filter(m => m.spelerA.id !== spelerId && m.spelerB.id !== spelerId);
+  delete p.scores[spelerId];
+
+  slaState();
+  renderRonde();
+  toast(`${speler.naam.split(' ')[0]} verwijderd uit partij`);
+}
+
+// ============================================================
+//  UITSLAG MODAL
+// ============================================================
+function openUitslagModal() {
+  const p = mijnPartij();
+  if (!p) return;
+  const naamMap = kortNaamMap(p.spelers);
+  let html = '';
+  p.matchups.forEach((m, idx) => {
+    const { standA, gespeeld } = berekenMatchStand(m);
+    const nA = naamMap[m.spelerA.id];
+    const nB = naamMap[m.spelerB.id];
+    let winnaar = standA > 0 ? 'A' : standA < 0 ? 'B' : null;
+
+    html += `<div id="matchup-row-${idx}" style="padding:12px 0;border-bottom:1px solid #f0ede4">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-weight:600">${m.spelerA.naam} vs ${m.spelerB.naam}</span>
+        <button onclick="skipMatchup(${idx})" id="skip-${idx}" class="btn btn-sm btn-ghost" style="color:var(--red);border-color:#f5c6cb;font-size:11px;padding:4px 8px" title="Matchup overslaan">✕ overslaan</button>
+      </div>`;
+
+    if (gespeeld === 0) {
+      html += `<p style="font-size:12px;color:var(--light)">Geen holes gespeeld</p>`;
+    } else if (standA === 0) {
+      html += `<p style="font-size:12px;color:var(--gold);margin-bottom:6px">⚡ Gelijkspel (${gespeeld} holes) — kies de winnaar</p>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm ${winnaar === 'A' ? 'btn-primary' : 'btn-ghost'}"
+            onclick="setWinnaar(${idx},'A')" id="win-${idx}-A">${nA} wint</button>
+          <button class="btn btn-sm ${winnaar === 'B' ? 'btn-primary' : 'btn-ghost'}"
+            onclick="setWinnaar(${idx},'B')" id="win-${idx}-B">${nB} wint</button>
+        </div>`;
+    } else {
+      const winnaarNaam = standA > 0 ? m.spelerA.naam : m.spelerB.naam;
+      const marge = Math.abs(standA);
+      html += `<span class="badge badge-green">✓ ${winnaarNaam} wint (${gespeeld} holes, ${marge} up)</span>`;
+    }
+    html += `</div>`;
+  });
+
+  document.getElementById('modal-matches').innerHTML = html;
+  document.getElementById('modal-uitslag').classList.add('open');
+
+  p._modalWinnaars = p.matchups.map(m => {
+    const { standA } = berekenMatchStand(m);
+    if (standA > 0) return 'A';
+    if (standA < 0) return 'B';
+    return null;
+  });
+  p._modalSkipped = new Array(p.matchups.length).fill(false);
+}
+
+function setWinnaar(idx, kant) {
+  const p = mijnPartij();
+  p._modalWinnaars[idx] = kant;
+  const naamMap = kortNaamMap(p.spelers);
+  const nA = naamMap[p.matchups[idx].spelerA.id];
+  const nB = naamMap[p.matchups[idx].spelerB.id];
+  document.getElementById('win-'+idx+'-A').textContent = nA + ' wint';
+  document.getElementById('win-'+idx+'-B').textContent = nB + ' wint';
+  document.getElementById('win-'+idx+'-A').className = `btn btn-sm ${kant === 'A' ? 'btn-primary' : 'btn-ghost'}`;
+  document.getElementById('win-'+idx+'-B').className = `btn btn-sm ${kant === 'B' ? 'btn-primary' : 'btn-ghost'}`;
+}
+
+function skipMatchup(idx) {
+  const p = mijnPartij();
+  if (!p) return;
+  p._modalSkipped[idx] = !p._modalSkipped[idx];
+  const row = document.getElementById(`matchup-row-${idx}`);
+  const btn = document.getElementById(`skip-${idx}`);
+  if (p._modalSkipped[idx]) {
+    row.style.opacity = '0.4';
+    row.style.textDecoration = 'line-through';
+    btn.textContent = '↩ herstellen';
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = 'var(--green-pale)';
+  } else {
+    row.style.opacity = '';
+    row.style.textDecoration = '';
+    btn.textContent = '✕ overslaan';
+    btn.style.color = 'var(--red)';
+    btn.style.borderColor = '#f5c6cb';
+  }
+}
+
+function bevestigUitslag() {
+  const p = mijnPartij();
+  if (!p) return;
+
+  // Check: niet-overgeslagen matchups zonder winnaar bij gelijkspel
+  const probleem = p.matchups.find((m, idx) => {
+    if (p._modalSkipped?.[idx]) return false;
+    return p._modalWinnaars[idx] === null;
+  });
+  if (probleem) { toast('Kies bij gelijkspel een winnaar of sla de matchup over'); return; }
+
+  closeModal('modal-uitslag');
+
+  const changes = [];
+  // Sla huidige ranks op als prevRank voor alle spelers
+  state.spelers.forEach(s => { s.prevRank = s.rank; });
+
+  p.matchups.forEach((m, idx) => {
+    // Overgeslagen matchups tellen niet mee voor de ladder
+    if (p._modalSkipped?.[idx]) return;
+    const winnaarKant = p._modalWinnaars[idx];
+    const winnaar = winnaarKant === 'A' ? m.spelerA : m.spelerB;
+    const verliezer = winnaarKant === 'A' ? m.spelerB : m.spelerA;
+
+    const sw = state.spelers.find(s => s.id === winnaar.id);
+    const sv = state.spelers.find(s => s.id === verliezer.id);
+
+    const oldWrank = sw.rank;
+    const oldVrank = sv.rank;
+
+    sw.partijen++; sv.partijen++; sw.gewonnen++;
+
+    let newWrank, newVrank;
+    if (sw.rank > sv.rank) {
+      const verschil = sw.rank - sv.rank;
+      newWrank = Math.max(1, sw.rank - 4);
+      newVrank = verschil <= 4 ? sw.rank : sv.rank + 2;
+    } else {
+      newWrank = Math.max(1, sw.rank - 1);
+      newVrank = sv.rank + 1;
+    }
+
+    changes.push({ winnaar: sw.naam, verliezer: sv.naam, wOud: oldWrank, wNieuw: newWrank, vOud: oldVrank, vNieuw: newVrank });
+    sw.rank = newWrank;
+    sv.rank = newVrank;
+  });
+
+  // Normalize ranks
+  [...state.spelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
+
+  // Save uitslag
+  state.uitslagen.unshift({
+    datum: new Date().toLocaleDateString('nl-NL'),
+    baan: p.baan,
+    spelers: p.spelers.map(s => s.naam),
+    matchups: p.matchups
+      .filter((m, i) => !p._modalSkipped?.[i])
+      .map((m, i) => {
+        const origIdx = p.matchups.indexOf(m);
+        return {
+          a: m.spelerA.naam, b: m.spelerB.naam,
+          winnaar: p._modalWinnaars[origIdx] === 'A' ? m.spelerA.naam : m.spelerB.naam
+        };
+      })
+  });
+
+  // Verwijder deze partij uit actievePartijen
+  state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== p.partijId);
+
+  // Onthoud welke spelers zojuist gespeeld hebben voor highlight in ladder
+  _highlights = new Set(p.spelers.map(s => s.id));
+
+  slaState();
+
+  showLadderChanges(changes);
+}
+
+function sluitUitslagEnGaNaarLadder() {
+  closeModal('modal-ladder-result');
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-ladder').classList.add('active');
+  document.querySelector('nav button').classList.add('active');
+  renderLadder();
+  // Na 4 seconden highlight weer wissen
+  setTimeout(() => {
+    _highlights = new Set();
+    renderLadder();
+  }, 4000);
+}
+
+function showLadderChanges(changes) {
+  let html = '';
+  changes.forEach(c => {
+    const wDelta = c.wOud - c.wNieuw;
+    const vDelta = c.vOud - c.vNieuw;
+    html += `
+      <div style="margin-bottom:12px;padding:12px;background:var(--green-pale);border-radius:10px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span style="font-weight:600">🏆 ${c.winnaar}</span>
+          <span class="delta-up">↑${wDelta} (${c.wOud} → ${c.wNieuw})</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--mid)">${c.verliezer}</span>
+          <span class="delta-down">↓${Math.abs(vDelta)} (${c.vOud} → ${c.vNieuw})</span>
+        </div>
+      </div>`;
+  });
+  document.getElementById('ladder-changes').innerHTML = html;
+  document.getElementById('modal-ladder-result').classList.add('open');
+}
+
+// ============================================================
+//  UITSLAGEN
+// ============================================================
+let _beheerPartijId = null; // partijId van partij die beheerder beheert
+let _beheerWinnaars = [];
+
+function renderUitslagen() {
+  const isBeheerder = huidigeBruiker?.rol === 'beheerder';
+  const actief = state.actievePartijen || [];
+
+  // Actieve partijen
+  document.getElementById('actief-count').textContent = actief.length;
+  const actiefList = document.getElementById('actieve-partijen-list');
+
+  if (actief.length === 0) {
+    actiefList.innerHTML = '<div class="empty"><div class="empty-icon">🏌️</div><p>Geen actieve partijen.</p></div>';
+  } else {
+    actiefList.innerHTML = actief.map(p => {
+      const aangemaakt = new Date(p.timestamp).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+      const namen = p.spelers.map(s => s.naam.split(' ')[0]).join(', ');
+      // Hoeveel holes ingevuld?
+      const ingevuld = p.spelers.length > 0
+        ? p.scores[p.spelers[0].id]?.filter(v => v !== null).length || 0
+        : 0;
+      return `
+        <div style="padding:14px 16px;border-bottom:1px solid #f0ede4">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span style="font-weight:600">${p.baan}</span>
+            <span style="font-size:11px;color:var(--light)">gestart ${aangemaakt}</span>
+          </div>
+          <div style="font-size:13px;color:var(--mid);margin-bottom:8px">${namen}</div>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span class="badge badge-gold">hole ${ingevuld}/${p.holes.length}</span>
+            ${isBeheerder ? `<button class="btn btn-sm btn-ghost" onclick="openBeheerPartij('${p.partijId}')">⚙️ Beheren</button>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // Gespeelde partijen
+  const list = document.getElementById('uitslagen-list');
+  document.getElementById('uitslagen-count').textContent = state.uitslagen.length;
+  if (state.uitslagen.length === 0) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><p>Nog geen uitslagen.</p></div>';
+    return;
+  }
+  list.innerHTML = state.uitslagen.map(u => `
+    <div style="padding:14px 16px;border-bottom:1px solid #f0ede4">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <span style="font-weight:600">${u.baan}</span>
+        <span style="font-size:12px;color:var(--light)">${u.datum}</span>
+      </div>
+      <div style="font-size:12px;color:var(--mid);margin-bottom:8px">${u.spelers.join(' · ')}</div>
+      ${u.matchups.map(m => `
+        <div style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:4px">
+          <span>${m.a} vs ${m.b}</span>
+          <span class="badge badge-green">⛳ ${m.winnaar.split(' ')[0]}</span>
+        </div>`).join('')}
+    </div>
+  `).join('');
+}
+
+function openBeheerPartij(partijId) {
+  const p = (state.actievePartijen || []).find(ap => ap.partijId === partijId);
+  if (!p) return;
+  _beheerPartijId = partijId;
+
+  document.getElementById('beheer-partij-titel').textContent = p.baan;
+
+  // Bouw winnaar-keuze per matchup
+  let html = '';
+  p.matchups.forEach((m, idx) => {
+    const nA = m.spelerA.naam.split(' ')[0];
+    const nB = m.spelerB.naam.split(' ')[0];
+    // Bereken stand op basis van ingevulde scores
+    let standA = 0;
+    p.holes.forEach((hole, i) => {
+      const sA = p.scores[m.spelerA.id]?.[i];
+      const sB = p.scores[m.spelerB.id]?.[i];
+      if (sA == null || sB == null) return;
+      const slagA = m.hcpOntvanger === m.spelerA.id && hole.si <= m.hcpSlagen ? 1 : 0;
+      const slagB = m.hcpOntvanger === m.spelerB.id && hole.si <= m.hcpSlagen ? 1 : 0;
+      if ((sA - slagA) < (sB - slagB)) standA++;
+      else if ((sA - slagA) > (sB - slagB)) standA--;
+    });
+    const voorlopig = standA > 0 ? `${nA} leidt (${standA} UP)` : standA < 0 ? `${nB} leidt (${Math.abs(standA)} UP)` : 'Gelijk';
+
+    html += `<div style="padding:12px 0;border-bottom:1px solid #f0ede4">
+      <div style="font-weight:600;margin-bottom:4px">${m.spelerA.naam} vs ${m.spelerB.naam}</div>
+      <div style="font-size:11px;color:var(--light);margin-bottom:8px">${voorlopig}</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm btn-ghost" id="bwin-${idx}-A" onclick="setBeheerWinnaar(${idx},'A')">${nA} wint</button>
+        <button class="btn btn-sm btn-ghost" id="bwin-${idx}-B" onclick="setBeheerWinnaar(${idx},'B')">${nB} wint</button>
+        <button class="btn btn-sm btn-ghost" id="bwin-${idx}-N" onclick="setBeheerWinnaar(${idx},null)" style="color:var(--light)">Geen</button>
+      </div>
+    </div>`;
+  });
+
+  _beheerWinnaars = p.matchups.map(() => null);
+  document.getElementById('beheer-partij-matches').innerHTML = html;
+  document.getElementById('modal-beheer-partij').classList.add('open');
+}
+
+function setBeheerWinnaar(idx, kant) {
+  _beheerWinnaars[idx] = kant;
+  const p = (state.actievePartijen || []).find(ap => ap.partijId === _beheerPartijId);
+  if (!p) return;
+  ['A','B','N'].forEach(k => {
+    const btn = document.getElementById(`bwin-${idx}-${k}`);
+    if (btn) btn.className = `btn btn-sm ${k === String(kant ?? 'N') ? 'btn-primary' : 'btn-ghost'}`;
+  });
+}
+
+function bevestigBeheerUitslag() {
+  const p = (state.actievePartijen || []).find(ap => ap.partijId === _beheerPartijId);
+  if (!p) return;
+  if (_beheerWinnaars.some(w => w === null)) { toast('Wijs voor elke match een winnaar aan'); return; }
+
+  closeModal('modal-beheer-partij');
+
+  const changes = [];
+  state.spelers.forEach(s => { s.prevRank = s.rank; });
+
+  p.matchups.forEach((m, idx) => {
+    const kant = _beheerWinnaars[idx];
+    const winnaar = kant === 'A' ? m.spelerA : m.spelerB;
+    const verliezer = kant === 'A' ? m.spelerB : m.spelerA;
+    const sw = state.spelers.find(s => s.id === winnaar.id);
+    const sv = state.spelers.find(s => s.id === verliezer.id);
+    const oldWrank = sw.rank, oldVrank = sv.rank;
+    sw.partijen++; sv.partijen++; sw.gewonnen++;
+    let newWrank, newVrank;
+    if (sw.rank > sv.rank) {
+      const verschil = sw.rank - sv.rank;
+      newWrank = Math.max(1, sw.rank - 4);
+      newVrank = verschil <= 4 ? sw.rank : sv.rank + 2;
+    } else {
+      newWrank = Math.max(1, sw.rank - 1);
+      newVrank = sv.rank + 1;
+    }
+    changes.push({ winnaar: sw.naam, verliezer: sv.naam, wOud: oldWrank, wNieuw: newWrank, vOud: oldVrank, vNieuw: newVrank });
+    sw.rank = newWrank; sv.rank = newVrank;
+  });
+
+  [...state.spelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
+
+  state.uitslagen.unshift({
+    datum: new Date().toLocaleDateString('nl-NL'),
+    baan: p.baan,
+    spelers: p.spelers.map(s => s.naam),
+    matchups: p.matchups.map((m, i) => ({
+      a: m.spelerA.naam, b: m.spelerB.naam,
+      winnaar: _beheerWinnaars[i] === 'A' ? m.spelerA.naam : m.spelerB.naam
+    }))
+  });
+
+  state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== _beheerPartijId);
+  _highlights = new Set(p.spelers.map(s => s.id));
+  slaState();
+  showLadderChanges(changes);
+}
+
+function annuleerEigenPartij() {
+  if (!confirm('Partij annuleren? De scores worden niet opgeslagen en de ladder wordt niet aangepast.')) return;
+  const p = mijnPartij();
+  if (!p) return;
+  state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== p.partijId);
+  slaState();
+  closeModal('modal-uitslag');
+  renderRonde();
+  toast('Partij geannuleerd');
+}
+
+function verwijderActievePartij() {
+  if (!confirm('Partij verwijderen? Dit kan niet ongedaan worden.')) return;
+  state.actievePartijen = (state.actievePartijen || []).filter(ap => ap.partijId !== _beheerPartijId);
+  slaState();
+  closeModal('modal-beheer-partij');
+  renderUitslagen();
+  toast('Partij verwijderd');
+}
+
+// ============================================================
+//  ADMIN
+// ============================================================
+function renderAdmin() {
+  const sorted = [...state.spelers].sort((a,b) => a.rank - b.rank);
+  const list = document.getElementById('admin-player-list');
+  list.innerHTML = sorted.map(s => `
+    <div class="admin-row">
+      <span style="font-family:'Bebas Neue';font-size:18px;color:var(--light);min-width:28px">${s.rank}</span>
+      <span class="name">${s.naam}</span>
+      <span class="hcp">hcp ${Math.round(s.hcp)}</span>
+      <div style="display:flex;align-items:center;gap:4px">
+        <button onclick="verschuifRank(${s.id},-1)" style="background:var(--green-pale);border:none;border-radius:5px;width:26px;height:26px;cursor:pointer;font-size:13px;color:var(--green);font-weight:700" title="1 plaats omhoog">↑</button>
+        <button onclick="verschuifRank(${s.id},1)" style="background:#fde8e8;border:none;border-radius:5px;width:26px;height:26px;cursor:pointer;font-size:13px;color:var(--red);font-weight:700" title="1 plaats omlaag">↓</button>
+      </div>
+      <button class="btn btn-sm btn-ghost" onclick="editHcp(${s.id})">✏️</button>
+      <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removePlayer(${s.id})">✕</button>
+    </div>
+  `).join('');
+  renderAdminUsers();
+}
+
+function openAddPlayer() {
+  document.getElementById('new-player-name').value = '';
+  document.getElementById('new-player-hcp').value = '';
+  document.getElementById('new-player-account').value = '';
+  document.getElementById('new-player-pass').value = '';
+  document.getElementById('modal-add-player').classList.add('open');
+}
+
+function updateAccountPreview() {
+  const naam = document.getElementById('new-player-name').value.trim();
+  const delen = naam.toLowerCase().split(' ').filter(d => d.length > 1 || naam.split(' ').length <= 2);
+  const basis = delen.join('.').replace(/[^a-z0-9.]/g, '');
+  // Suggestie als e-mailadres — gebruiker past zelf het domein aan
+  document.getElementById('new-player-account').value = basis ? basis + '@' : '';
+}
+
+async function saveNewPlayer() {
+  const naam = document.getElementById('new-player-name').value.trim();
+  const hcp = Math.round(parseFloat(document.getElementById('new-player-hcp').value));
+  const accountnaam = document.getElementById('new-player-account').value.trim().toLowerCase();
+  const pass = document.getElementById('new-player-pass').value;
+
+  if (!naam) { toast('Voer een naam in'); return; }
+  if (isNaN(hcp)) { toast('Voer een handicap in'); return; }
+  if (!accountnaam || !accountnaam.includes('@')) { toast('Voer een geldig e-mailadres in'); return; }
+  if (pass.length < 6) { toast('Wachtwoord minimaal 6 tekens'); return; }
+
+  try {
+    // Controleer of accountnaam al bestaat
+    const snap = await getDoc(USERS_DOC);
+    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    if (users.find(u => u.gebruikersnaam === accountnaam)) {
+      toast('Accountnaam al in gebruik — pas aan'); return;
+    }
+
+    // Speler toevoegen
+    const newRank = state.spelers.length + 1;
+    state.spelers.push({ id: state.nextId++, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
+    await slaState();
+
+    // Account aanmaken via Firebase Auth
+    let uid = null;
+    try {
+      const userCred = await createUserWithEmailAndPassword(auth, accountnaam, pass);
+      uid = userCred.user.uid;
+    } catch(authErr) {
+      if (authErr.code !== 'auth/email-already-in-use') throw authErr;
+      // Account bestaat al — zoek uid
+      const bestaand = users.find(u => u.email === accountnaam);
+      uid = bestaand?.uid || null;
+    }
+    users.push({ uid, email: accountnaam, gebruikersnaam: accountnaam.split('@')[0], rol: 'speler' });
+    await setDoc(USERS_DOC, { lijst: sorteerUsers(users) });
+
+    closeModal('modal-add-player');
+    renderAdmin();
+    toast(`${naam} toegevoegd ✓`);
+  } catch(e) { toast('Fout bij opslaan'); }
+}
+
+function editHcp(id) {
+  const s = state.spelers.find(p => p.id === id);
+  if (!s) return;
+  const nieuw = prompt(`Nieuwe handicap voor ${s.naam}:`, Math.round(s.hcp));
+  if (nieuw === null) return;
+  const val = Math.round(parseFloat(nieuw));
+  if (isNaN(val)) { toast('Ongeldige handicap'); return; }
+  s.hcp = val;
+  slaState();
+  renderAdmin();
+  toast('Handicap bijgewerkt ✓');
+}
+
+function removePlayer(id) {
+  if (!confirm('Speler verwijderen?')) return;
+  state.spelers = state.spelers.filter(s => s.id !== id);
+  // Re-rank
+  state.spelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
+  slaState();
+  renderAdmin();
+  toast('Speler verwijderd');
+}
+
+// ============================================================
+//  PROFIEL
+// ============================================================
+function renderProfiel() {
+  if (!huidigeBruiker) return;
+
+  // Zoek gekoppelde speler
+  const gebruiker = huidigeBruiker.gebruikersnaam.toLowerCase();
+  const speler = state.spelers.find(s => {
+    const naam = s.naam.toLowerCase();
+    const voornaam = naam.split(' ')[0];
+    return naam === gebruiker || voornaam === gebruiker ||
+           naam.replace(/\s/g,'') === gebruiker.replace(/\./g,'').replace(/\s/g,'') ||
+           naam.replace(/\s/g,' ') === gebruiker;
+  });
+
+  // Profiel info
+  document.getElementById('profiel-info').innerHTML = `
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:4px">
+      <div style="width:52px;height:52px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue';font-size:24px;color:var(--gold-light)">
+        ${huidigeBruiker.gebruikersnaam[0].toUpperCase()}
+      </div>
+      <div>
+        <div style="font-weight:600;font-size:17px">${huidigeBruiker.gebruikersnaam}</div>
+        <div style="font-size:13px;color:var(--light)">${huidigeBruiker.email}</div>
+        <span class="badge ${huidigeBruiker.rol === 'beheerder' ? 'badge-gold' : 'badge-grey'}" style="margin-top:4px">${huidigeBruiker.rol}</span>
+      </div>
+    </div>`;
+
+  // Statistieken
+  if (!speler) {
+    document.getElementById('profiel-stats').innerHTML = '<p style="color:var(--light);font-size:13px">Nog geen spelersprofiel gekoppeld aan dit account.</p>';
+    return;
+  }
+
+  const winpct = speler.partijen > 0 ? Math.round(speler.gewonnen / speler.partijen * 100) : 0;
+  const verloren = speler.partijen - speler.gewonnen;
+
+  // Bereken winstreak uit uitslagen
+  let streak = 0;
+  for (const u of state.uitslagen) {
+    const matchResult = u.matchups?.find(m => m.a === speler.naam || m.b === speler.naam);
+    if (!matchResult) break;
+    if (matchResult.winnaar === speler.naam) streak++;
+    else break;
+  }
+
+  // Meest gespeeld tegen
+  const tegenTeller = {};
+  state.uitslagen.forEach(u => {
+    u.matchups?.forEach(m => {
+      if (m.a === speler.naam) tegenTeller[m.b] = (tegenTeller[m.b] || 0) + 1;
+      if (m.b === speler.naam) tegenTeller[m.a] = (tegenTeller[m.a] || 0) + 1;
+    });
+  });
+  const meestTegen = Object.entries(tegenTeller).sort((a,b) => b[1]-a[1])[0];
+
+  // Laatste partij
+  const laatste = state.uitslagen.find(u => u.spelers?.includes(speler.naam));
+
+  document.getElementById('profiel-stats').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div style="text-align:center;background:var(--green-pale);border-radius:10px;padding:12px">
+        <div style="font-family:'Bebas Neue';font-size:32px;color:var(--green)">${speler.rank}</div>
+        <div style="font-size:11px;color:var(--light);text-transform:uppercase">Ranking</div>
+      </div>
+      <div style="text-align:center;background:#fef3cd;border-radius:10px;padding:12px">
+        <div style="font-family:'Bebas Neue';font-size:32px;color:var(--gold)">${winpct}%</div>
+        <div style="font-size:11px;color:var(--light);text-transform:uppercase">Winpercentage</div>
+      </div>
+      <div style="text-align:center;background:#f0ede4;border-radius:10px;padding:12px">
+        <div style="font-family:'Bebas Neue';font-size:32px;color:var(--mid)">${speler.partijen}</div>
+        <div style="font-size:11px;color:var(--light);text-transform:uppercase">Gespeeld</div>
+      </div>
+      <div style="text-align:center;background:${streak > 2 ? 'var(--green-pale)' : '#f0ede4'};border-radius:10px;padding:12px">
+        <div style="font-family:'Bebas Neue';font-size:32px;color:${streak > 2 ? 'var(--green)' : 'var(--mid)'}">${streak}</div>
+        <div style="font-size:11px;color:var(--light);text-transform:uppercase">Winstreak</div>
+      </div>
+    </div>
+    <div style="font-size:13px;color:var(--mid);line-height:2">
+      <div>✓ Gewonnen: <strong>${speler.gewonnen}</strong> &nbsp; ✗ Verloren: <strong>${verloren}</strong></div>
+      ${meestTegen ? `<div>🏌️ Meest tegen: <strong>${meestTegen[0].split(' ')[0]}</strong> (${meestTegen[1]}x)</div>` : ''}
+      ${laatste ? `<div>📅 Laatste partij: <strong>${laatste.datum}</strong> op ${laatste.baan}</div>` : ''}
+      <div>🏒 Handicap: <strong>${Math.round(speler.hcp)}</strong></div>
+    </div>`;
+
+  // Notificatie knop status
+  const notifBtn = document.getElementById('notif-btn');
+  if (notifBtn) {
+    if (!('Notification' in window)) {
+      notifBtn.style.display = 'none';
+    } else if (Notification.permission === 'granted') {
+      notifBtn.textContent = '🔔 Notificaties aan ✓';
+      notifBtn.style.color = 'var(--green)';
+      notifBtn.style.borderColor = 'var(--green-pale)';
+    } else if (Notification.permission === 'denied') {
+      notifBtn.textContent = '🔕 Notificaties geblokkeerd';
+      notifBtn.style.color = 'var(--light)';
+      notifBtn.disabled = true;
+    }
+  }
+  const mijnUitdagingen = uitdagingenData.filter(u =>
+    u.vanEmail === huidigeBruiker.email || u.naarEmail === huidigeBruiker.email
+  );
+
+  const openOntvangen = mijnUitdagingen.filter(u => u.naarEmail === huidigeBruiker.email && u.status === 'open');
+  const openVerstuurd = mijnUitdagingen.filter(u => u.vanEmail === huidigeBruiker.email && u.status === 'open');
+
+  if (mijnUitdagingen.length > 0) {
+    let uitdHtml = '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #f0ede4">';
+    uitdHtml += '<div style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:10px">Uitdagingen</div>';
+
+    if (openOntvangen.length > 0) {
+      openOntvangen.forEach(u => {
+        uitdHtml += `<div style="background:#fef3cd;border-radius:10px;padding:12px;margin-bottom:8px">
+          <div style="font-weight:600;margin-bottom:6px">⚔️ ${u.vanNaam} daagt je uit!</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sm btn-primary" onclick="reageerUitdaging('${u.id}',true)">✓ Accepteer</button>
+            <button class="btn btn-sm btn-ghost" onclick="reageerUitdaging('${u.id}',false)" style="color:var(--red)">✗ Weiger</button>
+          </div>
+        </div>`;
+      });
+    }
+
+    if (openVerstuurd.length > 0) {
+      openVerstuurd.forEach(u => {
+        uitdHtml += `<div style="background:#f0ede4;border-radius:10px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+          <div style="font-size:13px">⏳ Wacht op <strong>${u.naarNaam}</strong></div>
+          <button onclick="verwijderUitdaging('${u.id}')" style="background:none;border:none;color:var(--light);cursor:pointer;font-size:18px">✕</button>
+        </div>`;
+      });
+    }
+
+    const afgerond = mijnUitdagingen.filter(u => u.status !== 'open');
+    afgerond.slice(0, 3).forEach(u => {
+      const isVan = u.vanEmail === huidigeBruiker.email;
+      const ander = isVan ? u.naarNaam : u.vanNaam;
+      const kleur = u.status === 'geaccepteerd' ? 'var(--green)' : 'var(--light)';
+      const icoon = u.status === 'geaccepteerd' ? '✅' : '❌';
+      uitdHtml += `<div style="font-size:12px;color:var(--light);padding:4px 0">${icoon} ${isVan ? 'Uitdaging aan' : 'Uitdaging van'} ${ander} — ${u.status}</div>`;
+    });
+
+    uitdHtml += '</div>';
+    document.getElementById('profiel-stats').innerHTML += uitdHtml;
+  }
+}
+
+// ============================================================
+//  ADMIN — GEBRUIKERS (Firebase Auth versie)
+// ============================================================
+
+// Sorteer gebruikers op achternaam (laatste woord van gebruikersnaam)
+function sorteerUsers(users) {
+  return [...users].sort((a, b) => {
+    const achternaamA = a.gebruikersnaam.trim().split(' ').pop();
+    const achternaamB = b.gebruikersnaam.trim().split(' ').pop();
+    return achternaamA.localeCompare(achternaamB, 'nl');
+  });
+}
+
+async function renderAdminUsers() {
+  const list = document.getElementById('admin-user-list');
+  list.innerHTML = '<div style="padding:12px 16px;color:var(--light);font-size:13px">Laden…</div>';
+  try {
+    const snap = await getDoc(USERS_DOC);
+    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    if (users.length === 0) {
+      list.innerHTML = '<div class="empty"><p>Nog geen accounts.<br><small style="color:var(--light)">Standaard: beheerder / golf2025</small></p></div>';
+      return;
+    }
+    const gesorteerd = sorteerUsers(users);
+    list.innerHTML = gesorteerd.map((u) => {
+      const origIdx = users.findIndex(x => x.email === u.email || x.gebruikersnaam === u.gebruikersnaam);
+      return `
+      <div class="admin-row">
+        <div style="flex:1">
+          <div class="name">${u.gebruikersnaam || u.email?.split('@')[0]}</div>
+          <div style="font-size:11px;color:var(--light)">${u.email || ''}</div>
+        </div>
+        <span class="badge ${u.rol === 'beheerder' ? 'badge-gold' : 'badge-grey'}">${u.rol}</span>
+        <button class="btn btn-sm btn-ghost" onclick="openEditUser(${origIdx})">✏️</button>
+        <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removeUser(${origIdx})">✕</button>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    list.innerHTML = '<div style="padding:12px;color:var(--red);font-size:13px">Fout bij laden</div>';
+  }
+}
+
+async function openEditUser(idx) {
+  try {
+    const snap = await getDoc(USERS_DOC);
+    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const u = users[idx];
+    if (!u) return;
+    document.getElementById('edit-user-name').value = u.gebruikersnaam;
+    document.getElementById('edit-user-pass').value = '';
+    document.getElementById('edit-user-rol').value = u.rol;
+    document.getElementById('edit-user-idx').value = idx;
+    document.getElementById('modal-edit-user').classList.add('open');
+  } catch(e) { toast('Fout bij laden'); }
+}
+
+async function saveEditUser() {
+  const idx = parseInt(document.getElementById('edit-user-idx').value);
+  const naam = document.getElementById('edit-user-name').value.trim().toLowerCase();
+  const pass = document.getElementById('edit-user-pass').value;
+  const rol = document.getElementById('edit-user-rol').value;
+  if (!naam) { toast('Voer een gebruikersnaam in'); return; }
+  if (pass && pass.length < 4) { toast('Wachtwoord minimaal 4 tekens'); return; }
+
+  try {
+    const snap = await getDoc(USERS_DOC);
+    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    // Check duplicate name (ignore self)
+    if (users.find((u, i) => u.gebruikersnaam === naam && i !== idx)) {
+      toast('Gebruikersnaam al in gebruik'); return;
+    }
+    users[idx].gebruikersnaam = naam;
+    users[idx].rol = rol;
+    if (pass) users[idx].wachtwoord = pass;
+    await setDoc(USERS_DOC, { lijst: sorteerUsers(users) });
+    closeModal('modal-edit-user');
+    renderAdminUsers();
+    toast('Account bijgewerkt ✓');
+  } catch(e) { toast('Fout bij opslaan'); }
+}
+
+function openAddUser() {
+  document.getElementById('new-user-name').value = '';
+  document.getElementById('new-user-pass').value = '';
+  document.getElementById('new-user-rol').value = 'speler';
+  document.getElementById('modal-add-user').classList.add('open');
+}
+
+async function saveNewUser() {
+  const email = document.getElementById('new-user-name').value.trim().toLowerCase();
+  const pass = document.getElementById('new-user-pass').value;
+  const rol = document.getElementById('new-user-rol').value;
+  if (!email || !email.includes('@')) { toast('Voer een geldig e-mailadres in'); return; }
+  if (pass.length < 6) { toast('Wachtwoord minimaal 6 tekens'); return; }
+
+  try {
+    // Maak Firebase Auth account aan
+    const userCred = await createUserWithEmailAndPassword(auth, email, pass);
+    const uid = userCred.user.uid;
+    const gebruikersnaam = email.split('@')[0].replace(/[^a-z0-9 ]/g, '');
+
+    const snap = await getDoc(USERS_DOC);
+    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    users.push({ uid, email, gebruikersnaam, rol });
+    await setDoc(USERS_DOC, { lijst: sorteerUsers(users) });
+    closeModal('modal-add-user');
+    renderAdminUsers();
+    toast('Account aangemaakt ✓');
+  } catch(e) {
+    if (e.code === 'auth/email-already-in-use') toast('Dit e-mailadres is al in gebruik');
+    else if (e.code === 'auth/invalid-email') toast('Ongeldig e-mailadres');
+    else toast('Fout bij aanmaken: ' + e.message);
+  }
+}
+
+async function removeUser(idx) {
+  if (!confirm('Account verwijderen?')) return;
+  try {
+    const snap = await getDoc(USERS_DOC);
+    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    users.splice(idx, 1);
+    await setDoc(USERS_DOC, { lijst: users });
+    renderAdminUsers();
+    toast('Account verwijderd');
+  } catch(e) { toast('Fout bij verwijderen'); }
+}
+
+// ============================================================
+//  HELPERS
+// ============================================================
+
+function verschuifRank(id, delta) {
+  const speler = state.spelers.find(s => s.id === id);
+  if (!speler) return;
+
+  const nieuwRank = speler.rank + delta;
+  if (nieuwRank < 1 || nieuwRank > state.spelers.length) return;
+
+  // Wissel van positie met de speler die momenteel die rank heeft
+  const ander = state.spelers.find(s => s.rank === nieuwRank);
+  if (ander) ander.rank = speler.rank;
+  speler.rank = nieuwRank;
+
+  slaState();
+  renderAdmin();
+}
+
+function resetData() {
+  toast('Reset is momenteel uitgeschakeld');
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// Close modal on overlay click
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => {
+    if (e.target === o) o.classList.remove('open');
+  });
+});
+
+// ============================================================
+//  SEIZOENEN & ARCHIEF
+// ============================================================
+function openNieuwSeizoenModal() {
+  const jaar = new Date().getFullYear();
+  document.getElementById('seizoen-naam').value = `Seizoen ${jaar}`;
+  document.getElementById('modal-nieuw-seizoen').classList.add('open');
+}
+
+async function bevestigNieuwSeizoen() {
+  const naam = document.getElementById('seizoen-naam').value.trim();
+  if (!naam) { toast('Geef het seizoen een naam'); return; }
+
+  // Archiveer huidig seizoen
+  const seizoen = {
+    naam,
+    datum: new Date().toLocaleDateString('nl-NL'),
+    timestamp: Date.now(),
+    eindstand: [...state.spelers].sort((a,b) => a.rank - b.rank).map(s => ({
+      rank: s.rank,
+      naam: s.naam,
+      partijen: s.partijen,
+      gewonnen: s.gewonnen,
+      hcp: Math.round(s.hcp)
+    })),
+    uitslagen: [...state.uitslagen]
+  };
+
+  archiefData.unshift(seizoen);
+
+  try {
+    await setDoc(ARCHIEF_DOC, { seizoenen: archiefData });
+
+    // Reset de state — rankings opnieuw op volgorde, statistieken nul
+    const gesorteerd = [...state.spelers].sort((a,b) => a.rank - b.rank);
+    gesorteerd.forEach((s, i) => {
+      s.rank = i + 1;
+      s.partijen = 0;
+      s.gewonnen = 0;
+      s.prevRank = null;
+    });
+    state.uitslagen = [];
+    state.actievePartijen = [];
+
+    await slaState();
+    closeModal('modal-nieuw-seizoen');
+    renderAdmin();
+    toast(`${naam} gearchiveerd ✓`);
+  } catch(e) {
+    archiefData.shift();
+    toast('Fout bij archiveren');
+  }
+}
+
+async function renderArchief() {
+  const list = document.getElementById('archief-list');
+  document.getElementById('archief-count').textContent = archiefData.length;
+
+  if (archiefData.length === 0) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">📁</div><p>Nog geen afgesloten seizoenen.</p></div>';
+    return;
+  }
+
+  list.innerHTML = archiefData.map((s, idx) => {
+    const winnaar = s.eindstand?.[0];
+    return `
+    <div style="padding:14px 16px;border-bottom:1px solid #f0ede4">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-weight:600;font-size:16px">${s.naam}</span>
+        <span style="font-size:12px;color:var(--light)">${s.datum}</span>
+      </div>
+      ${winnaar ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-family:'Bebas Neue';font-size:18px;color:var(--gold)">🏆</span>
+        <span style="font-weight:600">${winnaar.naam}</span>
+        <span style="font-size:12px;color:var(--light)">${winnaar.partijen}P ${winnaar.gewonnen}W</span>
+      </div>` : ''}
+      <div style="display:flex;gap:8px">
+        <span class="badge badge-grey">${s.eindstand?.length || 0} spelers</span>
+        <span class="badge badge-grey">${s.uitslagen?.length || 0} partijen</span>
+        <button class="btn btn-sm btn-ghost" onclick="openArchiefDetail(${idx})" style="margin-left:auto">Bekijk →</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openArchiefDetail(idx) {
+  const s = archiefData[idx];
+  if (!s) return;
+  document.getElementById('archief-detail-titel').textContent = s.naam;
+
+  let html = '<div style="margin-bottom:16px">';
+  html += `<p style="font-size:13px;color:var(--light);margin-bottom:12px">Eindstand — ${s.datum}</p>`;
+
+  s.eindstand?.forEach(sp => {
+    const winpct = sp.partijen > 0 ? Math.round(sp.gewonnen/sp.partijen*100) : 0;
+    html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0ede4">
+      <span style="font-family:'Bebas Neue';font-size:20px;color:${sp.rank<=3?'var(--gold)':'var(--light)'};min-width:28px">${sp.rank}</span>
+      <span style="flex:1;font-weight:500">${sp.naam}</span>
+      <span style="font-size:12px;color:var(--light)">${sp.partijen}P ${sp.gewonnen}W ${winpct}%</span>
+    </div>`;
+  });
+  html += '</div>';
+
+  if (s.uitslagen?.length > 0) {
+    html += `<p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:8px">Gespeelde partijen (${s.uitslagen.length})</p>`;
+    html += s.uitslagen.slice(0, 10).map(u => `
+      <div style="padding:8px 0;border-bottom:1px solid #f0ede4;font-size:13px">
+        <div style="display:flex;justify-content:space-between">
+          <span style="font-weight:500">${u.baan}</span>
+          <span style="color:var(--light)">${u.datum}</span>
+        </div>
+      </div>`).join('');
+    if (s.uitslagen.length > 10) html += `<p style="font-size:12px;color:var(--light);padding:8px 0">... en ${s.uitslagen.length - 10} meer</p>`;
+  }
+
+  document.getElementById('archief-detail-inhoud').innerHTML = html;
+  document.getElementById('modal-archief-detail').classList.add('open');
+}
+
+// ============================================================
+//  PUSHNOTIFICATIES (FCM)
+// ============================================================
+async function registreerNotificatieToken() {
+  if (!huidigeBruiker) return;
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+  if (Notification.permission !== 'granted') return; // alleen als al toegestaan
+
+  try {
+    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (!token) return;
+    const snap = await getDoc(TOKENS_DOC);
+    const tokens = snap.exists() ? (snap.data().tokens || {}) : {};
+    tokens[huidigeBruiker.uid] = { token, email: huidigeBruiker.email, updated: Date.now() };
+    await setDoc(TOKENS_DOC, { tokens });
+    onMessage(messaging, (payload) => {
+      const { title, body } = payload.notification || {};
+      toast(`🔔 ${title}: ${body}`);
+    });
+  } catch(e) {
+    console.log('FCM registratie mislukt:', e.message);
+  }
+}
+
+async function vraagNotificatieToestemming() {
+  if (!('Notification' in window)) { toast('Notificaties worden niet ondersteund op dit apparaat'); return; }
+  if (!('serviceWorker' in navigator)) { toast('Service worker niet ondersteund'); return; }
+
+  try {
+    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') { toast('Notificaties geweigerd'); return; }
+
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (!token) { toast('Token ophalen mislukt'); return; }
+
+    const snap = await getDoc(TOKENS_DOC);
+    const tokens = snap.exists() ? (snap.data().tokens || {}) : {};
+    tokens[huidigeBruiker.uid] = { token, email: huidigeBruiker.email, updated: Date.now() };
+    await setDoc(TOKENS_DOC, { tokens });
+
+    onMessage(messaging, (payload) => {
+      const { title, body } = payload.notification || {};
+      toast(`🔔 ${title}: ${body}`);
+    });
+
+    toast('Notificaties ingeschakeld ✓');
+    renderProfiel();
+  } catch(e) {
+    toast('Notificaties inschakelen mislukt: ' + e.message);
+  }
+}
+
+// Stuur notificatie via Firestore trigger (Cloud Function niet nodig —
+// we slaan de notificatie op en de ontvanger ziet het bij volgende sync)
+async function stuurNotificatie(naarUid, titel, bericht) {
+  try {
+    const snap = await getDoc(TOKENS_DOC);
+    const tokens = snap.exists() ? (snap.data().tokens || {}) : {};
+    const ontvanger = tokens[naarUid];
+    if (!ontvanger) return; // geen token = geen notificatie
+
+    // Sla notificatie op in Firestore — wordt opgepikt door live listener
+    const notifDoc = doc(db, 'ladder', 'notificaties');
+    const notifSnap = await getDoc(notifDoc);
+    const lijst = notifSnap.exists() ? (notifSnap.data().lijst || []) : [];
+    lijst.unshift({ uid: naarUid, titel, bericht, timestamp: Date.now(), gelezen: false });
+    await setDoc(notifDoc, { lijst: lijst.slice(0, 50) }); // max 50 bewaren
+  } catch(e) {
+    console.log('Notificatie opslaan mislukt:', e);
+  }
+}
+
+// ============================================================
+//  UITDAGINGEN
+// ============================================================
+async function laadUitdagingen() {
+  if (!huidigeBruiker) return;
+  const snap = await getDoc(UITDAGINGEN_DOC);
+  uitdagingenData = snap.exists() ? (snap.data().lijst || []) : [];
+  toonUitdagingBadge();
+}
+
+function toonUitdagingBadge() {
+  const open = uitdagingenData.filter(u =>
+    u.naarEmail === huidigeBruiker?.email && u.status === 'open'
+  );
+  const profielBtn = document.getElementById('nav-profiel-btn');
+  if (open.length > 0) {
+    profielBtn.textContent = `👤 Profiel (${open.length})`;
+  } else {
+    profielBtn.textContent = '👤 Profiel';
+  }
+}
+
+async function stuurUitdaging(naarSpelerId) {
+  const naarSpeler = state.spelers.find(s => s.id === naarSpelerId);
+  if (!naarSpeler) return;
+
+  // Zoek e-mail van ontvanger in users lijst
+  const snap = await getDoc(USERS_DOC);
+  const users = snap.exists() ? (snap.data().lijst || []) : [];
+  const naarUser = users.find(u => {
+    const naam = (u.gebruikersnaam || '').toLowerCase();
+    const spelernaam = naarSpeler.naam.toLowerCase();
+    return naam === spelernaam || spelernaam.includes(naam) || naam.includes(spelernaam.split(' ')[0]);
+  });
+
+  if (!naarUser) { toast('Kan gebruiker niet vinden voor uitdaging'); return; }
+
+  // Check of er al een open uitdaging is
+  const bestaand = uitdagingenData.find(u =>
+    ((u.vanEmail === huidigeBruiker.email && u.naarEmail === naarUser.email) ||
+     (u.vanEmail === naarUser.email && u.naarEmail === huidigeBruiker.email)) &&
+    u.status === 'open'
+  );
+  if (bestaand) { toast('Er is al een openstaande uitdaging'); return; }
+
+  const uitdaging = {
+    id: `u_${Date.now()}`,
+    vanEmail: huidigeBruiker.email,
+    vanNaam: huidigeBruiker.gebruikersnaam,
+    naarEmail: naarUser.email,
+    naarNaam: naarUser.gebruikersnaam || naarSpeler.naam,
+    naarUid: naarUser.uid || null,
+    status: 'open',
+    timestamp: Date.now()
+  };
+
+  uitdagingenData.push(uitdaging);
+  await setDoc(UITDAGINGEN_DOC, { lijst: uitdagingenData });
+
+  // Stuur notificatie
+  if (naarUser.uid) {
+    await stuurNotificatie(naarUser.uid, '⚔️ Nieuwe uitdaging!', `${huidigeBruiker.gebruikersnaam} daagt je uit voor een matchplay partij`);
+  }
+
+  toast(`Uitdaging verstuurd naar ${naarSpeler.naam.split(' ')[0]} ✓`);
+  renderLadder(); // refresh voor uitdagingsknop
+}
+
+async function reageerUitdaging(uitdagingId, accepteer) {
+  const idx = uitdagingenData.findIndex(u => u.id === uitdagingId);
+  if (idx === -1) return;
+  uitdagingenData[idx].status = accepteer ? 'geaccepteerd' : 'geweigerd';
+  await setDoc(UITDAGINGEN_DOC, { lijst: uitdagingenData });
+
+  if (accepteer) {
+    toast('Uitdaging geaccepteerd! Plan de partij in via het Partij-tabblad.');
+    // Notificeer uitdager
+    const vanUser = (await getDoc(USERS_DOC)).data()?.lijst?.find(u => u.email === uitdagingenData[idx].vanEmail);
+    if (vanUser?.uid) {
+      await stuurNotificatie(vanUser.uid, '✅ Uitdaging geaccepteerd!', `${huidigeBruiker.gebruikersnaam} heeft je uitdaging geaccepteerd`);
+    }
+  } else {
+    toast('Uitdaging geweigerd.');
+  }
+
+  toonUitdagingBadge();
+  renderProfiel();
+}
+
+async function verwijderUitdaging(uitdagingId) {
+  uitdagingenData = uitdagingenData.filter(u => u.id !== uitdagingId);
+  await setDoc(UITDAGINGEN_DOC, { lijst: uitdagingenData });
+  toonUitdagingBadge();
+  renderProfiel();
+}
+
+// ============================================================
+//  WINDOW EXPORTS
+// ============================================================
+
+// Expose functions to global scope (needed because script is type=module)
+window.showPage = showPage;
+window.addPlayerSlot = addPlayerSlot;
+window.removeSlot = removeSlot;
+window.onBaanSelect = onBaanSelect;
+window.startPartij = startPartij;
+window.updateScore = updateScore;
+window.toggleScorecard = toggleScorecard;
+window.openUitslagModal = openUitslagModal;
+window.setWinnaar = setWinnaar;
+window.bevestigUitslag = bevestigUitslag;
+window.openAddPlayer = openAddPlayer;
+window.saveNewPlayer = saveNewPlayer;
+window.updateAccountPreview = updateAccountPreview;
+window.editHcp = editHcp;
+window.removePlayer = removePlayer;
+window.closeModal = closeModal;
+window.resetData = resetData;
+window.sluitUitslagEnGaNaarLadder = sluitUitslagEnGaNaarLadder;
+window.slaAangepasteBaanOp = slaAangepasteBaanOp;
+window.verwijderAangepasteBaan = verwijderAangepasteBaan;
+window.openToevoegenModal = openToevoegenModal;
+window.bevestigToevoegenRonde = bevestigToevoegenRonde;
+window.verwijderSpelerUitRonde = verwijderSpelerUitRonde;
+window.skipMatchup = skipMatchup;
+window.annuleerEigenPartij = annuleerEigenPartij;
+window.openBeheerPartij = openBeheerPartij;
+window.setBeheerWinnaar = setBeheerWinnaar;
+window.bevestigBeheerUitslag = bevestigBeheerUitslag;
+window.verwijderActievePartij = verwijderActievePartij;
+window.verschuifRank = verschuifRank;
+window.loginSubmit = loginSubmit;
+window.loginMetGoogle = loginMetGoogle;
+window.uitloggen = uitloggen;
+window.openWachtwoordVergeten = openWachtwoordVergeten;
+window.stuurResetEmail = stuurResetEmail;
+window.openWachtwoordWijzigen = openWachtwoordWijzigen;
+window.wijzigWachtwoord = wijzigWachtwoord;
+window.openAddUser = openAddUser;
+window.saveNewUser = saveNewUser;
+window.removeUser = removeUser;
+window.openEditUser = openEditUser;
+window.saveEditUser = saveEditUser;
+window.openNieuwSeizoenModal = openNieuwSeizoenModal;
+window.bevestigNieuwSeizoen = bevestigNieuwSeizoen;
+window.openArchiefDetail = openArchiefDetail;
+window.stuurUitdaging = stuurUitdaging;
+window.reageerUitdaging = reageerUitdaging;
+window.verwijderUitdaging = verwijderUitdaging;
+window.vraagNotificatieToestemming = vraagNotificatieToestemming;
+
+initFirestore();
+</script>
+</body>
+</html>
