@@ -2315,37 +2315,36 @@ async function bevestigUitslag() {
     sw.partijen++; sv.partijen++; sw.gewonnen++;
 
     let newWrank, newVrank;
-    if (sw.rank > sv.rank) {
-      const oldSwRank = sw.rank;
-      const oldSvRank = sv.rank;
-      newWrank = Math.max(1, oldSwRank - 4);
-      newVrank = oldSvRank + 2;
-      if (newWrank >= newVrank) newVrank = newWrank + 1;
+    const swRank = sw.rank;
+    const svRank = sv.rank;
 
-      // Wijs alle andere spelers opnieuw toe in relatieve volgorde
-      // maar sla newWrank en newVrank over
-      const n = state.spelers.length;
-      const gereserveerd = new Set([newWrank, newVrank]);
-      const beschikbaar = [];
-      for (let r = 1; r <= n; r++) { if (!gereserveerd.has(r)) beschikbaar.push(r); }
-      const anderen = state.spelers
-        .filter(s => s.id !== sw.id && s.id !== sv.id)
-        .sort((a, b) => a.rank - b.rank);
-      anderen.forEach((s, i) => { s.rank = beschikbaar[i]; });
+    if (swRank > svRank) {
+      // Lager gerankte wint: stijgt 4, verliezer zakt 2
+      newWrank = Math.max(1, swRank - 4);
+      newVrank = svRank + 2;
+      if (newWrank >= newVrank) newVrank = newWrank + 1;
     } else {
-      // Hoger gerankte wint — winnaar +1, verliezer -1
-      newWrank = Math.max(1, sw.rank - 1);
-      newVrank = sv.rank + 1;
+      // Hoger gerankte wint: winnaar +1, verliezer -1
+      newWrank = Math.max(1, swRank - 1);
+      newVrank = svRank + 1;
     }
+
+    // Wijs beschikbare ranks toe aan andere spelers in relatieve volgorde
+    const n = state.spelers.length;
+    const gereserveerd = new Set([newWrank, newVrank]);
+    const beschikbaar = [];
+    for (let r = 1; r <= n; r++) { if (!gereserveerd.has(r)) beschikbaar.push(r); }
+    const anderen = state.spelers
+      .filter(s => s.id !== sw.id && s.id !== sv.id)
+      .sort((a, b) => a.rank - b.rank);
+    anderen.forEach((s, i) => { s.rank = beschikbaar[i]; });
 
     changes.push({ winnaar: sw.naam, verliezer: sv.naam, wOud: oldWrank, wNieuw: newWrank, vOud: oldVrank, vNieuw: newVrank });
     sw.rank = newWrank;
     sv.rank = newVrank;
   });
 
-  // Normalize ranks — vul gaten op maar behoud relatieve volgorde
-  // Sorteer alle spelers op hun nieuwe rank en wijs 1..n toe
-  [...state.spelers].sort((a,b) => a.rank - b.rank || a.id - b.id).forEach((s,i) => s.rank = i+1);
+  // Ranks zijn al correct toegewezen per matchup — geen extra normalisatie nodig
 
   // Save uitslag in state (samenvatting)
   const uitslag = {
@@ -2646,24 +2645,24 @@ function bevestigBeheerUitslag() {
     const oldWrank = sw.rank, oldVrank = sv.rank;
     sw.partijen++; sv.partijen++; sw.gewonnen++;
     let newWrank, newVrank;
-    if (sw.rank > sv.rank) {
-      const oldSwRank = sw.rank;
-      const oldSvRank = sv.rank;
-      newWrank = Math.max(1, oldSwRank - 4);
-      newVrank = oldSvRank + 2;
+    const swRank = sw.rank;
+    const svRank = sv.rank;
+    if (swRank > svRank) {
+      newWrank = Math.max(1, swRank - 4);
+      newVrank = svRank + 2;
       if (newWrank >= newVrank) newVrank = newWrank + 1;
-      const n = state.spelers.length;
-      const gereserveerd = new Set([newWrank, newVrank]);
-      const beschikbaar = [];
-      for (let r = 1; r <= n; r++) { if (!gereserveerd.has(r)) beschikbaar.push(r); }
-      const anderen = state.spelers
-        .filter(s => s.id !== sw.id && s.id !== sv.id)
-        .sort((a, b) => a.rank - b.rank);
-      anderen.forEach((s, i) => { s.rank = beschikbaar[i]; });
     } else {
-      newWrank = Math.max(1, sw.rank - 1);
-      newVrank = sv.rank + 1;
+      newWrank = Math.max(1, swRank - 1);
+      newVrank = svRank + 1;
     }
+    const n2 = state.spelers.length;
+    const gereserveerd2 = new Set([newWrank, newVrank]);
+    const beschikbaar2 = [];
+    for (let r = 1; r <= n2; r++) { if (!gereserveerd2.has(r)) beschikbaar2.push(r); }
+    const anderen2 = state.spelers
+      .filter(s => s.id !== sw.id && s.id !== sv.id)
+      .sort((a, b) => a.rank - b.rank);
+    anderen2.forEach((s, i) => { s.rank = beschikbaar2[i]; });
     changes.push({ winnaar: sw.naam, verliezer: sv.naam, wOud: oldWrank, wNieuw: newWrank, vOud: oldVrank, vNieuw: newVrank });
     sw.rank = newWrank; sv.rank = newVrank;
   });
