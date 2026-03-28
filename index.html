@@ -2316,16 +2316,14 @@ async function bevestigUitslag() {
 
     let newWrank, newVrank;
     if (sw.rank > sv.rank) {
-      // Lager gerankte wint — verliezer zakt 2, winnaar stijgt 4
       const oldSwRank = sw.rank;
       const oldSvRank = sv.rank;
-      newVrank = oldSvRank + 2;
       newWrank = Math.max(1, oldSwRank - 4);
+      newVrank = oldSvRank + 2;
       if (newWrank >= newVrank) newVrank = newWrank + 1;
 
-      // Schuif tussenliggende spelers:
-      // Spelers tussen oldSvRank en newVrank (exclusief) schuiven 1 omhoog (ruimte voor verliezer)
-      // Spelers tussen newWrank en oldSwRank (exclusief) schuiven 1 omlaag (ruimte voor winnaar)
+      // Spelers tussen oldSvRank en newVrank schuiven 1 omhoog (verliezer maakt plek vrij)
+      // Spelers tussen newWrank en oldSwRank schuiven 1 omlaag (winnaar maakt plek vrij)
       state.spelers.forEach(s => {
         if (s.id !== sw.id && s.id !== sv.id) {
           if (s.rank > oldSvRank && s.rank < newVrank) s.rank--;
@@ -2649,8 +2647,8 @@ function bevestigBeheerUitslag() {
     if (sw.rank > sv.rank) {
       const oldSwRank = sw.rank;
       const oldSvRank = sv.rank;
-      newVrank = oldSvRank + 2;
       newWrank = Math.max(1, oldSwRank - 4);
+      newVrank = oldSvRank + 2;
       if (newWrank >= newVrank) newVrank = newWrank + 1;
       state.spelers.forEach(s => {
         if (s.id !== sw.id && s.id !== sv.id) {
