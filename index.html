@@ -1547,8 +1547,10 @@ function renderLadder() {
       <div class="rank-badge ${s.rank <= 3 ? 'top3' : ''}">${s.rank}</div>
       <div class="player-name" style="${highlighted ? 'font-weight:700;color:var(--green)' : ''}">${s.naam}</div>
       <div style="min-width:30px;text-align:center">${deltaHtml}</div>
-      <div class="player-stats">${s.partijen}P ${s.gewonnen}W<br>${winpct}%</div>
-      ${uitdagingBtn}
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <div class="player-stats" style="text-align:right;min-width:52px">${s.partijen}P ${s.gewonnen}W<br>${winpct}%</div>
+        ${uitdagingBtn}
+      </div>
     </div>`;
   }).join('');
 }
@@ -1931,7 +1933,7 @@ function renderScorecard() {
   p.spelers.forEach(s => {
     headHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px">
       ${naamMap[s.id]}<br>
-      <span style="font-size:10px;font-weight:400;color:rgba(255,255,255,0.7)">hcp ${Math.round(s.partijHcp)}</span><br>
+      <span onclick="editPartijHcp(${s.id})" style="font-size:10px;font-weight:400;color:rgba(255,255,255,0.7);cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)" title="Klik om aan te passen">hcp ${Math.round(s.partijHcp)}</span><br>
       <button onclick="verwijderSpelerUitRonde(${s.id})" style="background:rgba(255,255,255,0.15);border:none;border-radius:4px;color:rgba(255,255,255,0.8);font-size:10px;cursor:pointer;padding:2px 5px;margin-top:2px">✕ verwijder</button>
     </th>`;
   });
@@ -2149,6 +2151,31 @@ function bevestigToevoegenRonde() {
   closeModal('modal-toevoegen-ronde');
   renderRonde();
   toast(`${speler.naam.split(' ')[0]} toegevoegd ✓`);
+}
+
+function editPartijHcp(spelerId) {
+  const p = mijnPartij();
+  if (!p) return;
+  const speler = p.spelers.find(s => s.id == spelerId);
+  if (!speler) return;
+  const nieuw = prompt(`Playing handicap voor ${speler.naam}:`, Math.round(speler.partijHcp));
+  if (nieuw === null) return;
+  const val = parseFloat(nieuw);
+  if (isNaN(val)) { toast('Ongeldige handicap'); return; }
+  speler.partijHcp = val;
+  // Herbereken matchup slagen
+  p.matchups.forEach(m => {
+    const a = p.spelers.find(s => s.id === m.spelerA.id);
+    const b = p.spelers.find(s => s.id === m.spelerB.id);
+    if (!a || !b) return;
+    const hcpDiff = Math.round(Math.abs(a.partijHcp - b.partijHcp) * 0.75);
+    const hoger = a.partijHcp > b.partijHcp ? a : b;
+    m.hcpOntvanger = hoger.id;
+    m.hcpSlagen = hcpDiff;
+  });
+  slaState();
+  renderRonde();
+  toast(`Handicap ${speler.naam.split(' ')[0]} bijgewerkt ✓`);
 }
 
 function verwijderSpelerUitRonde(spelerId) {
@@ -3362,7 +3389,7 @@ function renderTScorecard() {
   // HEAD: rijen = holes, kolommen = spelers
   let headHtml = '<tr><th class="player-col">Hole</th>';
   t.spelers.forEach(s => {
-    headHtml += `<th class="player-col">${s.naam.split(' ')[0]}<span class="hole-par" style="display:block">hcp ${Math.round(s.hcp)}</span></th>`;
+    headHtml += `<th class="player-col">${s.naam.split(' ')[0]}<span class="hole-par" style="display:block;cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)" onclick="editToernooiHcp('${s.id}')" title="Klik om aan te passen">hcp ${Math.round(s.hcp)}</span></th>`;
   });
   headHtml += '</tr>';
   document.getElementById('t-scorecard-head').innerHTML = headHtml;
@@ -3406,6 +3433,23 @@ function updateTScore(spelerId, holeIdx, val) {
   // Sla op in Firestore (debounced)
   clearTimeout(window._tSaveTimer);
   window._tSaveTimer = setTimeout(() => setDoc(TOERNOOI_DOC, toernooiData), 1500);
+}
+
+function editToernooiHcp(spelerId) {
+  const t = toernooiData;
+  if (!t) return;
+  const speler = t.spelers.find(s => String(s.id) === String(spelerId));
+  if (!speler) return;
+  const nieuw = prompt(`Playing handicap voor ${speler.naam.split(' ')[0]}:`, Math.round(speler.hcp));
+  if (nieuw === null) return;
+  const val = parseFloat(nieuw);
+  if (isNaN(val)) { toast('Ongeldige handicap'); return; }
+  speler.hcp = val;
+  setDoc(TOERNOOI_DOC, toernooiData);
+  renderTScorecard();
+  renderTRanglijst();
+  renderTMatrix();
+  toast(`Handicap ${speler.naam.split(' ')[0]} bijgewerkt ✓`);
 }
 
 function updateTTotalen() {
@@ -3701,6 +3745,8 @@ window.openArchiefDetail = openArchiefDetail;
 window.stuurUitdaging = stuurUitdaging;
 window.reageerUitdaging = reageerUitdaging;
 window.verwijderUitdaging = verwijderUitdaging;
+window.editPartijHcp = editPartijHcp;
+window.editToernooiHcp = editToernooiHcp;
 window.autoAdvance = autoAdvance;
 window.slaProfielHcpOp = slaProfielHcpOp;
 window.vraagNotificatieToestemming = vraagNotificatieToestemming;
