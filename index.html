@@ -791,17 +791,20 @@
 
     <!-- Scorekaart -->
     <div class="card">
-      <div class="card-header" style="position:sticky;top:56px;z-index:20;background:var(--card-bg)">
-        <h2>Scorekaart</h2>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-sm btn-primary" onclick="openToevoegenModal()">+ Speler</button>
-          <button class="btn btn-sm btn-ghost" onclick="toggleScorecard()">Toon/verberg</button>
+      <div class="card-header" style="position:sticky;top:56px;z-index:20;background:var(--card-bg);padding:0;flex-direction:column;align-items:stretch">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px">
+          <h2>Scorekaart</h2>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm btn-primary" onclick="openToevoegenModal()">+ Speler</button>
+            <button class="btn btn-sm btn-ghost" onclick="toggleScorecard()">Toon/verberg</button>
+          </div>
         </div>
+        <div id="scorecard-sticky-header" style="overflow-x:hidden;background:var(--green)"></div>
       </div>
-      <div id="scorecard-wrap" style="overflow:auto;max-height:60vh">
+      <div id="scorecard-wrap" style="overflow-x:auto;overflow-y:visible">
         <form onsubmit="return false" action="#">
         <table class="scorecard" id="scorecard-table">
-          <thead id="scorecard-head" style="position:sticky;top:0;z-index:10"></thead>
+          <thead id="scorecard-head"></thead>
           <tbody id="scorecard-body"></tbody>
         </table>
         </form>
@@ -1923,17 +1926,35 @@ function renderScorecard() {
 
   const naamMap = kortNaamMap(p.spelers);
 
-  // HEAD — eerste kolom = hole info, dan een kolom per speler
-  let headHtml = '<tr><th class="player-col" style="text-align:left">Hole</th>';
+  // HEAD — sticky versie in card-header
+  let stickyHeadHtml = '<table class="scorecard" style="width:100%"><tr><th class="player-col" style="text-align:left;min-width:70px">Hole</th>';
   p.spelers.forEach(s => {
-    headHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px">
+    stickyHeadHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px">
       ${naamMap[s.id]}<br>
       <span style="font-size:10px;font-weight:400;color:rgba(255,255,255,0.7)">hcp ${Math.round(s.partijHcp)}</span><br>
       <button onclick="verwijderSpelerUitRonde(${s.id})" style="background:rgba(255,255,255,0.15);border:none;border-radius:4px;color:rgba(255,255,255,0.8);font-size:10px;cursor:pointer;padding:2px 5px;margin-top:2px">✕ verwijder</button>
     </th>`;
   });
+  stickyHeadHtml += '</tr></table>';
+  const stickyEl = document.getElementById('scorecard-sticky-header');
+  if (stickyEl) stickyEl.innerHTML = stickyHeadHtml;
+
+  // HEAD — ook in de tabel zelf voor horizontale sync
+  let headHtml = '<tr><th class="player-col" style="text-align:left">Hole</th>';
+  p.spelers.forEach(s => {
+    headHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px">
+      ${naamMap[s.id]}<br>
+      <span style="font-size:10px;font-weight:400;color:rgba(255,255,255,0.7)">hcp ${Math.round(s.partijHcp)}</span>
+    </th>`;
+  });
   headHtml += '</tr>';
   document.getElementById('scorecard-head').innerHTML = headHtml;
+
+  // Sync horizontaal scrollen tussen sticky header en tabel
+  const wrap = document.getElementById('scorecard-wrap');
+  if (stickyEl && wrap) {
+    wrap.onscroll = () => { stickyEl.scrollLeft = wrap.scrollLeft; };
+  }
 
   // BODY — rijen = holes, kolommen = spelers
   // DOM-volgorde: hole1/speler1, hole1/speler2, hole2/speler1 ...
