@@ -2442,6 +2442,9 @@ async function openScorekaartDetail(uitslag) {
 }
 
 function toonScorekaartModal(data) {
+  console.log('Scorekaart data:', JSON.stringify(data).substring(0, 500));
+  console.log('Scores keys:', Object.keys(data.scores || {}));
+  console.log('SpelerIds:', data.spelerIds);
   const spelers = data.spelers || [];
   const holes = data.holes || [];
 
