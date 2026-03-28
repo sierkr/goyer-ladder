@@ -947,20 +947,21 @@
   <div class="modal">
     <h3>Speler toevoegen</h3>
     <div class="form-group">
-      <label>Naam</label>
-      <input type="text" id="new-player-name" placeholder="Voornaam Achternaam" oninput="updateAccountPreview()">
+      <label>Volledige naam</label>
+      <input type="text" id="new-player-name" placeholder="Voornaam Achternaam">
     </div>
     <div class="form-group">
       <label>Handicap</label>
       <input type="number" id="new-player-hcp" step="1" min="-10" max="54" placeholder="bijv. 12">
     </div>
     <div class="divider"></div>
+    <p style="font-size:12px;color:var(--light);margin-bottom:12px">Een account is nodig om in te loggen. De speler kan ook inloggen met Google als dat e-mailadres overeenkomt.</p>
     <div class="form-group">
-      <label>E-mailadres <span style="color:var(--light);font-weight:400">(voor inloggen)</span></label>
+      <label>E-mailadres speler</label>
       <input type="email" id="new-player-account" placeholder="naam@email.com" inputmode="email">
     </div>
     <div class="form-group">
-      <label>Wachtwoord</label>
+      <label>Tijdelijk wachtwoord <span style="color:var(--light);font-weight:400">(speler kan dit later wijzigen)</span></label>
       <input type="password" id="new-player-pass" placeholder="minimaal 6 tekens">
     </div>
     <div class="modal-actions">
@@ -2363,56 +2364,56 @@ function openAddPlayer() {
   document.getElementById('modal-add-player').classList.add('open');
 }
 
-function updateAccountPreview() {
-  const naam = document.getElementById('new-player-name').value.trim();
-  const delen = naam.toLowerCase().split(' ').filter(d => d.length > 1 || naam.split(' ').length <= 2);
-  const basis = delen.join('.').replace(/[^a-z0-9.]/g, '');
-  // Suggestie als e-mailadres — gebruiker past zelf het domein aan
-  document.getElementById('new-player-account').value = basis ? basis + '@' : '';
-}
-
 async function saveNewPlayer() {
   const naam = document.getElementById('new-player-name').value.trim();
   const hcp = Math.round(parseFloat(document.getElementById('new-player-hcp').value));
-  const accountnaam = document.getElementById('new-player-account').value.trim().toLowerCase();
+  const email = document.getElementById('new-player-account').value.trim().toLowerCase();
   const pass = document.getElementById('new-player-pass').value;
 
   if (!naam) { toast('Voer een naam in'); return; }
   if (isNaN(hcp)) { toast('Voer een handicap in'); return; }
-  if (!accountnaam || !accountnaam.includes('@')) { toast('Voer een geldig e-mailadres in'); return; }
+  if (!email || !email.includes('@')) { toast('Voer een geldig e-mailadres in'); return; }
   if (pass.length < 6) { toast('Wachtwoord minimaal 6 tekens'); return; }
 
   try {
-    // Controleer of accountnaam al bestaat
     const snap = await getDoc(USERS_DOC);
     const users = snap.exists() ? (snap.data().lijst || []) : [];
-    if (users.find(u => u.gebruikersnaam === accountnaam)) {
-      toast('Accountnaam al in gebruik — pas aan'); return;
+
+    // Check of e-mail al in gebruik is
+    if (users.find(u => u.email === email)) {
+      toast('Dit e-mailadres is al in gebruik'); return;
     }
 
-    // Speler toevoegen
+    // Maak Firebase Auth account aan
+    let uid = null;
+    try {
+      const userCred = await createUserWithEmailAndPassword(auth, email, pass);
+      uid = userCred.user.uid;
+    } catch(authErr) {
+      if (authErr.code === 'auth/email-already-in-use') {
+        toast('Dit e-mailadres heeft al een account'); return;
+      }
+      throw authErr;
+    }
+
+    // Voeg speler toe aan ladder
     const newRank = state.spelers.length + 1;
     state.spelers.push({ id: state.nextId++, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
     await slaState();
 
-    // Account aanmaken via Firebase Auth
-    let uid = null;
-    try {
-      const userCred = await createUserWithEmailAndPassword(auth, accountnaam, pass);
-      uid = userCred.user.uid;
-    } catch(authErr) {
-      if (authErr.code !== 'auth/email-already-in-use') throw authErr;
-      // Account bestaat al — zoek uid
-      const bestaand = users.find(u => u.email === accountnaam);
-      uid = bestaand?.uid || null;
-    }
-    users.push({ uid, email: accountnaam, gebruikersnaam: accountnaam.split('@')[0], rol: 'speler' });
+    // Voeg account toe aan users lijst
+    // Gebruikersnaam = voornaam voor mooie weergave
+    const gebruikersnaam = naam.split(' ')[0].toLowerCase();
+    users.push({ uid, email, gebruikersnaam, rol: 'speler' });
     await setDoc(USERS_DOC, { lijst: sorteerUsers(users) });
 
     closeModal('modal-add-player');
     renderAdmin();
     toast(`${naam} toegevoegd ✓`);
-  } catch(e) { toast('Fout bij opslaan'); }
+  } catch(e) {
+    console.error(e);
+    toast('Fout bij opslaan: ' + e.message);
+  }
 }
 
 function editHcp(id) {
@@ -2983,7 +2984,6 @@ window.setWinnaar = setWinnaar;
 window.bevestigUitslag = bevestigUitslag;
 window.openAddPlayer = openAddPlayer;
 window.saveNewPlayer = saveNewPlayer;
-window.updateAccountPreview = updateAccountPreview;
 window.editHcp = editHcp;
 window.removePlayer = removePlayer;
 window.closeModal = closeModal;
