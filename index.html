@@ -1589,7 +1589,18 @@ function initPartijForm() {
 function addPlayerSlot() {
   if (playerSlotCount >= 4) return;
   playerSlotCount++;
-  const opts = state.spelers.sort((a,b)=>a.rank-b.rank).map(s =>
+
+  // Zoek eigen speler-id
+  const gebruiker = huidigeBruiker?.gebruikersnaam?.toLowerCase().trim();
+  const eigenSpeler = state.spelers.find(s => {
+    const naam = s.naam.toLowerCase().trim();
+    return naam === gebruiker || naam.split(' ')[0] === gebruiker?.split(' ')[0];
+  });
+
+  const sorted = state.spelers.sort((a,b) => a.rank - b.rank);
+  // Slot 1 = volledige lijst, overige slots = zonder eigen naam
+  const filterd = playerSlotCount === 1 ? sorted : sorted.filter(s => !eigenSpeler || s.id !== eigenSpeler.id);
+  const opts = filterd.map(s =>
     `<option value="${s.id}">${s.naam} (hcp ${Math.round(s.hcp)})</option>`
   ).join('');
   const div = document.createElement('div');
