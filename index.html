@@ -6,7 +6,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Goyer Golf MP Ladder">
-<meta name="theme-color" content="#2d6a4f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#2d6a4f" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1a3d2a" media="(prefers-color-scheme: dark)">
 <title>Goyer Golf MP Ladder</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -26,6 +28,34 @@
     --blue: #2471a3;
     --radius: 12px;
     --shadow: 0 4px 24px rgba(0,0,0,0.10);
+    --card-bg: #ffffff;
+    --border: #f0ede4;
+    --input-bg: #ffffff;
+    --nav-bg: #ffffff;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --cream: #0f1a14;
+      --dark: #f0f0f0;
+      --mid: #b0b0b0;
+      --light: #666666;
+      --white: #1e2d24;
+      --card-bg: #1a2820;
+      --border: #2a3d30;
+      --input-bg: #1a2820;
+      --nav-bg: #152010;
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+      --green-pale: #1a3d2a;
+    }
+    header { background: #1a3d2a; }
+    .card { background: var(--card-bg); }
+    input, select { background: var(--input-bg); color: var(--dark); border-color: var(--border); }
+    .modal { background: var(--card-bg); }
+    nav { background: var(--nav-bg); border-color: var(--border); }
+    .login-box { background: var(--card-bg); }
+    #laad-overlay { background: var(--cream); }
+    #login-scherm { background: #1a3d2a; }
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -68,8 +98,8 @@
   /* NAV TABS */
   nav {
     display: flex;
-    background: var(--white);
-    border-bottom: 2px solid #e0ddd4;
+    background: var(--nav-bg);
+    border-bottom: 2px solid var(--border);
     overflow-x: auto;
     scrollbar-width: none;
     position: sticky;
@@ -107,7 +137,7 @@
 
   /* CARDS */
   .card {
-    background: white;
+    background: var(--card-bg);
     border-radius: var(--radius);
     box-shadow: var(--shadow);
     margin-bottom: 16px;
@@ -115,7 +145,7 @@
   }
   .card-header {
     padding: 14px 16px 10px;
-    border-bottom: 1px solid #f0ede4;
+    border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -161,11 +191,11 @@
   input, select {
     width: 100%;
     padding: 12px 14px;
-    border: 1.5px solid #ddd;
+    border: 1.5px solid var(--border);
     border-radius: 10px;
     font-family: 'DM Sans', sans-serif;
     font-size: 16px; /* 16px prevents iOS auto-zoom */
-    background: white;
+    background: var(--card-bg);
     color: var(--dark);
     transition: border 0.2s;
     -webkit-appearance: none;
@@ -179,7 +209,7 @@
     display: flex;
     align-items: center;
     padding: 14px 16px;
-    border-bottom: 1px solid #f5f2ea;
+    border-bottom: 1px solid var(--border);
     gap: 12px;
     min-height: 56px;
   }
@@ -234,7 +264,7 @@
   .scorecard td {
     padding: 6px;
     text-align: center;
-    border-bottom: 1px solid #f0ede4;
+    border-bottom: 1px solid var(--border);
   }
   .scorecard td.player-col { text-align: left; padding-left: 8px; font-weight: 500; font-size: 13px; }
   .scorecard input[type=number] {
@@ -260,7 +290,7 @@
     display: flex;
     align-items: center;
     padding: 12px 16px;
-    border-bottom: 1px solid #f0ede4;
+    border-bottom: 1px solid var(--border);
     gap: 8px;
   }
   .match-card:last-child { border-bottom: none; }
@@ -335,7 +365,7 @@
   }
   .modal-overlay.open { display: flex; }
   .modal {
-    background: white;
+    background: var(--card-bg);
     border-radius: 20px 20px 0 0;
     padding: 24px 20px;
     width: 100%;
@@ -377,7 +407,7 @@
     display: flex;
     align-items: center;
     padding: 10px 16px;
-    border-bottom: 1px solid #f5f2ea;
+    border-bottom: 1px solid var(--border);
     gap: 10px;
   }
   .admin-row:last-child { border-bottom: none; }
@@ -442,7 +472,7 @@
   }
   #login-scherm.actief { display: flex; }
   .login-box {
-    background: white;
+    background: var(--card-bg);
     border-radius: 20px;
     padding: 32px 24px;
     width: 100%;
@@ -1029,18 +1059,9 @@ const BANEN_DB = {
 };
 
 const DEFAULT_STATE = {
-  spelers: [
-    {id:1,naam:"Jan de Vries",hcp:12.4,rank:1,partijen:0,gewonnen:0},
-    {id:2,naam:"Piet Bakker",hcp:18.2,rank:2,partijen:2,gewonnen:1},
-    {id:3,naam:"Kees Jansen",hcp:7.6,rank:3,partijen:3,gewonnen:2},
-    {id:4,naam:"Henk Smit",hcp:24.1,rank:4,partijen:1,gewonnen:0},
-    {id:5,naam:"Rob van Dijk",hcp:15.0,rank:5,partijen:4,gewonnen:3},
-    {id:6,naam:"Sjoerd Mulder",hcp:9.8,rank:6,partijen:2,gewonnen:1},
-    {id:7,naam:"Frank Visser",hcp:21.3,rank:7,partijen:0,gewonnen:0},
-    {id:8,naam:"Thomas Groot",hcp:5.2,rank:8,partijen:5,gewonnen:4},
-  ],
-  nextId: 9,
-  actievePartijen: [],  // meerdere partijen tegelijk
+  spelers: [],
+  nextId: 1,
+  actievePartijen: [],
   uitslagen: []
 };
 
