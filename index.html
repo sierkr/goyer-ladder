@@ -702,7 +702,7 @@
     <h1><span>⛳ Goyer Golf</span><span id="h1-second"> MP Ladder</span></h1>
   </div>
   <div style="display:flex;align-items:center;gap:10px">
-    <div class="subtitle" id="header-info">100 spelers</div>
+    
     <button id="logout-btn" onclick="uitloggen()" style="display:none;background:rgba(255,255,255,0.15);border:none;color:white;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">Uitloggen</button>
   </div>
 </header>
@@ -1513,7 +1513,7 @@ function showPage(name) {
 function renderLadder() {
   const sorted = [...state.spelers].sort((a,b) => a.rank - b.rank);
   document.getElementById('ladder-count').textContent = sorted.length + ' spelers';
-  document.getElementById('header-info').textContent = sorted.length + ' spelers';
+  
 
   const list = document.getElementById('ladder-list');
   if (sorted.length === 0) {
