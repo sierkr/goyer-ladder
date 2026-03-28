@@ -1860,8 +1860,8 @@ function startPartij() {
 
   state.actievePartijen.push(nieuwePartij);
 
+  await slaState();
   toast('Partij gestart! ⛳');
-  slaState();
 
   // Go to ronde tab
   document.querySelectorAll('nav button')[2].click();
