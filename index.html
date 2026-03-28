@@ -804,7 +804,7 @@
       <div id="scorecard-wrap" style="overflow-x:auto;overflow-y:visible">
         <form onsubmit="return false" action="#">
         <table class="scorecard" id="scorecard-table">
-          <thead id="scorecard-head"></thead>
+          <thead id="scorecard-head" style="display:none"></thead>
           <tbody id="scorecard-body"></tbody>
         </table>
         </form>
@@ -1953,7 +1953,8 @@ function renderScorecard() {
   // Sync horizontaal scrollen tussen sticky header en tabel
   const wrap = document.getElementById('scorecard-wrap');
   if (stickyEl && wrap) {
-    wrap.onscroll = () => { stickyEl.scrollLeft = wrap.scrollLeft; };
+    wrap.addEventListener('scroll', () => { stickyEl.scrollLeft = wrap.scrollLeft; });
+    stickyEl.addEventListener('scroll', () => { wrap.scrollLeft = stickyEl.scrollLeft; });
   }
 
   // BODY — rijen = holes, kolommen = spelers
