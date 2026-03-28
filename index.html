@@ -259,9 +259,6 @@
     font-family: 'DM Mono', monospace;
     font-size: 11px;
     font-weight: 500;
-    position: sticky;
-    top: 56px; /* hoogte van de header balk */
-    z-index: 10;
   }
   .scorecard th.player-col { text-align: left; font-family: 'DM Sans', sans-serif; font-size: 12px; }
   .scorecard td {
@@ -794,17 +791,17 @@
 
     <!-- Scorekaart -->
     <div class="card">
-      <div class="card-header">
+      <div class="card-header" style="position:sticky;top:56px;z-index:20;background:var(--card-bg)">
         <h2>Scorekaart</h2>
         <div style="display:flex;gap:6px">
           <button class="btn btn-sm btn-primary" onclick="openToevoegenModal()">+ Speler</button>
           <button class="btn btn-sm btn-ghost" onclick="toggleScorecard()">Toon/verberg</button>
         </div>
       </div>
-      <div id="scorecard-wrap" style="overflow-x:auto">
+      <div id="scorecard-wrap" style="overflow:auto;max-height:60vh">
         <form onsubmit="return false" action="#">
         <table class="scorecard" id="scorecard-table">
-          <thead id="scorecard-head"></thead>
+          <thead id="scorecard-head" style="position:sticky;top:0;z-index:10"></thead>
           <tbody id="scorecard-body"></tbody>
         </table>
         </form>
