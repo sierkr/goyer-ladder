@@ -865,6 +865,14 @@
   <div class="card">
     <div class="card-header"><h2>Instellingen</h2></div>
     <div class="card-body">
+      <div class="form-group">
+        <label>Playing Handicap</label>
+        <div style="display:flex;gap:10px;align-items:center">
+          <input type="number" id="profiel-hcp-input" min="-10" max="54" step="1" placeholder="bijv. 12" style="width:100px;flex:none">
+          <button class="btn btn-primary btn-sm" onclick="slaProfielHcpOp()">Opslaan</button>
+        </div>
+      </div>
+      <div class="divider"></div>
       <button class="btn btn-ghost btn-block" onclick="openWachtwoordWijzigen()" style="margin-bottom:10px">🔑 Wachtwoord wijzigen</button>
       <button class="btn btn-ghost btn-block" onclick="uitloggen()" style="color:var(--red);border-color:#f5c6cb">↩ Uitloggen</button>
     </div>
@@ -1553,13 +1561,16 @@ function initPartijForm() {
 
   // Auto-selecteer ingelogde speler in slot 1
   if (huidigeBruiker) {
-    const gebruiker = huidigeBruiker.gebruikersnaam.toLowerCase();
+    const gebruiker = huidigeBruiker.gebruikersnaam.toLowerCase().trim();
     const gekoppeld = state.spelers.find(s => {
-      const naam = s.naam.toLowerCase();
+      const naam = s.naam.toLowerCase().trim();
       const voornaam = naam.split(' ')[0];
-      return naam === gebruiker || voornaam === gebruiker ||
-             naam.replace(/\s/g,'') === gebruiker.replace(/\./g,'').replace(/\s/g,'') ||
-             naam.replace(/\s/g,'.') === gebruiker;
+      const gebruikerVoornaam = gebruiker.split(' ')[0];
+      return naam === gebruiker ||
+             voornaam === gebruiker ||
+             voornaam === gebruikerVoornaam ||
+             naam.includes(gebruiker) ||
+             gebruiker.includes(voornaam);
     });
     if (gekoppeld) {
       const slot1 = document.getElementById('player-1');
@@ -2584,7 +2595,7 @@ function openEditPlayer(id) {
   document.getElementById('modal-edit-player').classList.add('open');
 }
 
-function saveEditPlayer() {
+async function saveEditPlayer() {
   const id = parseInt(document.getElementById('edit-player-id').value);
   const naam = document.getElementById('edit-player-name').value.trim();
   const hcp = Math.round(parseFloat(document.getElementById('edit-player-hcp').value));
@@ -2592,9 +2603,25 @@ function saveEditPlayer() {
   if (isNaN(hcp)) { toast('Voer een handicap in'); return; }
   const s = state.spelers.find(p => p.id === id);
   if (!s) return;
+  const oudeNaam = s.naam;
   s.naam = naam;
   s.hcp = hcp;
-  slaState();
+  await slaState();
+
+  // Update ook de gebruikersnaam in de accounts lijst als die overeenkomt
+  try {
+    const snap = await getDoc(USERS_DOC);
+    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const user = users.find(u =>
+      u.gebruikersnaam?.toLowerCase() === oudeNaam.toLowerCase() ||
+      u.gebruikersnaam?.toLowerCase() === oudeNaam.split(' ')[0].toLowerCase()
+    );
+    if (user) {
+      user.gebruikersnaam = naam;
+      await setDoc(USERS_DOC, { lijst: users });
+    }
+  } catch(e) { console.error('Naam update account mislukt:', e); }
+
   closeModal('modal-edit-player');
   renderAdmin();
   toast('Speler bijgewerkt ✓');
@@ -2740,6 +2767,29 @@ function renderProfiel() {
     uitdHtml += '</div>';
     document.getElementById('profiel-stats').innerHTML += uitdHtml;
   }
+
+  // Vul huidige handicap in
+  const hcpInput = document.getElementById('profiel-hcp-input');
+  if (hcpInput && speler) hcpInput.value = Math.round(speler.hcp);
+}
+
+async function slaProfielHcpOp() {
+  const val = parseInt(document.getElementById('profiel-hcp-input').value);
+  if (isNaN(val)) { toast('Voer een geldige handicap in'); return; }
+
+  // Zoek gekoppelde speler
+  const gebruiker = huidigeBruiker.gebruikersnaam.toLowerCase().trim();
+  const speler = state.spelers.find(s => {
+    const naam = s.naam.toLowerCase().trim();
+    return naam === gebruiker || naam.split(' ')[0] === gebruiker.split(' ')[0] ||
+           naam.includes(gebruiker.split(' ')[0]) || gebruiker.includes(naam.split(' ')[0]);
+  });
+
+  if (!speler) { toast('Geen gekoppeld spelersprofiel gevonden'); return; }
+  speler.hcp = val;
+  await slaState();
+  toast('Playing Handicap bijgewerkt ✓');
+  renderProfiel();
 }
 
 // ============================================================
@@ -3569,6 +3619,7 @@ window.openArchiefDetail = openArchiefDetail;
 window.stuurUitdaging = stuurUitdaging;
 window.reageerUitdaging = reageerUitdaging;
 window.verwijderUitdaging = verwijderUitdaging;
+window.slaProfielHcpOp = slaProfielHcpOp;
 window.vraagNotificatieToestemming = vraagNotificatieToestemming;
 
 initFirestore();
