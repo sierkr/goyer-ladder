@@ -574,7 +574,7 @@
     </div>
     <div class="form-group">
       <label>Nieuw wachtwoord</label>
-      <input type="password" id="nieuw-wachtwoord" placeholder="minimaal 6 tekens">
+      <input type="password" id="nieuw-wachtwoord" placeholder="minimaal 4 tekens">
     </div>
     <div class="form-group">
       <label>Bevestig nieuw wachtwoord</label>
@@ -663,7 +663,7 @@
     </div>
     <div class="form-group">
       <label>Wachtwoord</label>
-      <input type="password" id="new-user-pass" placeholder="minimaal 6 tekens">
+      <input type="password" id="new-user-pass" placeholder="minimaal 4 tekens">
     </div>
     <div class="form-group">
       <label>Rol</label>
@@ -933,7 +933,25 @@
   </div>
 </div>
 
-<!-- Ladder wijziging modal -->
+<!-- Edit player modal -->
+<div class="modal-overlay" id="modal-edit-player">
+  <div class="modal">
+    <h3>Speler bewerken</h3>
+    <div class="form-group">
+      <label>Naam</label>
+      <input type="text" id="edit-player-name" placeholder="Voornaam Achternaam">
+    </div>
+    <div class="form-group">
+      <label>Handicap</label>
+      <input type="number" id="edit-player-hcp" step="1" min="-10" max="54">
+    </div>
+    <input type="hidden" id="edit-player-id">
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-edit-player')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="saveEditPlayer()">Opslaan</button>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-ladder-result">
   <div class="modal">
     <h3>Ladderwijzigingen</h3>
@@ -962,7 +980,7 @@
     </div>
     <div class="form-group">
       <label>Tijdelijk wachtwoord <span style="color:var(--light);font-weight:400">(speler kan dit later wijzigen)</span></label>
-      <input type="password" id="new-player-pass" placeholder="minimaal 6 tekens">
+      <input type="password" id="new-player-pass" placeholder="minimaal 4 tekens">
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-add-player')">Annuleren</button>
@@ -1207,7 +1225,7 @@ async function wijzigWachtwoord() {
   const huidig = document.getElementById('huidig-wachtwoord').value;
   const nieuw = document.getElementById('nieuw-wachtwoord').value;
   const bevestig = document.getElementById('bevestig-wachtwoord').value;
-  if (nieuw.length < 6) { toast('Nieuw wachtwoord minimaal 6 tekens'); return; }
+  if (nieuw.length < 4) { toast('Nieuw wachtwoord minimaal 4 tekens'); return; }
   if (nieuw !== bevestig) { toast('Wachtwoorden komen niet overeen'); return; }
   try {
     const user = auth.currentUser;
@@ -2349,7 +2367,7 @@ function renderAdmin() {
         <button onclick="verschuifRank(${s.id},-1)" style="background:var(--green-pale);border:none;border-radius:5px;width:26px;height:26px;cursor:pointer;font-size:13px;color:var(--green);font-weight:700" title="1 plaats omhoog">↑</button>
         <button onclick="verschuifRank(${s.id},1)" style="background:#fde8e8;border:none;border-radius:5px;width:26px;height:26px;cursor:pointer;font-size:13px;color:var(--red);font-weight:700" title="1 plaats omlaag">↓</button>
       </div>
-      <button class="btn btn-sm btn-ghost" onclick="editHcp(${s.id})">✏️</button>
+      <button class="btn btn-sm btn-ghost" onclick="openEditPlayer(${s.id})">✏️</button>
       <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removePlayer(${s.id})">✕</button>
     </div>
   `).join('');
@@ -2402,8 +2420,8 @@ async function saveNewPlayer() {
     await slaState();
 
     // Voeg account toe aan users lijst
-    // Gebruikersnaam = voornaam voor mooie weergave
-    const gebruikersnaam = naam.split(' ')[0].toLowerCase();
+    // Gebruikersnaam = volledige naam voor mooie weergave
+    const gebruikersnaam = naam;
     users.push({ uid, email, gebruikersnaam, rol: 'speler' });
     await setDoc(USERS_DOC, { lijst: sorteerUsers(users) });
 
@@ -2416,17 +2434,29 @@ async function saveNewPlayer() {
   }
 }
 
-function editHcp(id) {
+function openEditPlayer(id) {
   const s = state.spelers.find(p => p.id === id);
   if (!s) return;
-  const nieuw = prompt(`Nieuwe handicap voor ${s.naam}:`, Math.round(s.hcp));
-  if (nieuw === null) return;
-  const val = Math.round(parseFloat(nieuw));
-  if (isNaN(val)) { toast('Ongeldige handicap'); return; }
-  s.hcp = val;
+  document.getElementById('edit-player-id').value = id;
+  document.getElementById('edit-player-name').value = s.naam;
+  document.getElementById('edit-player-hcp').value = Math.round(s.hcp);
+  document.getElementById('modal-edit-player').classList.add('open');
+}
+
+function saveEditPlayer() {
+  const id = parseInt(document.getElementById('edit-player-id').value);
+  const naam = document.getElementById('edit-player-name').value.trim();
+  const hcp = Math.round(parseFloat(document.getElementById('edit-player-hcp').value));
+  if (!naam) { toast('Voer een naam in'); return; }
+  if (isNaN(hcp)) { toast('Voer een handicap in'); return; }
+  const s = state.spelers.find(p => p.id === id);
+  if (!s) return;
+  s.naam = naam;
+  s.hcp = hcp;
   slaState();
+  closeModal('modal-edit-player');
   renderAdmin();
-  toast('Handicap bijgewerkt ✓');
+  toast('Speler bijgewerkt ✓');
 }
 
 function removePlayer(id) {
@@ -2633,7 +2663,7 @@ async function saveEditUser() {
   const pass = document.getElementById('edit-user-pass').value;
   const rol = document.getElementById('edit-user-rol').value;
   if (!naam) { toast('Voer een gebruikersnaam in'); return; }
-  if (pass && pass.length < 4) { toast('Wachtwoord minimaal 4 tekens'); return; }
+  if (pass && pass.length < 6) { toast('Wachtwoord minimaal 6 tekens'); return; }
 
   try {
     const snap = await getDoc(USERS_DOC);
@@ -2984,7 +3014,8 @@ window.setWinnaar = setWinnaar;
 window.bevestigUitslag = bevestigUitslag;
 window.openAddPlayer = openAddPlayer;
 window.saveNewPlayer = saveNewPlayer;
-window.editHcp = editHcp;
+window.openEditPlayer = openEditPlayer;
+window.saveEditPlayer = saveEditPlayer;
 window.removePlayer = removePlayer;
 window.closeModal = closeModal;
 window.resetData = resetData;
