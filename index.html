@@ -694,7 +694,7 @@
   <button onclick="showPage('partij')">🏌️ Partij</button>
   <button onclick="showPage('ronde')">📋 Ronde</button>
   <button onclick="showPage('uitslagen')">📊 Uitslagen</button>
-  <button onclick="showPage('archief')">📁 Archief</button>
+  <button onclick="showPage('archief')" id="nav-archief-btn" style="display:none">📁 Archief</button>
   <button id="nav-profiel-btn" onclick="showPage('profiel')" style="display:none">👤 Profiel</button>
   <button id="nav-admin-btn" onclick="showPage('admin')" style="display:none">⚙️ Beheer</button>
 </nav>
@@ -1113,7 +1113,10 @@ async function setIngelogd(firebaseUser) {
   const adminBtn = document.getElementById('nav-admin-btn');
   const profielBtn = document.getElementById('nav-profiel-btn');
   const logoutBtn = document.getElementById('logout-btn');
-  if (huidigeBruiker.rol === 'beheerder') adminBtn.style.display = '';
+  if (huidigeBruiker.rol === 'beheerder') {
+    adminBtn.style.display = '';
+    document.getElementById('nav-archief-btn').style.display = '';
+  }
   profielBtn.style.display = '';
   logoutBtn.style.display = '';
   logoutBtn.textContent = huidigeBruiker.gebruikersnaam + ' ↩';
@@ -1166,6 +1169,7 @@ function uitloggen() {
   huidigeBruiker = null;
   document.getElementById('login-scherm').classList.add('actief');
   document.getElementById('nav-admin-btn').style.display = 'none';
+  document.getElementById('nav-archief-btn').style.display = 'none';
   document.getElementById('nav-profiel-btn').style.display = 'none';
   document.getElementById('logout-btn').style.display = 'none';
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
