@@ -1539,18 +1539,16 @@ function renderLadder() {
         (u.naarEmail === huidigeBruiker?.email && u.vanNaam?.toLowerCase().includes(s.naam.split(' ')[0].toLowerCase()))
       )
     );
-    const uitdagingBtn = huidigeBruiker && !isZelf
+    const uitdagingBtnHtml = huidigeBruiker && !isZelf
       ? `<button onclick="stuurUitdaging(${s.id})" style="background:none;border:1px solid #e0ddd4;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:${openUitdaging ? 'var(--gold)' : 'var(--light)'}" title="${openUitdaging ? 'Uitdaging loopt' : 'Uitdagen'}">⚔️</button>`
-      : `<div style="width:34px"></div>`;
+      : '';
 
     return `<div class="ladder-item" style="${highlighted ? 'background:var(--green-pale);' : ''}">
       <div class="rank-badge ${s.rank <= 3 ? 'top3' : ''}">${s.rank}</div>
       <div class="player-name" style="${highlighted ? 'font-weight:700;color:var(--green)' : ''}">${s.naam}</div>
       <div style="min-width:30px;text-align:center">${deltaHtml}</div>
-      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-        <div class="player-stats" style="text-align:right;min-width:52px">${s.partijen}P ${s.gewonnen}W<br>${winpct}%</div>
-        ${uitdagingBtn}
-      </div>
+      <div class="player-stats" style="text-align:right;min-width:52px">${s.partijen}P ${s.gewonnen}W<br>${winpct}%</div>
+      <div style="width:42px;text-align:center;flex-shrink:0">${uitdagingBtnHtml}</div>
     </div>`;
   }).join('');
 }
