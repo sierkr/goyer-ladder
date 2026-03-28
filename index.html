@@ -259,6 +259,9 @@
     font-family: 'DM Mono', monospace;
     font-size: 11px;
     font-weight: 500;
+    position: sticky;
+    top: 56px; /* hoogte van de header balk */
+    z-index: 10;
   }
   .scorecard th.player-col { text-align: left; font-family: 'DM Sans', sans-serif; font-size: 12px; }
   .scorecard td {
@@ -1777,7 +1780,7 @@ function mijnPartij() {
   ) || null;
 }
 
-function startPartij() {
+async function startPartij() {
   const baanNaam = document.getElementById('baan-select').value;
   if (!baanNaam) { toast('Selecteer eerst een baan'); return; }
 
