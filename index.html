@@ -3257,9 +3257,11 @@ function renderTScorecard() {
   let bodyHtml = '';
   t.holes.forEach((h, i) => {
     bodyHtml += `<tr><td class="player-col" style="font-weight:600">${i+1}<span class="hole-par">p${h.par} SI${h.si}</span></td>`;
-    t.spelers.forEach(s => {
+    t.spelers.forEach((s, si) => {
       const val = t.scores[s.id]?.[i];
+      const tabIdx = si * t.holes.length + i + 1;
       bodyHtml += `<td><input type="number" min="1" max="12" value="${val !== null && val !== undefined ? val : ''}"
+        tabindex="${tabIdx}"
         onchange="updateTScore(${s.id},${i},this.value)"
         style="width:42px;padding:4px;text-align:center;font-size:14px;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--dark)"></td>`;
     });
