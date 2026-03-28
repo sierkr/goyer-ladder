@@ -1540,8 +1540,8 @@ function renderLadder() {
       )
     );
     const uitdagingBtn = huidigeBruiker && !isZelf
-      ? `<button onclick="stuurUitdaging(${s.id})" style="background:none;border:1px solid #e0ddd4;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:${openUitdaging ? 'var(--gold)' : 'var(--light)'}" title="${openUitdaging ? 'Uitdaging loopt' : 'Uitdagen'}">${openUitdaging ? '⚔️' : '⚔️'}</button>`
-      : '';
+      ? `<button onclick="stuurUitdaging(${s.id})" style="background:none;border:1px solid #e0ddd4;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:${openUitdaging ? 'var(--gold)' : 'var(--light)'}" title="${openUitdaging ? 'Uitdaging loopt' : 'Uitdagen'}">⚔️</button>`
+      : `<div style="width:34px"></div>`;
 
     return `<div class="ladder-item" style="${highlighted ? 'background:var(--green-pale);' : ''}">
       <div class="rank-badge ${s.rank <= 3 ? 'top3' : ''}">${s.rank}</div>
