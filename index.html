@@ -2316,11 +2316,23 @@ async function bevestigUitslag() {
 
     let newWrank, newVrank;
     if (sw.rank > sv.rank) {
-      // Lager gerankte wint — verliezer zakt eerst 2, winnaar stijgt 4
-      // Als winnaar na stijging boven of gelijk aan verliezer komt: verliezer = winnaar + 1
+      // Lager gerankte wint — verliezer zakt 2, winnaar stijgt 4
       newVrank = sv.rank + 2;
       newWrank = Math.max(1, sw.rank - 4);
       if (newWrank >= newVrank) newVrank = newWrank + 1;
+
+      // Verliezer maakt ruimte: spelers tussen sv.rank+1 en newVrank schuiven 1 omhoog
+      state.spelers.forEach(s => {
+        if (s.id !== sw.id && s.id !== sv.id) {
+          if (s.rank > sv.rank && s.rank <= newVrank) s.rank--;
+        }
+      });
+      // Winnaar maakt ruimte: spelers tussen newWrank en sw.rank-1 schuiven 1 omlaag
+      state.spelers.forEach(s => {
+        if (s.id !== sw.id && s.id !== sv.id) {
+          if (s.rank >= newWrank && s.rank < sw.rank) s.rank++;
+        }
+      });
     } else {
       // Hoger gerankte wint — winnaar +1, verliezer -1
       newWrank = Math.max(1, sw.rank - 1);
@@ -2332,8 +2344,9 @@ async function bevestigUitslag() {
     sv.rank = newVrank;
   });
 
-  // Normalize ranks
-  [...state.spelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
+  // Normalize ranks — vul gaten op maar behoud relatieve volgorde
+  // Sorteer alle spelers op hun nieuwe rank en wijs 1..n toe
+  [...state.spelers].sort((a,b) => a.rank - b.rank || a.id - b.id).forEach((s,i) => s.rank = i+1);
 
   // Save uitslag in state (samenvatting)
   const uitslag = {
@@ -2639,6 +2652,16 @@ function bevestigBeheerUitslag() {
       newVrank = sv.rank + 2;
       newWrank = Math.max(1, sw.rank - 4);
       if (newWrank >= newVrank) newVrank = newWrank + 1;
+      state.spelers.forEach(s => {
+        if (s.id !== sw.id && s.id !== sv.id) {
+          if (s.rank > sv.rank && s.rank <= newVrank) s.rank--;
+        }
+      });
+      state.spelers.forEach(s => {
+        if (s.id !== sw.id && s.id !== sv.id) {
+          if (s.rank >= newWrank && s.rank < sw.rank) s.rank++;
+        }
+      });
     } else {
       newWrank = Math.max(1, sw.rank - 1);
       newVrank = sv.rank + 1;
