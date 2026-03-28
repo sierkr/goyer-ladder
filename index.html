@@ -1592,6 +1592,7 @@ function initPartijForm() {
       if (slot1) {
         slot1.value = gekoppeld.id;
         document.getElementById('hcp-1').value = Math.round(gekoppeld.hcp);
+        refreshPlayerSlotOptions();
       }
     }
   }
@@ -1605,17 +1606,12 @@ function addPlayerSlot() {
   if (playerSlotCount >= 4) return;
   playerSlotCount++;
 
-  // Zoek eigen speler-id
-  const gebruiker = huidigeBruiker?.gebruikersnaam?.toLowerCase().trim();
-  const eigenSpeler = state.spelers.find(s => {
-    const naam = s.naam.toLowerCase().trim();
-    return naam === gebruiker || naam.split(' ')[0] === gebruiker?.split(' ')[0];
-  });
-  console.log('Ingelogd als:', gebruiker, '| Eigen speler gevonden:', eigenSpeler?.naam || 'NIET GEVONDEN');
+  // Filter spelers die al geselecteerd zijn in andere slots
+  const reedsSel = Array.from(document.querySelectorAll('.player-select'))
+    .map(s => s.value).filter(v => v !== '');
 
   const sorted = [...state.spelers].sort((a,b) => a.rank - b.rank);
-  // Slot 1 = volledige lijst, overige slots = zonder eigen naam
-  const filterd = playerSlotCount === 1 ? sorted : sorted.filter(s => !eigenSpeler || String(s.id) !== String(eigenSpeler.id));
+  const filterd = sorted.filter(s => !reedsSel.includes(String(s.id)));
   const opts = filterd.map(s =>
     `<option value="${s.id}">${s.naam} (hcp ${Math.round(s.hcp)})</option>`
   ).join('');
@@ -1635,20 +1631,28 @@ function addPlayerSlot() {
 
   // Auto-fill hcp when player selected, en voorkom dubbele spelers
   div.querySelector('select').addEventListener('change', function() {
-    const speler = state.spelers.find(s => s.id == this.value);
+    const speler = state.spelers.find(s => String(s.id) === String(this.value));
     if (speler) div.querySelector('.hcp-input').value = Math.round(speler.hcp);
+    // Ververs alle andere slots om geselecteerde speler eruit te halen
+    refreshPlayerSlotOptions();
+  });
+}
 
-    // Controleer of deze speler al in een ander slot zit
-    if (this.value) {
-      const alleSelects = document.querySelectorAll('.player-select');
-      alleSelects.forEach(other => {
-        if (other !== this && other.value === this.value) {
-          toast('Deze speler is al toegevoegd');
-          this.value = '';
-          div.querySelector('.hcp-input').value = '';
-        }
-      });
-    }
+function refreshPlayerSlotOptions() {
+  // Haal alle geselecteerde speler-ids op
+  const selects = Array.from(document.querySelectorAll('.player-select'));
+  const reedsSel = selects.map(s => String(s.value)).filter(v => v !== '');
+  const sorted = [...state.spelers].sort((a,b) => a.rank - b.rank);
+
+  selects.forEach(sel => {
+    const huidigeWaarde = sel.value;
+    // Toon alle spelers behalve die al geselecteerd zijn in andere slots
+    const beschikbaar = sorted.filter(s =>
+      String(s.id) === huidigeWaarde || !reedsSel.includes(String(s.id))
+    );
+    sel.innerHTML = '<option value="">— Kies speler —</option>' +
+      beschikbaar.map(s => `<option value="${s.id}">${s.naam} (hcp ${Math.round(s.hcp)})</option>`).join('');
+    sel.value = huidigeWaarde; // herstel selectie
   });
 }
 
