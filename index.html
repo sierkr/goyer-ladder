@@ -2499,21 +2499,6 @@ function renderProfiel() {
       <div>🏒 Handicap: <strong>${Math.round(speler.hcp)}</strong></div>
     </div>`;
 
-  // Notificatie knop status
-  const notifBtn = document.getElementById('notif-btn');
-  if (notifBtn) {
-    if (!('Notification' in window)) {
-      notifBtn.style.display = 'none';
-    } else if (Notification.permission === 'granted') {
-      notifBtn.textContent = '🔔 Notificaties aan ✓';
-      notifBtn.style.color = 'var(--green)';
-      notifBtn.style.borderColor = 'var(--green-pale)';
-    } else if (Notification.permission === 'denied') {
-      notifBtn.textContent = '🔕 Notificaties geblokkeerd';
-      notifBtn.style.color = 'var(--light)';
-      notifBtn.disabled = true;
-    }
-  }
   const mijnUitdagingen = uitdagingenData.filter(u =>
     u.vanEmail === huidigeBruiker.email || u.naarEmail === huidigeBruiker.email
   );
