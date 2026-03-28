@@ -203,6 +203,9 @@
   }
   input:focus, select:focus { outline: none; border-color: var(--green); }
   input[type=number] { font-family: 'DM Mono', monospace; }
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
 
   /* LADDER */
   .ladder-item {
@@ -1950,19 +1953,21 @@ function renderScorecard() {
         <span class="hole-par"> p${h.par}</span>
         <span class="hole-si"> SI${h.si}</span>
       </td>`;
-    p.spelers.forEach(s => {
+    p.spelers.forEach((s, si) => {
       const val = p.scores[s.id][holeIdx];
       if (val !== null) totalen[s.id] += val;
       const inputId = `score-${s.id}-${holeIdx}`;
       if (val === null && firstEmptyId === null) firstEmptyId = inputId;
+      const tabIdx = holeIdx * p.spelers.length + si + 1;
       bodyHtml += `<td style="text-align:center"><input
         id="${inputId}"
         type="number"
         inputmode="numeric"
         pattern="[0-9]*"
         min="1" max="12"
+        tabindex="${tabIdx}"
         value="${val !== null ? val : ''}"
-        onchange="updateScore(${s.id},${holeIdx},this.value)"
+        oninput="updateScore(${s.id},${holeIdx},this.value);if(this.value.length>0)autoAdvance(this)"
         style="width:38px;padding:3px;text-align:center;font-size:13px;font-family:'DM Mono',monospace;border:1.5px solid #e0ddd4;border-radius:5px"
       ></td>`;
     });
@@ -3367,11 +3372,11 @@ function renderTScorecard() {
   t.holes.forEach((h, i) => {
     bodyHtml += `<tr><td class="player-col" style="font-weight:600">${i+1}<span class="hole-par">p${h.par} SI${h.si}</span></td>`;
     t.spelers.forEach((s, si) => {
-      const val = t.scores[s.id]?.[i];
+      const val = t.scores[s.id]?.[i] ?? t.scores[String(s.id)]?.[i];
       const tabIdx = si * t.holes.length + i + 1;
       bodyHtml += `<td><input type="number" min="1" max="12" value="${val !== null && val !== undefined ? val : ''}"
         tabindex="${tabIdx}"
-        onchange="updateTScore(${s.id},${i},this.value)"
+        oninput="updateTScore(${s.id},${i},this.value);if(this.value.length>0)autoAdvance(this)"
         style="width:42px;padding:4px;text-align:center;font-size:14px;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--dark)"></td>`;
     });
     bodyHtml += '</tr>';
@@ -3379,9 +3384,9 @@ function renderTScorecard() {
   // Totaalrij
   bodyHtml += '<tr style="background:var(--green-pale)"><td class="player-col" style="font-weight:700">Tot</td>';
   t.spelers.forEach(s => {
-    const scores = t.scores[s.id] || [];
+    const scores = t.scores[s.id] || t.scores[String(s.id)] || [];
     const filled = scores.filter(v => v !== null && v !== undefined);
-    const tot = filled.length ? filled.reduce((a,b) => a+b, 0) : null;
+    const tot = filled.length ? filled.reduce((a,b) => a + Number(b), 0) : null;
     bodyHtml += `<td style="font-family:'DM Mono',monospace;font-weight:700;text-align:center">${tot !== null ? tot : '—'}</td>`;
   });
   bodyHtml += '</tr>';
@@ -3391,9 +3396,9 @@ function renderTScorecard() {
 
 function updateTScore(spelerId, holeIdx, val) {
   if (!toernooiData) return;
-  if (!toernooiData.scores[spelerId]) toernooiData.scores[spelerId] = Array(toernooiData.holes.length).fill(null);
-  toernooiData.scores[spelerId][holeIdx] = val === '' ? null : parseInt(val);
-  // Sla op in Firestore (debounced)
+  const key = String(spelerId);
+  if (!toernooiData.scores[key]) toernooiData.scores[key] = Array(toernooiData.holes.length).fill(null);
+  toernooiData.scores[key][holeIdx] = val === '' ? null : parseInt(val);
   clearTimeout(window._tSaveTimer);
   window._tSaveTimer = setTimeout(() => setDoc(TOERNOOI_DOC, toernooiData), 1500);
   renderTRanglijst();
@@ -3434,8 +3439,8 @@ function berekenTPunten() {
       let gespeeld = false;
 
       for (let h = 0; h < t.holes.length; h++) {
-        const scoreA = t.scores[sA.id]?.[h];
-        const scoreB = t.scores[sB.id]?.[h];
+        const scoreA = t.scores[sA.id]?.[h] ?? t.scores[String(sA.id)]?.[h];
+        const scoreB = t.scores[sB.id]?.[h] ?? t.scores[String(sB.id)]?.[h];
         if (scoreA == null || scoreB == null) continue;
         gespeeld = true;
         const hole = t.holes[h];
@@ -3603,6 +3608,20 @@ async function annuleerToernooi() {
   toast('Toernooi geannuleerd');
 }
 
+function autoAdvance(input) {
+  // Ga naar het volgende invoerveld op basis van tabindex
+  const tabIdx = parseInt(input.getAttribute('tabindex'));
+  if (!tabIdx) {
+    // Geen tabindex — gebruik DOM volgorde
+    const inputs = Array.from(document.querySelectorAll('input[type=number]'));
+    const idx = inputs.indexOf(input);
+    if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus();
+    return;
+  }
+  const next = document.querySelector(`input[tabindex="${tabIdx + 1}"]`);
+  if (next) next.focus();
+}
+
 // ============================================================
 //  WINDOW EXPORTS
 // ============================================================
@@ -3663,6 +3682,7 @@ window.openArchiefDetail = openArchiefDetail;
 window.stuurUitdaging = stuurUitdaging;
 window.reageerUitdaging = reageerUitdaging;
 window.verwijderUitdaging = verwijderUitdaging;
+window.autoAdvance = autoAdvance;
 window.slaProfielHcpOp = slaProfielHcpOp;
 window.vraagNotificatieToestemming = vraagNotificatieToestemming;
 
