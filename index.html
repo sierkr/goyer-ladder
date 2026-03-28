@@ -834,7 +834,6 @@
   <div class="card">
     <div class="card-header"><h2>Instellingen</h2></div>
     <div class="card-body">
-      <button class="btn btn-ghost btn-block" onclick="vraagNotificatieToestemming()" id="notif-btn" style="margin-bottom:10px">🔔 Notificaties inschakelen</button>
       <button class="btn btn-ghost btn-block" onclick="openWachtwoordWijzigen()" style="margin-bottom:10px">🔑 Wachtwoord wijzigen</button>
       <button class="btn btn-ghost btn-block" onclick="uitloggen()" style="color:var(--red);border-color:#f5c6cb">↩ Uitloggen</button>
     </div>
@@ -955,7 +954,6 @@ import {
   sendPasswordResetEmail, updatePassword, EmailAuthProvider,
   reauthenticateWithCredential, createUserWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
@@ -970,17 +968,11 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
-const messaging = getMessaging(app);
-
-// VAPID key — haal op uit Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
-const VAPID_KEY = 'BF20GLaKF1VNib8FaktBVUSdMyCmw9xF6WfVjXU1joH5fOXwBcrOWRNQh3TYcdULioF_RlaIV7u5ylKMYbNeuCk';
-
 // Firestore refs
 const STATE_DOC = doc(db, 'ladder', 'state');
 const USERS_DOC = doc(db, 'ladder', 'users');
 const BANEN_DOC = doc(db, 'ladder', 'banen');
 const ARCHIEF_DOC = doc(db, 'ladder', 'archief');
-const TOKENS_DOC = doc(db, 'ladder', 'fcm_tokens');
 const UITDAGINGEN_DOC = doc(db, 'ladder', 'uitdagingen');
 
 // Ingelogde gebruiker (alleen in geheugen, niet in Firestore)
@@ -2856,77 +2848,16 @@ function openArchiefDetail(idx) {
 }
 
 // ============================================================
-//  PUSHNOTIFICATIES (FCM)
+//  NOTIFICATIES (in-app only — push uitgeschakeld)
 // ============================================================
-async function registreerNotificatieToken() {
-  if (!huidigeBruiker) return;
-  if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
-  if (Notification.permission !== 'granted') return; // alleen als al toegestaan
+function registreerNotificatieToken() {}  // uitgeschakeld
 
-  try {
-    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
-    if (!token) return;
-    const snap = await getDoc(TOKENS_DOC);
-    const tokens = snap.exists() ? (snap.data().tokens || {}) : {};
-    tokens[huidigeBruiker.uid] = { token, email: huidigeBruiker.email, updated: Date.now() };
-    await setDoc(TOKENS_DOC, { tokens });
-    onMessage(messaging, (payload) => {
-      const { title, body } = payload.notification || {};
-      toast(`🔔 ${title}: ${body}`);
-    });
-  } catch(e) {
-    console.log('FCM registratie mislukt:', e.message);
-  }
+function vraagNotificatieToestemming() {
+  toast('Notificaties worden ondersteund in een toekomstige versie');
 }
 
-async function vraagNotificatieToestemming() {
-  if (!('Notification' in window)) { toast('Notificaties worden niet ondersteund op dit apparaat'); return; }
-  if (!('serviceWorker' in navigator)) { toast('Service worker niet ondersteund'); return; }
-
-  try {
-    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') { toast('Notificaties geweigerd'); return; }
-
-    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
-    if (!token) { toast('Token ophalen mislukt'); return; }
-
-    const snap = await getDoc(TOKENS_DOC);
-    const tokens = snap.exists() ? (snap.data().tokens || {}) : {};
-    tokens[huidigeBruiker.uid] = { token, email: huidigeBruiker.email, updated: Date.now() };
-    await setDoc(TOKENS_DOC, { tokens });
-
-    onMessage(messaging, (payload) => {
-      const { title, body } = payload.notification || {};
-      toast(`🔔 ${title}: ${body}`);
-    });
-
-    toast('Notificaties ingeschakeld ✓');
-    renderProfiel();
-  } catch(e) {
-    toast('Notificaties inschakelen mislukt: ' + e.message);
-  }
-}
-
-// Stuur notificatie via Firestore trigger (Cloud Function niet nodig —
-// we slaan de notificatie op en de ontvanger ziet het bij volgende sync)
 async function stuurNotificatie(naarUid, titel, bericht) {
-  try {
-    const snap = await getDoc(TOKENS_DOC);
-    const tokens = snap.exists() ? (snap.data().tokens || {}) : {};
-    const ontvanger = tokens[naarUid];
-    if (!ontvanger) return; // geen token = geen notificatie
-
-    // Sla notificatie op in Firestore — wordt opgepikt door live listener
-    const notifDoc = doc(db, 'ladder', 'notificaties');
-    const notifSnap = await getDoc(notifDoc);
-    const lijst = notifSnap.exists() ? (notifSnap.data().lijst || []) : [];
-    lijst.unshift({ uid: naarUid, titel, bericht, timestamp: Date.now(), gelezen: false });
-    await setDoc(notifDoc, { lijst: lijst.slice(0, 50) }); // max 50 bewaren
-  } catch(e) {
-    console.log('Notificatie opslaan mislukt:', e);
-  }
+  // Geen push — notificatie wordt zichtbaar via Firestore live update
 }
 
 // ============================================================
