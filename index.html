@@ -2316,10 +2316,13 @@ async function bevestigUitslag() {
 
     let newWrank, newVrank;
     if (sw.rank > sv.rank) {
-      const verschil = sw.rank - sv.rank;
+      // Lager gerankte wint — verliezer zakt eerst 2, winnaar stijgt 4
+      // Als winnaar na stijging boven of gelijk aan verliezer komt: verliezer = winnaar + 1
+      newVrank = sv.rank + 2;
       newWrank = Math.max(1, sw.rank - 4);
-      newVrank = verschil <= 4 ? sw.rank : sv.rank + 2;
+      if (newWrank >= newVrank) newVrank = newWrank + 1;
     } else {
+      // Hoger gerankte wint — winnaar +1, verliezer -1
       newWrank = Math.max(1, sw.rank - 1);
       newVrank = sv.rank + 1;
     }
@@ -2633,8 +2636,9 @@ function bevestigBeheerUitslag() {
     let newWrank, newVrank;
     if (sw.rank > sv.rank) {
       const verschil = sw.rank - sv.rank;
+      newVrank = sv.rank + 2;
       newWrank = Math.max(1, sw.rank - 4);
-      newVrank = verschil <= 4 ? sw.rank : sv.rank + 2;
+      if (newWrank >= newVrank) newVrank = newWrank + 1;
     } else {
       newWrank = Math.max(1, sw.rank - 1);
       newVrank = sv.rank + 1;
