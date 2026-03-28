@@ -1589,6 +1589,9 @@ function initPartijForm() {
   }
   sel.innerHTML += `<option value="Handmatig invoeren">+ Handmatig invoeren / nieuwe baan</option>`;
 
+  // Selecteer thuisbaan als default
+  sel.value = Object.keys(BANEN_DB)[0];
+
   // Player slots
   playerSlotCount = 0;
   document.getElementById('player-slots').innerHTML = '';
