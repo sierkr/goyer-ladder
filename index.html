@@ -1132,7 +1132,7 @@
 //  FIREBASE SETUP
 // ============================================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword,
   signOut, GoogleAuthProvider, signInWithPopup,
@@ -1160,6 +1160,7 @@ const BANEN_DOC = doc(db, 'ladder', 'banen');
 const ARCHIEF_DOC = doc(db, 'ladder', 'archief');
 const UITDAGINGEN_DOC = doc(db, 'ladder', 'uitdagingen');
 const TOERNOOI_DOC = doc(db, 'ladder', 'toernooi');
+const UITSLAGEN_COL = collection(db, 'uitslagen');
 
 // Ingelogde gebruiker (alleen in geheugen, niet in Firestore)
 let huidigeBruiker = null; // { gebruikersnaam, rol }
@@ -1497,7 +1498,7 @@ function showPage(name) {
   if (name === 'uitslagen') renderUitslagen();
   if (name === 'toernooi') renderToernooi();
   if (name === 'profiel') renderProfiel();
-  if (name === 'archief') renderArchief();
+  if (name === 'archief') { renderArchief(); verwijderOudeUitslagen(); }
   if (name === 'admin') { renderAdmin(); renderAdminUsers(); }
 }
 
@@ -2276,7 +2277,7 @@ function skipMatchup(idx) {
   }
 }
 
-function bevestigUitslag() {
+async function bevestigUitslag() {
   const p = mijnPartij();
   if (!p) return;
 
@@ -2326,9 +2327,10 @@ function bevestigUitslag() {
   // Normalize ranks
   [...state.spelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
 
-  // Save uitslag
-  state.uitslagen.unshift({
+  // Save uitslag in state (samenvatting)
+  const uitslag = {
     datum: new Date().toLocaleDateString('nl-NL'),
+    _timestamp: Date.now(),
     baan: p.baan,
     spelers: p.spelers.map(s => s.naam),
     matchups: p.matchups
@@ -2340,7 +2342,26 @@ function bevestigUitslag() {
           winnaar: p._modalWinnaars[origIdx] === 'A' ? m.spelerA.naam : m.spelerB.naam
         };
       })
-  });
+  };
+  state.uitslagen.unshift(uitslag);
+
+  // Sla volledige scorekaart op als los Firestore document (30 dagen bewaren)
+  try {
+    await addDoc(UITSLAGEN_COL, {
+      type: 'partij',
+      datum: new Date().toISOString(),
+      timestamp: Date.now(),
+      baan: p.baan,
+      holes: p.holes,
+      spelers: p.spelers.map(s => ({ naam: s.naam, hcp: s.partijHcp })),
+      scores: p.scores,
+      matchups: p.matchups.map((m, i) => ({
+        a: m.spelerA.naam, b: m.spelerB.naam,
+        hcpSlagen: m.hcpSlagen, hcpOntvanger: m.hcpOntvanger,
+        winnaar: p._modalWinnaars[i] === 'A' ? m.spelerA.naam : m.spelerB.naam
+      }))
+    });
+  } catch(e) { console.log('Scorekaart opslaan mislukt:', e); }
 
   // Verwijder deze partij uit actievePartijen
   state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== p.partijId);
@@ -2394,6 +2415,82 @@ function showLadderChanges(changes) {
 let _beheerPartijId = null; // partijId van partij die beheerder beheert
 let _beheerWinnaars = [];
 
+async function verwijderOudeUitslagen() {
+  // Verwijder scorekaarten ouder dan 30 dagen
+  const dertigDagenGelden = Date.now() - (30 * 24 * 60 * 60 * 1000);
+  try {
+    const q = query(UITSLAGEN_COL, where('timestamp', '<', dertigDagenGelden));
+    const snap = await getDocs(q);
+    snap.forEach(async d => await deleteDoc(d.ref));
+    if (snap.size > 0) console.log(`${snap.size} oude scorekaarten verwijderd`);
+  } catch(e) { console.log('Opschonen mislukt:', e); }
+}
+
+async function openScorekaartDetail(uitslag) {
+  // Zoek scorekaart in Firestore op basis van timestamp
+  try {
+    const q = query(UITSLAGEN_COL,
+      where('timestamp', '>', uitslag._timestamp - 60000),
+      where('timestamp', '<', uitslag._timestamp + 60000)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) { toast('Scorekaart niet meer beschikbaar (ouder dan 30 dagen)'); return; }
+    const data = snap.docs[0].data();
+    toonScorekaartModal(data);
+  } catch(e) { toast('Scorekaart laden mislukt'); }
+}
+
+function toonScorekaartModal(data) {
+  const spelers = data.spelers || [];
+  const holes = data.holes || [];
+
+  let html = `<p style="font-size:13px;color:var(--light);margin-bottom:12px">${data.baan} · ${new Date(data.datum).toLocaleDateString('nl-NL')}</p>`;
+  html += '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px;width:100%">';
+
+  // Header
+  html += '<tr><th style="background:var(--green);color:white;padding:6px;text-align:left">Hole</th>';
+  spelers.forEach(s => {
+    html += `<th style="background:var(--green);color:white;padding:6px;text-align:center">${s.naam.split(' ')[0]}<br><span style="font-size:10px;font-weight:400">hcp ${Math.round(s.hcp)}</span></th>`;
+  });
+  html += '</tr>';
+
+  // Holes
+  let totalen = spelers.map(() => 0);
+  holes.forEach((h, i) => {
+    html += `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 8px;font-weight:600">${i+1}<span style="font-size:10px;color:var(--light);margin-left:4px">p${h.par} SI${h.si}</span></td>`;
+    spelers.forEach((s, si) => {
+      const score = data.scores?.[s.naam] || data.scores?.[String(si)];
+      const val = Array.isArray(score) ? score[i] : null;
+      if (val) totalen[si] += val;
+      const kleur = val && val <= h.par - 2 ? '#d4edda' : val && val === h.par - 1 ? '#d8f3dc' : val && val === h.par + 1 ? '#fff3cd' : val && val >= h.par + 2 ? '#f8d7da' : '';
+      html += `<td style="text-align:center;padding:5px;background:${kleur}">${val || '—'}</td>`;
+    });
+    html += '</tr>';
+  });
+
+  // Totaal
+  html += '<tr style="background:var(--green-pale);font-weight:700"><td style="padding:5px 8px">Totaal</td>';
+  totalen.forEach(t => { html += `<td style="text-align:center;padding:5px;font-family:\'DM Mono\',monospace">${t || '—'}</td>`; });
+  html += '</tr></table></div>';
+
+  // Matchups
+  if (data.matchups?.length) {
+    html += `<div style="margin-top:16px"><p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:8px">Matchplay uitslag</p>`;
+    data.matchups.forEach(m => {
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <span>${m.a} vs ${m.b}</span>
+        <span class="badge badge-green">⛳ ${m.winnaar.split(' ')[0]}</span>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
+  document.getElementById('archief-detail-titel').textContent = 'Scorekaart';
+  document.getElementById('archief-detail-inhoud').innerHTML = html;
+  document.getElementById('modal-archief-detail').classList.add('open');
+}
+
 function renderUitslagen() {
   const isBeheerder = huidigeBruiker?.rol === 'beheerder';
   const actief = state.actievePartijen || [];
@@ -2434,7 +2531,10 @@ function renderUitslagen() {
     list.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><p>Nog geen uitslagen.</p></div>';
     return;
   }
-  list.innerHTML = state.uitslagen.map(u => `
+  list.innerHTML = state.uitslagen.map((u, idx) => {
+    const heeftScorekaart = !!u._timestamp;
+    const ouderDan30Dagen = u._timestamp && (Date.now() - u._timestamp > 30 * 24 * 60 * 60 * 1000);
+    return `
     <div style="padding:14px 16px;border-bottom:1px solid #f0ede4">
       <div style="display:flex;justify-content:space-between;margin-bottom:6px">
         <span style="font-weight:600">${u.baan}</span>
@@ -2446,8 +2546,9 @@ function renderUitslagen() {
           <span>${m.a} vs ${m.b}</span>
           <span class="badge badge-green">⛳ ${m.winnaar.split(' ')[0]}</span>
         </div>`).join('')}
-    </div>
-  `).join('');
+      ${heeftScorekaart && !ouderDan30Dagen ? `<button class="btn btn-sm btn-ghost" onclick="openScorekaartDetail(${JSON.stringify(u).replace(/"/g,'&quot;')})" style="margin-top:8px">📋 Scorekaart</button>` : ''}
+    </div>`;
+  }).join('');
 }
 
 function openBeheerPartij(partijId) {
@@ -3694,8 +3795,8 @@ function openToernooiAfsluiten() {
 
 async function bevestigToernooiAfsluiten() {
   const t = toernooiData;
-  const { punten, won, tied, lost } = berekenTPunten();
-  const volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i]}))
+  const { punten, won, tied, lost, matrix } = berekenTPunten();
+  const volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]}))
     .sort((a,b) => b.pt - a.pt || b.w - a.w);
 
   // Pas ladder ranking aan — winnaar stijgt, rest in volgorde
@@ -3720,8 +3821,7 @@ async function bevestigToernooiAfsluiten() {
   const archief = archiefSnap.exists() ? archiefSnap.data() : { seizoenen: [] };
   if (!archief.toernooien) archief.toernooien = [];
 
-  // Bereken matrix voor archief
-  const { matrix } = berekenTPunten();
+  // Bereken matrix voor archief (al berekend hierboven)
   const matrixArchief = t.spelers.map((sA, i) =>
     t.spelers.map((sB, j) => i === j ? 'X' : (matrix[i][j] || '-'))
   );
@@ -3828,6 +3928,7 @@ window.openToernooiAfsluiten = openToernooiAfsluiten;
 window.bevestigToernooiAfsluiten = bevestigToernooiAfsluiten;
 window.annuleerToernooi = annuleerToernooi;
 window.bevestigNieuwSeizoen = bevestigNieuwSeizoen;
+window.openScorekaartDetail = openScorekaartDetail;
 window.openToernooiDetail = openToernooiDetail;
 window.openArchiefDetail = openArchiefDetail;
 window.stuurUitdaging = stuurUitdaging;
