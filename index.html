@@ -1611,10 +1611,11 @@ function addPlayerSlot() {
     const naam = s.naam.toLowerCase().trim();
     return naam === gebruiker || naam.split(' ')[0] === gebruiker?.split(' ')[0];
   });
+  console.log('Ingelogd als:', gebruiker, '| Eigen speler gevonden:', eigenSpeler?.naam || 'NIET GEVONDEN');
 
-  const sorted = state.spelers.sort((a,b) => a.rank - b.rank);
+  const sorted = [...state.spelers].sort((a,b) => a.rank - b.rank);
   // Slot 1 = volledige lijst, overige slots = zonder eigen naam
-  const filterd = playerSlotCount === 1 ? sorted : sorted.filter(s => !eigenSpeler || s.id !== eigenSpeler.id);
+  const filterd = playerSlotCount === 1 ? sorted : sorted.filter(s => !eigenSpeler || String(s.id) !== String(eigenSpeler.id));
   const opts = filterd.map(s =>
     `<option value="${s.id}">${s.naam} (hcp ${Math.round(s.hcp)})</option>`
   ).join('');
