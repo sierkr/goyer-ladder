@@ -1967,7 +1967,7 @@ function renderScorecard() {
         min="1" max="12"
         tabindex="${tabIdx}"
         value="${val !== null ? val : ''}"
-        oninput="updateScore(${s.id},${holeIdx},this.value);if(this.value.length>0)autoAdvance(this)"
+        onfocus="this.select()" oninput="updateScore(${s.id},${holeIdx},this.value);if(this.value.length>0)autoAdvance(this)"
         style="width:38px;padding:3px;text-align:center;font-size:13px;font-family:'DM Mono',monospace;border:1.5px solid #e0ddd4;border-radius:5px"
       ></td>`;
     });
@@ -3376,7 +3376,7 @@ function renderTScorecard() {
       const tabIdx = si * t.holes.length + i + 1;
       bodyHtml += `<td><input type="number" min="1" max="12" value="${val !== null && val !== undefined ? val : ''}"
         tabindex="${tabIdx}"
-        oninput="updateTScore(${s.id},${i},this.value);if(this.value.length>0)setTimeout(()=>autoAdvance(this),0)"
+        onfocus="this.select()" oninput="updateTScore(${s.id},${i},this.value);if(this.value.length>0)setTimeout(()=>autoAdvance(this),0)"
         style="width:42px;padding:4px;text-align:center;font-size:14px;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--dark)"></td>`;
     });
     bodyHtml += '</tr>';
@@ -3627,17 +3627,18 @@ async function annuleerToernooi() {
 }
 
 function autoAdvance(input) {
-  // Ga naar het volgende invoerveld op basis van tabindex
   const tabIdx = parseInt(input.getAttribute('tabindex'));
   if (!tabIdx) {
-    // Geen tabindex — gebruik DOM volgorde
     const inputs = Array.from(document.querySelectorAll('input[type=number]'));
     const idx = inputs.indexOf(input);
-    if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus();
+    if (idx >= 0 && idx < inputs.length - 1) {
+      inputs[idx + 1].focus();
+      inputs[idx + 1].select();
+    }
     return;
   }
   const next = document.querySelector(`input[tabindex="${tabIdx + 1}"]`);
-  if (next) next.focus();
+  if (next) { next.focus(); next.select(); }
 }
 
 // ============================================================
