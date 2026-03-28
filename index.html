@@ -2409,9 +2409,19 @@ async function saveNewPlayer() {
       uid = userCred.user.uid;
     } catch(authErr) {
       if (authErr.code === 'auth/email-already-in-use') {
-        toast('Dit e-mailadres heeft al een account'); return;
+        // E-mail bestaat al in Auth — hergebruik het account (bijv. na verwijderen en opnieuw aanmaken)
+        // Probeer in te loggen om de uid te krijgen
+        try {
+          const userCred = await signInWithEmailAndPassword(auth, email, pass);
+          uid = userCred.user.uid;
+          // Herlog daarna de beheerder in (sessie was tijdelijk overgenomen)
+        } catch(loginErr) {
+          toast('E-mailadres al in gebruik. Verwijder eerst het account via Firebase Console → Authentication, of gebruik een ander e-mailadres.');
+          return;
+        }
+      } else {
+        throw authErr;
       }
-      throw authErr;
     }
 
     // Voeg speler toe aan ladder
