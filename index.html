@@ -627,6 +627,34 @@
   </div>
 </div>
 
+<!-- Nieuwe ladder modal -->
+<div class="modal-overlay" id="modal-nieuwe-ladder">
+  <div class="modal">
+    <h3>Nieuwe ladder</h3>
+    <div class="form-group">
+      <label>Naam</label>
+      <input type="text" id="nieuwe-ladder-naam" placeholder="bijv. Dames">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-nieuwe-ladder')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="maakNieuweLadder()">Aanmaken</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ladder spelers modal -->
+<div class="modal-overlay" id="modal-ladder-spelers">
+  <div class="modal">
+    <h3 id="ladder-spelers-titel">Spelers in ladder</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:12px">Vink aan wie in deze ladder speelt.</p>
+    <div id="ladder-spelers-lijst"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-ladder-spelers')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="slaLadderSpelersOp()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
 <!-- Snapshots modal -->
 <div class="modal-overlay" id="modal-snapshots">
   <div class="modal">
@@ -791,13 +819,7 @@
 
 <!-- ==================== LADDER ==================== -->
 <div id="page-ladder" class="page active">
-  <div class="card">
-    <div class="card-header">
-      <h2>Ladderstand</h2>
-      <span class="badge badge-green" id="ladder-count">0 spelers</span>
-    </div>
-    <div id="ladder-list"></div>
-  </div>
+  <div id="ladder-kaarten"></div>
 </div>
 
 <!-- ==================== PARTIJ ==================== -->
@@ -807,6 +829,12 @@
       <h2>Nieuwe Partij</h2>
     </div>
     <div class="card-body">
+      <div class="form-group" id="partij-ladder-wrap">
+        <label>Ladder</label>
+        <select id="partij-ladder-select">
+          <option value="">— Selecteer ladder —</option>
+        </select>
+      </div>
       <div class="form-group">
         <label>Baan</label>
         <select id="baan-select" onchange="onBaanSelect()">
@@ -1122,6 +1150,17 @@
   </div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+      <h2>Ladders beheren</h2>
+      <div onclick="event.stopPropagation()">
+        <button class="btn btn-sm btn-primary" onclick="openNieuweLadderModal()">+ Ladder</button>
+      </div>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div id="admin-ladders-list"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Ladder herstellen</h2>
       <div onclick="event.stopPropagation()">
         <button class="btn btn-sm btn-ghost" onclick="openSnapshotsModal()">Bekijk snapshots</button>
@@ -1267,7 +1306,7 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 // Firestore refs
-const STATE_DOC = doc(db, 'ladder', 'state');
+const STATE_DOC = doc(db, 'ladder', 'state'); // legacy — voor migratie
 const USERS_DOC = doc(db, 'ladder', 'users');
 const BANEN_DOC = doc(db, 'ladder', 'banen');
 const ARCHIEF_DOC = doc(db, 'ladder', 'archief');
@@ -1276,6 +1315,7 @@ const TOERNOOI_DOC = doc(db, 'ladder', 'toernooi');
 const UITSLAGEN_COL = collection(db, 'uitslagen');
 const INVITE_DOC = doc(db, 'ladder', 'invite');
 const SNAPSHOTS_COL = collection(db, 'snapshots');
+const LADDERS_COL = collection(db, 'ladders');
 
 // Ingelogde gebruiker (alleen in geheugen, niet in Firestore)
 let huidigeBruiker = null; // { gebruikersnaam, rol }
@@ -1337,7 +1377,9 @@ const DEFAULT_STATE = {
   uitslagen: []
 };
 
-let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+let state = JSON.parse(JSON.stringify(DEFAULT_STATE)); // actieve ladder data
+let alleLadders = []; // [{ id, naam, spelerIds }]
+let activeLadderId = null; // huidige ladder id
 let _firestoreReady = false;
 let _highlights = new Set();
 let archiefData = [];
@@ -1514,10 +1556,14 @@ async function wijzigWachtwoord() {
   }
 }
 
-// Sla volledige state op naar Firestore
+// Sla actieve ladder op naar Firestore
 async function slaState() {
   try {
-    await setDoc(STATE_DOC, JSON.parse(JSON.stringify(state)));
+    if (activeLadderId) {
+      await setDoc(doc(db, 'ladders', activeLadderId), JSON.parse(JSON.stringify(state)));
+    } else {
+      await setDoc(STATE_DOC, JSON.parse(JSON.stringify(state)));
+    }
   } catch(e) { console.error('Firestore save error:', e); }
 }
 
@@ -1525,47 +1571,74 @@ async function slaState() {
 async function initFirestore() {
   toonLaadOverlay(true);
   try {
-    // Laad alle data parallel voor snelheid
-    const [snap, baanSnap, archiefSnap, uitdSnap, toernooiSnap] = await Promise.all([
-      getDoc(STATE_DOC),
+    const [baanSnap, archiefSnap, uitdSnap, toernooiSnap] = await Promise.all([
       getDoc(BANEN_DOC),
       getDoc(ARCHIEF_DOC),
       getDoc(UITDAGINGEN_DOC),
       getDoc(TOERNOOI_DOC)
     ]);
 
-    if (snap.exists()) {
-      state = snap.data();
-      if (!state.actievePartijen) {
-        state.actievePartijen = state.actievePartij ? [{ ...state.actievePartij, partijId: `p_${Date.now()}` }] : [];
-        delete state.actievePartij;
-      }
-    } else {
-      await setDoc(STATE_DOC, JSON.parse(JSON.stringify(DEFAULT_STATE)));
-    }
-
     aangepasteBanen = baanSnap.exists() ? (baanSnap.data().lijst || []) : [];
     archiefData = archiefSnap.exists() ? (archiefSnap.data().seizoenen || []) : [];
     uitdagingenData = uitdSnap.exists() ? (uitdSnap.data().lijst || []) : [];
     toernooiData = toernooiSnap.exists() ? toernooiSnap.data() : null;
 
+    // Laad ladders
+    const laddersSnap = await getDocs(LADDERS_COL);
+
+    if (laddersSnap.empty) {
+      // Eerste keer: migreer bestaande state naar ladder "MP"
+      const stateSnap = await getDoc(STATE_DOC);
+      const bestaandeState = stateSnap.exists() ? stateSnap.data() : JSON.parse(JSON.stringify(DEFAULT_STATE));
+      if (!bestaandeState.actievePartijen) {
+        bestaandeState.actievePartijen = bestaandeState.actievePartij
+          ? [{ ...bestaandeState.actievePartij, partijId: `p_${Date.now()}` }] : [];
+        delete bestaandeState.actievePartij;
+      }
+      // Sla op als eerste ladder
+      const mpRef = doc(db, 'ladders', 'mp');
+      await setDoc(mpRef, { ...bestaandeState, naam: 'MP', spelerIds: (bestaandeState.spelers || []).map(s => s.id) });
+      alleLadders = [{ id: 'mp', naam: 'MP', spelerIds: (bestaandeState.spelers || []).map(s => s.id), spelers: bestaandeState.spelers || [], actievePartijen: bestaandeState.actievePartijen || [] }];
+      state = bestaandeState;
+      activeLadderId = 'mp';
+    } else {
+      // Laad alle ladders inclusief spelers
+      alleLadders = laddersSnap.docs.map(d => ({ 
+        id: d.id, 
+        naam: d.data().naam, 
+        spelerIds: d.data().spelerIds || [],
+        spelers: d.data().spelers || [],
+        actievePartijen: d.data().actievePartijen || []
+      }));
+      // Zet eerste ladder als actief voor nu
+      const eersteDoc = laddersSnap.docs[0];
+      state = eersteDoc.data();
+      if (!state.actievePartijen) state.actievePartijen = [];
+      activeLadderId = eersteDoc.id;
+    }
+
   } catch(e) {
     console.error('Firestore init error:', e);
   }
 
-  // Live listener
-  onSnapshot(STATE_DOC, (snap) => {
-    if (!snap.exists() || !huidigeBruiker) return;
-    state = snap.data();
-    if (!state.actievePartijen) state.actievePartijen = [];
-    const activePage = document.querySelector('.page.active')?.id?.replace('page-','');
-    if (activePage === 'ladder') renderLadder();
-    if (activePage === 'uitslagen') renderUitslagen();
-    if (activePage === 'admin') renderAdmin();
-    if (activePage === 'ronde') renderRonde();
-    if (activePage === 'profiel') renderProfiel();
-    if (activePage === 'toernooi') renderToernooi();
-  });
+  // Live listener op actieve ladder
+  if (activeLadderId) {
+    onSnapshot(doc(db, 'ladders', activeLadderId), (snap) => {
+      if (!snap.exists() || !huidigeBruiker) return;
+      state = snap.data();
+      if (!state.actievePartijen) state.actievePartijen = [];
+      // Update cache
+      const idx = alleLadders.findIndex(l => l.id === activeLadderId);
+      if (idx >= 0) { alleLadders[idx].spelers = state.spelers || []; alleLadders[idx].actievePartijen = state.actievePartijen; }
+      const activePage = document.querySelector('.page.active')?.id?.replace('page-','');
+      if (activePage === 'ladder') renderLadder();
+      if (activePage === 'uitslagen') renderUitslagen();
+      if (activePage === 'admin') renderAdmin();
+      if (activePage === 'ronde') renderRonde();
+      if (activePage === 'profiel') renderProfiel();
+      if (activePage === 'toernooi') renderToernooi();
+    });
+  }
 
   _firestoreReady = true;
 
@@ -1585,6 +1658,18 @@ async function initFirestore() {
       }
     }
   });
+}
+
+// Wissel naar een andere ladder
+async function wisselLadder(ladderId) {
+  if (ladderId === activeLadderId) return;
+  const snap = await getDoc(doc(db, 'ladders', ladderId));
+  if (!snap.exists()) return;
+  activeLadderId = ladderId;
+  state = snap.data();
+  if (!state.actievePartijen) state.actievePartijen = [];
+  renderLadder();
+  renderUitslagen();
 }
 
 function toonLaadOverlay(toon) {
@@ -1609,59 +1694,98 @@ function showPage(name) {
   if (name === 'toernooi') renderToernooi();
   if (name === 'profiel') renderProfiel();
   if (name === 'archief') { renderArchief(); verwijderOudeUitslagen(); }
-  if (name === 'admin') { renderAdmin(); renderAdminUsers(); laadInviteStatus(); }
+  if (name === 'admin') { renderAdmin(); renderAdminUsers(); renderAdminLadders(); laadInviteStatus(); }
 }
 
 // ============================================================
 //  LADDER
 // ============================================================
-function renderLadder() {
-  const sorted = [...state.spelers].sort((a,b) => a.rank - b.rank);
-  document.getElementById('ladder-count').textContent = sorted.length + ' spelers';
-  
+async function renderLadder() {
+  const wrap = document.getElementById('ladder-kaarten');
+  if (!wrap) return;
 
-  const list = document.getElementById('ladder-list');
-  if (sorted.length === 0) {
-    list.innerHTML = '<div class="empty"><div class="empty-icon">🏆</div><p>Nog geen spelers.</p></div>';
+  // Bepaal welke ladders de gebruiker ziet
+  const mijnLadders = huidigeBruiker?.rol === 'beheerder'
+    ? alleLadders
+    : alleLadders.filter(l => {
+        const spelerData = (l.spelers || []);
+        return spelerData.some(s =>
+          s.naam.toLowerCase().includes((huidigeBruiker?.gebruikersnaam || '').split(' ')[0].toLowerCase()) ||
+          (huidigeBruiker?.gebruikersnaam || '').toLowerCase().includes(s.naam.split(' ')[0].toLowerCase())
+        );
+      });
+
+  if (mijnLadders.length === 0) {
+    wrap.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">🏆</div><p>Je bent nog niet toegevoegd aan een ladder.</p></div></div>';
     return;
   }
 
-  list.innerHTML = sorted.map(s => {
-    const winpct = s.partijen > 0 ? Math.round(s.gewonnen/s.partijen*100) : 0;
-    const highlighted = _highlights.has(s.id);
-    let deltaHtml = '';
-    if (s.prevRank != null && s.prevRank !== s.rank) {
-      const d = s.prevRank - s.rank;
-      deltaHtml = d > 0
-        ? `<span class="delta-up" style="font-size:12px">▲${d}</span>`
-        : `<span class="delta-down" style="font-size:12px">▼${Math.abs(d)}</span>`;
-    } else if (s.prevRank != null) {
-      deltaHtml = `<span style="font-size:11px;color:var(--light)">—</span>`;
-    }
+  // Render elke ladder als inklapbare kaart
+  // Laad data voor alle ladders
+  const ladderData = await Promise.all(mijnLadders.map(async l => {
+    if (l.id === activeLadderId) return { ...l, data: state };
+    const snap = await getDoc(doc(db, 'ladders', l.id));
+    return { ...l, data: snap.exists() ? snap.data() : { spelers: [] } };
+  }));
 
-    // Uitdaging knop — niet voor jezelf
-    const isZelf = huidigeBruiker && (
-      s.naam.toLowerCase().includes(huidigeBruiker.gebruikersnaam.toLowerCase()) ||
-      huidigeBruiker.gebruikersnaam.toLowerCase().includes(s.naam.split(' ')[0].toLowerCase())
-    );
-    const openUitdaging = uitdagingenData?.find(u =>
-      u.status === 'open' && (
-        (u.vanEmail === huidigeBruiker?.email && u.naarNaam?.toLowerCase().includes(s.naam.split(' ')[0].toLowerCase())) ||
-        (u.naarEmail === huidigeBruiker?.email && u.vanNaam?.toLowerCase().includes(s.naam.split(' ')[0].toLowerCase()))
-      )
-    );
-    const uitdagingBtnHtml = huidigeBruiker && !isZelf
-      ? `<button onclick="stuurUitdaging(${s.id})" style="background:none;border:1px solid #e0ddd4;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:${openUitdaging ? 'var(--gold)' : 'var(--light)'}" title="${openUitdaging ? 'Uitdaging loopt' : 'Uitdagen'}">⚔️</button>`
-      : '';
+  wrap.innerHTML = ladderData.map(l => {
+    const spelers = [...(l.data.spelers || [])].sort((a,b) => a.rank - b.rank);
+    const lijstHtml = spelers.length === 0
+      ? '<div class="empty"><p>Nog geen spelers.</p></div>'
+      : spelers.map(s => renderLadderRij(s, l.id)).join('');
 
-    return `<div class="ladder-item" style="${highlighted ? 'background:var(--green-pale);' : ''}">
-      <div class="rank-badge ${s.rank <= 3 ? 'top3' : ''}">${s.rank}</div>
-      <div class="player-name" style="${highlighted ? 'font-weight:700;color:var(--green)' : ''}">${s.naam}</div>
-      <div style="min-width:30px;text-align:center">${deltaHtml}</div>
-      <div class="player-stats" style="text-align:right;min-width:52px">${s.partijen}P ${s.gewonnen}W<br>${winpct}%</div>
-      <div style="width:42px;text-align:center;flex-shrink:0">${uitdagingBtnHtml}</div>
+    return `<div class="card" style="margin-bottom:16px">
+      <div class="card-header inklapbaar" onclick="toggleLadderKaart(this,'${l.id}')">
+        <h2>${l.naam}</h2>
+        <span class="badge badge-green">${spelers.length} spelers</span>
+      </div>
+      <div class="card-collapse" id="ladder-collapse-${l.id}">
+        <div id="ladder-list-${l.id}">${lijstHtml}</div>
+      </div>
     </div>`;
   }).join('');
+}
+
+function toggleLadderKaart(header, ladderId) {
+  header.classList.toggle('ingeklapt');
+  const collapse = document.getElementById('ladder-collapse-' + ladderId);
+  if (collapse) collapse.classList.toggle('ingeklapt');
+}
+
+function renderLadderRij(s, ladderId) {
+  const winpct = s.partijen > 0 ? Math.round(s.gewonnen/s.partijen*100) : 0;
+  const highlighted = _highlights.has(s.id);
+  let deltaHtml = '';
+  if (s.prevRank != null && s.prevRank !== s.rank) {
+    const d = s.prevRank - s.rank;
+    deltaHtml = d > 0
+      ? `<span class="delta-up" style="font-size:12px">▲${d}</span>`
+      : `<span class="delta-down" style="font-size:12px">▼${Math.abs(d)}</span>`;
+  } else if (s.prevRank != null) {
+    deltaHtml = `<span style="font-size:11px;color:var(--light)">—</span>`;
+  }
+
+  const isZelf = huidigeBruiker && (
+    s.naam.toLowerCase().includes(huidigeBruiker.gebruikersnaam.toLowerCase()) ||
+    huidigeBruiker.gebruikersnaam.toLowerCase().includes(s.naam.split(' ')[0].toLowerCase())
+  );
+  const openUitdaging = uitdagingenData?.find(u =>
+    u.status === 'open' && (
+      (u.vanEmail === huidigeBruiker?.email && u.naarNaam?.toLowerCase().includes(s.naam.split(' ')[0].toLowerCase())) ||
+      (u.naarEmail === huidigeBruiker?.email && u.vanNaam?.toLowerCase().includes(s.naam.split(' ')[0].toLowerCase()))
+    )
+  );
+  const uitdagingBtnHtml = huidigeBruiker && !isZelf
+    ? `<button onclick="stuurUitdaging(${s.id})" style="background:none;border:1px solid #e0ddd4;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:${openUitdaging ? 'var(--gold)' : 'var(--light)'}" title="${openUitdaging ? 'Uitdaging loopt' : 'Uitdagen'}">⚔️</button>`
+    : '';
+
+  return `<div class="ladder-item" style="${highlighted ? 'background:var(--green-pale);' : ''}">
+    <div class="rank-badge ${s.rank <= 3 ? 'top3' : ''}">${s.rank}</div>
+    <div class="player-name" style="${highlighted ? 'font-weight:700;color:var(--green)' : ''}">${s.naam}</div>
+    <div style="min-width:30px;text-align:center">${deltaHtml}</div>
+    <div class="player-stats" style="text-align:right;min-width:52px">${s.partijen}P ${s.gewonnen}W<br>${winpct}%</div>
+    <div style="width:42px;text-align:center;flex-shrink:0">${uitdagingBtnHtml}</div>
+  </div>`;
 }
 
 // ============================================================
@@ -1676,6 +1800,15 @@ function alleBANEN() {
 }
 
 function initPartijForm() {
+  // Vul ladder selector
+  const ladderSel = document.getElementById('partij-ladder-select');
+  ladderSel.innerHTML = alleLadders.map(l =>
+    `<option value="${l.id}" ${l.id === activeLadderId ? 'selected' : ''}>${l.naam}</option>`
+  ).join('');
+  // Verberg selector als er maar één ladder is
+  document.getElementById('partij-ladder-wrap').style.display = alleLadders.length <= 1 ? 'none' : 'block';
+  ladderSel.onchange = () => herlaadPartijSpelers();
+
   const sel = document.getElementById('baan-select');
   sel.innerHTML = '<option value="">— Selecteer baan —</option>';
 
@@ -1707,7 +1840,8 @@ function initPartijForm() {
   if (huidigeBruiker) {
     const gebruiker = huidigeBruiker.gebruikersnaam.toLowerCase().trim();
     const emailPrefix = huidigeBruiker.email?.split('@')[0]?.toLowerCase() || '';
-    const gekoppeld = state.spelers.find(s => {
+    const ladderSpelers = getPartijLadderSpelers();
+    const gekoppeld = ladderSpelers.find(s => {
       const naam = s.naam.toLowerCase().trim();
       const voornaam = naam.split(' ')[0];
       return naam === gebruiker ||
@@ -1731,15 +1865,44 @@ function initPartijForm() {
   });
 }
 
+function getPartijLadderSpelers() {
+  const ladderId = document.getElementById('partij-ladder-select')?.value || activeLadderId;
+  const ladder = alleLadders.find(l => l.id === ladderId);
+  const ladderSpelers = ladder?.spelers || state.spelers;
+  return [...ladderSpelers].sort((a,b) => a.rank - b.rank);
+}
+
+function herlaadPartijSpelers() {
+  // Herlaad spelerslots bij wisselen van ladder
+  playerSlotCount = 0;
+  document.getElementById('player-slots').innerHTML = '';
+  document.getElementById('add-player-btn').style.display = '';
+  addPlayerSlot();
+  addPlayerSlot();
+  // Pre-select eigen naam in slot 1
+  const slot1 = document.getElementById('player-1');
+  if (slot1 && huidigeBruiker) {
+    const spelers = getPartijLadderSpelers();
+    const zelf = spelers.find(s =>
+      s.naam.toLowerCase().includes(huidigeBruiker.gebruikersnaam.split(' ')[0].toLowerCase())
+    );
+    if (zelf) {
+      slot1.value = zelf.id;
+      const hcpEl = document.getElementById('hcp-1');
+      if (hcpEl) hcpEl.value = Math.round(zelf.hcp);
+      refreshPlayerSlotOptions();
+    }
+  }
+}
+
 function addPlayerSlot() {
   if (playerSlotCount >= 4) return;
   playerSlotCount++;
 
-  // Filter spelers die al geselecteerd zijn in andere slots
   const reedsSel = Array.from(document.querySelectorAll('.player-select'))
     .map(s => s.value).filter(v => v !== '');
 
-  const sorted = [...state.spelers].sort((a,b) => a.rank - b.rank);
+  const sorted = getPartijLadderSpelers();
   const filterd = sorted.filter(s => !reedsSel.includes(String(s.id)));
   const opts = filterd.map(s =>
     `<option value="${s.id}">${s.naam} (hcp ${Math.round(s.hcp)})</option>`
@@ -1758,30 +1921,27 @@ function addPlayerSlot() {
   document.getElementById('player-slots').appendChild(div);
   if (playerSlotCount >= 4) document.getElementById('add-player-btn').style.display = 'none';
 
-  // Auto-fill hcp when player selected, en voorkom dubbele spelers
   div.querySelector('select').addEventListener('change', function() {
-    const speler = state.spelers.find(s => String(s.id) === String(this.value));
+    const spelers = getPartijLadderSpelers();
+    const speler = spelers.find(s => String(s.id) === String(this.value));
     if (speler) div.querySelector('.hcp-input').value = Math.round(speler.hcp);
-    // Ververs alle andere slots om geselecteerde speler eruit te halen
     refreshPlayerSlotOptions();
   });
 }
 
 function refreshPlayerSlotOptions() {
-  // Haal alle geselecteerde speler-ids op
   const selects = Array.from(document.querySelectorAll('.player-select'));
   const reedsSel = selects.map(s => String(s.value)).filter(v => v !== '');
-  const sorted = [...state.spelers].sort((a,b) => a.rank - b.rank);
+  const sorted = getPartijLadderSpelers();
 
   selects.forEach(sel => {
     const huidigeWaarde = sel.value;
-    // Toon alle spelers behalve die al geselecteerd zijn in andere slots
     const beschikbaar = sorted.filter(s =>
       String(s.id) === huidigeWaarde || !reedsSel.includes(String(s.id))
     );
     sel.innerHTML = '<option value="">— Kies speler —</option>' +
       beschikbaar.map(s => `<option value="${s.id}">${s.naam} (hcp ${Math.round(s.hcp)})</option>`).join('');
-    sel.value = huidigeWaarde; // herstel selectie
+    sel.value = huidigeWaarde;
   });
 }
 
@@ -1879,9 +2039,10 @@ async function verwijderAangepasteBaan() {
 
 // Geeft de actieve partij terug waar de ingelogde speler in zit
 function mijnPartij() {
-  if (!huidigeBruiker || !state.actievePartijen) return null;
+  if (!huidigeBruiker) return null;
   const gebruiker = huidigeBruiker.gebruikersnaam.toLowerCase();
-  return state.actievePartijen.find(p =>
+
+  const zoekInPartijen = (partijen) => (partijen || []).find(p =>
     p.spelers.some(s => {
       const naam = s.naam.toLowerCase();
       const voornaam = naam.split(' ')[0];
@@ -1890,11 +2051,27 @@ function mijnPartij() {
              naam.replace(/\s/g,'.') === gebruiker;
     })
   ) || null;
+
+  // Zoek eerst in actieve ladder
+  const inActief = zoekInPartijen(state.actievePartijen);
+  if (inActief) return inActief;
+
+  // Zoek in andere ladders (via alleLadders cache)
+  for (const l of alleLadders) {
+    if (l.id === activeLadderId) continue;
+    const gevonden = zoekInPartijen(l.actievePartijen);
+    if (gevonden) return gevonden;
+  }
+  return null;
 }
 
 async function startPartij() {
   const baanNaam = document.getElementById('baan-select').value;
   if (!baanNaam) { toast('Selecteer eerst een baan'); return; }
+
+  // Bepaal ladder voor deze partij
+  const partijLadderId = document.getElementById('partij-ladder-select')?.value || activeLadderId;
+  const partijLadderSpelers = getPartijLadderSpelers();
 
   // Collect players
   const spelers = [];
@@ -1903,11 +2080,11 @@ async function startPartij() {
     const hcpEl = document.getElementById('hcp-' + i);
     if (!sel) continue;
     if (!sel.value) continue;
-    const speler = state.spelers.find(s => s.id == sel.value);
+    const speler = partijLadderSpelers.find(s => s.id == sel.value);
     if (!speler) continue;
     const partijHcp = Math.round(parseFloat(hcpEl.value));
     if (!isNaN(partijHcp) && partijHcp !== speler.hcp) {
-      const sv = state.spelers.find(s => s.id === speler.id);
+      const sv = partijLadderSpelers.find(s => s.id === speler.id);
       if (sv) sv.hcp = partijHcp;
     }
     spelers.push({ ...speler, hcp: isNaN(partijHcp) ? speler.hcp : partijHcp, partijHcp: isNaN(partijHcp) ? speler.hcp : partijHcp });
@@ -1915,12 +2092,12 @@ async function startPartij() {
 
   if (spelers.length < 2) { toast('Minimaal 2 spelers nodig'); return; }
 
-  // Check: zit een van deze spelers al in een actieve partij?
+  // Check: zit een van deze spelers al in een actieve partij in dezelfde ladder?
   if (!state.actievePartijen) state.actievePartijen = [];
   const bezet = spelers.find(s =>
-    state.actievePartijen.some(p => p.spelers.some(ps => ps.id === s.id))
+    state.actievePartijen.some(p => p.ladderId === partijLadderId && p.spelers.some(ps => ps.id === s.id))
   );
-  if (bezet) { toast(`${bezet.naam.split(' ')[0]} speelt al een actieve partij`); return; }
+  if (bezet) { toast(`${bezet.naam.split(' ')[0]} speelt al een actieve partij in deze ladder`); return; }
 
   // Baan holes
   let holes = [];
@@ -1961,6 +2138,7 @@ async function startPartij() {
 
   const nieuwePartij = {
     partijId: `p_${Date.now()}`,
+    ladderId: partijLadderId,
     baan: baanNaam,
     holes: activeHoles,
     startHole: startH + 1,
@@ -1970,15 +2148,25 @@ async function startPartij() {
     timestamp: Date.now()
   };
 
-  // Init scores
   spelers.forEach(s => { nieuwePartij.scores[s.id] = Array(activeHoles.length).fill(null); });
 
-  state.actievePartijen.push(nieuwePartij);
+  // Voeg toe aan de juiste ladder
+  if (partijLadderId !== activeLadderId) {
+    // Laad andere ladder en voeg partij toe
+    const snap = await getDoc(doc(db, 'ladders', partijLadderId));
+    const ladderData = snap.exists() ? snap.data() : { ...JSON.parse(JSON.stringify(DEFAULT_STATE)) };
+    if (!ladderData.actievePartijen) ladderData.actievePartijen = [];
+    ladderData.actievePartijen.push(nieuwePartij);
+    await setDoc(doc(db, 'ladders', partijLadderId), ladderData);
+    // Wissel naar die ladder zodat de ronde zichtbaar is
+    activeLadderId = partijLadderId;
+    state = ladderData;
+  } else {
+    state.actievePartijen.push(nieuwePartij);
+    await slaState();
+  }
 
-  await slaState();
   toast('Partij gestart! ⛳');
-
-  // Go to ronde tab
   document.querySelectorAll('nav button')[2].click();
 }
 
@@ -2029,7 +2217,8 @@ function renderRonde() {
   document.getElementById('ronde-empty').style.display = 'none';
   document.getElementById('ronde-content').style.display = 'block';
   document.getElementById('ronde-baan-naam').textContent = p.baan;
-  document.getElementById('ronde-holes-badge').textContent = p.holes.length + ' holes';
+  const ladderNaam = alleLadders.find(l => l.id === p.ladderId)?.naam || '';
+  document.getElementById('ronde-holes-badge').textContent = p.holes.length + ' holes' + (ladderNaam ? ' · ' + ladderNaam : '');
   renderScorecard();
   renderMatchOverview();
 }
@@ -2393,6 +2582,16 @@ function skipMatchup(idx) {
 async function bevestigUitslag() {
   const p = mijnPartij();
   if (!p) return;
+
+  // Zorg dat we in de juiste ladder zitten
+  if (p.ladderId && p.ladderId !== activeLadderId) {
+    const snap = await getDoc(doc(db, 'ladders', p.ladderId));
+    if (snap.exists()) {
+      activeLadderId = p.ladderId;
+      state = snap.data();
+      if (!state.actievePartijen) state.actievePartijen = [];
+    }
+  }
 
   // Check: niet-overgeslagen matchups zonder winnaar bij gelijkspel
   const probleem = p.matchups.find((m, idx) => {
@@ -2923,7 +3122,22 @@ async function saveEditPlayer() {
   s.hcp = hcp;
   await slaState();
 
-  // Update ook de gebruikersnaam in de accounts lijst als die overeenkomt
+  // Sync naam/hcp naar alle andere ladders
+  for (const ladder of alleLadders) {
+    if (ladder.id === activeLadderId) continue;
+    const snap = await getDoc(doc(db, 'ladders', ladder.id));
+    if (!snap.exists()) continue;
+    const data = snap.data();
+    const spelerInLadder = (data.spelers || []).find(sp => sp.id === id);
+    if (spelerInLadder) {
+      spelerInLadder.naam = naam;
+      spelerInLadder.hcp = hcp;
+      await setDoc(doc(db, 'ladders', ladder.id), data);
+      ladder.spelers = data.spelers;
+    }
+  }
+
+  // Update gebruikersnaam in accounts lijst
   try {
     const snap = await getDoc(USERS_DOC);
     const users = snap.exists() ? (snap.data().lijst || []) : [];
@@ -2943,13 +3157,27 @@ async function saveEditPlayer() {
 }
 
 async function removePlayer(id) {
-  if (!confirm('Speler verwijderen?')) return;
+  if (!confirm('Speler verwijderen uit alle ladders?')) return;
+  // Verwijder uit actieve ladder
   state.spelers = state.spelers.filter(s => s.id !== id);
-  // Re-rank
   state.spelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
   await slaState();
+  // Verwijder ook uit andere ladders
+  for (const ladder of alleLadders) {
+    if (ladder.id === activeLadderId) continue;
+    const snap = await getDoc(doc(db, 'ladders', ladder.id));
+    if (!snap.exists()) continue;
+    const data = snap.data();
+    if ((data.spelers || []).find(s => s.id === id)) {
+      data.spelers = data.spelers.filter(s => s.id !== id);
+      data.spelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
+      data.spelerIds = (data.spelerIds || []).filter(sid => sid !== id);
+      await setDoc(doc(db, 'ladders', ladder.id), data);
+      ladder.spelers = data.spelers;
+    }
+  }
   renderAdmin();
-  toast('Speler verwijderd');
+  toast('Speler verwijderd uit alle ladders');
 }
 
 // ============================================================
@@ -4002,6 +4230,140 @@ async function annuleerToernooi() {
 }
 
 // ============================================================
+//  LADDERS BEHEREN
+// ============================================================
+function openNieuweLadderModal() {
+  document.getElementById('nieuwe-ladder-naam').value = '';
+  document.getElementById('modal-nieuwe-ladder').classList.add('open');
+}
+
+async function maakNieuweLadder() {
+  const naam = document.getElementById('nieuwe-ladder-naam').value.trim();
+  if (!naam) { toast('Voer een naam in'); return; }
+  if (alleLadders.find(l => l.naam.toLowerCase() === naam.toLowerCase())) {
+    toast('Een ladder met deze naam bestaat al'); return;
+  }
+  const id = naam.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
+  const nieuweData = { ...JSON.parse(JSON.stringify(DEFAULT_STATE)), naam, spelerIds: [] };
+  await setDoc(doc(db, 'ladders', id), nieuweData);
+  alleLadders.push({ id, naam, spelerIds: [], spelers: [] });
+  closeModal('modal-nieuwe-ladder');
+  renderAdminLadders();
+  toast(`Ladder "${naam}" aangemaakt ✓`);
+}
+
+async function verwijderLadder(ladderId) {
+  const ladder = alleLadders.find(l => l.id === ladderId);
+  if (!ladder) return;
+  if (ladderId === activeLadderId) {
+    toast('De actieve ladder kan niet verwijderd worden'); return;
+  }
+  if (!confirm(`Ladder "${ladder.naam}" verwijderen? Dit kan niet ongedaan worden.`)) return;
+  await deleteDoc(doc(db, 'ladders', ladderId));
+  alleLadders = alleLadders.filter(l => l.id !== ladderId);
+  renderAdminLadders();
+  toast('Ladder verwijderd');
+}
+
+let _ladderSpelersId = null;
+
+function openLadderSpelersModal(ladderId) {
+  const ladder = alleLadders.find(l => l.id === ladderId);
+  if (!ladder) return;
+  _ladderSpelersId = ladderId;
+  document.getElementById('ladder-spelers-titel').textContent = `Spelers in "${ladder.naam}"`;
+
+  // Verzamel alle unieke spelers uit alle ladders
+  const alleSpelers = [];
+  const gezien = new Set();
+  alleLadders.forEach(l => {
+    (l.spelers || []).forEach(s => {
+      if (!gezien.has(s.id)) {
+        gezien.add(s.id);
+        alleSpelers.push(s);
+      }
+    });
+  });
+  alleSpelers.sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
+
+  const huidigeIds = new Set((ladder.spelerIds || []).map(String));
+
+  document.getElementById('ladder-spelers-lijst').innerHTML = alleSpelers.length === 0
+    ? '<p style="font-size:13px;color:var(--light);padding:12px 0">Geen spelers gevonden. Voeg eerst spelers toe via Spelers beheren.</p>'
+    : alleSpelers.map(s => `
+    <label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer">
+      <input type="checkbox" value="${s.id}" ${huidigeIds.has(String(s.id)) ? 'checked' : ''}
+        style="width:18px;height:18px;accent-color:var(--green);cursor:pointer">
+      <span style="flex:1">${s.naam}</span>
+      <span style="font-size:12px;color:var(--light)">hcp ${s.hcp}</span>
+    </label>
+  `).join('');
+
+  document.getElementById('modal-ladder-spelers').classList.add('open');
+}
+
+async function slaLadderSpelersOp() {
+  const ladderId = _ladderSpelersId;
+  if (!ladderId) return;
+  const checkboxes = document.querySelectorAll('#ladder-spelers-lijst input[type=checkbox]');
+  const geselecteerdeIds = [...checkboxes].filter(c => c.checked).map(c => parseInt(c.value));
+
+  const snap = await getDoc(doc(db, 'ladders', ladderId));
+  const ladderData = snap.exists() ? snap.data() : { ...JSON.parse(JSON.stringify(DEFAULT_STATE)), naam: alleLadders.find(l=>l.id===ladderId)?.naam };
+
+  const huidigeSpelers = ladderData.spelers || [];
+  const nieuweSpelers = [];
+
+  geselecteerdeIds.forEach(id => {
+    const bestaand = huidigeSpelers.find(s => s.id === id);
+    if (bestaand) {
+      nieuweSpelers.push(bestaand);
+    } else {
+      let gevonden = null;
+      for (const l of alleLadders) {
+        gevonden = (l.spelers || []).find(s => s.id === id);
+        if (gevonden) break;
+      }
+      nieuweSpelers.push({
+        id, naam: gevonden?.naam || 'Onbekend', hcp: gevonden?.hcp || 0,
+        rank: nieuweSpelers.length + 1, partijen: 0, gewonnen: 0
+      });
+    }
+  });
+
+  nieuweSpelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
+
+  const updatedData = { ...ladderData, spelers: nieuweSpelers, spelerIds: geselecteerdeIds };
+  await setDoc(doc(db, 'ladders', ladderId), updatedData);
+
+  const idx = alleLadders.findIndex(l => l.id === ladderId);
+  if (idx >= 0) { alleLadders[idx].spelerIds = geselecteerdeIds; alleLadders[idx].spelers = nieuweSpelers; }
+  if (ladderId === activeLadderId) { state.spelers = nieuweSpelers; state.spelerIds = geselecteerdeIds; }
+
+  closeModal('modal-ladder-spelers');
+  renderAdminLadders();
+  toast('Spelers bijgewerkt ✓');
+}
+
+async function renderAdminLadders() {
+  const list = document.getElementById('admin-ladders-list');
+  if (!list) return;
+  const snaps = await Promise.all(alleLadders.map(l => getDoc(doc(db, 'ladders', l.id))));
+  snaps.forEach((snap, i) => { if (snap.exists()) alleLadders[i].spelers = snap.data().spelers || []; });
+
+  list.innerHTML = alleLadders.map(l => `
+    <div class="admin-row">
+      <div style="flex:1">
+        <div style="font-weight:600">${l.naam}</div>
+        <div style="font-size:11px;color:var(--light)">${(l.spelers||[]).length} spelers</div>
+      </div>
+      <button class="btn btn-sm btn-ghost" onclick="openLadderSpelersModal('${l.id}')">👥 Spelers</button>
+      ${l.id !== activeLadderId ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="verwijderLadder('${l.id}')">✕</button>` : '<div style="width:38px"></div>'}
+    </div>
+  `).join('');
+}
+
+// ============================================================
 //  LADDER SNAPSHOTS
 // ============================================================
 function openSnapshotsModal() {
@@ -4019,6 +4381,8 @@ async function slaSnapshotOp(label) {
     // Sla nieuwe snapshot op
     await addDoc(SNAPSHOTS_COL, {
       label,
+      ladderId: activeLadderId,
+      ladderNaam: alleLadders.find(l => l.id === activeLadderId)?.naam || activeLadderId,
       timestamp: Date.now(),
       datum: new Date().toLocaleString('nl-NL'),
       spelers: JSON.parse(JSON.stringify(state.spelers))
@@ -4031,16 +4395,17 @@ async function laadSnapshots() {
   if (!wrap) return;
   try {
     const snaps = await getDocs(query(SNAPSHOTS_COL, orderBy('timestamp', 'desc')));
-    if (snaps.empty) {
-      wrap.innerHTML = '<p style="font-size:13px;color:var(--light);padding:12px 16px">Nog geen snapshots.</p>';
+    const relevant = snaps.docs.filter(d => !d.data().ladderId || d.data().ladderId === activeLadderId);
+    if (relevant.length === 0) {
+      wrap.innerHTML = '<p style="font-size:13px;color:var(--light);padding:12px 16px">Nog geen snapshots voor deze ladder.</p>';
       return;
     }
-    wrap.innerHTML = snaps.docs.map(d => {
+    wrap.innerHTML = relevant.map(d => {
       const data = d.data();
       return `<div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);gap:10px">
         <div style="flex:1">
           <div style="font-weight:500;font-size:13px">${data.label}</div>
-          <div style="font-size:11px;color:var(--light)">${data.datum}</div>
+          <div style="font-size:11px;color:var(--light)">${data.datum}${data.ladderNaam ? ' · ' + data.ladderNaam : ''}</div>
         </div>
         <button class="btn btn-sm btn-ghost" onclick="herstelSnapshot('${d.id}')">↩ Herstel</button>
       </div>`;
@@ -4143,7 +4508,18 @@ async function registreerSpeler() {
     const newId = st.nextId || (newRank + 100);
     st.spelers.push({ id: newId, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
     st.nextId = newId + 1;
+    st.spelerIds = (st.spelerIds || []).concat([newId]);
     await setDoc(STATE_DOC, st);
+    // Update ook de ladders collectie als die al bestaat
+    const mpSnap = await getDoc(doc(db, 'ladders', 'mp'));
+    if (mpSnap.exists()) {
+      const mpData = mpSnap.data();
+      mpData.spelers = mpData.spelers || [];
+      mpData.spelers.push({ id: newId, naam, hcp, rank: mpData.spelers.length + 1, partijen: 0, gewonnen: 0 });
+      mpData.spelerIds = (mpData.spelerIds || []).concat([newId]);
+      mpData.nextId = newId + 1;
+      await setDoc(doc(db, 'ladders', 'mp'), mpData);
+    }
 
     _bezigMetRegistratie = false;
     // Stap 3: Toon succes — gebruiker blijft ingelogd en wordt doorgestuurd
@@ -4271,7 +4647,16 @@ function toggleAdminKaart(header) {
 }
 
 window.toggleAdminKaart = toggleAdminKaart;
+window.openSnapshotsModal = openSnapshotsModal;
 window.herstelSnapshot = herstelSnapshot;
+window.openNieuweLadderModal = openNieuweLadderModal;
+window.maakNieuweLadder = maakNieuweLadder;
+window.verwijderLadder = verwijderLadder;
+window.openLadderSpelersModal = openLadderSpelersModal;
+window.slaLadderSpelersOp = slaLadderSpelersOp;
+window.toggleLadderKaart = toggleLadderKaart;
+window.wisselLadder = wisselLadder;
+window.herlaadPartijSpelers = herlaadPartijSpelers;
 window.genereerInviteLink = genereerInviteLink;
 window.kopieerInviteLink = kopieerInviteLink;
 window.registreerSpeler = registreerSpeler;
