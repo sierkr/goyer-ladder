@@ -1202,7 +1202,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.1.7</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.1.8</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -5047,7 +5047,7 @@ async function renderAdminLadders() {
       <button class="btn btn-sm btn-ghost" onclick="openLadderSpelersModal('${l.id}')">👥 Spelers</button>
       <button class="btn btn-sm btn-ghost" onclick="openStandAanpassen('${l.id}')">↕ Stand</button>
       <button class="btn btn-sm btn-ghost" onclick="openLadderInstellingen('${l.id}')">⚙️</button>
-      ${l.id !== activeLadderId ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="verwijderLadder('${l.id}')">✕</button>` : '<div style="width:38px"></div>'}
+      ${(l.id !== activeLadderId && l.id !== 'mp') ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="verwijderLadder('${l.id}')">✕</button>` : '<div style="width:38px"></div>'}
     </div>
   `).join('');
 }
