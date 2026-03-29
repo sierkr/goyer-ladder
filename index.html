@@ -4183,7 +4183,7 @@ function initToernooiSetup() {
       onclick="${bezet ? '' : `toggleTSpeler('${s.id}')`}"
       style="${bezet ? 'opacity:0.4;cursor:not-allowed;' : ''}"
       title="${bezet ? 'Speelt al mee in ander toernooi' : ''}"
-    >${s.naam.split(' ')[0]} (${Math.round(s.hcp)})</span>`;
+    >${s.naam}</span>`;
   }).join('');
 }
 
@@ -4399,7 +4399,13 @@ function renderTScorecard() {
   // HEAD: rijen = holes, kolommen = spelers
   let headHtml = '<tr><th class="player-col">Hole</th>';
   t.spelers.forEach(s => {
-    headHtml += `<th class="player-col">${s.naam.split(' ')[0]}<span class="hole-par" style="display:block;cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)" onclick="editToernooiHcp('${s.id}')" title="Klik om aan te passen">hcp ${Math.round(s.hcp)}</span></th>`;
+    const delen = s.naam.split(' ');
+    const voornaam = delen[0];
+    const achternaam = delen.slice(1).join(' ');
+    headHtml += `<th class="player-col" style="max-width:70px">
+      <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px" title="${s.naam}">${voornaam}</span>
+      <span class="hole-par" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px;cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)" onclick="editToernooiHcp('${s.id}')" title="${s.naam} — klik om hcp aan te passen">${achternaam || 'hcp ' + Math.round(s.hcp)}</span>
+    </th>`;
   });
   headHtml += '</tr>';
   document.getElementById('t-scorecard-head').innerHTML = headHtml;
@@ -4676,7 +4682,12 @@ async function bevestigToernooiAfsluiten() {
 
   // Filter: alleen deelnemers die in de ladder zitten
   const deelnemers = volgorde.filter(e => ladderSpelerIds.has(String(e.s.id)));
-  if (deelnemers.length === 0) { toast('Geen deelnemers gevonden in de ladder'); return; }
+  if (deelnemers.length === 0) {
+    // Debug: toon welke IDs er zijn
+    console.log('Toernooi speler IDs:', volgorde.map(e => String(e.s.id)));
+    console.log('Ladder speler IDs:', [...ladderSpelerIds]);
+    toast('Geen deelnemers gevonden in de ladder'); return;
+  }
 
   // Wijs ranks toe op basis van toernooi eindstand
   const deelnemerSpelers = deelnemers.map(e => ladderData.spelers.find(s => String(s.id) === String(e.s.id))).filter(Boolean);
