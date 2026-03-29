@@ -1216,7 +1216,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.4.6</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.4.7</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4747,7 +4747,10 @@ function renderTScorecard() {
 
   let html = '';
   teTonenFlights.forEach(({ naam, spelers }, fi) => {
-    const tabOffset = fi * t.holes.length * spelers.length;
+    // tabOffset: voor beheerder per speler, voor speler per hole
+    const tabOffset = isBeheerder
+      ? fi * spelers.length * t.holes.length
+      : fi * t.holes.length * spelers.length;
     html += `<div ${teTonenFlights.length > 1 ? `style="margin-bottom:16px"` : ''}>`;
     if (naam) html += `<div style="font-family:'Bebas Neue';font-size:16px;color:var(--green);padding:8px 12px 4px">${naam}</div>`;
     html += `<div style="overflow-x:auto"><table class="scorecard" style="width:100%"><thead><tr><th class="player-col">Hole</th>`;
@@ -4763,10 +4766,11 @@ function renderTScorecard() {
       html += `<tr><td class="player-col" style="font-weight:600">${i+1}<span class="hole-par">p${h.par} SI${h.si}</span></td>`;
       spelers.forEach((s, si) => {
         const val = t.scores[s.id]?.[i] ?? t.scores[String(s.id)]?.[i];
-        // Beheerder: per speler (si * holes + i), Speler: per hole (i * spelers + si)
-        const tabIdx = tabOffset + (isBeheerder
-          ? si * t.holes.length + i + 1
-          : i * spelers.length + si + 1);
+        // Beheerder: per speler (alle holes speler 1, dan alle holes speler 2)
+        // Speler: per hole (alle spelers hole 1, dan alle spelers hole 2)
+        const tabIdx = isBeheerder
+          ? tabOffset + si * t.holes.length + i + 1
+          : tabOffset + i * spelers.length + si + 1;
         html += `<td><input type="number" min="1" max="12" value="${val !== null && val !== undefined ? val : ''}"
           tabindex="${tabIdx}" onfocus="this.select()"
           oninput="updateTScoreAndAdvance(${s.id},${i},${tabIdx},this.value)"
