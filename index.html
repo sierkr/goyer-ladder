@@ -3029,25 +3029,43 @@ async function verwijderActievePartij() {
 //  ADMIN
 // ============================================================
 function renderAdmin() {
-  const sorted = [...state.spelers].sort((a,b) => a.rank - b.rank);
+  // Verzamel alle unieke spelers uit alle ladders
+  const alleSpelers = [];
+  const gezien = new Set();
+  alleLadders.forEach(l => {
+    (l.spelers || []).forEach(s => {
+      if (!gezien.has(s.id)) {
+        gezien.add(s.id);
+        alleSpelers.push(s);
+      }
+    });
+  });
+  // Voeg ook spelers uit actieve ladder toe die misschien niet in cache zitten
+  (state.spelers || []).forEach(s => {
+    if (!gezien.has(s.id)) {
+      gezien.add(s.id);
+      alleSpelers.push(s);
+    }
+  });
+  const sorted = alleSpelers.sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
   const list = document.getElementById('admin-player-list');
   if (!list) return;
   if (sorted.length === 0) {
     list.innerHTML = '<div class="empty"><div class="empty-icon">👤</div><p>Geen spelers. Voeg een speler toe via + Speler.</p></div>';
   } else {
-    list.innerHTML = sorted.map(s => `
+  list.innerHTML = sorted.map(s => {
+      // Welke ladders heeft deze speler?
+      const spelersLadders = alleLadders.filter(l => (l.spelers || []).some(sp => sp.id === s.id));
+      const ladderBadges = spelersLadders.map(l => `<span class="badge badge-grey" style="font-size:10px">${l.naam}</span>`).join(' ');
+      return `
     <div class="admin-row">
-      <span style="font-family:'Bebas Neue';font-size:18px;color:var(--light);min-width:28px">${s.rank}</span>
       <span class="name">${s.naam}</span>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">${ladderBadges}</div>
       <span class="hcp">hcp ${Math.round(s.hcp)}</span>
-      <div style="display:flex;align-items:center;gap:4px">
-        <button onclick="verschuifRank(${s.id},-1)" style="background:var(--green-pale);border:none;border-radius:5px;width:26px;height:26px;cursor:pointer;font-size:13px;color:var(--green);font-weight:700" title="1 plaats omhoog">↑</button>
-        <button onclick="verschuifRank(${s.id},1)" style="background:#fde8e8;border:none;border-radius:5px;width:26px;height:26px;cursor:pointer;font-size:13px;color:var(--red);font-weight:700" title="1 plaats omlaag">↓</button>
-      </div>
       <button class="btn btn-sm btn-ghost" onclick="openEditPlayer(${s.id})">✏️</button>
       <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removePlayer(${s.id})">✕</button>
     </div>
-  `).join('');
+  `}).join('');
   }
   renderAdminUsers();
 }
