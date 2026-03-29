@@ -1216,7 +1216,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.4.3</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.4.5</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -1566,7 +1566,7 @@ async function setIngelogd(firebaseUser) {
   }
   profielBtn.style.display = '';
   logoutBtn.style.display = '';
-  logoutBtn.textContent = huidigeBruiker.gebruikersnaam + ' ↩';
+  logoutBtn.textContent = huidigeBruiker.gebruikersnaam.split(' ')[0] + ' ↩';
 
   // Firestore is al geladen door initFirestore — direct renderen
   renderLadder();
@@ -4659,7 +4659,6 @@ function renderToernooiActief() {
     </div>
     ` : ''}
 
-    ${!t.matrixIngeklapt || uitslag ? `
     <div class="card">
       <div class="card-header ${isBeheerder ? 'inklapbaar' : ''} ${t.matrixIngeklapt && !uitslag ? 'ingeklapt' : ''}"
         ${isBeheerder ? `onclick="toggleToernooiMatrix()"` : ''}>
@@ -4669,7 +4668,6 @@ function renderToernooiActief() {
         <div id="t-matrix" style="overflow-x:auto;padding:8px"></div>
       </div>
     </div>
-    ` : ''}
 
     <div class="card">
       <div class="card-header inklapbaar ${uitslag ? 'ingeklapt' : ''}" onclick="toggleAdminKaart(this)">
