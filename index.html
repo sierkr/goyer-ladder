@@ -1216,7 +1216,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.4.1</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.4.2</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4238,9 +4238,9 @@ function renderToernooi() {
   if (mijnToernooien.length > 0) {
     wrap.style.display = 'block';
 
-    // Render tabs als meerdere toernooien
+    // Beheerder ziet tabs bij meerdere toernooien, speler ziet alleen zijn eigen toernooi
     let html = '';
-    if (mijnToernooien.length > 1) {
+    if (isBeheerder && mijnToernooien.length > 1) {
       html += `<div style="display:flex;gap:8px;overflow-x:auto;padding:12px 16px;border-bottom:1px solid var(--border);scrollbar-width:none">`;
       mijnToernooien.forEach(t => {
         const actief = t.id === actieveToernooiId;
@@ -4649,6 +4649,7 @@ function renderToernooiActief() {
     </div>
     ` : ''}
 
+    ${!t.matrixIngeklapt || uitslag ? `
     <div class="card">
       <div class="card-header ${isBeheerder ? 'inklapbaar' : ''} ${t.matrixIngeklapt && !uitslag ? 'ingeklapt' : ''}"
         ${isBeheerder ? `onclick="toggleToernooiMatrix()"` : ''}>
@@ -4658,21 +4659,17 @@ function renderToernooiActief() {
         <div id="t-matrix" style="overflow-x:auto;padding:8px"></div>
       </div>
     </div>
+    ` : ''}
 
     <div class="card">
       <div class="card-header inklapbaar ${uitslag ? 'ingeklapt' : ''}" onclick="toggleAdminKaart(this)">
-        <h2>Scores</h2>
+        <h2>${isBeheerder ? 'Scores' : 'Mijn scorekaart'}</h2>
         <div style="display:flex;gap:6px" onclick="event.stopPropagation()">
           ${isBeheerder ? `<button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="openVerwijderToernooiSpeler()">− Speler</button>` : ''}
         </div>
       </div>
       <div class="card-collapse ${uitslag ? 'ingeklapt' : ''}">
-        <div id="t-scorecard-wrap" style="overflow-x:auto">
-          <table class="scorecard" id="t-scorecard-table">
-            <thead id="t-scorecard-head"></thead>
-            <tbody id="t-scorecard-body"></tbody>
-          </table>
-        </div>
+        <div id="t-scorecard-wrap" style="overflow-x:auto"></div>
       </div>
     </div>
 
