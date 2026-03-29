@@ -4238,7 +4238,7 @@ async function startToernooi() {
 
 async function toggleToernooiMatrix() {
   if (!toernooiData || !actieveToernooiId) return;
-  toernooiData.matrixVerborgen = !toernooiData.matrixVerborgen;
+  toernooiData.matrixIngeklapt = !toernooiData.matrixIngeklapt;
   await setDoc(doc(db, 'toernooien', actieveToernooiId), toernooiData);
   renderToernooiActief();
 }
@@ -4322,12 +4322,14 @@ function renderToernooiActief() {
     </div>
     ` : ''}
 
-    <div class="card" id="t-matrix-card" ${t.matrixVerborgen && !uitslag ? 'style="display:none"' : ''}>
-      <div class="card-header">
+    <div class="card">
+      <div class="card-header ${isBeheerder ? 'inklapbaar' : ''} ${t.matrixIngeklapt && !uitslag ? 'ingeklapt' : ''}"
+        ${isBeheerder ? `onclick="toggleToernooiMatrix()"` : ''}>
         <h2>Onderlinge stand</h2>
-        ${isBeheerder && !uitslag ? `<button class="btn btn-sm btn-ghost" onclick="toggleToernooiMatrix()">${t.matrixVerborgen ? 'Toon' : 'Verberg'}</button>` : ''}
       </div>
-      <div id="t-matrix" style="overflow-x:auto;padding:8px"></div>
+      <div class="card-collapse ${t.matrixIngeklapt && !uitslag ? 'ingeklapt' : ''}">
+        <div id="t-matrix" style="overflow-x:auto;padding:8px"></div>
+      </div>
     </div>
 
     <div class="card">
