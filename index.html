@@ -1102,12 +1102,6 @@
       <div class="card-collapse ingeklapt">
         <div class="card-body">
         <div class="form-group">
-          <label>Ladder (voor rankingverwerking)</label>
-          <select id="t-ladder">
-            <option value="">— Geen ladder koppelen —</option>
-          </select>
-        </div>
-        <div class="form-group">
           <label>Naam</label>
           <input type="text" id="t-naam" placeholder="bijv. Clubkampioenschap 2025">
         </div>
@@ -1119,11 +1113,34 @@
           <label>Baan</label>
           <select id="t-baan"></select>
         </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+          <div class="form-group" style="margin:0">
+            <label>Aantal holes</label>
+            <select id="t-holes" onchange="toggleHolesCustom()">
+              <option value="18">18 holes</option>
+              <option value="9">9 holes</option>
+              <option value="custom">Aangepast...</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin:0" id="t-holes-custom-wrap" style="display:none">
+            <label>Aangepast</label>
+            <input type="number" id="t-holes-custom" min="1" max="18" placeholder="bijv. 12" style="text-align:center">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+          <div class="form-group" style="margin:0">
+            <label>Starttijd</label>
+            <input type="time" id="t-starttijd" value="09:00">
+          </div>
+          <div class="form-group" style="margin:0">
+            <label>Interval (min)</label>
+            <input type="number" id="t-interval" min="0" max="60" value="10" style="text-align:center" placeholder="bijv. 10">
+          </div>
+        </div>
         <div class="form-group">
-          <label>Aantal holes</label>
-          <select id="t-holes">
-            <option value="18">18 holes</option>
-            <option value="9">9 holes</option>
+          <label>Ladder (voor rankingverwerking)</label>
+          <select id="t-ladder">
+            <option value="">— Geen ladder koppelen —</option>
           </select>
         </div>
         <div class="divider"></div>
@@ -1216,7 +1233,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.4.7</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.5.0</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4390,28 +4407,37 @@ function toggleTSpeler(id) {
 // ============================================================
 let _flights = []; // [{ id, naam, spelers: [{id, naam, hcp}] }]
 
+function toggleHolesCustom() {
+  const sel = document.getElementById('t-holes');
+  const wrap = document.getElementById('t-holes-custom-wrap');
+  if (wrap) wrap.style.display = sel.value === 'custom' ? 'block' : 'none';
+}
+
 function openFlightIndeling() {
-  // Verzamel geselecteerde spelers
   const geselecteerd = alleSpelersData.filter(s =>
     document.getElementById('ttag-' + s.id)?.classList.contains('selected')
   );
   if (geselecteerd.length < 2) { toast('Selecteer minimaal 2 spelers'); return; }
 
-  // Initialiseer flights als nog leeg
+  const starttijd = document.getElementById('t-starttijd')?.value || '09:00';
+  const interval = parseInt(document.getElementById('t-interval')?.value) || 0;
+
   if (_flights.length === 0) {
-    _flights = [{ id: 1, naam: 'Flight 1', spelers: geselecteerd.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp })) }];
+    _flights = [{ id: 1, naam: 'Flight 1', spelers: geselecteerd.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp })), starthole: 1, starttijd }];
   } else {
-    // Update spelers op basis van huidige selectie — behoud bestaande HCP aanpassingen
-    const alleFlightSpelers = _flights.flatMap(f => f.spelers);
-    _flights.forEach(f => {
+    _flights.forEach((f, fi) => {
+      if (!f.starttijd) f.starttijd = berekenFlightTijd(starttijd, interval, fi);
+      if (!f.starthole) f.starthole = 1;
       f.spelers = f.spelers.filter(s => geselecteerd.some(g => g.id === s.id));
     });
-    // Voeg niet-ingedeelde spelers toe aan de eerste flight
     const ingedeeld = new Set(_flights.flatMap(f => f.spelers.map(s => s.id)));
-    const nieuw = geselecteerd.filter(s => !ingedeeld.has(s.id))
-      .map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp }));
+    const nieuw = geselecteerd.filter(s => !ingedeeld.has(s.id)).map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp }));
     if (nieuw.length > 0 && _flights.length > 0) _flights[0].spelers.push(...nieuw);
   }
+
+  // Sla starttijd/interval op voor gebruik bij nieuwe flights
+  window._toernooiStarttijd = starttijd;
+  window._toernooiInterval = interval;
 
   renderFlightLijst();
   document.getElementById('modal-flight-indeling').classList.add('open');
@@ -4428,8 +4454,20 @@ function renderFlightLijst() {
     <div style="border:1.5px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden">
       <div style="background:var(--green);padding:8px 12px;display:flex;align-items:center;gap:8px">
         <input type="text" value="${f.naam}" onchange="wijzigFlightNaam(${fi}, this.value)"
-          style="background:transparent;border:none;color:white;font-family:'Bebas Neue';font-size:18px;width:100%;outline:none">
+          style="background:transparent;border:none;color:white;font-family:'Bebas Neue';font-size:18px;flex:1;outline:none">
         ${_flights.length > 1 ? `<button onclick="verwijderFlight(${fi})" style="background:rgba(255,255,255,0.2);border:none;border-radius:4px;color:white;cursor:pointer;padding:2px 8px;font-size:13px">✕</button>` : ''}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 12px;background:#f9f7f2;border-bottom:1px solid var(--border)">
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--mid);text-transform:uppercase;display:block;margin-bottom:3px">Starttijd</label>
+          <input type="time" value="${f.starttijd || ''}" onchange="wijzigFlightStarttijd(${fi}, this.value)"
+            style="font-family:'DM Mono',monospace;font-size:13px;border:1.5px solid var(--border);border-radius:5px;padding:3px 6px;width:100%">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:600;color:var(--mid);text-transform:uppercase;display:block;margin-bottom:3px">Starthole</label>
+          <input type="number" value="${f.starthole || 1}" min="1" max="18" onchange="wijzigFlightStarthole(${fi}, this.value)"
+            style="font-family:'DM Mono',monospace;font-size:13px;border:1.5px solid var(--border);border-radius:5px;padding:3px 6px;width:100%;text-align:center">
+        </div>
       </div>
       <div style="padding:8px">
         ${f.spelers.map((s, si) => `
@@ -4451,11 +4489,30 @@ function renderFlightLijst() {
   `).join('');
 }
 
+function berekenFlightTijd(basis, interval, fi) {
+  if (!basis || !interval) return basis || '';
+  const [h, m] = basis.split(':').map(Number);
+  const totMin = h * 60 + m + fi * interval;
+  return `${String(Math.floor(totMin / 60) % 24).padStart(2,'0')}:${String(totMin % 60).padStart(2,'0')}`;
+}
+
 function voegFlightToe() {
-  const nieuwId = _flights.length + 1;
-  _flights.push({ id: nieuwId, naam: `Flight ${nieuwId}`, spelers: [] });
+  const fi = _flights.length;
+  const vorigeHole = _flights[fi - 1]?.starthole || 1;
+  const basis = window._toernooiStarttijd || '09:00';
+  const interval = window._toernooiInterval || 0;
+  _flights.push({
+    id: fi + 1,
+    naam: `Flight ${fi + 1}`,
+    spelers: [],
+    starthole: vorigeHole,
+    starttijd: berekenFlightTijd(basis, interval, fi)
+  });
   renderFlightLijst();
 }
+
+function wijzigFlightStarttijd(fi, val) { if (_flights[fi]) _flights[fi].starttijd = val; }
+function wijzigFlightStarthole(fi, val) { if (_flights[fi]) _flights[fi].starthole = parseInt(val) || 1; }
 
 function verwijderFlight(fi) {
   if (_flights.length <= 1) return;
@@ -4486,7 +4543,10 @@ async function startToernooi() {
   const naam = document.getElementById('t-naam').value.trim();
   const datum = document.getElementById('t-datum').value;
   const baanNaam = document.getElementById('t-baan').value;
-  const holesCount = parseInt(document.getElementById('t-holes').value);
+  const holesVal = document.getElementById('t-holes').value;
+  const holesCount = holesVal === 'custom'
+    ? parseInt(document.getElementById('t-holes-custom').value) || 18
+    : parseInt(holesVal);
   const ptWin = parseFloat(document.getElementById('t-pt-win').value);
   const ptTie = parseFloat(document.getElementById('t-pt-tie').value);
   const ptLoss = parseFloat(document.getElementById('t-pt-loss').value);
@@ -4495,7 +4555,6 @@ async function startToernooi() {
 
   if (!naam) { toast('Voer een naam in'); return; }
   if (!datum) { toast('Voer een datum in'); return; }
-  if (!ladderId) { toast('Selecteer een ladder'); return; }
 
   // Gebruik spelers uit flights
   const geselecteerd = _flights.flatMap(f => f.spelers);
@@ -4519,9 +4578,16 @@ async function startToernooi() {
   const nieuweToernooi = {
     status: 'actief',
     naam, datum, baan: baanNaam, holes,
-    ptWin, ptTie, ptLoss, hcpPct, ladderId,
+    ptWin, ptTie, ptLoss, hcpPct, ladderId: ladderId || null,
+    starttijd: document.getElementById('t-starttijd')?.value || '',
+    interval: parseInt(document.getElementById('t-interval')?.value) || 0,
     spelers: geselecteerd.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp })),
-    flights: _flights.map(f => ({ id: f.id, naam: f.naam, spelerIds: f.spelers.map(s => s.id) })),
+    flights: _flights.map(f => ({
+      id: f.id, naam: f.naam,
+      spelerIds: f.spelers.map(s => s.id),
+      starthole: f.starthole || 1,
+      starttijd: f.starttijd || ''
+    })),
     scores,
     timestamp: Date.now()
   };
@@ -4752,7 +4818,15 @@ function renderTScorecard() {
       ? fi * spelers.length * t.holes.length
       : fi * t.holes.length * spelers.length;
     html += `<div ${teTonenFlights.length > 1 ? `style="margin-bottom:16px"` : ''}>`;
-    if (naam) html += `<div style="font-family:'Bebas Neue';font-size:16px;color:var(--green);padding:8px 12px 4px">${naam}</div>`;
+    if (naam) {
+      const flightData = (t.flights || []).find(f => f.naam === naam);
+      const info = [
+        flightData?.starttijd ? `🕐 ${flightData.starttijd}` : null,
+        flightData?.starthole ? `Hole ${flightData.starthole}` : null
+      ].filter(Boolean).join(' · ');
+      html += `<div style="font-family:'Bebas Neue';font-size:16px;color:var(--green);padding:8px 12px 2px">${naam}</div>`;
+      if (info) html += `<div style="font-size:11px;color:var(--mid);padding:0 12px 6px">${info}</div>`;
+    }
     html += `<div style="overflow-x:auto"><table class="scorecard" style="width:100%"><thead><tr><th class="player-col">Hole</th>`;
     spelers.forEach(s => {
       const delen = s.naam.split(' ');
@@ -5015,51 +5089,35 @@ async function bevestigToernooiAfsluiten() {
   const volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]}))
     .sort((a,b) => b.pt - a.pt || b.w - a.w);
 
-  // Haal gekoppelde ladder op
-  const ladderId = t.ladderId || activeLadderId;
-  console.log('Toernooi ladderId:', ladderId, '| actief:', activeLadderId, '| toernooi:', t.naam);
-  if (!ladderId) { toast('Geen ladder gekoppeld aan dit toernooi'); closeModal('modal-toernooi-afsluiten'); return; }
-
-  // Laad ladder data
-  const ladderSnap = await getDoc(doc(db, 'ladders', ladderId));
-  console.log('Ladder doc path:', `ladders/${ladderId}`, '| exists:', ladderSnap.exists(), '| spelers:', ladderSnap.exists() ? ladderSnap.data().spelers?.length : 0);
-  if (!ladderSnap.exists()) { toast('Ladder niet gevonden'); return; }
-  const ladderData = ladderSnap.data();
-  const ladderSpelerIds = new Set((ladderData.spelers || []).map(s => String(s.id)));
-  const ladderSpelersOpNaam = new Map((ladderData.spelers || []).map(s => [s.naam.toLowerCase(), s]));
-
-  // Filter: deelnemers die in de ladder zitten op ID of naam
-  const deelnemers = volgorde.filter(e =>
-    ladderSpelerIds.has(String(e.s.id)) ||
-    ladderSpelersOpNaam.has(e.s.naam.toLowerCase())
-  );
-  if (deelnemers.length === 0) {
-    console.log('Toernooi speler IDs:', volgorde.map(e => String(e.s.id)));
-    console.log('Ladder speler IDs:', [...ladderSpelerIds]);
-    toast('Geen deelnemers gevonden in de ladder'); return;
+  // Haal gekoppelde ladder op — optioneel
+  const ladderId = t.ladderId;
+  if (ladderId) {
+    const ladderSnap = await getDoc(doc(db, 'ladders', ladderId));
+    if (ladderSnap.exists()) {
+      const ladderData = ladderSnap.data();
+      const ladderSpelerIds = new Set((ladderData.spelers || []).map(s => String(s.id)));
+      const ladderSpelersOpNaam = new Map((ladderData.spelers || []).map(s => [s.naam.toLowerCase(), s]));
+      const deelnemers = volgorde.filter(e =>
+        ladderSpelerIds.has(String(e.s.id)) || ladderSpelersOpNaam.has(e.s.naam.toLowerCase())
+      );
+      if (deelnemers.length > 0) {
+        const deelnemerSpelers = deelnemers.map(e =>
+          ladderData.spelers.find(s => String(s.id) === String(e.s.id) || s.naam.toLowerCase() === e.s.naam.toLowerCase())
+        ).filter(Boolean);
+        const sortedRanks = [...deelnemerSpelers].map(s => s.rank).sort((a,b) => a-b);
+        deelnemerSpelers.forEach((speler, idx) => {
+          speler.rank = sortedRanks[idx];
+          speler.partijen = (speler.partijen || 0) + (deelnemers.length - 1);
+          speler.gewonnen = (speler.gewonnen || 0) + (deelnemers.find(e => String(e.s.id) === String(speler.id))?.w || 0);
+        });
+        [...ladderData.spelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
+        await setDoc(doc(db, 'ladders', ladderId), ladderData);
+        const ladderIdx = alleLadders.findIndex(l => l.id === ladderId);
+        if (ladderIdx >= 0) alleLadders[ladderIdx].spelers = ladderData.spelers;
+        if (ladderId === activeLadderId) state.spelers = ladderData.spelers;
+      }
+    }
   }
-
-  // Wijs ranks toe op basis van toernooi eindstand — match op ID of naam
-  const deelnemerSpelers = deelnemers.map(e => {
-    return ladderData.spelers.find(s =>
-      String(s.id) === String(e.s.id) || s.naam.toLowerCase() === e.s.naam.toLowerCase()
-    );
-  }).filter(Boolean);
-  const sortedRanks = [...deelnemerSpelers].map(s => s.rank).sort((a,b) => a-b);
-  deelnemerSpelers.forEach((speler, idx) => {
-    speler.rank = sortedRanks[idx];
-    speler.partijen = (speler.partijen || 0) + (deelnemers.length - 1);
-    speler.gewonnen = (speler.gewonnen || 0) + (deelnemers.find(e => String(e.s.id) === String(speler.id))?.w || 0);
-  });
-
-  // Normaliseer ranks
-  [...ladderData.spelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
-  await setDoc(doc(db, 'ladders', ladderId), ladderData);
-
-  // Update actieve ladder cache
-  const ladderIdx = alleLadders.findIndex(l => l.id === ladderId);
-  if (ladderIdx >= 0) alleLadders[ladderIdx].spelers = ladderData.spelers;
-  if (ladderId === activeLadderId) state.spelers = ladderData.spelers;
 
   // Sla toernooi op in archief
   const archiefSnap = await getDoc(ARCHIEF_DOC);
@@ -5716,6 +5774,9 @@ window.updateTScoreAndAdvance = updateTScoreAndAdvance;
 window.toonToernooiUitslag = toonToernooiUitslag;
 window.openVerwijderToernooiSpeler = openVerwijderToernooiSpeler;
 window.verwijderToernooiSpeler = verwijderToernooiSpeler;
+window.toggleHolesCustom = toggleHolesCustom;
+window.wijzigFlightStarttijd = wijzigFlightStarttijd;
+window.wijzigFlightStarthole = wijzigFlightStarthole;
 window.openFlightIndeling = openFlightIndeling;
 window.voegFlightToe = voegFlightToe;
 window.verwijderFlight = verwijderFlight;
