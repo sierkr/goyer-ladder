@@ -1202,7 +1202,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.3.5</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.3.6</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4401,8 +4401,16 @@ async function startToernooi() {
   toast('Toernooi gestart! 🏅');
   // Reset formulier
   document.getElementById('t-naam').value = '';
+  document.getElementById('t-datum').value = '';
   const ladderSel = document.getElementById('t-ladder');
   if (ladderSel) { ladderSel.value = ''; ladderSel._initDone = false; }
+  // Klap setup kaart in
+  const setupHeader = document.querySelector('#toernooi-setup-wrap .card-header.inklapbaar');
+  if (setupHeader && !setupHeader.classList.contains('ingeklapt')) {
+    setupHeader.classList.add('ingeklapt');
+    const collapse = setupHeader.nextElementSibling;
+    if (collapse) collapse.classList.add('ingeklapt');
+  }
   renderToernooiSpelerTags();
   renderToernooi();
 }
