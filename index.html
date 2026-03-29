@@ -4352,10 +4352,9 @@ function renderToernooiActief() {
     ${isBeheerder ? `
     <div style="padding:0 0 16px">
       ${!uitslag ? `
-      <button class="btn btn-primary btn-block"
-        onclick="${allesIngevuld ? 'toonToernooiUitslag()' : ''}"
+      <button id="t-uitslag-btn" class="btn btn-primary btn-block"
         style="margin-bottom:8px;${!allesIngevuld ? 'opacity:0.5;cursor:not-allowed' : ''}"
-        ${!allesIngevuld ? 'disabled title="Vul eerst alle scores in"' : ''}>
+        ${!allesIngevuld ? 'disabled' : ''}>
         📊 Naar de uitslag ${!allesIngevuld ? '(scores onvolledig)' : ''}
       </button>
       ` : `
@@ -4373,6 +4372,10 @@ function renderToernooiActief() {
   renderTScorecard();
   if (uitslag) renderTRanglijst();
   renderTMatrix();
+
+  // Koppel uitslag knop
+  const uitslagBtn = document.getElementById('t-uitslag-btn');
+  if (uitslagBtn) uitslagBtn.onclick = toonToernooiUitslag;
 }
 
 function renderTScorecard() {
@@ -4437,12 +4440,13 @@ function updateTScore(spelerId, holeIdx, val) {
   // Update knop status
   if (huidigeBruiker?.rol === 'beheerder') {
     const alles = alleScoresIngevuld(toernooiData);
-    const btn = document.querySelector('#toernooi-detail .btn-primary');
-    if (btn && btn.textContent.includes('uitslag')) {
+    const btn = document.getElementById('t-uitslag-btn');
+    if (btn) {
       btn.disabled = !alles;
       btn.style.opacity = alles ? '1' : '0.5';
       btn.style.cursor = alles ? 'pointer' : 'not-allowed';
       btn.textContent = `📊 Naar de uitslag${alles ? '' : ' (scores onvolledig)'}`;
+      btn.onclick = alles ? toonToernooiUitslag : null;
     }
   }
   // Direct opslaan (geen debounce om verlies te voorkomen)
