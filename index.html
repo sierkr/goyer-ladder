@@ -1202,7 +1202,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.3.3</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.3.4</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -5138,17 +5138,17 @@ async function slaLadderSpelersOp() {
   const nieuweSpelers = [];
 
   geselecteerdeIds.forEach(id => {
-    const bestaand = huidigeSpelers.find(s => s.id === id);
+    const bestaand = huidigeSpelers.find(s => Number(s.id) === id);
     if (bestaand) {
       nieuweSpelers.push(bestaand);
     } else {
       let gevonden = null;
       for (const l of alleLadders) {
-        gevonden = (l.spelers || []).find(s => s.id === id);
+        gevonden = (l.spelers || []).find(s => Number(s.id) === id);
         if (gevonden) break;
       }
-      // Fallback: zoek in master spelerslijst
-      if (!gevonden) gevonden = alleSpelersData.find(s => s.id === id);
+      if (!gevonden) gevonden = alleSpelersData.find(s => Number(s.id) === id);
+      console.log(`Speler ID ${id}: gevonden=${gevonden?.naam || 'NIET GEVONDEN'}`);
       nieuweSpelers.push({
         id, naam: gevonden?.naam || 'Onbekend', hcp: gevonden?.hcp || 0,
         rank: nieuweSpelers.length + 1, partijen: 0, gewonnen: 0
