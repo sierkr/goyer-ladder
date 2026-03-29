@@ -1216,7 +1216,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.4.5</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.4.6</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4763,7 +4763,10 @@ function renderTScorecard() {
       html += `<tr><td class="player-col" style="font-weight:600">${i+1}<span class="hole-par">p${h.par} SI${h.si}</span></td>`;
       spelers.forEach((s, si) => {
         const val = t.scores[s.id]?.[i] ?? t.scores[String(s.id)]?.[i];
-        const tabIdx = tabOffset + si * t.holes.length + i + 1;
+        // Beheerder: per speler (si * holes + i), Speler: per hole (i * spelers + si)
+        const tabIdx = tabOffset + (isBeheerder
+          ? si * t.holes.length + i + 1
+          : i * spelers.length + si + 1);
         html += `<td><input type="number" min="1" max="12" value="${val !== null && val !== undefined ? val : ''}"
           tabindex="${tabIdx}" onfocus="this.select()"
           oninput="updateTScoreAndAdvance(${s.id},${i},${tabIdx},this.value)"
