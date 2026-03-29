@@ -160,6 +160,10 @@
     font-size: 18px;
     letter-spacing: 1px;
     color: var(--green);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .card-body { padding: 16px; }
 
@@ -4296,7 +4300,11 @@ function openLadderSpelersModal(ladderId) {
   });
   alleSpelers.sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
 
-  const huidigeIds = new Set((ladder.spelerIds || ladder.spelers?.map(s => s.id) || []).map(Number));
+  // Haal ladder data vers op uit Firestore voor meest actuele spelerIds
+  const ladderSnap = await getDoc(doc(db, 'ladders', ladderId));
+  const ladderDataVers = ladderSnap.exists() ? ladderSnap.data() : {};
+  const versSpelers = ladderDataVers.spelers || [];
+  const huidigeIds = new Set(versSpelers.map(s => Number(s.id)));
 
   document.getElementById('ladder-spelers-lijst').innerHTML = alleSpelers.length === 0
     ? '<p style="font-size:13px;color:var(--light);padding:12px 0">Geen spelers gevonden. Voeg eerst spelers toe via Spelers beheren.</p>'
