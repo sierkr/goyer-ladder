@@ -4672,6 +4672,7 @@ async function bevestigToernooiAfsluiten() {
 
   // Haal gekoppelde ladder op
   const ladderId = t.ladderId;
+  console.log('Toernooi ladderId:', ladderId, 'Toernooi:', t.naam);
   if (!ladderId) { toast('Geen ladder gekoppeld aan dit toernooi'); closeModal('modal-toernooi-afsluiten'); return; }
 
   // Laad ladder data
@@ -4679,18 +4680,25 @@ async function bevestigToernooiAfsluiten() {
   if (!ladderSnap.exists()) { toast('Ladder niet gevonden'); return; }
   const ladderData = ladderSnap.data();
   const ladderSpelerIds = new Set((ladderData.spelers || []).map(s => String(s.id)));
+  const ladderSpelersOpNaam = new Map((ladderData.spelers || []).map(s => [s.naam.toLowerCase(), s]));
 
-  // Filter: alleen deelnemers die in de ladder zitten
-  const deelnemers = volgorde.filter(e => ladderSpelerIds.has(String(e.s.id)));
+  // Filter: deelnemers die in de ladder zitten op ID of naam
+  const deelnemers = volgorde.filter(e =>
+    ladderSpelerIds.has(String(e.s.id)) ||
+    ladderSpelersOpNaam.has(e.s.naam.toLowerCase())
+  );
   if (deelnemers.length === 0) {
-    // Debug: toon welke IDs er zijn
     console.log('Toernooi speler IDs:', volgorde.map(e => String(e.s.id)));
     console.log('Ladder speler IDs:', [...ladderSpelerIds]);
     toast('Geen deelnemers gevonden in de ladder'); return;
   }
 
-  // Wijs ranks toe op basis van toernooi eindstand
-  const deelnemerSpelers = deelnemers.map(e => ladderData.spelers.find(s => String(s.id) === String(e.s.id))).filter(Boolean);
+  // Wijs ranks toe op basis van toernooi eindstand — match op ID of naam
+  const deelnemerSpelers = deelnemers.map(e => {
+    return ladderData.spelers.find(s =>
+      String(s.id) === String(e.s.id) || s.naam.toLowerCase() === e.s.naam.toLowerCase()
+    );
+  }).filter(Boolean);
   const sortedRanks = [...deelnemerSpelers].map(s => s.rank).sort((a,b) => a-b);
   deelnemerSpelers.forEach((speler, idx) => {
     speler.rank = sortedRanks[idx];
