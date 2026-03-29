@@ -1202,7 +1202,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.3.1</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.3.2</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4336,7 +4336,7 @@ function renderToernooiSpelerTags() {
       : 'background:var(--green-pale);color:var(--green);border-color:var(--green)';
     return `<span class="tag${wasGeselecteerd ? ' selected' : ''}" id="ttag-${s.id}"
       onclick="toggleTSpeler('${s.id}')"
-      style="${kleur}"
+      style="${kleur};${wasGeselecteerd ? 'outline:3px solid var(--dark);font-weight:700' : ''}"
       title="${title}"
     >${s.naam}</span>`;
   }).join('');
@@ -4344,7 +4344,11 @@ function renderToernooiSpelerTags() {
 
 function toggleTSpeler(id) {
   const tag = document.getElementById('ttag-' + id);
-  if (tag) tag.classList.toggle('selected');
+  if (!tag) return;
+  tag.classList.toggle('selected');
+  const isSelected = tag.classList.contains('selected');
+  tag.style.outline = isSelected ? '3px solid var(--dark)' : 'none';
+  tag.style.fontWeight = isSelected ? '700' : '500';
 }
 async function startToernooi() {
   const naam = document.getElementById('t-naam').value.trim();
