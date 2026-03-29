@@ -631,6 +631,56 @@
   </div>
 </div>
 
+<!-- Ladder instellingen modal -->
+<div class="modal-overlay" id="modal-ladder-instellingen">
+  <div class="modal">
+    <h3 id="ladder-instellingen-titel">Ladder instellingen</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">Stel de rankingregels in voor deze ladder.</p>
+
+    <div class="section-title">Lager gerankte wint</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div class="form-group" style="margin:0">
+        <label>Winnaar stijgt</label>
+        <input type="number" id="cfg-laag-stijg" min="1" max="20" value="4" style="text-align:center">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Verliezer zakt</label>
+        <input type="number" id="cfg-laag-zak" min="1" max="20" value="2" style="text-align:center">
+      </div>
+    </div>
+
+    <div class="section-title">Hoger gerankte wint</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div class="form-group" style="margin:0">
+        <label>Winnaar stijgt</label>
+        <input type="number" id="cfg-hoog-stijg" min="1" max="20" value="1" style="text-align:center">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Verliezer zakt</label>
+        <input type="number" id="cfg-hoog-zak" min="1" max="20" value="1" style="text-align:center">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark)">
+        <input type="checkbox" id="cfg-verliezer-naar-winnaar" style="width:18px;height:18px;accent-color:var(--green)">
+        Verliezer zakt naar plek van winnaar (als verschil ≤ drempel)
+      </label>
+    </div>
+    <div id="cfg-drempel-wrap" style="display:none;margin-top:8px">
+      <div class="form-group">
+        <label>Drempelwaarde (max verschil)</label>
+        <input type="number" id="cfg-drempel" min="1" max="20" value="4" style="text-align:center;width:80px">
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-ladder-instellingen')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="slaLadderInstellingenOp()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
 <!-- Nieuwe ladder modal -->
 <div class="modal-overlay" id="modal-nieuwe-ladder">
   <div class="modal">
@@ -1645,7 +1695,8 @@ async function initFirestore() {
         naam: d.data().naam, 
         spelerIds: d.data().spelerIds || [],
         spelers: d.data().spelers || [],
-        actievePartijen: d.data().actievePartijen || []
+        actievePartijen: d.data().actievePartijen || [],
+        config: d.data().config || null
       }));
       // Sorteer op opgeslagen volgorde
       if (ladderVolgorde.length > 0) {
@@ -2698,16 +2749,23 @@ async function bevestigUitslag() {
     let newWrank, newVrank;
     const swRank = sw.rank;
     const svRank = sv.rank;
+    const cfg = getLadderConfig();
 
     if (swRank > svRank) {
-      // Lager gerankte wint: stijgt 4, verliezer zakt 2
-      newWrank = Math.max(1, swRank - 4);
-      newVrank = svRank + 2;
+      // Lager gerankte wint
+      newWrank = Math.max(1, swRank - cfg.laagStijg);
+      // Verliezer naar plek van winnaar als verschil <= drempel?
+      const verschil = swRank - svRank;
+      if (cfg.verliezerNaarWinnaar && verschil <= cfg.drempel) {
+        newVrank = swRank; // verliezer naar oorspronkelijke plek winnaar
+      } else {
+        newVrank = svRank + cfg.laagZak;
+      }
       if (newWrank >= newVrank) newVrank = newWrank + 1;
     } else {
-      // Hoger gerankte wint: winnaar +1, verliezer -1
-      newWrank = Math.max(1, swRank - 1);
-      newVrank = svRank + 1;
+      // Hoger gerankte wint
+      newWrank = Math.max(1, swRank - cfg.hoogStijg);
+      newVrank = svRank + cfg.hoogZak;
     }
 
     // Wijs beschikbare ranks toe aan andere spelers in relatieve volgorde
@@ -3026,13 +3084,19 @@ async function bevestigBeheerUitslag() {
     let newWrank, newVrank;
     const swRank = sw.rank;
     const svRank = sv.rank;
+    const cfg2 = getLadderConfig();
     if (swRank > svRank) {
-      newWrank = Math.max(1, swRank - 4);
-      newVrank = svRank + 2;
+      newWrank = Math.max(1, swRank - cfg2.laagStijg);
+      const verschil2 = swRank - svRank;
+      if (cfg2.verliezerNaarWinnaar && verschil2 <= cfg2.drempel) {
+        newVrank = swRank;
+      } else {
+        newVrank = svRank + cfg2.laagZak;
+      }
       if (newWrank >= newVrank) newVrank = newWrank + 1;
     } else {
-      newWrank = Math.max(1, swRank - 1);
-      newVrank = svRank + 1;
+      newWrank = Math.max(1, swRank - cfg2.hoogStijg);
+      newVrank = svRank + cfg2.hoogZak;
     }
     const n2 = state.spelers.length;
     const gereserveerd2 = new Set([newWrank, newVrank]);
@@ -4380,6 +4444,73 @@ async function annuleerToernooi() {
 }
 
 // ============================================================
+//  LADDER INSTELLINGEN
+// ============================================================
+const DEFAULT_LADDER_CONFIG = {
+  laagStijg: 4, laagZak: 2,
+  hoogStijg: 1, hoogZak: 1,
+  verliezerNaarWinnaar: false, drempel: 4
+};
+
+let _instellingenLadderId = null;
+
+function openLadderInstellingen(ladderId) {
+  const ladder = alleLadders.find(l => l.id === ladderId);
+  if (!ladder) return;
+  _instellingenLadderId = ladderId;
+  const cfg = ladder.config || DEFAULT_LADDER_CONFIG;
+
+  document.getElementById('ladder-instellingen-titel').textContent = `Instellingen — ${ladder.naam}`;
+  document.getElementById('cfg-laag-stijg').value = cfg.laagStijg ?? 4;
+  document.getElementById('cfg-laag-zak').value = cfg.laagZak ?? 2;
+  document.getElementById('cfg-hoog-stijg').value = cfg.hoogStijg ?? 1;
+  document.getElementById('cfg-hoog-zak').value = cfg.hoogZak ?? 1;
+  document.getElementById('cfg-verliezer-naar-winnaar').checked = cfg.verliezerNaarWinnaar ?? false;
+  document.getElementById('cfg-drempel').value = cfg.drempel ?? 4;
+  document.getElementById('cfg-drempel-wrap').style.display = cfg.verliezerNaarWinnaar ? 'block' : 'none';
+
+  document.getElementById('cfg-verliezer-naar-winnaar').onchange = function() {
+    document.getElementById('cfg-drempel-wrap').style.display = this.checked ? 'block' : 'none';
+  };
+
+  document.getElementById('modal-ladder-instellingen').classList.add('open');
+}
+
+async function slaLadderInstellingenOp() {
+  const ladderId = _instellingenLadderId;
+  if (!ladderId) return;
+
+  const config = {
+    laagStijg: parseInt(document.getElementById('cfg-laag-stijg').value) || 4,
+    laagZak: parseInt(document.getElementById('cfg-laag-zak').value) || 2,
+    hoogStijg: parseInt(document.getElementById('cfg-hoog-stijg').value) || 1,
+    hoogZak: parseInt(document.getElementById('cfg-hoog-zak').value) || 1,
+    verliezerNaarWinnaar: document.getElementById('cfg-verliezer-naar-winnaar').checked,
+    drempel: parseInt(document.getElementById('cfg-drempel').value) || 4
+  };
+
+  // Sla op in Firestore
+  const snap = await getDoc(doc(db, 'ladders', ladderId));
+  if (snap.exists()) {
+    const data = snap.data();
+    data.config = config;
+    await setDoc(doc(db, 'ladders', ladderId), data);
+  }
+
+  // Update cache
+  const idx = alleLadders.findIndex(l => l.id === ladderId);
+  if (idx >= 0) alleLadders[idx].config = config;
+  if (ladderId === activeLadderId) state.config = config;
+
+  closeModal('modal-ladder-instellingen');
+  toast('Instellingen opgeslagen ✓');
+}
+
+function getLadderConfig() {
+  return state.config || alleLadders.find(l => l.id === activeLadderId)?.config || DEFAULT_LADDER_CONFIG;
+}
+
+// ============================================================
 //  LADDERS BEHEREN
 // ============================================================
 function openNieuweLadderModal() {
@@ -4522,6 +4653,7 @@ async function renderAdminLadders() {
         <div style="font-size:11px;color:var(--light)">${(l.spelers||[]).length} spelers</div>
       </div>
       <button class="btn btn-sm btn-ghost" onclick="openLadderSpelersModal('${l.id}')">👥 Spelers</button>
+      <button class="btn btn-sm btn-ghost" onclick="openLadderInstellingen('${l.id}')">⚙️</button>
       ${l.id !== activeLadderId ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="verwijderLadder('${l.id}')">✕</button>` : '<div style="width:38px"></div>'}
     </div>
   `).join('');
@@ -4849,6 +4981,8 @@ window.openSnapshotsModal = openSnapshotsModal;
 window.herstelSnapshot = herstelSnapshot;
 window.voegAccountToeAlsSpeler = voegAccountToeAlsSpeler;
 window.toggleHandmatigToevoegen = toggleHandmatigToevoegen;
+window.openLadderInstellingen = openLadderInstellingen;
+window.slaLadderInstellingenOp = slaLadderInstellingenOp;
 window.verschuifLadder = verschuifLadder;
 window.openNieuweLadderModal = openNieuweLadderModal;
 window.maakNieuweLadder = maakNieuweLadder;
