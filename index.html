@@ -1370,15 +1370,7 @@ async function setIngelogd(firebaseUser) {
   logoutBtn.style.display = '';
   logoutBtn.textContent = huidigeBruiker.gebruikersnaam + ' ↩';
 
-  // Wacht tot Firestore data geladen is voordat we de UI renderen
-  if (!_firestoreReady) {
-    await new Promise(resolve => {
-      const interval = setInterval(() => {
-        if (_firestoreReady) { clearInterval(interval); resolve(); }
-      }, 100);
-    });
-  }
-
+  // Firestore is al geladen door initFirestore — direct renderen
   renderLadder();
   registreerNotificatieToken();
   laadUitdagingen();
@@ -1496,7 +1488,15 @@ async function slaState() {
 async function initFirestore() {
   toonLaadOverlay(true);
   try {
-    const snap = await getDoc(STATE_DOC);
+    // Laad alle data parallel voor snelheid
+    const [snap, baanSnap, archiefSnap, uitdSnap, toernooiSnap] = await Promise.all([
+      getDoc(STATE_DOC),
+      getDoc(BANEN_DOC),
+      getDoc(ARCHIEF_DOC),
+      getDoc(UITDAGINGEN_DOC),
+      getDoc(TOERNOOI_DOC)
+    ]);
+
     if (snap.exists()) {
       state = snap.data();
       if (!state.actievePartijen) {
@@ -1507,26 +1507,16 @@ async function initFirestore() {
       await setDoc(STATE_DOC, JSON.parse(JSON.stringify(DEFAULT_STATE)));
     }
 
-    // Laad aangepaste banen
-    const baanSnap = await getDoc(BANEN_DOC);
     aangepasteBanen = baanSnap.exists() ? (baanSnap.data().lijst || []) : [];
-
-    // Laad archief
-    const archiefSnap = await getDoc(ARCHIEF_DOC);
     archiefData = archiefSnap.exists() ? (archiefSnap.data().seizoenen || []) : [];
-
-    // Laad uitdagingen
-    const uitdSnap = await getDoc(UITDAGINGEN_DOC);
     uitdagingenData = uitdSnap.exists() ? (uitdSnap.data().lijst || []) : [];
-
-    // Laad toernooi
-    const toernooiSnap = await getDoc(TOERNOOI_DOC);
     toernooiData = toernooiSnap.exists() ? toernooiSnap.data() : null;
+
   } catch(e) {
     console.error('Firestore init error:', e);
   }
 
-  // Live listener — update UI bij elke wijziging door anderen
+  // Live listener
   onSnapshot(STATE_DOC, (snap) => {
     if (!snap.exists() || !huidigeBruiker) return;
     state = snap.data();
@@ -1541,11 +1531,11 @@ async function initFirestore() {
   });
 
   _firestoreReady = true;
-  toonLaadOverlay(false);
 
-  // Firebase Auth state — handelt login/refresh/uitloggen af
+  // Start Auth listener nu Firestore data klaar is
   onAuthStateChanged(auth, async (user) => {
-    if (_bezigMetRegistratie) return; // Registratie bezig — niet doorsturen
+    if (_bezigMetRegistratie) return;
+    toonLaadOverlay(false);
     if (user) {
       await setIngelogd(user);
     } else {
@@ -3087,8 +3077,10 @@ async function slaProfielHcpOp() {
 // Sorteer gebruikers op achternaam (laatste woord van gebruikersnaam)
 function sorteerUsers(users) {
   return [...users].sort((a, b) => {
-    const achternaamA = a.gebruikersnaam.trim().split(' ').pop();
-    const achternaamB = b.gebruikersnaam.trim().split(' ').pop();
+    const naamA = (a.gebruikersnaam || a.naam || a.email || '').trim();
+    const naamB = (b.gebruikersnaam || b.naam || b.email || '').trim();
+    const achternaamA = naamA.split(' ').pop();
+    const achternaamB = naamB.split(' ').pop();
     return achternaamA.localeCompare(achternaamB, 'nl');
   });
 }
@@ -3109,7 +3101,7 @@ async function renderAdminUsers() {
       return `
       <div class="admin-row">
         <div style="flex:1">
-          <div class="name">${u.gebruikersnaam || u.email?.split('@')[0]}</div>
+          <div class="name">${u.gebruikersnaam || u.naam || u.email?.split('@')[0]}</div>
           <div style="font-size:11px;color:var(--light)">${u.email || ''}</div>
         </div>
         <span class="badge ${u.rol === 'beheerder' ? 'badge-gold' : 'badge-grey'}">${u.rol}</span>
@@ -4103,7 +4095,7 @@ async function registreerSpeler() {
     const usersSnap = await getDoc(USERS_DOC);
     const users = usersSnap.exists() ? (usersSnap.data().lijst || []) : [];
 
-    users.push({ naam, email, uid, rol: 'speler' });
+    users.push({ naam, gebruikersnaam: naam, email, uid, rol: 'speler' });
     await setDoc(USERS_DOC, { lijst: users });
 
     const stateSnap = await getDoc(STATE_DOC);
