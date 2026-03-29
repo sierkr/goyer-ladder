@@ -1545,10 +1545,10 @@ async function initFirestore() {
 
   // Firebase Auth state — handelt login/refresh/uitloggen af
   onAuthStateChanged(auth, async (user) => {
+    if (_bezigMetRegistratie) return; // Registratie bezig — niet doorsturen
     if (user) {
       await setIngelogd(user);
     } else {
-      // Niet ingelogd — check eerst of er een invite token in de URL zit
       huidigeBruiker = null;
       const heeftInvite = new URLSearchParams(location.search).has('invite');
       if (heeftInvite) {
@@ -4071,6 +4071,8 @@ async function checkInviteLink() {
   }
 }
 
+let _bezigMetRegistratie = false;
+
 async function registreerSpeler() {
   const voornaam = document.getElementById('reg-voornaam').value.trim();
   const achternaam = document.getElementById('reg-achternaam').value.trim();
@@ -4092,31 +4094,18 @@ async function registreerSpeler() {
   const naam = `${voornaam} ${achternaam}`;
 
   try {
+    _bezigMetRegistratie = true;
+    // Stap 1: Maak Auth account aan en log direct in
+    const cred = await createUserWithEmailAndPassword(auth, email, pass);
+    const uid = cred.user.uid;
+
+    // Stap 2: Nu ingelogd — schrijf naar Firestore
     const usersSnap = await getDoc(USERS_DOC);
     const users = usersSnap.exists() ? (usersSnap.data().lijst || []) : [];
-    if (users.find(u => u.email === email)) {
-      fout.innerHTML = `Dit e-mailadres is al geregistreerd.<br><br>
-        <strong>Wachtwoord vergeten?</strong> Ga naar de <a href="${location.origin}${location.pathname}" style="color:var(--green)">inlogpagina</a> 
-        en klik op "Wachtwoord vergeten?". Je ontvangt een reset-link per e-mail. 
-        <em>Controleer ook je spambox.</em>`;
-      fout.style.display = 'block';
-      return;
-    }
 
-    // Maak Firebase Auth account via secundaire app instantie
-    const { initializeApp: initApp2 } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
-    const { getAuth: getAuth2, createUserWithEmailAndPassword: createUser2, deleteApp: delApp2 } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-    const app2 = initApp2({ apiKey:"AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens", authDomain:"goyer-golf-mp-ladder.firebaseapp.com", projectId:"goyer-golf-mp-ladder" }, 'reg-' + Date.now());
-    const auth2 = getAuth2(app2);
-    const cred = await createUser2(auth2, email, pass);
-    const uid = cred.user.uid;
-    try { await delApp2(app2); } catch(e) {}
-
-    // Voeg toe aan users lijst
     users.push({ naam, email, uid, rol: 'speler' });
     await setDoc(USERS_DOC, { lijst: users });
 
-    // Voeg toe aan ladder
     const stateSnap = await getDoc(STATE_DOC);
     const st = stateSnap.exists() ? stateSnap.data() : { spelers: [], nextId: 1, uitslagen: [], actievePartijen: [] };
     st.spelers = st.spelers || [];
@@ -4126,12 +4115,15 @@ async function registreerSpeler() {
     st.nextId = newId + 1;
     await setDoc(STATE_DOC, st);
 
+    _bezigMetRegistratie = false;
+    // Stap 3: Toon succes — gebruiker blijft ingelogd en wordt doorgestuurd
     document.getElementById('reg-formulier').style.display = 'none';
     succes.innerHTML = `<strong>Welkom ${voornaam}!</strong> Je bent succesvol geregistreerd en staat nu op de ladder.<br><br>
       <a href="${location.origin}${location.pathname}" style="color:var(--green);font-weight:600">Klik hier om in te loggen →</a>`;
     succes.style.display = 'block';
 
   } catch(e) {
+    _bezigMetRegistratie = false;
     if (e.code === 'auth/email-already-in-use') {
       fout.innerHTML = `Dit e-mailadres is al geregistreerd.<br><br>
         <strong>Wachtwoord vergeten?</strong> Ga naar de <a href="${location.origin}${location.pathname}" style="color:var(--green)">inlogpagina</a> 
