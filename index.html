@@ -1202,7 +1202,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.2.9</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.3.0</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -1755,7 +1755,27 @@ async function initFirestore() {
       state = actief.data();
       if (!state.actievePartijen) state.actievePartijen = [];
       activeLadderId = actief.id;
-    // Eenmalige fix: verwijder onterecht toegevoegde spelers uit MP
+    // Eenmalige fix: verwijder duplicaten uit alle ladders
+    for (const ladder of alleLadders) {
+      const lSnap = await getDoc(doc(db, 'ladders', ladder.id));
+      if (!lSnap.exists()) continue;
+      const lData = lSnap.data();
+      const gezien = new Set();
+      const voor = (lData.spelers || []).length;
+      lData.spelers = (lData.spelers || []).filter(s => {
+        if (gezien.has(s.id)) return false;
+        gezien.add(s.id);
+        return true;
+      });
+      lData.spelerIds = [...new Set(lData.spelerIds || [])];
+      if (lData.spelers.length < voor) {
+        lData.spelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
+        await setDoc(doc(db, 'ladders', ladder.id), lData);
+        ladder.spelers = lData.spelers;
+        if (ladder.id === activeLadderId) state.spelers = lData.spelers;
+        console.log(`Duplicaten verwijderd uit ${ladder.naam}:`, voor - lData.spelers.length);
+      }
+    }
     const teVerwijderenUitMP = ['Maarten Habermehl', 'Marianne Doornbosch'];
     const mpLadder = alleLadders.find(l => l.id === 'mp');
     if (mpLadder) {
