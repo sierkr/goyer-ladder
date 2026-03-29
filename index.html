@@ -1233,7 +1233,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.5.7</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.5.8</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -1855,7 +1855,6 @@ async function initFirestore() {
       if (!snap.exists() || !huidigeBruiker) return;
       state = snap.data();
       if (!state.actievePartijen) state.actievePartijen = [];
-      // Update cache
       const idx = alleLadders.findIndex(l => l.id === activeLadderId);
       if (idx >= 0) { alleLadders[idx].spelers = state.spelers || []; alleLadders[idx].actievePartijen = state.actievePartijen; }
       const activePage = document.querySelector('.page.active')?.id?.replace('page-','');
@@ -1867,6 +1866,25 @@ async function initFirestore() {
       if (activePage === 'toernooi') renderToernooi();
     });
   }
+
+  // Live listeners op alle andere ladders (voor badges in spelers beheer)
+  alleLadders.filter(l => l.id !== activeLadderId).forEach(ladder => {
+    onSnapshot(doc(db, 'ladders', ladder.id), (snap) => {
+      if (!snap.exists() || !huidigeBruiker) return;
+      const idx = alleLadders.findIndex(l => l.id === ladder.id);
+      if (idx >= 0) alleLadders[idx].spelers = snap.data().spelers || [];
+      const activePage = document.querySelector('.page.active')?.id?.replace('page-','');
+      if (activePage === 'admin') renderAdmin();
+    });
+  });
+
+  // Live listener op master spelerslijst
+  onSnapshot(SPELERS_DOC, (snap) => {
+    if (!snap.exists() || !huidigeBruiker) return;
+    alleSpelersData = snap.data().lijst || [];
+    const activePage = document.querySelector('.page.active')?.id?.replace('page-','');
+    if (activePage === 'admin') renderAdmin();
+  });
 
   _firestoreReady = true;
 
