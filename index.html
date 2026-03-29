@@ -1585,22 +1585,15 @@ async function initFirestore() {
 
     // Laad ladders
     const laddersSnap = await getDocs(LADDERS_COL);
-    console.log('Ladders gevonden:', laddersSnap.docs.map(d => d.id + ' spelers:' + (d.data().spelers||[]).length));
 
     const stateSnap = await getDoc(STATE_DOC);
-    console.log('State bestaat:', stateSnap.exists(), 'spelers:', (stateSnap.data()?.spelers||[]).length);
 
     // Controleer of de MP ladder al bestaat met spelers
     const mpDoc = laddersSnap.docs.find(d => d.id === 'mp');
     const mpHeeftSpelers = mpDoc && (mpDoc.data().spelers || []).length > 0;
-    console.log('MP doc gevonden:', !!mpDoc, 'heeft spelers:', mpHeeftSpelers);
 
     if (!mpHeeftSpelers) {
-      console.log('Start migratie...');
-      const bestaandeState = stateSnap.exists() ? stateSnap.data() : JSON.parse(JSON.stringify(DEFAULT_STATE));
-      console.log('Bestaande state spelers:', (bestaandeState.spelers||[]).length);
       // Migreer bestaande state naar ladder "MP"
-      const stateSnap = await getDoc(STATE_DOC);
       const bestaandeState = stateSnap.exists() ? stateSnap.data() : JSON.parse(JSON.stringify(DEFAULT_STATE));
       if (!bestaandeState.actievePartijen) {
         bestaandeState.actievePartijen = bestaandeState.actievePartij
@@ -1610,7 +1603,6 @@ async function initFirestore() {
       if (!bestaandeState.spelers) bestaandeState.spelers = [];
       const mpRef = doc(db, 'ladders', 'mp');
       await setDoc(mpRef, { ...bestaandeState, naam: 'MP', spelerIds: bestaandeState.spelers.map(s => s.id) });
-      console.log('MP ladder aangemaakt met', bestaandeState.spelers.length, 'spelers');
       alleLadders = [{ id: 'mp', naam: 'MP', spelerIds: bestaandeState.spelers.map(s => s.id), spelers: bestaandeState.spelers, actievePartijen: bestaandeState.actievePartijen }];
       // Voeg eventuele andere bestaande ladders toe
       laddersSnap.docs.filter(d => d.id !== 'mp').forEach(d => {
@@ -1618,7 +1610,6 @@ async function initFirestore() {
       });
       state = bestaandeState;
       activeLadderId = 'mp';
-      console.log('State gezet, spelers:', state.spelers?.length, 'activeLadderId:', activeLadderId);
     } else {
       // Laad alle ladders inclusief spelers
       alleLadders = laddersSnap.docs.map(d => ({ 
@@ -1634,7 +1625,6 @@ async function initFirestore() {
       state = actief.data();
       if (!state.actievePartijen) state.actievePartijen = [];
       activeLadderId = actief.id;
-      console.log('Else branch: activeLadderId:', activeLadderId, 'state.spelers:', state.spelers?.length, 'alleLadders[0].spelers:', alleLadders[0]?.spelers?.length);
     }
 
   } catch(e) {
