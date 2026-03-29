@@ -4146,8 +4146,12 @@ function initToernooiSetup() {
   // Datum vandaag als default
   document.getElementById('t-datum').value = new Date().toISOString().split('T')[0];
 
-  // Speler tags — gebruik master spelerslijst
-  const sorted = [...alleSpelersData].sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
+  // Speler tags — gebruik master spelerslijst, filter spelers die al in actief toernooi zitten
+  const bezetteSpelerIds = new Set(
+    alleToernooien.flatMap(t => (t.spelers || []).map(s => String(s.id)))
+  );
+  const sorted = [...alleSpelersData]
+    .sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
   const tagsEl = document.getElementById('t-speler-tags');
 
   if (sorted.length === 0) {
@@ -4155,9 +4159,14 @@ function initToernooiSetup() {
     return;
   }
 
-  tagsEl.innerHTML = sorted.map(s =>
-    `<span class="tag" id="ttag-${s.id}" onclick="toggleTSpeler('${s.id}')">${s.naam.split(' ')[0]} (${Math.round(s.hcp)})</span>`
-  ).join('');
+  tagsEl.innerHTML = sorted.map(s => {
+    const bezet = bezetteSpelerIds.has(String(s.id));
+    return `<span class="tag${bezet ? ' disabled' : ''}" id="ttag-${s.id}"
+      onclick="${bezet ? '' : `toggleTSpeler('${s.id}')`}"
+      style="${bezet ? 'opacity:0.4;cursor:not-allowed;' : ''}"
+      title="${bezet ? 'Speelt al mee in ander toernooi' : ''}"
+    >${s.naam.split(' ')[0]} (${Math.round(s.hcp)})</span>`;
+  }).join('');
 }
 
 function toggleTSpeler(id) {
@@ -4183,6 +4192,11 @@ async function startToernooi() {
     document.getElementById('ttag-' + s.id)?.classList.contains('selected')
   );
   if (geselecteerd.length < 2) { toast('Selecteer minimaal 2 spelers'); return; }
+
+  // Check: geen spelers die al in actief toernooi zitten
+  const bezetteIds = new Set(alleToernooien.flatMap(t => (t.spelers||[]).map(s => String(s.id))));
+  const bezet = geselecteerd.find(s => bezetteIds.has(String(s.id)));
+  if (bezet) { toast(`${bezet.naam.split(' ')[0]} speelt al mee in een ander toernooi`); return; }
 
   // Holes ophalen — ingebouwd of aangepast
   let holes = [];
