@@ -1216,7 +1216,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.4.0</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.4.1</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4207,11 +4207,22 @@ async function verwijderUitdaging(uitdagingId) {
 // ============================================================
 function renderToernooi() {
   const isBeheerder = huidigeBruiker?.rol === 'beheerder';
+  const gebruikersnaam = (huidigeBruiker?.gebruikersnaam || '').toLowerCase();
+  const voornaam = gebruikersnaam.split(' ')[0];
+  // Zoek ook op basis van speler ID in master lijst
+  const mijnSpelerIds = new Set(
+    alleSpelersData.filter(s => s.naam.toLowerCase() === gebruikersnaam ||
+      s.naam.toLowerCase().startsWith(voornaam)).map(s => String(s.id))
+  );
+
   const mijnToernooien = isBeheerder
     ? alleToernooien
-    : alleToernooien.filter(t => (t.spelers || []).some(s =>
-        s.naam.toLowerCase().includes((huidigeBruiker?.gebruikersnaam || '').split(' ')[0].toLowerCase())
-      ));
+    : alleToernooien.filter(t =>
+        (t.spelers || []).some(s =>
+          s.naam.toLowerCase().includes(voornaam) ||
+          mijnSpelerIds.has(String(s.id))
+        )
+      );
 
   const wrap = document.getElementById('toernooi-actief-wrap');
   const setup = document.getElementById('toernooi-setup-wrap');
@@ -4606,10 +4617,16 @@ function renderToernooiActief() {
 
   const flights = t.flights || [];
   const gebruikersnaam = huidigeBruiker?.gebruikersnaam?.toLowerCase() || '';
+  const voornaam = gebruikersnaam.split(' ')[0];
+  const mijnSpelerIdsInToernooi = new Set(
+    alleSpelersData.filter(s => s.naam.toLowerCase() === gebruikersnaam ||
+      s.naam.toLowerCase().startsWith(voornaam)).map(s => String(s.id))
+  );
   const mijnFlight = flights.find(f =>
-    (f.spelerIds || []).some(sid =>
-      t.spelers.find(s => s.id === sid && s.naam.toLowerCase().includes(gebruikersnaam.split(' ')[0]))
-    )
+    (f.spelerIds || []).some(sid => {
+      const sp = t.spelers.find(s => String(s.id) === String(sid));
+      return sp && (sp.naam.toLowerCase().includes(voornaam) || mijnSpelerIdsInToernooi.has(String(sp.id)));
+    })
   );
 
   detail.innerHTML = `
@@ -4696,21 +4713,25 @@ function renderTScorecard() {
 
   // Bepaal welke flights te tonen
   let teTonenFlights = [];
+  const voornaam = gebruikersnaam.split(' ')[0];
+  const mijnIds = new Set(
+    alleSpelersData.filter(s => s.naam.toLowerCase() === gebruikersnaam ||
+      s.naam.toLowerCase().startsWith(voornaam)).map(s => String(s.id))
+  );
+
   if (isBeheerder || flights.length === 0) {
-    // Beheerder ziet alle flights, of als er geen flights zijn alle spelers
     teTonenFlights = flights.length > 0
-      ? flights.map(f => ({ naam: f.naam, spelers: (f.spelerIds || []).map(sid => t.spelers.find(s => s.id === sid)).filter(Boolean) }))
+      ? flights.map(f => ({ naam: f.naam, spelers: (f.spelerIds || []).map(sid => t.spelers.find(s => String(s.id) === String(sid))).filter(Boolean) }))
       : [{ naam: null, spelers: t.spelers }];
   } else {
-    // Speler ziet alleen zijn eigen flight
     const mijnFlight = flights.find(f =>
       (f.spelerIds || []).some(sid => {
-        const sp = t.spelers.find(s => s.id === sid);
-        return sp && sp.naam.toLowerCase().includes(gebruikersnaam.split(' ')[0]);
+        const sp = t.spelers.find(s => String(s.id) === String(sid));
+        return sp && (sp.naam.toLowerCase().includes(voornaam) || mijnIds.has(String(sp.id)));
       })
     );
     if (mijnFlight) {
-      teTonenFlights = [{ naam: mijnFlight.naam, spelers: (mijnFlight.spelerIds || []).map(sid => t.spelers.find(s => s.id === sid)).filter(Boolean) }];
+      teTonenFlights = [{ naam: mijnFlight.naam, spelers: (mijnFlight.spelerIds || []).map(sid => t.spelers.find(s => String(s.id) === String(sid))).filter(Boolean) }];
     } else {
       teTonenFlights = [{ naam: null, spelers: t.spelers }];
     }
