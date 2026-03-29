@@ -1638,6 +1638,17 @@ async function initFirestore() {
       state = actief.data();
       if (!state.actievePartijen) state.actievePartijen = [];
       activeLadderId = actief.id;
+    // Eenmalige herstel: voeg ontbrekende spelers toe aan master lijst
+    const teHerstellen = ['Erik Prillevitz', 'Kay van de Linde', 'Frits de Vries'];
+    let herstelNodig = false;
+    for (const naam of teHerstellen) {
+      if (!alleSpelersData.find(s => s.naam.toLowerCase() === naam.toLowerCase())) {
+        const maxId = Math.max(0, ...alleSpelersData.map(s => s.id || 0), ...alleLadders.flatMap(l => (l.spelers||[]).map(s => s.id || 0)));
+        alleSpelersData.push({ id: maxId + 1, naam, hcp: 10 });
+        herstelNodig = true;
+      }
+    }
+    if (herstelNodig) await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
     // Als master spelerslijst nog leeg is, opbouwen vanuit alle ladders
     if (alleSpelersData.length === 0) {
       const gezien = new Set();
