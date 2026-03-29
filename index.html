@@ -3902,7 +3902,7 @@ async function openToernooiDetail(idx) {
       html += `<tr><td style="padding:4px 8px;font-weight:600">${t.spelerNamen[i]}</td>`;
       rij.forEach(cel => {
         const bg = cel === 'W' ? '#d4edda' : cel === 'L' ? '#f8d7da' : cel === 'T' ? '#fff3cd' : '#f0ede4';
-        const tx = cel === 'W' ? '✓' : cel === 'L' ? '✗' : cel === 'T' ? '½' : '—';
+        const tx = cel === 'W' ? 'UP' : cel === 'L' ? 'DOWN' : cel === 'T' ? 'TIED' : '—';
         html += `<td style="background:${bg};text-align:center;padding:4px;font-weight:700">${tx}</td>`;
       });
       html += '</tr>';
@@ -4463,7 +4463,7 @@ function renderTMatrix() {
   const { matrix } = berekenTPunten();
 
   const kleur = { W: '#d4edda', L: '#f8d7da', T: '#fff3cd' };
-  const tekst = { W: '✓', L: '✗', T: '½' };
+  const tekst = { W: 'UP', L: 'DOWN', T: 'TIED' };
 
   let html = `<table style="border-collapse:collapse;font-size:11px;width:100%">`;
   // Header
