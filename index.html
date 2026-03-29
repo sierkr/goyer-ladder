@@ -681,6 +681,19 @@
   </div>
 </div>
 
+<!-- Stand aanpassen modal -->
+<div class="modal-overlay" id="modal-stand-aanpassen">
+  <div class="modal">
+    <h3 id="stand-aanpassen-titel">Stand aanpassen</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:12px">Versleep of gebruik de pijltjes om de stand aan te passen.</p>
+    <div id="stand-aanpassen-lijst"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-stand-aanpassen')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="slaStandOp()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
 <!-- Nieuwe ladder modal -->
 <div class="modal-overlay" id="modal-nieuwe-ladder">
   <div class="modal">
@@ -1189,7 +1202,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.1.5</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.1.6</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4775,6 +4788,64 @@ const DEFAULT_LADDER_CONFIG = {
 
 let _instellingenLadderId = null;
 
+let _standAanpassenLadderId = null;
+let _standAanpassenSpelers = [];
+
+async function openStandAanpassen(ladderId) {
+  const ladder = alleLadders.find(l => l.id === ladderId);
+  if (!ladder) return;
+  _standAanpassenLadderId = ladderId;
+
+  const snap = await getDoc(doc(db, 'ladders', ladderId));
+  if (!snap.exists()) return;
+  _standAanpassenSpelers = [...(snap.data().spelers || [])].sort((a,b) => a.rank - b.rank);
+
+  document.getElementById('stand-aanpassen-titel').textContent = `Stand — ${ladder.naam}`;
+  renderStandAanpassenLijst();
+  document.getElementById('modal-stand-aanpassen').classList.add('open');
+}
+
+function renderStandAanpassenLijst() {
+  const lijst = document.getElementById('stand-aanpassen-lijst');
+  lijst.innerHTML = _standAanpassenSpelers.map((s, idx) => `
+    <div class="admin-row" style="padding:8px 0">
+      <span style="font-family:'Bebas Neue';font-size:20px;color:var(--light);min-width:28px">${idx + 1}</span>
+      <span style="flex:1;font-weight:500">${s.naam}</span>
+      <span style="font-size:12px;color:var(--light);margin-right:8px">hcp ${Math.round(s.hcp)}</span>
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <button onclick="verschuifStand(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}
+          style="background:${idx===0?'#f0ede4':'var(--green-pale)'};border:none;border-radius:4px;width:26px;height:26px;cursor:${idx===0?'default':'pointer'};font-size:13px;color:${idx===0?'var(--light)':'var(--green)'}">↑</button>
+        <button onclick="verschuifStand(${idx}, 1)" ${idx === _standAanpassenSpelers.length-1 ? 'disabled' : ''}
+          style="background:${idx===_standAanpassenSpelers.length-1?'#f0ede4':'#fde8e8'};border:none;border-radius:4px;width:26px;height:26px;cursor:${idx===_standAanpassenSpelers.length-1?'default':'pointer'};font-size:13px;color:${idx===_standAanpassenSpelers.length-1?'var(--light)':'var(--red)'}">↓</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function verschuifStand(idx, delta) {
+  const nieuwIdx = idx + delta;
+  if (nieuwIdx < 0 || nieuwIdx >= _standAanpassenSpelers.length) return;
+  [_standAanpassenSpelers[idx], _standAanpassenSpelers[nieuwIdx]] = [_standAanpassenSpelers[nieuwIdx], _standAanpassenSpelers[idx]];
+  renderStandAanpassenLijst();
+}
+
+async function slaStandOp() {
+  const ladderId = _standAanpassenLadderId;
+  if (!ladderId) return;
+  _standAanpassenSpelers.forEach((s, idx) => s.rank = idx + 1);
+  const snap = await getDoc(doc(db, 'ladders', ladderId));
+  if (!snap.exists()) return;
+  const data = snap.data();
+  data.spelers = _standAanpassenSpelers;
+  await setDoc(doc(db, 'ladders', ladderId), data);
+  const idx = alleLadders.findIndex(l => l.id === ladderId);
+  if (idx >= 0) alleLadders[idx].spelers = _standAanpassenSpelers;
+  if (ladderId === activeLadderId) state.spelers = _standAanpassenSpelers;
+  closeModal('modal-stand-aanpassen');
+  renderLadder();
+  toast('Stand bijgewerkt ✓');
+}
+
 function openLadderInstellingen(ladderId) {
   const ladder = alleLadders.find(l => l.id === ladderId);
   if (!ladder) return;
@@ -4974,6 +5045,7 @@ async function renderAdminLadders() {
         <div style="font-size:11px;color:var(--light)">${(l.spelers||[]).length} spelers</div>
       </div>
       <button class="btn btn-sm btn-ghost" onclick="openLadderSpelersModal('${l.id}')">👥 Spelers</button>
+      <button class="btn btn-sm btn-ghost" onclick="openStandAanpassen('${l.id}')">↕ Stand</button>
       <button class="btn btn-sm btn-ghost" onclick="openLadderInstellingen('${l.id}')">⚙️</button>
       ${l.id !== activeLadderId ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="verwijderLadder('${l.id}')">✕</button>` : '<div style="width:38px"></div>'}
     </div>
@@ -5308,6 +5380,9 @@ window.toonToernooiUitslag = toonToernooiUitslag;
 window.openVerwijderToernooiSpeler = openVerwijderToernooiSpeler;
 window.verwijderToernooiSpeler = verwijderToernooiSpeler;
 window.selecteerToernooi = selecteerToernooi;
+window.openStandAanpassen = openStandAanpassen;
+window.verschuifStand = verschuifStand;
+window.slaStandOp = slaStandOp;
 window.openLadderInstellingen = openLadderInstellingen;
 window.slaLadderInstellingenOp = slaLadderInstellingenOp;
 window.verschuifLadder = verschuifLadder;
