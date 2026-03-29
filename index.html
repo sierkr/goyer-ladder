@@ -1586,8 +1586,12 @@ async function initFirestore() {
     // Laad ladders
     const laddersSnap = await getDocs(LADDERS_COL);
 
-    if (laddersSnap.empty) {
-      // Eerste keer: migreer bestaande state naar ladder "MP"
+    // Controleer of de MP ladder al bestaat met spelers
+    const mpDoc = laddersSnap.docs.find(d => d.id === 'mp');
+    const mpHeeftSpelers = mpDoc && (mpDoc.data().spelers || []).length > 0;
+
+    if (!mpHeeftSpelers) {
+      // Migreer bestaande state naar ladder "MP"
       const stateSnap = await getDoc(STATE_DOC);
       const bestaandeState = stateSnap.exists() ? stateSnap.data() : JSON.parse(JSON.stringify(DEFAULT_STATE));
       if (!bestaandeState.actievePartijen) {
@@ -1595,10 +1599,14 @@ async function initFirestore() {
           ? [{ ...bestaandeState.actievePartij, partijId: `p_${Date.now()}` }] : [];
         delete bestaandeState.actievePartij;
       }
-      // Sla op als eerste ladder
+      if (!bestaandeState.spelers) bestaandeState.spelers = [];
       const mpRef = doc(db, 'ladders', 'mp');
-      await setDoc(mpRef, { ...bestaandeState, naam: 'MP', spelerIds: (bestaandeState.spelers || []).map(s => s.id) });
-      alleLadders = [{ id: 'mp', naam: 'MP', spelerIds: (bestaandeState.spelers || []).map(s => s.id), spelers: bestaandeState.spelers || [], actievePartijen: bestaandeState.actievePartijen || [] }];
+      await setDoc(mpRef, { ...bestaandeState, naam: 'MP', spelerIds: bestaandeState.spelers.map(s => s.id) });
+      alleLadders = [{ id: 'mp', naam: 'MP', spelerIds: bestaandeState.spelers.map(s => s.id), spelers: bestaandeState.spelers, actievePartijen: bestaandeState.actievePartijen }];
+      // Voeg eventuele andere bestaande ladders toe
+      laddersSnap.docs.filter(d => d.id !== 'mp').forEach(d => {
+        alleLadders.push({ id: d.id, naam: d.data().naam, spelerIds: d.data().spelerIds || [], spelers: d.data().spelers || [], actievePartijen: d.data().actievePartijen || [] });
+      });
       state = bestaandeState;
       activeLadderId = 'mp';
     } else {
@@ -1610,11 +1618,12 @@ async function initFirestore() {
         spelers: d.data().spelers || [],
         actievePartijen: d.data().actievePartijen || []
       }));
-      // Zet eerste ladder als actief voor nu
-      const eersteDoc = laddersSnap.docs[0];
-      state = eersteDoc.data();
+      // Zet MP als actief, anders de eerste
+      const mpIdx = alleLadders.findIndex(l => l.id === 'mp');
+      const actief = mpIdx >= 0 ? laddersSnap.docs[mpIdx] : laddersSnap.docs[0];
+      state = actief.data();
       if (!state.actievePartijen) state.actievePartijen = [];
-      activeLadderId = eersteDoc.id;
+      activeLadderId = actief.id;
     }
 
   } catch(e) {
