@@ -1202,7 +1202,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.1.6</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.1.7</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -5156,16 +5156,20 @@ async function checkInviteLink() {
   let geldig = false;
   try {
     const snapLadder = await getDoc(doc(db, 'ladder', `invite_${ladderId}`));
+    console.log('Invite doc:', `ladder/invite_${ladderId}`, '| exists:', snapLadder.exists());
+    if (snapLadder.exists()) {
+      const data = snapLadder.data();
+      console.log('Token match:', data.token === token, '| Verlopen:', data.verloopt < Date.now(), '| Nu:', Date.now(), '| Verloopt:', data.verloopt);
+    }
     if (snapLadder.exists() && snapLadder.data().token === token && snapLadder.data().verloopt > Date.now()) {
       geldig = true;
     } else {
-      // Fallback: oude globale invite
       const snapGlobal = await getDoc(INVITE_DOC);
       if (snapGlobal.exists() && snapGlobal.data().token === token && snapGlobal.data().verloopt > Date.now()) {
         geldig = true;
       }
     }
-  } catch(e) {}
+  } catch(e) { console.error('Invite check fout:', e); }
   if (!geldig) {
     document.getElementById('reg-formulier').style.display = 'none';
     const fout = document.getElementById('reg-fout');
