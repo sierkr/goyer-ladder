@@ -1233,7 +1233,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.5.2</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.5.5</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -1815,25 +1815,6 @@ async function initFirestore() {
         ladder.spelers = lData.spelers;
         if (ladder.id === activeLadderId) state.spelers = lData.spelers;
         console.log(`Duplicaten verwijderd uit ${ladder.naam}:`, voor - lData.spelers.length);
-      }
-    }
-    const teVerwijderenUitMP = ['Maarten Habermehl', 'Marianne Doornbosch'];
-    const mpLadder = alleLadders.find(l => l.id === 'mp');
-    if (mpLadder) {
-      const mpSnap = await getDoc(doc(db, 'ladders', 'mp'));
-      if (mpSnap.exists()) {
-        const mpData = mpSnap.data();
-        const voor = (mpData.spelers || []).length;
-        mpData.spelers = (mpData.spelers || []).filter(s =>
-          !teVerwijderenUitMP.some(n => n.toLowerCase() === s.naam?.toLowerCase())
-        );
-        if (mpData.spelers.length < voor) {
-          mpData.spelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
-          await setDoc(doc(db, 'ladders', 'mp'), mpData);
-          mpLadder.spelers = mpData.spelers;
-          if (activeLadderId === 'mp') state.spelers = mpData.spelers;
-          console.log('Eenmalige fix: spelers verwijderd uit MP', teVerwijderenUitMP);
-        }
       }
     }
     // Eenmalige herstel: voeg ontbrekende spelers toe aan master lijst
@@ -4810,65 +4791,87 @@ function renderTScorecard() {
   const scorecardWrap = document.getElementById('t-scorecard-wrap');
   if (!scorecardWrap) return;
 
-  let html = '';
-  teTonenFlights.forEach(({ naam, spelers }, fi) => {
-    const tabOffset = isBeheerder
-      ? fi * spelers.length * t.holes.length
-      : fi * t.holes.length * spelers.length;
+  // Bewaar actieve tab (of gebruik 0 als default)
+  const activeFi = scorecardWrap._activeFlight != null
+    ? Math.min(scorecardWrap._activeFlight, teTonenFlights.length - 1)
+    : 0;
 
-    // Bepaal starthole voor deze flight
-    const flightData = (t.flights || []).find(f => f.naam === naam);
-    const starthole = (flightData?.starthole || 1) - 1; // 0-based index
-    // Maak holes array in speelvolgorde (roterend vanaf starthole)
-    const holesInVolgorde = t.holes.map((_, i) => (starthole + i) % t.holes.length);
-    html += `<div ${teTonenFlights.length > 1 ? `style="margin-bottom:16px"` : ''}>`;
-    if (naam) {
-      const flightData = (t.flights || []).find(f => f.naam === naam);
-      const info = [
-        flightData?.starttijd ? `🕐 ${flightData.starttijd}` : null,
-        flightData?.starthole ? `Hole ${flightData.starthole}` : null
-      ].filter(Boolean).join(' · ');
-      html += `<div style="display:flex;align-items:baseline;gap:12px;padding:8px 12px 6px">
-        <span style="font-family:'Bebas Neue';font-size:16px;color:var(--green)">${naam}</span>
-        ${info ? `<span style="font-size:13px;color:var(--mid);font-family:'DM Sans',sans-serif">${info}</span>` : ''}
-      </div>`;
-    }
-    html += `<div style="overflow-x:auto"><table class="scorecard" style="width:100%"><thead><tr><th class="player-col">Hole</th>`;
-    spelers.forEach(s => {
-      const delen = s.naam.split(' ');
-      html += `<th class="player-col" style="max-width:70px">
-        <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px" title="${s.naam}">${delen[0]}</span>
-        <span class="hole-par" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px;${isBeheerder ? 'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)' : ''}" ${isBeheerder ? `onclick="editToernooiHcp('${s.id}')"` : ''} title="${s.naam}">${delen.slice(1).join(' ') || 'hcp ' + Math.round(s.hcp)}</span>
-      </th>`;
+  let html = '';
+
+  // Tabs bovenaan als beheerder meerdere flights heeft
+  if (isBeheerder && teTonenFlights.length > 1) {
+    html += `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);overflow-x:auto;scrollbar-width:none;padding:0 4px">`;
+    teTonenFlights.forEach(({ naam }, ti) => {
+      const actief = ti === activeFi;
+      html += `<button onclick="selecteerFlightTab(${ti})"
+        style="flex-shrink:0;padding:8px 14px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:${actief?'700':'500'};color:${actief?'var(--green)':'var(--mid)'};border-bottom:2px solid ${actief?'var(--green)':'transparent'};margin-bottom:-2px;cursor:pointer">
+        ${naam || 'Scores'}
+      </button>`;
     });
-    html += '</tr></thead><tbody>';
-    holesInVolgorde.forEach((holeIdx, spelRij) => {
-      const h = t.holes[holeIdx];
-      html += `<tr><td class="player-col" style="font-weight:600">${holeIdx+1}<span class="hole-par">p${h.par} SI${h.si}</span></td>`;
-      spelers.forEach((s, si) => {
-        const val = t.scores[s.id]?.[holeIdx] ?? t.scores[String(s.id)]?.[holeIdx];
-        const tabIdx = isBeheerder
-          ? tabOffset + si * t.holes.length + spelRij + 1
-          : tabOffset + spelRij * spelers.length + si + 1;
-        html += `<td><input type="number" min="1" max="12" value="${val !== null && val !== undefined ? val : ''}"
-          tabindex="${tabIdx}" onfocus="this.select()"
-          oninput="updateTScoreAndAdvance(${s.id},${holeIdx},${tabIdx},this.value)"
-          style="width:42px;padding:4px;text-align:center;font-size:14px;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--dark)"></td>`;
-      });
-      html += '</tr>';
-    });
-    // Totaalrij
-    html += '<tr style="background:var(--green-pale)"><td class="player-col" style="font-weight:700">Tot</td>';
-    spelers.forEach(s => {
-      const scores = t.scores[s.id] || t.scores[String(s.id)] || [];
-      const filled = scores.filter(v => v !== null && v !== undefined);
-      const tot = filled.length ? filled.reduce((a,b) => a + Number(b), 0) : null;
-      html += `<td style="font-family:'DM Mono',monospace;font-weight:700;text-align:center">${tot !== null ? tot : '—'}</td>`;
-    });
-    html += '</tr></tbody></table></div></div>';
+    html += '</div>';
+  }
+
+  // Render alleen de actieve flight
+  const { naam, spelers } = teTonenFlights[activeFi];
+  const tabOffset = isBeheerder
+    ? activeFi * spelers.length * t.holes.length
+    : activeFi * t.holes.length * spelers.length;
+
+  const flightData = (t.flights || []).find(f => f.naam === naam);
+  const starthole = (flightData?.starthole || 1) - 1;
+  const holesInVolgorde = t.holes.map((_, i) => (starthole + i) % t.holes.length);
+
+  if (naam) {
+    const info = [
+      flightData?.starttijd ? `🕐 ${flightData.starttijd}` : null,
+      flightData?.starthole ? `Hole ${flightData.starthole}` : null
+    ].filter(Boolean).join(' · ');
+    html += `<div style="display:flex;align-items:baseline;gap:12px;padding:8px 12px 6px">
+      <span style="font-family:'Bebas Neue';font-size:16px;color:var(--green)">${naam}</span>
+      ${info ? `<span style="font-size:13px;color:var(--mid)">${info}</span>` : ''}
+    </div>`;
+  }
+
+  html += `<div style="overflow-x:auto"><table class="scorecard" style="width:100%"><thead><tr><th class="player-col">Hole</th>`;
+  spelers.forEach(s => {
+    const delen = s.naam.split(' ');
+    html += `<th class="player-col" style="max-width:70px">
+      <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px" title="${s.naam}">${delen[0]}</span>
+      <span class="hole-par" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px;${isBeheerder?'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)':''}" ${isBeheerder?`onclick="editToernooiHcp('${s.id}')"`:''}>${delen.slice(1).join(' ') || 'hcp '+Math.round(s.hcp)}</span>
+    </th>`;
   });
+  html += '</tr></thead><tbody>';
+  holesInVolgorde.forEach((holeIdx, spelRij) => {
+    const h = t.holes[holeIdx];
+    html += `<tr><td class="player-col" style="font-weight:600">${holeIdx+1}<span class="hole-par">p${h.par} SI${h.si}</span></td>`;
+    spelers.forEach((s, si) => {
+      const val = t.scores[s.id]?.[holeIdx] ?? t.scores[String(s.id)]?.[holeIdx];
+      const tabIdx = isBeheerder
+        ? tabOffset + si * t.holes.length + spelRij + 1
+        : tabOffset + spelRij * spelers.length + si + 1;
+      html += `<td><input type="number" min="1" max="12" value="${val !== null && val !== undefined ? val : ''}"
+        tabindex="${tabIdx}" onfocus="this.select()"
+        oninput="updateTScoreAndAdvance(${s.id},${holeIdx},${tabIdx},this.value)"
+        style="width:42px;padding:4px;text-align:center;font-size:14px;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--dark)"></td>`;
+    });
+    html += '</tr>';
+  });
+  html += '<tr style="background:var(--green-pale)"><td class="player-col" style="font-weight:700">Tot</td>';
+  spelers.forEach(s => {
+    const scores = t.scores[s.id] || t.scores[String(s.id)] || [];
+    const filled = scores.filter(v => v !== null && v !== undefined);
+    const tot = filled.length ? filled.reduce((a,b) => a+Number(b), 0) : null;
+    html += `<td style="font-family:'DM Mono',monospace;font-weight:700;text-align:center">${tot !== null ? tot : '—'}</td>`;
+  });
+  html += '</tr></tbody></table></div>';
 
   scorecardWrap.innerHTML = html;
+  scorecardWrap._activeFlight = activeFi;
+}
+
+function selecteerFlightTab(fi) {
+  const wrap = document.getElementById('t-scorecard-wrap');
+  if (wrap) { wrap._activeFlight = fi; renderTScorecard(); }
 }
 
 function updateTScoreAndAdvance(spelerId, holeIdx, tabIdx, val) {
@@ -4890,8 +4893,8 @@ function updateTScore(spelerId, holeIdx, val) {
   // Update cache met deep copy
   const idx = alleToernooien.findIndex(t => t.id === actieveToernooiId);
   if (idx >= 0) alleToernooien[idx] = JSON.parse(JSON.stringify(toernooiData));
-  updateTTotalen();
-  renderTMatrix();
+  renderTScorecard(); // eerst scorecard (bouwt DOM op)
+  renderTMatrix();    // dan matrix (t-matrix element bestaat nu)
   if (toernooiData.uitslagZichtbaar) renderTRanglijst();
   // Update knop status
   if (huidigeBruiker?.rol === 'beheerder') {
@@ -4932,7 +4935,16 @@ function editToernooiHcp(spelerId) {
 }
 
 function updateTTotalen() {
-  // Herrender de scorekaart totaalrijen
+  const t = toernooiData;
+  if (!t) return;
+  // Update totaalrijen inline zonder volledige herrender
+  const totaalRijen = document.querySelectorAll('#t-scorecard-wrap tr[data-totaal]');
+  if (totaalRijen.length === 0) {
+    // Fallback: herrender scorekaart als totaalrijen niet gevonden
+    renderTScorecard();
+    return;
+  }
+  // Normaal geval: update inline (toekomstige optimalisatie)
   renderTScorecard();
 }
 
@@ -5779,6 +5791,7 @@ window.updateTScoreAndAdvance = updateTScoreAndAdvance;
 window.toonToernooiUitslag = toonToernooiUitslag;
 window.openVerwijderToernooiSpeler = openVerwijderToernooiSpeler;
 window.verwijderToernooiSpeler = verwijderToernooiSpeler;
+window.selecteerFlightTab = selecteerFlightTab;
 window.toggleHolesCustom = toggleHolesCustom;
 window.wijzigFlightStarttijd = wijzigFlightStarttijd;
 window.wijzigFlightStarthole = wijzigFlightStarthole;
