@@ -3127,9 +3127,10 @@ async function openAddPlayer() {
   try {
     const snap = await getDoc(USERS_DOC);
     const users = snap.exists() ? (snap.data().lijst || []) : [];
-    const spelersNamen = alleSpelersData.map(s => s.naam.toLowerCase());
+    const spelersIds = alleSpelersData.map(s => s.id);
     const nogGeen = users.filter(u =>
-      !spelersNamen.some(n => n === (u.gebruikersnaam || u.naam || '').toLowerCase())
+      !alleSpelersData.some(s => s.naam.toLowerCase() === (u.gebruikersnaam || u.naam || '').toLowerCase()) &&
+      !spelersIds.includes(u.uid)
     );
 
     const lijst = document.getElementById('add-player-accounts-lijst');
@@ -3251,8 +3252,14 @@ async function saveEditPlayer() {
   const hcp = Math.round(parseFloat(document.getElementById('edit-player-hcp').value));
   if (!naam) { toast('Voer een naam in'); return; }
   if (isNaN(hcp)) { toast('Voer een handicap in'); return; }
-  const s = state.spelers.find(p => p.id === id);
-  if (!s) return;
+  let s = state.spelers.find(p => p.id === id);
+  if (!s) {
+    for (const l of alleLadders) {
+      s = (l.spelers || []).find(p => p.id === id);
+      if (s) break;
+    }
+  }
+  if (!s) { toast('Speler niet gevonden'); return; }
   const oudeNaam = s.naam;
   s.naam = naam;
   s.hcp = hcp;
