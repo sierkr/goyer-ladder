@@ -1202,7 +1202,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.3.0</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.3.1</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4268,11 +4268,20 @@ function selecteerToernooi(id) {
 }
 
 function initToernooiSetup() {
-  // Ladder select
+  // Ladder select — bewaar huidige waarde
   const ladderSel = document.getElementById('t-ladder');
   if (ladderSel) {
+    const huidigeWaarde = ladderSel.value;
     ladderSel.innerHTML = '<option value="">— Geen ladder koppelen —</option>' +
       alleLadders.map(l => `<option value="${l.id}">${l.naam}</option>`).join('');
+    if (huidigeWaarde && alleLadders.find(l => l.id === huidigeWaarde)) {
+      ladderSel.value = huidigeWaarde;
+    }
+    // Koppel onchange eenmalig
+    if (!ladderSel._initDone) {
+      ladderSel.onchange = () => renderToernooiSpelerTags();
+      ladderSel._initDone = true;
+    }
   }
 
   // Baan select
@@ -4284,15 +4293,20 @@ function initToernooiSetup() {
     baanSel.innerHTML += `<option value="${b.naam}">⭐ ${b.naam}</option>`;
   });
 
-  // Datum vandaag als default
-  document.getElementById('t-datum').value = new Date().toISOString().split('T')[0];
+  // Datum vandaag als default (alleen eerste keer)
+  if (!document.getElementById('t-datum').value) {
+    document.getElementById('t-datum').value = new Date().toISOString().split('T')[0];
+  }
 
+  renderToernooiSpelerTags();
+}
+
+function renderToernooiSpelerTags() {
   // Speler tags — kleur op basis van ladder membership en toernooi bezetting
   const bezetteSpelerIds = new Set(
     alleToernooien.flatMap(t => (t.spelers || []).map(s => String(s.id)))
   );
 
-  // Bepaal welke spelers in de geselecteerde ladder zitten
   const geselecteerdeLadderId = document.getElementById('t-ladder')?.value || '';
   const geselecteerdeLadder = alleLadders.find(l => l.id === geselecteerdeLadderId);
   const ladderSpelerIds = new Set(
@@ -4301,30 +4315,31 @@ function initToernooiSetup() {
 
   const sorted = [...alleSpelersData].sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
   const tagsEl = document.getElementById('t-speler-tags');
+  if (!tagsEl) return;
 
   if (sorted.length === 0) {
-    tagsEl.innerHTML = '<p style="font-size:13px;color:var(--light)">Geen spelers gevonden. Voeg eerst spelers toe via Beheer.</p>';
+    tagsEl.innerHTML = '<p style="font-size:13px;color:var(--light)">Geen spelers gevonden.</p>';
     return;
   }
+
+  // Bewaar huidige selectie
+  const geselecteerd = new Set([...tagsEl.querySelectorAll('.tag.selected')].map(el => el.id.replace('ttag-', '')));
 
   tagsEl.innerHTML = sorted.map(s => {
     const bezet = bezetteSpelerIds.has(String(s.id));
     const inLadder = !geselecteerdeLadderId || ladderSpelerIds.has(String(s.id));
     const isRood = bezet || !inLadder;
+    const wasGeselecteerd = geselecteerd.has(String(s.id));
     const title = bezet ? 'Speelt al mee in ander toernooi' : !inLadder ? 'Niet in geselecteerde ladder' : '';
     const kleur = isRood
       ? 'background:#fde8e8;color:#c0392b;border-color:#f1a9a9'
       : 'background:var(--green-pale);color:var(--green);border-color:var(--green)';
-    return `<span class="tag" id="ttag-${s.id}"
+    return `<span class="tag${wasGeselecteerd ? ' selected' : ''}" id="ttag-${s.id}"
       onclick="toggleTSpeler('${s.id}')"
       style="${kleur}"
       title="${title}"
     >${s.naam}</span>`;
   }).join('');
-
-  // Herrender tags bij wisselen ladder
-  const ladderSelEl = document.getElementById('t-ladder');
-  if (ladderSelEl) ladderSelEl.onchange = () => initToernooiSetup();
 }
 
 function toggleTSpeler(id) {
