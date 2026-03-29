@@ -1182,7 +1182,11 @@
     </div>
     <div class="card-collapse ingeklapt">
       <div class="card-body">
-        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">Genereer een link om via WhatsApp te versturen. Nieuwe spelers kunnen zich 14 dagen registreren.</p>
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">Genereer een link per ladder om via WhatsApp te versturen. Nieuwe spelers worden automatisch toegevoegd aan de gekozen ladder.</p>
+        <div class="form-group">
+          <label>Ladder</label>
+          <select id="invite-ladder-select"></select>
+        </div>
         <div id="invite-status" style="font-size:13px;color:var(--light);margin-bottom:12px">Geen actieve uitnodiging.</div>
         <button class="btn btn-primary btn-block" onclick="genereerInviteLink()">🔗 Nieuwe uitnodigingslink genereren</button>
         <div id="invite-link-wrap" style="display:none;margin-top:12px">
@@ -1256,27 +1260,36 @@
 <div class="modal-overlay" id="modal-add-player">
   <div class="modal">
     <h3>Speler toevoegen</h3>
-    <div class="form-group">
-      <label>Volledige naam</label>
-      <input type="text" id="new-player-name" placeholder="Voornaam Achternaam">
+    <!-- Kies uit bestaande accounts -->
+    <div id="add-player-accounts-wrap">
+      <p style="font-size:13px;color:var(--mid);margin-bottom:12px">Kies een geregistreerd account om toe te voegen als speler:</p>
+      <div id="add-player-accounts-lijst"></div>
+      <div class="divider"></div>
+      <p style="font-size:12px;color:var(--light);margin-bottom:8px">Of voeg handmatig toe (voor spelers zonder account):</p>
+      <button class="btn btn-ghost btn-sm btn-block" onclick="toggleHandmatigToevoegen()">+ Handmatig toevoegen</button>
     </div>
-    <div class="form-group">
-      <label>Handicap</label>
-      <input type="number" id="new-player-hcp" step="1" min="-10" max="54" placeholder="bijv. 12">
-    </div>
-    <div class="divider"></div>
-    <p style="font-size:12px;color:var(--light);margin-bottom:12px">Een account is nodig om in te loggen. De speler kan ook inloggen met Google als dat e-mailadres overeenkomt.</p>
-    <div class="form-group">
-      <label>E-mailadres speler</label>
-      <input type="email" id="new-player-account" placeholder="naam@email.com" inputmode="email">
-    </div>
-    <div class="form-group">
-      <label>Tijdelijk wachtwoord <span style="color:var(--light);font-weight:400">(speler kan dit later wijzigen)</span></label>
-      <input type="password" id="new-player-pass" placeholder="minimaal 4 tekens">
+    <!-- Handmatig toevoegen (ingeklapt) -->
+    <div id="add-player-handmatig" style="display:none">
+      <div class="form-group">
+        <label>Volledige naam</label>
+        <input type="text" id="new-player-name" placeholder="Voornaam Achternaam">
+      </div>
+      <div class="form-group">
+        <label>Handicap</label>
+        <input type="number" id="new-player-hcp" step="1" min="-10" max="54" placeholder="bijv. 12">
+      </div>
+      <div class="form-group">
+        <label>E-mailadres</label>
+        <input type="email" id="new-player-account" placeholder="naam@email.com" inputmode="email">
+      </div>
+      <div class="form-group">
+        <label>Tijdelijk wachtwoord</label>
+        <input type="password" id="new-player-pass" placeholder="minimaal 6 tekens">
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-add-player')">Annuleren</button>
-      <button class="btn btn-primary" style="flex:2" onclick="saveNewPlayer()">Opslaan</button>
+      <button class="btn btn-primary" style="flex:2" id="add-player-save-btn" onclick="saveNewPlayer()" style="display:none">Opslaan</button>
     </div>
   </div>
 </div>
@@ -3088,12 +3101,70 @@ function renderAdmin() {
   renderAdminUsers();
 }
 
-function openAddPlayer() {
+async function openAddPlayer() {
+  // Reset
   document.getElementById('new-player-name').value = '';
   document.getElementById('new-player-hcp').value = '';
   document.getElementById('new-player-account').value = '';
   document.getElementById('new-player-pass').value = '';
+  document.getElementById('add-player-handmatig').style.display = 'none';
+  document.getElementById('add-player-accounts-wrap').style.display = 'block';
+  document.getElementById('add-player-save-btn').style.display = 'none';
+
+  // Laad accounts die nog geen speler zijn
+  try {
+    const snap = await getDoc(USERS_DOC);
+    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const spelersNamen = alleSpelersData.map(s => s.naam.toLowerCase());
+    const nogGeen = users.filter(u =>
+      u.rol !== 'beheerder' &&
+      !spelersNamen.some(n => n === (u.gebruikersnaam || u.naam || '').toLowerCase())
+    );
+
+    const lijst = document.getElementById('add-player-accounts-lijst');
+    if (nogGeen.length === 0) {
+      lijst.innerHTML = '<p style="font-size:13px;color:var(--light);padding:8px 0">Alle geregistreerde accounts zijn al speler.</p>';
+    } else {
+      lijst.innerHTML = nogGeen.map(u => `
+        <div style="display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:10px">
+          <div style="flex:1">
+            <div style="font-weight:500">${u.gebruikersnaam || u.naam}</div>
+            <div style="font-size:11px;color:var(--light)">${u.email}</div>
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="voegAccountToeAlsSpeler('${u.email}','${(u.gebruikersnaam||u.naam).replace(/'/g,"\\'")}')">+ Toevoegen</button>
+        </div>
+      `).join('');
+    }
+  } catch(e) {
+    document.getElementById('add-player-accounts-lijst').innerHTML = '<p style="font-size:13px;color:var(--red)">Fout bij laden accounts.</p>';
+  }
+
   document.getElementById('modal-add-player').classList.add('open');
+}
+
+function toggleHandmatigToevoegen() {
+  const wrap = document.getElementById('add-player-handmatig');
+  const btn = document.getElementById('add-player-save-btn');
+  wrap.style.display = wrap.style.display === 'none' ? 'block' : 'none';
+  btn.style.display = wrap.style.display === 'none' ? 'none' : 'inline-flex';
+}
+
+async function voegAccountToeAlsSpeler(email, naam) {
+  const hcpStr = prompt(`Playing handicap voor ${naam}:`, '10');
+  if (hcpStr === null) return;
+  const hcp = Math.round(parseFloat(hcpStr));
+  if (isNaN(hcp)) { toast('Ongeldige handicap'); return; }
+
+  const newRank = state.spelers.length + 1;
+  const newSpeler = { id: state.nextId++, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 };
+  state.spelers.push(newSpeler);
+  alleSpelersData.push({ id: newSpeler.id, naam, hcp });
+  await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+  await slaState();
+
+  closeModal('modal-add-player');
+  renderAdmin();
+  toast(`${naam} toegevoegd als speler ✓`);
 }
 
 async function saveNewPlayer() {
@@ -4491,13 +4562,16 @@ async function herstelSnapshot(snapId) {
 //  UITNODIGINGSLINK
 // ============================================================
 async function genereerInviteLink() {
+  const ladderId = document.getElementById('invite-ladder-select')?.value || activeLadderId;
+  const ladder = alleLadders.find(l => l.id === ladderId);
   const token = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
   const verloopt = Date.now() + 14 * 24 * 60 * 60 * 1000;
-  await setDoc(INVITE_DOC, { token, verloopt, aangemaakt: Date.now() });
-  const url = `${location.origin}${location.pathname}?invite=${token}`;
+  // Sla per ladder een invite op
+  await setDoc(doc(db, 'ladder', `invite_${ladderId}`), { token, verloopt, ladderId, ladderNaam: ladder?.naam || ladderId, aangemaakt: Date.now() });
+  const url = `${location.origin}${location.pathname}?invite=${token}&ladder=${ladderId}`;
   document.getElementById('invite-link-text').textContent = url;
   document.getElementById('invite-link-wrap').style.display = 'block';
-  document.getElementById('invite-status').textContent = `Geldig tot ${new Date(verloopt).toLocaleDateString('nl-NL')}`;
+  document.getElementById('invite-status').textContent = `Geldig tot ${new Date(verloopt).toLocaleDateString('nl-NL')} · Ladder: ${ladder?.naam || ladderId}`;
   toast('Uitnodigingslink aangemaakt ✓');
 }
 
@@ -4509,11 +4583,27 @@ function kopieerInviteLink() {
 async function checkInviteLink() {
   const params = new URLSearchParams(location.search);
   const token = params.get('invite');
+  const ladderId = params.get('ladder') || 'mp';
   if (!token) return;
   document.getElementById('login-scherm').classList.remove('actief');
   document.getElementById('registratie-scherm').style.display = 'block';
-  const snap = await getDoc(INVITE_DOC);
-  if (!snap.exists() || snap.data().token !== token || snap.data().verloopt < Date.now()) {
+  // Sla ladderId op voor gebruik bij registratie
+  window._inviteLadderId = ladderId;
+  // Valideer token — probeer per-ladder invite en fallback naar globale invite
+  let geldig = false;
+  try {
+    const snapLadder = await getDoc(doc(db, 'ladder', `invite_${ladderId}`));
+    if (snapLadder.exists() && snapLadder.data().token === token && snapLadder.data().verloopt > Date.now()) {
+      geldig = true;
+    } else {
+      // Fallback: oude globale invite
+      const snapGlobal = await getDoc(INVITE_DOC);
+      if (snapGlobal.exists() && snapGlobal.data().token === token && snapGlobal.data().verloopt > Date.now()) {
+        geldig = true;
+      }
+    }
+  } catch(e) {}
+  if (!geldig) {
     document.getElementById('reg-formulier').style.display = 'none';
     const fout = document.getElementById('reg-fout');
     fout.textContent = 'Deze uitnodigingslink is verlopen of ongeldig. Vraag de beheerder om een nieuwe link.';
@@ -4570,21 +4660,22 @@ async function registreerSpeler() {
     masterLijst.push({ id: newId, naam, hcp });
     await setDoc(SPELERS_DOC, { lijst: masterLijst });
     await setDoc(STATE_DOC, st);
-    // Update ook de ladders collectie als die al bestaat
-    const mpSnap = await getDoc(doc(db, 'ladders', 'mp'));
-    if (mpSnap.exists()) {
-      const mpData = mpSnap.data();
-      mpData.spelers = mpData.spelers || [];
-      mpData.spelers.push({ id: newId, naam, hcp, rank: mpData.spelers.length + 1, partijen: 0, gewonnen: 0 });
-      mpData.spelerIds = (mpData.spelerIds || []).concat([newId]);
-      mpData.nextId = newId + 1;
-      await setDoc(doc(db, 'ladders', 'mp'), mpData);
+    // Voeg toe aan de juiste ladder (bepaald door invite link)
+    const targetLadderId = window._inviteLadderId || 'mp';
+    const ladderSnap = await getDoc(doc(db, 'ladders', targetLadderId));
+    if (ladderSnap.exists()) {
+      const ladderData = ladderSnap.data();
+      ladderData.spelers = ladderData.spelers || [];
+      ladderData.spelers.push({ id: newId, naam, hcp, rank: ladderData.spelers.length + 1, partijen: 0, gewonnen: 0 });
+      ladderData.spelerIds = (ladderData.spelerIds || []).concat([newId]);
+      ladderData.nextId = newId + 1;
+      await setDoc(doc(db, 'ladders', targetLadderId), ladderData);
     }
+    const ladderNaam = alleLadders.find(l => l.id === targetLadderId)?.naam || targetLadderId;
 
     _bezigMetRegistratie = false;
-    // Stap 3: Toon succes — gebruiker blijft ingelogd en wordt doorgestuurd
     document.getElementById('reg-formulier').style.display = 'none';
-    succes.innerHTML = `<strong>Welkom ${voornaam}!</strong> Je bent succesvol geregistreerd en staat nu op de ladder.<br><br>
+    succes.innerHTML = `<strong>Welkom ${voornaam}!</strong> Je bent succesvol geregistreerd en staat nu in de <strong>${ladderNaam}</strong> ladder.<br><br>
       <a href="${location.origin}${location.pathname}" style="color:var(--green);font-weight:600">Klik hier om in te loggen →</a>`;
     succes.style.display = 'block';
 
@@ -4604,19 +4695,27 @@ async function registreerSpeler() {
 
 async function laadInviteStatus() {
   try {
-    const snap = await getDoc(INVITE_DOC);
-    if (!snap.exists()) return;
-    const data = snap.data();
+    // Vul ladder selector
+    const sel = document.getElementById('invite-ladder-select');
+    if (sel) {
+      sel.innerHTML = alleLadders.map(l => `<option value="${l.id}">${l.naam}</option>`).join('');
+    }
+    // Toon status van actieve invite voor geselecteerde ladder
+    const ladderId = sel?.value || activeLadderId;
+    const snap = await getDoc(doc(db, 'ladder', `invite_${ladderId}`));
     const el = document.getElementById('invite-status');
     if (!el) return;
-    if (data.verloopt > Date.now()) {
-      const url = `${location.origin}${location.pathname}?invite=${data.token}`;
-      el.textContent = `Actief — geldig tot ${new Date(data.verloopt).toLocaleDateString('nl-NL')}`;
+    if (snap.exists() && snap.data().verloopt > Date.now()) {
+      const url = `${location.origin}${location.pathname}?invite=${snap.data().token}&ladder=${ladderId}`;
+      el.textContent = `Actief — geldig tot ${new Date(snap.data().verloopt).toLocaleDateString('nl-NL')}`;
       document.getElementById('invite-link-text').textContent = url;
       document.getElementById('invite-link-wrap').style.display = 'block';
     } else {
-      el.textContent = 'Verlopen — genereer een nieuwe link.';
+      el.textContent = 'Geen actieve uitnodiging voor deze ladder.';
+      document.getElementById('invite-link-wrap').style.display = 'none';
     }
+    // Update status bij wisselen ladder
+    if (sel) sel.onchange = () => laadInviteStatus();
   } catch(e) {}
 }
 
@@ -4709,6 +4808,8 @@ function toggleAdminKaart(header) {
 window.toggleAdminKaart = toggleAdminKaart;
 window.openSnapshotsModal = openSnapshotsModal;
 window.herstelSnapshot = herstelSnapshot;
+window.voegAccountToeAlsSpeler = voegAccountToeAlsSpeler;
+window.toggleHandmatigToevoegen = toggleHandmatigToevoegen;
 window.openNieuweLadderModal = openNieuweLadderModal;
 window.maakNieuweLadder = maakNieuweLadder;
 window.verwijderLadder = verwijderLadder;
