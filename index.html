@@ -4231,11 +4231,63 @@ async function startToernooi() {
   renderToernooi();
 }
 
+async function toonToernooiUitslag() {
+  if (!toernooiData || !actieveToernooiId) return;
+  toernooiData.uitslagZichtbaar = true;
+  const idx = alleToernooien.findIndex(t => t.id === actieveToernooiId);
+  if (idx >= 0) alleToernooien[idx].uitslagZichtbaar = true;
+  await setDoc(doc(db, 'toernooien', actieveToernooiId), toernooiData);
+  renderToernooiActief();
+  toast('Uitslag zichtbaar! 🏆');
+}
+
+function openVerwijderToernooiSpeler() {
+  const t = toernooiData;
+  if (!t) return;
+  const html = t.spelers.map(s => `
+    <div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="flex:1">${s.naam}</span>
+      <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px"
+        onclick="verwijderToernooiSpeler('${s.id}')">Verwijderen</button>
+    </div>
+  `).join('');
+  // Gebruik een simpele modal via confirm-achtig scherm
+  const modal = document.getElementById('modal-archief-detail');
+  document.getElementById('archief-detail-titel').textContent = 'Speler verwijderen';
+  document.getElementById('archief-detail-inhoud').innerHTML = html;
+  modal.classList.add('open');
+}
+
+async function verwijderToernooiSpeler(spelerId) {
+  if (!toernooiData || !actieveToernooiId) return;
+  if (!confirm('Speler verwijderen uit dit toernooi?')) return;
+  toernooiData.spelers = toernooiData.spelers.filter(s => String(s.id) !== String(spelerId));
+  delete toernooiData.scores[spelerId];
+  delete toernooiData.scores[String(spelerId)];
+  const idx = alleToernooien.findIndex(t => t.id === actieveToernooiId);
+  if (idx >= 0) alleToernooien[idx] = { ...toernooiData };
+  await setDoc(doc(db, 'toernooien', actieveToernooiId), toernooiData);
+  closeModal('modal-archief-detail');
+  renderToernooiActief();
+  toast('Speler verwijderd uit toernooi');
+}
+
+function alleScoresIngevuld(t) {
+  return t.spelers.every(s =>
+    t.holes.every((_, i) => {
+      const val = t.scores[s.id]?.[i] ?? t.scores[String(s.id)]?.[i];
+      return val !== null && val !== undefined;
+    })
+  );
+}
+
 function renderToernooiActief() {
   const t = toernooiData;
   if (!t) return;
 
   const isBeheerder = huidigeBruiker?.rol === 'beheerder';
+  const uitslag = t.uitslagZichtbaar === true;
+  const allesIngevuld = alleScoresIngevuld(t);
   const detail = document.getElementById('toernooi-detail');
   if (!detail) return;
 
@@ -4243,20 +4295,27 @@ function renderToernooiActief() {
     <div class="card">
       <div class="card-header">
         <h2>${t.naam}</h2>
-        <span class="badge badge-gold">Bezig</span>
+        <span class="badge badge-gold">${uitslag ? 'Uitslag' : 'Bezig'}</span>
       </div>
       <div class="card-body" style="padding:10px 16px;font-size:13px;color:var(--mid)">
-        ${t.datum} · ${t.baan} · ${t.holes.length} holes · ${t.spelers.length} spelers · W=${t.ptWin} T=${t.ptTie} L=${t.ptLoss}
+        ${t.datum} · ${t.baan} · ${t.holes.length} holes · ${t.spelers.length} spelers
       </div>
     </div>
+
+    ${uitslag ? `
     <div class="card">
       <div class="card-header"><h2>Ranglijst</h2></div>
       <div id="t-ranglijst"></div>
     </div>
+    ` : ''}
+
     <div class="card">
       <div class="card-header">
-        <h2>Scores invoeren</h2>
-        <button class="btn btn-sm btn-ghost" onclick="toggleTScorecard()">Toon/verberg</button>
+        <h2>Scores</h2>
+        <div style="display:flex;gap:6px" onclick="event.stopPropagation()">
+          ${isBeheerder ? `<button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="openVerwijderToernooiSpeler()">− Speler</button>` : ''}
+          <button class="btn btn-sm btn-ghost" onclick="toggleTScorecard()">Toon/verberg</button>
+        </div>
       </div>
       <div id="t-scorecard-wrap" style="overflow-x:auto">
         <table class="scorecard" id="t-scorecard-table">
@@ -4265,18 +4324,35 @@ function renderToernooiActief() {
         </table>
       </div>
     </div>
+
     <div class="card">
       <div class="card-header"><h2>Onderlinge stand</h2></div>
       <div id="t-matrix" style="overflow-x:auto;padding:8px"></div>
     </div>
+
     ${isBeheerder ? `
-    <button class="btn btn-gold btn-block" onclick="openToernooiAfsluiten()" style="margin-bottom:8px">✓ Toernooi afsluiten</button>
-    <button class="btn btn-ghost btn-block" onclick="annuleerToernooi()" style="margin-bottom:16px;color:var(--red)">Toernooi annuleren</button>
+    <div style="padding:0 0 16px">
+      ${!uitslag ? `
+      <button class="btn btn-primary btn-block" 
+        onclick="${allesIngevuld ? 'toonToernooiUitslag()' : ''}"
+        style="margin-bottom:8px;${!allesIngevuld ? 'opacity:0.5;cursor:not-allowed' : ''}"
+        ${!allesIngevuld ? 'disabled title="Vul eerst alle scores in"' : ''}>
+        📊 Naar de uitslag ${!allesIngevuld ? '(scores onvolledig)' : ''}
+      </button>
+      ` : `
+      <button class="btn btn-gold btn-block" onclick="openToernooiAfsluiten()" style="margin-bottom:8px">
+        ✓ Toernooi afsluiten & ladder bijwerken
+      </button>
+      `}
+      <button class="btn btn-ghost btn-block" onclick="annuleerToernooi()" style="margin-bottom:8px;color:var(--red)">
+        Toernooi annuleren
+      </button>
+    </div>
     ` : ''}
   `;
 
   renderTScorecard();
-  renderTRanglijst();
+  if (uitslag) renderTRanglijst();
   renderTMatrix();
 }
 
@@ -4329,6 +4405,18 @@ function updateTScore(spelerId, holeIdx, val) {
   updateTTotalen();
   renderTRanglijst();
   renderTMatrix();
+  // Update "Naar de uitslag" knop status
+  if (huidigeBruiker?.rol === 'beheerder') {
+    const btn = document.querySelector('#toernooi-detail button[onclick*="toonToernooiUitslag"]');
+    if (btn) {
+      const alles = alleScoresIngevuld(toernooiData);
+      btn.disabled = !alles;
+      btn.style.opacity = alles ? '1' : '0.5';
+      btn.style.cursor = alles ? 'pointer' : 'not-allowed';
+      btn.textContent = `📊 Naar de uitslag${alles ? '' : ' (scores onvolledig)'}`;
+      if (alles) btn.onclick = toonToernooiUitslag;
+    }
+  }
   clearTimeout(window._tSaveTimer);
   window._tSaveTimer = setTimeout(() => { if (actieveToernooiId) setDoc(doc(db, "toernooien", actieveToernooiId), toernooiData); }, 1500);
 }
@@ -5120,6 +5208,9 @@ window.openSnapshotsModal = openSnapshotsModal;
 window.herstelSnapshot = herstelSnapshot;
 window.voegAccountToeAlsSpeler = voegAccountToeAlsSpeler;
 window.toggleHandmatigToevoegen = toggleHandmatigToevoegen;
+window.toonToernooiUitslag = toonToernooiUitslag;
+window.openVerwijderToernooiSpeler = openVerwijderToernooiSpeler;
+window.verwijderToernooiSpeler = verwijderToernooiSpeler;
 window.selecteerToernooi = selecteerToernooi;
 window.openLadderInstellingen = openLadderInstellingen;
 window.slaLadderInstellingenOp = slaLadderInstellingenOp;
