@@ -1202,7 +1202,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.2.0</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.2.1</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -5211,35 +5211,29 @@ async function registreerSpeler() {
     // Stap 2: Nu ingelogd — schrijf naar Firestore
     const usersSnap = await getDoc(USERS_DOC);
     const users = usersSnap.exists() ? (usersSnap.data().lijst || []) : [];
-
     users.push({ naam, gebruikersnaam: naam, email, uid, rol: 'speler' });
     await setDoc(USERS_DOC, { lijst: users });
 
-    const stateSnap = await getDoc(STATE_DOC);
-    const st = stateSnap.exists() ? stateSnap.data() : { spelers: [], nextId: 1, uitslagen: [], actievePartijen: [] };
-    st.spelers = st.spelers || [];
-    const newRank = st.spelers.length + 1;
-    const newId = st.nextId || (newRank + 100);
-    st.spelers.push({ id: newId, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
-    st.nextId = newId + 1;
-    st.spelerIds = (st.spelerIds || []).concat([newId]);
+    // Haal ID op uit de gekoppelde ladder
+    const targetLadderId = window._inviteLadderId || 'mp';
+    const ladderSnap = await getDoc(doc(db, 'ladders', targetLadderId));
+    const ladderData = ladderSnap.exists() ? ladderSnap.data() : { spelers: [], nextId: 1 };
+    ladderData.spelers = ladderData.spelers || [];
+    const newId = ladderData.nextId || (ladderData.spelers.length + 100);
+    const newRank = ladderData.spelers.length + 1;
+
+    // Voeg toe aan ladder
+    ladderData.spelers.push({ id: newId, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
+    ladderData.spelerIds = (ladderData.spelerIds || []).concat([newId]);
+    ladderData.nextId = newId + 1;
+    await setDoc(doc(db, 'ladders', targetLadderId), ladderData);
+
     // Voeg toe aan master spelerslijst
     const spelersSnap2 = await getDoc(SPELERS_DOC);
     const masterLijst = spelersSnap2.exists() ? (spelersSnap2.data().lijst || []) : [];
     masterLijst.push({ id: newId, naam, hcp });
     await setDoc(SPELERS_DOC, { lijst: masterLijst });
-    await setDoc(STATE_DOC, st);
-    // Voeg toe aan de juiste ladder (bepaald door invite link)
-    const targetLadderId = window._inviteLadderId || 'mp';
-    const ladderSnap = await getDoc(doc(db, 'ladders', targetLadderId));
-    if (ladderSnap.exists()) {
-      const ladderData = ladderSnap.data();
-      ladderData.spelers = ladderData.spelers || [];
-      ladderData.spelers.push({ id: newId, naam, hcp, rank: ladderData.spelers.length + 1, partijen: 0, gewonnen: 0 });
-      ladderData.spelerIds = (ladderData.spelerIds || []).concat([newId]);
-      ladderData.nextId = newId + 1;
-      await setDoc(doc(db, 'ladders', targetLadderId), ladderData);
-    }
+
     const ladderNaam = alleLadders.find(l => l.id === targetLadderId)?.naam || targetLadderId;
 
     _bezigMetRegistratie = false;
