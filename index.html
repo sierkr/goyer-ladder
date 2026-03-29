@@ -1202,7 +1202,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.3.4</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.3.5</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -3338,12 +3338,10 @@ async function voegAccountToeAlsSpeler(email, naam) {
   const hcp = Math.round(parseFloat(hcpStr));
   if (isNaN(hcp)) { toast('Ongeldige handicap'); return; }
 
-  // Gebruik nextId van de actieve ladder voor consistente IDs
-  const newId = state.nextId++;
+  // Gebruik centrale ID teller
+  const newId = getNextId();
   alleSpelersData.push({ id: newId, naam, hcp });
   await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
-  // Update nextId in actieve ladder zonder speler toe te voegen
-  await slaState();
 
   closeModal('modal-add-player');
   renderAdmin();
@@ -3387,7 +3385,7 @@ async function saveNewPlayer() {
     }
 
     // Voeg alleen toe aan master spelerslijst, niet aan een specifieke ladder
-    const newId = state.nextId++;
+    const newId = getNextId();
     alleSpelersData.push({ id: newId, naam, hcp });
     await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
     // Sla nextId op
@@ -5040,6 +5038,14 @@ async function slaLadderInstellingenOp() {
   toast('Instellingen opgeslagen ✓');
 }
 
+function getNextId() {
+  // Centrale ID teller — altijd hoger dan hoogste bekende ID
+  const maxAlleSpelers = alleSpelersData.reduce((m, s) => Math.max(m, Number(s.id) || 0), 0);
+  const maxAlleLadders = alleLadders.reduce((m, l) =>
+    Math.max(m, ...(l.spelers || []).map(s => Number(s.id) || 0)), 0);
+  return Math.max(maxAlleSpelers, maxAlleLadders) + 1;
+}
+
 function getLadderConfig() {
   return state.config || alleLadders.find(l => l.id === activeLadderId)?.config || DEFAULT_LADDER_CONFIG;
 }
@@ -5361,7 +5367,7 @@ async function registreerSpeler() {
     const ladderSnap = await getDoc(doc(db, 'ladders', targetLadderId));
     const ladderData = ladderSnap.exists() ? ladderSnap.data() : { spelers: [], nextId: 1 };
     ladderData.spelers = ladderData.spelers || [];
-    const newId = ladderData.nextId || (ladderData.spelers.length + 100);
+    const newId = getNextId();
     const newRank = ladderData.spelers.length + 1;
 
     // Voeg toe aan ladder
