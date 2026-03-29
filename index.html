@@ -1590,12 +1590,13 @@ async function slaState() {
 async function initFirestore() {
   toonLaadOverlay(true);
   try {
-    const [baanSnap, archiefSnap, uitdSnap, toernooiSnap, spelersSnap] = await Promise.all([
+    const [baanSnap, archiefSnap, uitdSnap, toernooiSnap, spelersSnap, volgordeSnap] = await Promise.all([
       getDoc(BANEN_DOC),
       getDoc(ARCHIEF_DOC),
       getDoc(UITDAGINGEN_DOC),
       getDoc(TOERNOOI_DOC),
-      getDoc(SPELERS_DOC)
+      getDoc(SPELERS_DOC),
+      getDoc(doc(db, 'ladder', 'ladderVolgorde'))
     ]);
 
     aangepasteBanen = baanSnap.exists() ? (baanSnap.data().lijst || []) : [];
@@ -1603,6 +1604,7 @@ async function initFirestore() {
     uitdagingenData = uitdSnap.exists() ? (uitdSnap.data().lijst || []) : [];
     toernooiData = toernooiSnap.exists() ? toernooiSnap.data() : null;
     alleSpelersData = spelersSnap.exists() ? (spelersSnap.data().lijst || []) : [];
+    const ladderVolgorde = volgordeSnap.exists() ? (volgordeSnap.data().volgorde || []) : [];
 
     // Laad ladders
     const laddersSnap = await getDocs(LADDERS_COL);
@@ -1645,6 +1647,16 @@ async function initFirestore() {
         spelers: d.data().spelers || [],
         actievePartijen: d.data().actievePartijen || []
       }));
+      // Sorteer op opgeslagen volgorde
+      if (ladderVolgorde.length > 0) {
+        alleLadders.sort((a, b) => {
+          const ai = ladderVolgorde.indexOf(a.id);
+          const bi = ladderVolgorde.indexOf(b.id);
+          if (ai === -1) return 1;
+          if (bi === -1) return -1;
+          return ai - bi;
+        });
+      }
       // Zet MP als actief, anders de eerste
       const mpIdx = alleLadders.findIndex(l => l.id === 'mp');
       const actief = mpIdx >= 0 ? laddersSnap.docs[mpIdx] : laddersSnap.docs[0];
@@ -4384,6 +4396,18 @@ async function maakNieuweLadder() {
   toast(`Ladder "${naam}" aangemaakt ✓`);
 }
 
+async function verschuifLadder(idx, delta) {
+  const nieuwIdx = idx + delta;
+  if (nieuwIdx < 0 || nieuwIdx >= alleLadders.length) return;
+  // Wissel posities
+  [alleLadders[idx], alleLadders[nieuwIdx]] = [alleLadders[nieuwIdx], alleLadders[idx]];
+  // Sla volgorde op in Firestore
+  const volgorde = alleLadders.map(l => l.id);
+  await setDoc(doc(db, 'ladder', 'ladderVolgorde'), { volgorde });
+  renderAdminLadders();
+  laadInviteStatus();
+}
+
 async function verwijderLadder(ladderId) {
   const ladder = alleLadders.find(l => l.id === ladderId);
   if (!ladder) return;
@@ -4477,8 +4501,14 @@ async function renderAdminLadders() {
   const snaps = await Promise.all(alleLadders.map(l => getDoc(doc(db, 'ladders', l.id))));
   snaps.forEach((snap, i) => { if (snap.exists()) alleLadders[i].spelers = snap.data().spelers || []; });
 
-  list.innerHTML = alleLadders.map(l => `
+  list.innerHTML = alleLadders.map((l, idx) => `
     <div class="admin-row">
+      <div style="display:flex;flex-direction:column;gap:2px;margin-right:4px">
+        <button onclick="verschuifLadder(${idx},-1)" ${idx === 0 ? 'disabled' : ''} 
+          style="background:${idx===0?'#f0ede4':'var(--green-pale)'};border:none;border-radius:4px;width:22px;height:22px;cursor:${idx===0?'default':'pointer'};font-size:11px;color:${idx===0?'var(--light)':'var(--green)'}">↑</button>
+        <button onclick="verschuifLadder(${idx},1)" ${idx === alleLadders.length-1 ? 'disabled' : ''}
+          style="background:${idx===alleLadders.length-1?'#f0ede4':'#fde8e8'};border:none;border-radius:4px;width:22px;height:22px;cursor:${idx===alleLadders.length-1?'default':'pointer'};font-size:11px;color:${idx===alleLadders.length-1?'var(--light)':'var(--red)'}">↓</button>
+      </div>
       <div style="flex:1">
         <div style="font-weight:600">${l.naam}</div>
         <div style="font-size:11px;color:var(--light)">${(l.spelers||[]).length} spelers</div>
@@ -4695,12 +4725,15 @@ async function registreerSpeler() {
 
 async function laadInviteStatus() {
   try {
-    // Vul ladder selector
     const sel = document.getElementById('invite-ladder-select');
     if (sel) {
+      const huidigeWaarde = sel.value;
       sel.innerHTML = alleLadders.map(l => `<option value="${l.id}">${l.naam}</option>`).join('');
+      if (huidigeWaarde && alleLadders.find(l => l.id === huidigeWaarde)) {
+        sel.value = huidigeWaarde;
+      }
+      sel.onchange = () => laadInviteStatus();
     }
-    // Toon status van actieve invite voor geselecteerde ladder
     const ladderId = sel?.value || activeLadderId;
     const snap = await getDoc(doc(db, 'ladder', `invite_${ladderId}`));
     const el = document.getElementById('invite-status');
@@ -4714,8 +4747,6 @@ async function laadInviteStatus() {
       el.textContent = 'Geen actieve uitnodiging voor deze ladder.';
       document.getElementById('invite-link-wrap').style.display = 'none';
     }
-    // Update status bij wisselen ladder
-    if (sel) sel.onchange = () => laadInviteStatus();
   } catch(e) {}
 }
 
@@ -4810,6 +4841,7 @@ window.openSnapshotsModal = openSnapshotsModal;
 window.herstelSnapshot = herstelSnapshot;
 window.voegAccountToeAlsSpeler = voegAccountToeAlsSpeler;
 window.toggleHandmatigToevoegen = toggleHandmatigToevoegen;
+window.verschuifLadder = verschuifLadder;
 window.openNieuweLadderModal = openNieuweLadderModal;
 window.maakNieuweLadder = maakNieuweLadder;
 window.verwijderLadder = verwijderLadder;
