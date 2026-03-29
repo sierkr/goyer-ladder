@@ -1069,8 +1069,11 @@
   <!-- Geen actief toernooi -->
   <div id="toernooi-setup-wrap">
     <div class="card">
-      <div class="card-header"><h2>Nieuw Toernooi</h2></div>
-      <div class="card-body">
+      <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+        <h2>Nieuw Toernooi</h2>
+      </div>
+      <div class="card-collapse ingeklapt">
+        <div class="card-body">
         <div class="form-group">
           <label>Naam</label>
           <input type="text" id="t-naam" placeholder="bijv. Clubkampioenschap 2025">
@@ -1113,6 +1116,7 @@
         <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px">Deelnemers selecteren</label>
         <div id="t-speler-tags" class="tag-list" style="margin-bottom:12px"></div>
         <button class="btn btn-primary btn-block" onclick="startToernooi()">Toernooi starten →</button>
+        </div>
       </div>
     </div>
   </div>
@@ -4273,10 +4277,11 @@ async function verwijderToernooiSpeler(spelerId) {
 }
 
 function alleScoresIngevuld(t) {
+  if (!t || !t.spelers || t.spelers.length === 0) return false;
   return t.spelers.every(s =>
     t.holes.every((_, i) => {
-      const val = t.scores[s.id]?.[i] ?? t.scores[String(s.id)]?.[i];
-      return val !== null && val !== undefined;
+      const val = t.scores[String(s.id)]?.[i] ?? t.scores[s.id]?.[i];
+      return val !== null && val !== undefined && val !== '';
     })
   );
 }
