@@ -1834,7 +1834,7 @@ function showPage(name) {
   if (name === 'partij') initPartijForm();
   if (name === 'ronde') renderRonde();
   if (name === 'uitslagen') renderUitslagen();
-  if (name === 'toernooi') renderToernooi();
+  if (name === 'toernooi') { herlaadToernooien().then(() => renderToernooi()); }
   if (name === 'profiel') renderProfiel();
   if (name === 'archief') { renderArchief(); verwijderOudeUitslagen(); }
   if (name === 'admin') { renderAdmin(); renderAdminUsers(); renderAdminLadders(); laadInviteStatus(); }
@@ -4102,10 +4102,29 @@ function renderToernooi() {
   } else {
     wrap.style.display = 'none';
     if (!isBeheerder) {
-      setup.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">🏅</div><p>Geen actief toernooi.</p></div></div>';
+      const emptyDiv = document.createElement('div');
+      emptyDiv.className = 'card';
+      emptyDiv.innerHTML = '<div class="empty"><div class="empty-icon">🏅</div><p>Geen actief toernooi.</p></div>';
+      setup.innerHTML = '';
+      setup.appendChild(emptyDiv);
       setup.style.display = 'block';
     }
   }
+}
+
+async function herlaadToernooien() {
+  try {
+    const snap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
+    alleToernooien = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Herstel actieve selectie
+    if (actieveToernooiId) {
+      toernooiData = alleToernooien.find(t => t.id === actieveToernooiId) || null;
+    }
+    if (!toernooiData && alleToernooien.length > 0) {
+      toernooiData = alleToernooien[0];
+      actieveToernooiId = alleToernooien[0].id;
+    }
+  } catch(e) { console.error('Toernooien laden mislukt:', e); }
 }
 
 function selecteerToernooi(id) {
