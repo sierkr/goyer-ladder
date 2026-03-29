@@ -1202,7 +1202,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.1.9</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.2.0</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4940,12 +4940,14 @@ async function verschuifLadder(idx, delta) {
 async function verwijderLadder(ladderId) {
   const ladder = alleLadders.find(l => l.id === ladderId);
   if (!ladder) return;
-  if (ladderId === activeLadderId) {
-    toast('De actieve ladder kan niet verwijderd worden'); return;
-  }
+  if (ladderId === 'mp') { toast('De MP ladder kan niet verwijderd worden'); return; }
   if (!confirm(`Ladder "${ladder.naam}" verwijderen? Dit kan niet ongedaan worden.`)) return;
   await deleteDoc(doc(db, 'ladders', ladderId));
   alleLadders = alleLadders.filter(l => l.id !== ladderId);
+  if (ladderId === activeLadderId) {
+    activeLadderId = alleLadders[0]?.id || null;
+    state = alleLadders[0] || state;
+  }
   renderAdminLadders();
   toast('Ladder verwijderd');
 }
