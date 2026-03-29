@@ -317,7 +317,30 @@
   }
   .match-score.leading { background: var(--green-pale); color: var(--green); }
 
-  /* BADGES */
+  /* INKLAPBARE KAARTEN */
+  .card-header.inklapbaar {
+    cursor: pointer;
+    user-select: none;
+  }
+  .card-header.inklapbaar:hover { background: #fafaf7; }
+  .card-header.inklapbaar::after {
+    content: '▾';
+    font-size: 16px;
+    color: var(--light);
+    transition: transform 0.2s;
+    margin-left: 8px;
+  }
+  .card-header.inklapbaar.ingeklapt::after {
+    transform: rotate(-90deg);
+  }
+  .card-collapse {
+    overflow: hidden;
+    transition: max-height 0.25s ease;
+    max-height: 2000px;
+  }
+  .card-collapse.ingeklapt {
+    max-height: 0;
+  }
   .badge {
     display: inline-block;
     padding: 2px 8px;
@@ -1075,52 +1098,66 @@
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
   <div class="card">
-    <div class="card-header">
+    <div class="card-header inklapbaar" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
         <button class="btn btn-sm btn-primary" onclick="openAddPlayer()">+ Speler</button>
         <button class="btn btn-sm btn-ghost" style="color:var(--light);border-color:#e0ddd4;cursor:not-allowed;opacity:0.5" title="Niet beschikbaar">↺ Reset</button>
       </div>
     </div>
-    <div id="admin-player-list"></div>
+    <div class="card-collapse">
+      <div id="admin-player-list"></div>
+    </div>
   </div>
   <div class="card">
-    <div class="card-header">
+    <div class="card-header inklapbaar" onclick="toggleAdminKaart(this)">
       <h2>Accounts beheren</h2>
-      <button class="btn btn-sm btn-primary" onclick="openAddUser()">+ Account</button>
+      <div onclick="event.stopPropagation()">
+        <button class="btn btn-sm btn-primary" onclick="openAddUser()">+ Account</button>
+      </div>
     </div>
-    <div id="admin-user-list"></div>
+    <div class="card-collapse">
+      <div id="admin-user-list"></div>
+    </div>
   </div>
   <div class="card">
-    <div class="card-header">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Ladder herstellen</h2>
-      <button class="btn btn-sm btn-ghost" onclick="openSnapshotsModal()">Bekijk snapshots</button>
+      <div onclick="event.stopPropagation()">
+        <button class="btn btn-sm btn-ghost" onclick="openSnapshotsModal()">Bekijk snapshots</button>
+      </div>
     </div>
-    <div class="card-body">
-      <p style="font-size:13px;color:var(--mid)">Na elke afgeronde partij wordt automatisch een snapshot opgeslagen. Je kunt de ladderstand terugzetten naar elk moment van de afgelopen 30 dagen.</p>
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-header">
-      <h2>Uitnodigingslink</h2>
-    </div>
-    <div class="card-body">
-      <p style="font-size:13px;color:var(--mid);margin-bottom:14px">Genereer een link om via WhatsApp te versturen. Nieuwe spelers kunnen zich 14 dagen registreren.</p>
-      <div id="invite-status" style="font-size:13px;color:var(--light);margin-bottom:12px">Geen actieve uitnodiging.</div>
-      <button class="btn btn-primary btn-block" onclick="genereerInviteLink()">🔗 Nieuwe uitnodigingslink genereren</button>
-      <div id="invite-link-wrap" style="display:none;margin-top:12px">
-        <div style="background:#f5f2ea;border-radius:8px;padding:10px 12px;font-size:12px;font-family:'DM Mono',monospace;word-break:break-all;margin-bottom:8px" id="invite-link-text"></div>
-        <button class="btn btn-ghost btn-block btn-sm" onclick="kopieerInviteLink()">📋 Kopieer link</button>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid)">Na elke afgeronde partij wordt automatisch een snapshot opgeslagen. Je kunt de ladderstand terugzetten naar elk moment van de afgelopen 30 dagen.</p>
       </div>
     </div>
   </div>
   <div class="card">
-    <div class="card-header">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+      <h2>Uitnodigingslink</h2>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">Genereer een link om via WhatsApp te versturen. Nieuwe spelers kunnen zich 14 dagen registreren.</p>
+        <div id="invite-status" style="font-size:13px;color:var(--light);margin-bottom:12px">Geen actieve uitnodiging.</div>
+        <button class="btn btn-primary btn-block" onclick="genereerInviteLink()">🔗 Nieuwe uitnodigingslink genereren</button>
+        <div id="invite-link-wrap" style="display:none;margin-top:12px">
+          <div style="background:#f5f2ea;border-radius:8px;padding:10px 12px;font-size:12px;font-family:'DM Mono',monospace;word-break:break-all;margin-bottom:8px" id="invite-link-text"></div>
+          <button class="btn btn-ghost btn-block btn-sm" onclick="kopieerInviteLink()">📋 Kopieer link</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Seizoen</h2>
     </div>
-    <div class="card-body">
-      <p style="font-size:13px;color:var(--mid);margin-bottom:14px">Start een nieuw seizoen om de huidige ladder en uitslagen te archiveren. De rankings en statistieken worden gereset.</p>
-      <button class="btn btn-gold btn-block" onclick="openNieuwSeizoenModal()">🏆 Nieuw seizoen starten</button>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">Start een nieuw seizoen om de huidige ladder en uitslagen te archiveren. De rankings en statistieken worden gereset.</p>
+        <button class="btn btn-gold btn-block" onclick="openNieuwSeizoenModal()">🏆 Nieuw seizoen starten</button>
+      </div>
     </div>
   </div>
 </div>
@@ -4227,7 +4264,13 @@ window.reageerUitdaging = reageerUitdaging;
 window.verwijderUitdaging = verwijderUitdaging;
 window.editPartijHcp = editPartijHcp;
 window.editToernooiHcp = editToernooiHcp;
-window.openSnapshotsModal = openSnapshotsModal;
+function toggleAdminKaart(header) {
+  header.classList.toggle('ingeklapt');
+  const collapse = header.nextElementSibling;
+  if (collapse) collapse.classList.toggle('ingeklapt');
+}
+
+window.toggleAdminKaart = toggleAdminKaart;
 window.herstelSnapshot = herstelSnapshot;
 window.genereerInviteLink = genereerInviteLink;
 window.kopieerInviteLink = kopieerInviteLink;
