@@ -3546,7 +3546,7 @@ async function openEditUser(idx) {
 
 async function saveEditUser() {
   const idx = parseInt(document.getElementById('edit-user-idx').value);
-  const naam = document.getElementById('edit-user-name').value.trim().toLowerCase();
+  const naam = document.getElementById('edit-user-name').value.trim();
   const pass = document.getElementById('edit-user-pass').value;
   const rol = document.getElementById('edit-user-rol').value;
   if (!naam) { toast('Voer een gebruikersnaam in'); return; }
