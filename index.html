@@ -1202,7 +1202,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.2.3</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.2.4</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -3740,15 +3740,51 @@ async function saveNewUser() {
 }
 
 async function removeUser(idx) {
-  if (!confirm('Account verwijderen?')) return;
   try {
     const snap = await getDoc(USERS_DOC);
     const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const user = users[idx];
+    if (!user) return;
+
+    if (!confirm(`Account van ${user.gebruikersnaam || user.naam} verwijderen? De speler wordt ook uit alle ladders en spelers beheer verwijderd.`)) return;
+
+    const gebruikersnaam = (user.gebruikersnaam || user.naam || '').toLowerCase();
+
+    // Verwijder uit users lijst
     users.splice(idx, 1);
     await setDoc(USERS_DOC, { lijst: users });
+
+    // Zoek speler ID op naam in master lijst
+    const masterSpeler = alleSpelersData.find(s => s.naam.toLowerCase() === gebruikersnaam);
+    if (masterSpeler) {
+      const spelerId = masterSpeler.id;
+
+      // Verwijder uit master spelerslijst
+      alleSpelersData = alleSpelersData.filter(s => s.id !== spelerId);
+      await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+
+      // Verwijder uit alle ladders
+      for (const ladder of alleLadders) {
+        const ladderSnap = await getDoc(doc(db, 'ladders', ladder.id));
+        if (!ladderSnap.exists()) continue;
+        const data = ladderSnap.data();
+        const hadSpeler = (data.spelers || []).some(s => s.id === spelerId);
+        if (!hadSpeler) continue;
+        data.spelers = (data.spelers || []).filter(s => s.id !== spelerId);
+        data.spelerIds = (data.spelerIds || []).filter(id => id !== spelerId);
+        // Herbereken ranks
+        data.spelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
+        await setDoc(doc(db, 'ladders', ladder.id), data);
+        ladder.spelers = data.spelers;
+        if (ladder.id === activeLadderId) state.spelers = data.spelers;
+      }
+    }
+
     renderAdminUsers();
-    toast('Account verwijderd');
-  } catch(e) { toast('Fout bij verwijderen'); }
+    renderAdmin();
+    renderLadder();
+    toast('Account en speler verwijderd ✓');
+  } catch(e) { console.error(e); toast('Fout bij verwijderen: ' + e.message); }
 }
 
 // ============================================================
