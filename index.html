@@ -4236,6 +4236,13 @@ async function startToernooi() {
   renderToernooi();
 }
 
+async function toggleToernooiMatrix() {
+  if (!toernooiData || !actieveToernooiId) return;
+  toernooiData.matrixVerborgen = !toernooiData.matrixVerborgen;
+  await setDoc(doc(db, 'toernooien', actieveToernooiId), toernooiData);
+  renderToernooiActief();
+}
+
 async function toonToernooiUitslag() {
   if (!toernooiData || !actieveToernooiId) return;
   toernooiData.uitslagZichtbaar = true;
@@ -4315,31 +4322,35 @@ function renderToernooiActief() {
     </div>
     ` : ''}
 
-    <div class="card">
+    <div class="card" id="t-matrix-card" ${t.matrixVerborgen && !uitslag ? 'style="display:none"' : ''}>
       <div class="card-header">
-        <h2>Scores</h2>
-        <div style="display:flex;gap:6px" onclick="event.stopPropagation()">
-          ${isBeheerder ? `<button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="openVerwijderToernooiSpeler()">− Speler</button>` : ''}
-          <button class="btn btn-sm btn-ghost" onclick="toggleTScorecard()">Toon/verberg</button>
-        </div>
+        <h2>Onderlinge stand</h2>
+        ${isBeheerder && !uitslag ? `<button class="btn btn-sm btn-ghost" onclick="toggleToernooiMatrix()">${t.matrixVerborgen ? 'Toon' : 'Verberg'}</button>` : ''}
       </div>
-      <div id="t-scorecard-wrap" style="overflow-x:auto">
-        <table class="scorecard" id="t-scorecard-table">
-          <thead id="t-scorecard-head"></thead>
-          <tbody id="t-scorecard-body"></tbody>
-        </table>
-      </div>
+      <div id="t-matrix" style="overflow-x:auto;padding:8px"></div>
     </div>
 
     <div class="card">
-      <div class="card-header"><h2>Onderlinge stand</h2></div>
-      <div id="t-matrix" style="overflow-x:auto;padding:8px"></div>
+      <div class="card-header inklapbaar" onclick="toggleAdminKaart(this)">
+        <h2>Scores</h2>
+        <div style="display:flex;gap:6px" onclick="event.stopPropagation()">
+          ${isBeheerder ? `<button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="openVerwijderToernooiSpeler()">− Speler</button>` : ''}
+        </div>
+      </div>
+      <div class="card-collapse">
+        <div id="t-scorecard-wrap" style="overflow-x:auto">
+          <table class="scorecard" id="t-scorecard-table">
+            <thead id="t-scorecard-head"></thead>
+            <tbody id="t-scorecard-body"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     ${isBeheerder ? `
     <div style="padding:0 0 16px">
       ${!uitslag ? `
-      <button class="btn btn-primary btn-block" 
+      <button class="btn btn-primary btn-block"
         onclick="${allesIngevuld ? 'toonToernooiUitslag()' : ''}"
         style="margin-bottom:8px;${!allesIngevuld ? 'opacity:0.5;cursor:not-allowed' : ''}"
         ${!allesIngevuld ? 'disabled title="Vul eerst alle scores in"' : ''}>
@@ -5230,6 +5241,7 @@ window.openSnapshotsModal = openSnapshotsModal;
 window.herstelSnapshot = herstelSnapshot;
 window.voegAccountToeAlsSpeler = voegAccountToeAlsSpeler;
 window.toggleHandmatigToevoegen = toggleHandmatigToevoegen;
+window.toggleToernooiMatrix = toggleToernooiMatrix;
 window.updateTScoreAndAdvance = updateTScoreAndAdvance;
 window.toonToernooiUitslag = toonToernooiUitslag;
 window.openVerwijderToernooiSpeler = openVerwijderToernooiSpeler;
