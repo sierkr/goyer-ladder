@@ -1189,6 +1189,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.1.4</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4671,12 +4672,13 @@ async function bevestigToernooiAfsluiten() {
     .sort((a,b) => b.pt - a.pt || b.w - a.w);
 
   // Haal gekoppelde ladder op
-  const ladderId = t.ladderId;
-  console.log('Toernooi ladderId:', ladderId, 'Toernooi:', t.naam);
+  const ladderId = t.ladderId || activeLadderId;
+  console.log('Toernooi ladderId:', ladderId, '| actief:', activeLadderId, '| toernooi:', t.naam);
   if (!ladderId) { toast('Geen ladder gekoppeld aan dit toernooi'); closeModal('modal-toernooi-afsluiten'); return; }
 
   // Laad ladder data
   const ladderSnap = await getDoc(doc(db, 'ladders', ladderId));
+  console.log('Ladder doc path:', `ladders/${ladderId}`, '| exists:', ladderSnap.exists(), '| spelers:', ladderSnap.exists() ? ladderSnap.data().spelers?.length : 0);
   if (!ladderSnap.exists()) { toast('Ladder niet gevonden'); return; }
   const ladderData = ladderSnap.data();
   const ladderSpelerIds = new Set((ladderData.spelers || []).map(s => String(s.id)));
