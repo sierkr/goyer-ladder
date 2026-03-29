@@ -3909,11 +3909,13 @@ async function openToernooiDetail(idx) {
       html += `<th style="padding:4px 6px;background:var(--green);color:white;text-align:center">${n}</th>`;
     });
     html += '</tr>';
-    t.matrix.forEach((rij, i) => {
-      html += `<tr><td style="padding:4px 8px;font-weight:600">${t.spelerNamen[i]}</td>`;
-      rij.forEach(cel => {
+    t.spelerNamen.forEach((naam, i) => {
+      html += `<tr><td style="padding:4px 8px;font-weight:600">${naam}</td>`;
+      t.spelerNamen.forEach((_, j) => {
+        // Ondersteun zowel oud array formaat als nieuw object formaat
+        const cel = Array.isArray(t.matrix) ? (t.matrix[i]?.[j] || '-') : (t.matrix[`${i}_${j}`] || '-');
         const bg = cel === 'W' ? '#d4edda' : cel === 'L' ? '#f8d7da' : cel === 'T' ? '#fff3cd' : '#f0ede4';
-        const tx = cel === 'W' ? 'UP' : cel === 'L' ? 'DOWN' : cel === 'T' ? 'TIED' : '—';
+        const tx = cel === 'W' ? 'UP' : cel === 'L' ? 'DOWN' : cel === 'T' ? 'TIED' : (cel === 'X' ? '—' : '—');
         html += `<td style="background:${bg};text-align:center;padding:4px;font-weight:700">${tx}</td>`;
       });
       html += '</tr>';
@@ -4722,9 +4724,13 @@ async function bevestigToernooiAfsluiten() {
   const archief = archiefSnap.exists() ? archiefSnap.data() : { seizoenen: [] };
   if (!archief.toernooien) archief.toernooien = [];
 
-  const matrixArchief = t.spelers.map((sA, i) =>
-    t.spelers.map((sB, j) => i === j ? 'X' : (matrix[i][j] || '-'))
-  );
+  // Firestore ondersteunt geen nested arrays — sla matrix op als object
+  const matrixArchief = {};
+  t.spelers.forEach((sA, i) => {
+    t.spelers.forEach((sB, j) => {
+      matrixArchief[`${i}_${j}`] = i === j ? 'X' : (matrix[i][j] || '-');
+    });
+  });
 
   archief.toernooien.unshift({
     naam: t.naam, datum: t.datum, baan: t.baan, holes: t.holes.length,
