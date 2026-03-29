@@ -4546,6 +4546,8 @@ function berekenTPunten() {
 }
 
 function renderTRanglijst() {
+  const el = document.getElementById('t-ranglijst');
+  if (!el) return; // Ranglijst niet zichtbaar tijdens spelen
   const t = toernooiData;
   const { punten, won, tied, lost } = berekenTPunten();
 
