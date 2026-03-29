@@ -4381,7 +4381,7 @@ function renderTScorecard() {
       const tabIdx = si * t.holes.length + i + 1;
       bodyHtml += `<td><input type="number" min="1" max="12" value="${val !== null && val !== undefined ? val : ''}"
         tabindex="${tabIdx}"
-        onfocus="this.select()" oninput="updateTScore(${s.id},${i},this.value);if(this.value.length>0)setTimeout(()=>autoAdvance(this),0)"
+        onfocus="this.select()" oninput="updateTScoreAndAdvance(${s.id},${i},${tabIdx},this.value)"
         style="width:42px;padding:4px;text-align:center;font-size:14px;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--dark)"></td>`;
     });
     bodyHtml += '</tr>';
@@ -4397,6 +4397,17 @@ function renderTScorecard() {
   bodyHtml += '</tr>';
 
   document.getElementById('t-scorecard-body').innerHTML = bodyHtml;
+}
+
+function updateTScoreAndAdvance(spelerId, holeIdx, tabIdx, val) {
+  updateTScore(spelerId, holeIdx, val);
+  if (val.length > 0) {
+    // Focus naar volgende na render (scorekaart wordt niet herrenderd, alleen matrix/ranglijst)
+    setTimeout(() => {
+      const next = document.querySelector(`input[tabindex="${tabIdx + 1}"]`);
+      if (next) { next.focus(); next.select(); }
+    }, 50);
+  }
 }
 
 function updateTScore(spelerId, holeIdx, val) {
@@ -5213,6 +5224,7 @@ window.openSnapshotsModal = openSnapshotsModal;
 window.herstelSnapshot = herstelSnapshot;
 window.voegAccountToeAlsSpeler = voegAccountToeAlsSpeler;
 window.toggleHandmatigToevoegen = toggleHandmatigToevoegen;
+window.updateTScoreAndAdvance = updateTScoreAndAdvance;
 window.toonToernooiUitslag = toonToernooiUitslag;
 window.openVerwijderToernooiSpeler = openVerwijderToernooiSpeler;
 window.verwijderToernooiSpeler = verwijderToernooiSpeler;
