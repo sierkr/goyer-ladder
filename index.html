@@ -4120,14 +4120,15 @@ async function herlaadToernooien() {
   try {
     const snap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
     alleToernooien = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    // Herstel actieve selectie
     if (actieveToernooiId) {
-      toernooiData = alleToernooien.find(t => t.id === actieveToernooiId) || null;
+      const gevonden = alleToernooien.find(t => t.id === actieveToernooiId);
+      toernooiData = gevonden || (alleToernooien.length > 0 ? alleToernooien[0] : null);
     }
     if (!toernooiData && alleToernooien.length > 0) {
       toernooiData = alleToernooien[0];
       actieveToernooiId = alleToernooien[0].id;
     }
+    if (toernooiData) actieveToernooiId = toernooiData.id;
   } catch(e) { console.error('Toernooien laden mislukt:', e); }
 }
 
@@ -4411,30 +4412,33 @@ function updateTScoreAndAdvance(spelerId, holeIdx, tabIdx, val) {
 }
 
 function updateTScore(spelerId, holeIdx, val) {
-  if (!toernooiData) return;
+  if (!toernooiData || !actieveToernooiId) return;
   const key = String(spelerId);
   if (!toernooiData.scores[key]) toernooiData.scores[key] = Array(toernooiData.holes.length).fill(null);
   toernooiData.scores[key][holeIdx] = val === '' ? null : parseInt(val);
-  // Update cache
+  // Update cache met deep copy
   const idx = alleToernooien.findIndex(t => t.id === actieveToernooiId);
-  if (idx >= 0) alleToernooien[idx] = { ...toernooiData };
+  if (idx >= 0) alleToernooien[idx] = JSON.parse(JSON.stringify(toernooiData));
   updateTTotalen();
-  renderTRanglijst();
   renderTMatrix();
-  // Update "Naar de uitslag" knop status
+  // Update knop status
   if (huidigeBruiker?.rol === 'beheerder') {
-    const btn = document.querySelector('#toernooi-detail button[onclick*="toonToernooiUitslag"]');
-    if (btn) {
-      const alles = alleScoresIngevuld(toernooiData);
+    const alles = alleScoresIngevuld(toernooiData);
+    const btn = document.querySelector('#toernooi-detail .btn-primary');
+    if (btn && btn.textContent.includes('uitslag')) {
       btn.disabled = !alles;
       btn.style.opacity = alles ? '1' : '0.5';
       btn.style.cursor = alles ? 'pointer' : 'not-allowed';
       btn.textContent = `📊 Naar de uitslag${alles ? '' : ' (scores onvolledig)'}`;
-      if (alles) btn.onclick = toonToernooiUitslag;
     }
   }
+  // Direct opslaan (geen debounce om verlies te voorkomen)
   clearTimeout(window._tSaveTimer);
-  window._tSaveTimer = setTimeout(() => { if (actieveToernooiId) setDoc(doc(db, "toernooien", actieveToernooiId), toernooiData); }, 1500);
+  window._tSaveTimer = setTimeout(async () => {
+    try {
+      await setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(toernooiData)));
+    } catch(e) { console.error('Score opslaan mislukt:', e); }
+  }, 800);
 }
 
 function editToernooiHcp(spelerId) {
