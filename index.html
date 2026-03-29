@@ -1202,13 +1202,12 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.2.1</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.2.3</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
       <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
         <button class="btn btn-sm btn-primary" onclick="openAddPlayer()">+ Speler</button>
-        <button class="btn btn-sm btn-ghost" style="color:var(--light);border-color:#e0ddd4;cursor:not-allowed;opacity:0.5" title="Niet beschikbaar">↺ Reset</button>
       </div>
     </div>
     <div class="card-collapse ingeklapt">
@@ -1967,13 +1966,23 @@ function alleBANEN() {
 }
 
 function initPartijForm() {
-  // Vul ladder selector
+  // Vul ladder selector — alleen ladders waar de huidige speler in zit
   const ladderSel = document.getElementById('partij-ladder-select');
-  ladderSel.innerHTML = alleLadders.map(l =>
+  const isBeheerder = huidigeBruiker?.rol === 'beheerder';
+  const gebruikersnaam = huidigeBruiker?.gebruikersnaam?.toLowerCase() || '';
+
+  const mijnLadders = isBeheerder
+    ? alleLadders
+    : alleLadders.filter(l =>
+        (l.spelers || []).some(s => s.naam.toLowerCase() === gebruikersnaam)
+      );
+
+  ladderSel.innerHTML = mijnLadders.map(l =>
     `<option value="${l.id}" ${l.id === activeLadderId ? 'selected' : ''}>${l.naam}</option>`
   ).join('');
-  // Verberg selector als er maar één ladder is
-  document.getElementById('partij-ladder-wrap').style.display = alleLadders.length <= 1 ? 'none' : 'block';
+
+  // Verberg selector als er maar één ladder beschikbaar is
+  document.getElementById('partij-ladder-wrap').style.display = mijnLadders.length <= 1 ? 'none' : 'block';
   ladderSel.onchange = () => herlaadPartijSpelers();
 
   const sel = document.getElementById('baan-select');
@@ -3344,8 +3353,16 @@ async function saveNewPlayer() {
 }
 
 function openEditPlayer(id) {
-  const s = state.spelers.find(p => p.id === id);
-  if (!s) return;
+  // Zoek in master lijst, dan in actieve ladder
+  let s = alleSpelersData.find(p => p.id === id);
+  if (!s) s = state.spelers.find(p => p.id === id);
+  if (!s) {
+    for (const l of alleLadders) {
+      s = (l.spelers || []).find(p => p.id === id);
+      if (s) break;
+    }
+  }
+  if (!s) { toast('Speler niet gevonden'); return; }
   document.getElementById('edit-player-id').value = id;
   document.getElementById('edit-player-name').value = s.naam;
   document.getElementById('edit-player-hcp').value = Math.round(s.hcp);
