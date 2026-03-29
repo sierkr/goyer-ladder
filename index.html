@@ -3110,7 +3110,8 @@ async function renderAdminUsers() {
       </div>`;
     }).join('');
   } catch(e) {
-    list.innerHTML = '<div style="padding:12px;color:var(--red);font-size:13px">Fout bij laden</div>';
+    console.error('renderAdminUsers fout:', e);
+    list.innerHTML = '<div style="padding:12px;color:var(--red);font-size:13px">Fout bij laden: ' + e.message + '</div>';
   }
 }
 
