@@ -1180,25 +1180,25 @@
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
   <div class="card">
-    <div class="card-header inklapbaar" onclick="toggleAdminKaart(this)">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
       <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
         <button class="btn btn-sm btn-primary" onclick="openAddPlayer()">+ Speler</button>
         <button class="btn btn-sm btn-ghost" style="color:var(--light);border-color:#e0ddd4;cursor:not-allowed;opacity:0.5" title="Niet beschikbaar">↺ Reset</button>
       </div>
     </div>
-    <div class="card-collapse">
+    <div class="card-collapse ingeklapt">
       <div id="admin-player-list"></div>
     </div>
   </div>
   <div class="card">
-    <div class="card-header inklapbaar" onclick="toggleAdminKaart(this)">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Accounts beheren</h2>
       <div onclick="event.stopPropagation()">
         <button class="btn btn-sm btn-primary" onclick="openAddUser()">+ Account</button>
       </div>
     </div>
-    <div class="card-collapse">
+    <div class="card-collapse ingeklapt">
       <div id="admin-user-list"></div>
     </div>
   </div>
@@ -1379,7 +1379,8 @@ const SPELERS_DOC = doc(db, 'ladder', 'spelers'); // master spelerslijst
 const BANEN_DOC = doc(db, 'ladder', 'banen');
 const ARCHIEF_DOC = doc(db, 'ladder', 'archief');
 const UITDAGINGEN_DOC = doc(db, 'ladder', 'uitdagingen');
-const TOERNOOI_DOC = doc(db, 'ladder', 'toernooi');
+const TOERNOOI_DOC = doc(db, 'ladder', 'toernooi'); // legacy
+const TOERNOOIEN_COL = collection(db, 'toernooien');
 const UITSLAGEN_COL = collection(db, 'uitslagen');
 const INVITE_DOC = doc(db, 'ladder', 'invite');
 const SNAPSHOTS_COL = collection(db, 'snapshots');
@@ -1453,7 +1454,9 @@ let _firestoreReady = false;
 let _highlights = new Set();
 let archiefData = [];
 let uitdagingenData = []; // { id, van, naar, status, timestamp }
-let toernooiData = null;  // actief toernooi object
+let toernooiData = null;  // actief toernooi object (legacy + huidige weergave)
+let alleToernooien = []; // alle actieve toernooien
+let actieveToernooiId = null; // toernooi dat de beheerder/deelnemer nu bekijkt
 
 // ============================================================
 //  AUTH / LOGIN — Firebase Authentication
@@ -1644,7 +1647,7 @@ async function initFirestore() {
       getDoc(BANEN_DOC),
       getDoc(ARCHIEF_DOC),
       getDoc(UITDAGINGEN_DOC),
-      getDoc(TOERNOOI_DOC),
+      getDoc(TOERNOOI_DOC), // legacy
       getDoc(SPELERS_DOC),
       getDoc(doc(db, 'ladder', 'ladderVolgorde'))
     ]);
@@ -1652,9 +1655,24 @@ async function initFirestore() {
     aangepasteBanen = baanSnap.exists() ? (baanSnap.data().lijst || []) : [];
     archiefData = archiefSnap.exists() ? (archiefSnap.data().seizoenen || []) : [];
     uitdagingenData = uitdSnap.exists() ? (uitdSnap.data().lijst || []) : [];
-    toernooiData = toernooiSnap.exists() ? toernooiSnap.data() : null;
     alleSpelersData = spelersSnap.exists() ? (spelersSnap.data().lijst || []) : [];
     const ladderVolgorde = volgordeSnap.exists() ? (volgordeSnap.data().volgorde || []) : [];
+
+    // Laad alle actieve toernooien
+    const toernooienSnap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
+    alleToernooien = toernooienSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Legacy migratie: als er een oud toernooi is, migreer naar collectie
+    if (toernooiSnap.exists() && toernooiSnap.data().status === 'actief' && alleToernooien.length === 0) {
+      const legacyData = { ...toernooiSnap.data() };
+      const newRef = await addDoc(TOERNOOIEN_COL, legacyData);
+      alleToernooien = [{ id: newRef.id, ...legacyData }];
+      await setDoc(TOERNOOI_DOC, { status: 'gemigreerd' });
+    }
+    // Zet eerste toernooi actief als er één is
+    if (alleToernooien.length > 0) {
+      toernooiData = alleToernooien[0];
+      actieveToernooiId = alleToernooien[0].id;
+    }
 
     // Laad ladders
     const laddersSnap = await getDocs(LADDERS_COL);
@@ -4043,15 +4061,54 @@ async function verwijderUitdaging(uitdagingId) {
 //  TOERNOOI
 // ============================================================
 function renderToernooi() {
-  if (toernooiData && toernooiData.status === 'actief') {
-    document.getElementById('toernooi-setup-wrap').style.display = 'none';
-    document.getElementById('toernooi-actief-wrap').style.display = 'block';
+  const isBeheerder = huidigeBruiker?.rol === 'beheerder';
+  const mijnToernooien = isBeheerder
+    ? alleToernooien
+    : alleToernooien.filter(t => (t.spelers || []).some(s =>
+        s.naam.toLowerCase().includes((huidigeBruiker?.gebruikersnaam || '').split(' ')[0].toLowerCase())
+      ));
+
+  // Toon actieve toernooien als kaarten + setup voor beheerder
+  const wrap = document.getElementById('toernooi-actief-wrap');
+  const setup = document.getElementById('toernooi-setup-wrap');
+
+  if (mijnToernooien.length > 0) {
+    setup.style.display = isBeheerder ? 'block' : 'none';
+    wrap.style.display = 'block';
+
+    // Render lijst van toernooien als tabs
+    let html = '';
+    if (mijnToernooien.length > 1) {
+      html += `<div style="display:flex;gap:8px;overflow-x:auto;padding:12px 16px;border-bottom:1px solid var(--border);scrollbar-width:none">`;
+      mijnToernooien.forEach(t => {
+        const actief = t.id === actieveToernooiId;
+        html += `<button onclick="selecteerToernooi('${t.id}')" style="flex-shrink:0;padding:6px 14px;border-radius:20px;border:1.5px solid ${actief ? 'var(--green)' : 'var(--border)'};background:${actief ? 'var(--green)' : 'white'};color:${actief ? 'white' : 'var(--dark)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">${t.naam}</button>`;
+      });
+      html += '</div>';
+    }
+    wrap.innerHTML = html + '<div id="toernooi-detail"></div>';
+
+    if (!actieveToernooiId && mijnToernooien.length > 0) {
+      actieveToernooiId = mijnToernooien[0].id;
+      toernooiData = mijnToernooien[0];
+    }
     renderToernooiActief();
   } else {
-    document.getElementById('toernooi-setup-wrap').style.display = 'block';
-    document.getElementById('toernooi-actief-wrap').style.display = 'none';
-    initToernooiSetup();
+    wrap.style.display = 'none';
+    setup.style.display = isBeheerder ? 'block' : 'none';
+    if (!isBeheerder) {
+      setup.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">🏅</div><p>Geen actief toernooi.</p></div></div>';
+      setup.style.display = 'block';
+    } else {
+      initToernooiSetup();
+    }
   }
+}
+
+function selecteerToernooi(id) {
+  actieveToernooiId = id;
+  toernooiData = alleToernooien.find(t => t.id === id) || null;
+  renderToernooi();
 }
 
 function initToernooiSetup() {
@@ -4119,7 +4176,7 @@ async function startToernooi() {
   const scores = {};
   geselecteerd.forEach(s => { scores[s.id] = Array(holes.length).fill(null); });
 
-  toernooiData = {
+  const nieuweToernooi = {
     status: 'actief',
     naam, datum, baan: baanNaam, holes,
     ptWin, ptTie, ptLoss, hcpPct,
@@ -4128,7 +4185,12 @@ async function startToernooi() {
     timestamp: Date.now()
   };
 
-  await setDoc(TOERNOOI_DOC, toernooiData);
+  const newRef = await addDoc(TOERNOOIEN_COL, nieuweToernooi);
+  nieuweToernooi.id = newRef.id;
+  alleToernooien.push(nieuweToernooi);
+  toernooiData = nieuweToernooi;
+  actieveToernooiId = newRef.id;
+
   toast('Toernooi gestart! 🏅');
   renderToernooi();
 }
@@ -4137,8 +4199,11 @@ function renderToernooiActief() {
   const t = toernooiData;
   if (!t) return;
 
-  document.getElementById('t-actief-naam').textContent = t.naam;
-  document.getElementById('t-actief-info').textContent =
+  // Update static elements if they exist (single toernooi view)
+  const naamEl = document.getElementById('t-actief-naam');
+  const infoEl = document.getElementById('t-actief-info');
+  if (naamEl) naamEl.textContent = t.naam;
+  if (infoEl) infoEl.textContent =
     `${t.datum} · ${t.baan} · ${t.holes.length} holes · ${t.spelers.length} spelers · W=${t.ptWin} T=${t.ptTie} L=${t.ptLoss}`;
 
   renderTScorecard();
@@ -4189,13 +4254,14 @@ function updateTScore(spelerId, holeIdx, val) {
   const key = String(spelerId);
   if (!toernooiData.scores[key]) toernooiData.scores[key] = Array(toernooiData.holes.length).fill(null);
   toernooiData.scores[key][holeIdx] = val === '' ? null : parseInt(val);
-  // Update totaalrij direct zonder volledige herrender
+  // Update cache
+  const idx = alleToernooien.findIndex(t => t.id === actieveToernooiId);
+  if (idx >= 0) alleToernooien[idx] = { ...toernooiData };
   updateTTotalen();
   renderTRanglijst();
   renderTMatrix();
-  // Sla op in Firestore (debounced)
   clearTimeout(window._tSaveTimer);
-  window._tSaveTimer = setTimeout(() => setDoc(TOERNOOI_DOC, toernooiData), 1500);
+  window._tSaveTimer = setTimeout(() => { if (actieveToernooiId) setDoc(doc(db, "toernooien", actieveToernooiId), toernooiData); }, 1500);
 }
 
 function editToernooiHcp(spelerId) {
@@ -4208,7 +4274,7 @@ function editToernooiHcp(spelerId) {
   const val = parseFloat(nieuw);
   if (isNaN(val)) { toast('Ongeldige handicap'); return; }
   speler.hcp = val;
-  setDoc(TOERNOOI_DOC, toernooiData);
+  if (actieveToernooiId) setDoc(doc(db, "toernooien", actieveToernooiId), toernooiData);
   renderTScorecard();
   renderTRanglijst();
   renderTMatrix();
@@ -4426,8 +4492,10 @@ async function bevestigToernooiAfsluiten() {
   await setDoc(ARCHIEF_DOC, archief);
 
   // Verwijder actief toernooi
-  await setDoc(TOERNOOI_DOC, { status: 'afgerond' });
-  toernooiData = null;
+  if (actieveToernooiId) await setDoc(doc(db, "toernooien", actieveToernooiId), { ...toernooiData, status: "afgerond" });
+  alleToernooien = alleToernooien.filter(t => t.id !== actieveToernooiId);
+  toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
+  actieveToernooiId = toernooiData?.id || null;
 
   closeModal('modal-toernooi-afsluiten');
   toast('Toernooi afgerond! 🏅 Ladder bijgewerkt.');
@@ -4437,8 +4505,10 @@ async function bevestigToernooiAfsluiten() {
 
 async function annuleerToernooi() {
   if (!confirm('Toernooi annuleren? Alle scores gaan verloren.')) return;
-  await setDoc(TOERNOOI_DOC, { status: 'geannuleerd' });
-  toernooiData = null;
+  if (actieveToernooiId) await setDoc(doc(db, "toernooien", actieveToernooiId), { ...toernooiData, status: "geannuleerd" });
+  alleToernooien = alleToernooien.filter(t => t.id !== actieveToernooiId);
+  toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
+  actieveToernooiId = toernooiData?.id || null;
   renderToernooi();
   toast('Toernooi geannuleerd');
 }
@@ -4981,6 +5051,7 @@ window.openSnapshotsModal = openSnapshotsModal;
 window.herstelSnapshot = herstelSnapshot;
 window.voegAccountToeAlsSpeler = voegAccountToeAlsSpeler;
 window.toggleHandmatigToevoegen = toggleHandmatigToevoegen;
+window.selecteerToernooi = selecteerToernooi;
 window.openLadderInstellingen = openLadderInstellingen;
 window.slaLadderInstellingenOp = slaLadderInstellingenOp;
 window.verschuifLadder = verschuifLadder;
