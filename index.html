@@ -4333,13 +4333,13 @@ function renderToernooiActief() {
     </div>
 
     <div class="card">
-      <div class="card-header inklapbaar" onclick="toggleAdminKaart(this)">
+      <div class="card-header inklapbaar ${uitslag ? 'ingeklapt' : ''}" onclick="toggleAdminKaart(this)">
         <h2>Scores</h2>
         <div style="display:flex;gap:6px" onclick="event.stopPropagation()">
           ${isBeheerder ? `<button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="openVerwijderToernooiSpeler()">− Speler</button>` : ''}
         </div>
       </div>
-      <div class="card-collapse">
+      <div class="card-collapse ${uitslag ? 'ingeklapt' : ''}">
         <div id="t-scorecard-wrap" style="overflow-x:auto">
           <table class="scorecard" id="t-scorecard-table">
             <thead id="t-scorecard-head"></thead>
@@ -4437,6 +4437,7 @@ function updateTScore(spelerId, holeIdx, val) {
   if (idx >= 0) alleToernooien[idx] = JSON.parse(JSON.stringify(toernooiData));
   updateTTotalen();
   renderTMatrix();
+  if (toernooiData.uitslagZichtbaar) renderTRanglijst();
   // Update knop status
   if (huidigeBruiker?.rol === 'beheerder') {
     const alles = alleScoresIngevuld(toernooiData);
@@ -4590,7 +4591,8 @@ function renderTMatrix() {
   const { matrix } = berekenTPunten();
 
   const kleur = { W: '#d4edda', L: '#f8d7da', T: '#fff3cd' };
-  const tekst = { W: 'UP', L: 'DOWN', T: 'TIED' };
+  const uitslag = toernooiData?.uitslagZichtbaar === true;
+  const tekst = uitslag ? { W: 'W', L: 'L', T: 'T' } : { W: 'UP', L: 'DOWN', T: 'TIED' };
 
   let html = `<table style="border-collapse:collapse;font-size:11px;width:100%">`;
   // Header
