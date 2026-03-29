@@ -4281,7 +4281,7 @@ async function verwijderLadder(ladderId) {
 
 let _ladderSpelersId = null;
 
-function openLadderSpelersModal(ladderId) {
+async function openLadderSpelersModal(ladderId) {
   const ladder = alleLadders.find(l => l.id === ladderId);
   if (!ladder) return;
   _ladderSpelersId = ladderId;
