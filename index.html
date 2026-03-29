@@ -1233,7 +1233,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.5.0</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.5.2</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4472,13 +4472,12 @@ function renderFlightLijst() {
       <div style="padding:8px">
         ${f.spelers.map((s, si) => `
           <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
-            <span style="flex:1;font-size:14px">${s.naam}</span>
-            <span style="font-size:12px;color:var(--mid)">hcp</span>
+            <span style="flex:1;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.naam}</span>
             <input type="number" value="${Math.round(s.hcp)}" min="-10" max="54"
               onchange="wijzigFlightHcp(${fi}, ${si}, this.value)"
-              style="width:52px;padding:3px 6px;text-align:center;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;font-size:13px">
+              style="width:48px;padding:3px 6px;text-align:center;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;font-size:13px;flex-shrink:0">
             ${_flights.length > 1 ? `
-            <select onchange="verplaatsSpelerFlight(${fi}, ${si}, this.value)" style="font-size:12px;border:1.5px solid var(--border);border-radius:5px;padding:3px;background:white">
+            <select onchange="verplaatsSpelerFlight(${fi}, ${si}, this.value)" style="font-size:12px;border:1.5px solid var(--border);border-radius:5px;padding:3px 5px;background:white;flex-shrink:0;max-width:80px">
               ${_flights.map((lf, lfi) => `<option value="${lfi}" ${lfi === fi ? 'selected' : ''}>${lf.naam}</option>`).join('')}
             </select>` : ''}
           </div>
@@ -4813,10 +4812,15 @@ function renderTScorecard() {
 
   let html = '';
   teTonenFlights.forEach(({ naam, spelers }, fi) => {
-    // tabOffset: voor beheerder per speler, voor speler per hole
     const tabOffset = isBeheerder
       ? fi * spelers.length * t.holes.length
       : fi * t.holes.length * spelers.length;
+
+    // Bepaal starthole voor deze flight
+    const flightData = (t.flights || []).find(f => f.naam === naam);
+    const starthole = (flightData?.starthole || 1) - 1; // 0-based index
+    // Maak holes array in speelvolgorde (roterend vanaf starthole)
+    const holesInVolgorde = t.holes.map((_, i) => (starthole + i) % t.holes.length);
     html += `<div ${teTonenFlights.length > 1 ? `style="margin-bottom:16px"` : ''}>`;
     if (naam) {
       const flightData = (t.flights || []).find(f => f.naam === naam);
@@ -4824,8 +4828,10 @@ function renderTScorecard() {
         flightData?.starttijd ? `🕐 ${flightData.starttijd}` : null,
         flightData?.starthole ? `Hole ${flightData.starthole}` : null
       ].filter(Boolean).join(' · ');
-      html += `<div style="font-family:'Bebas Neue';font-size:16px;color:var(--green);padding:8px 12px 2px">${naam}</div>`;
-      if (info) html += `<div style="font-size:11px;color:var(--mid);padding:0 12px 6px">${info}</div>`;
+      html += `<div style="display:flex;align-items:baseline;gap:12px;padding:8px 12px 6px">
+        <span style="font-family:'Bebas Neue';font-size:16px;color:var(--green)">${naam}</span>
+        ${info ? `<span style="font-size:13px;color:var(--mid);font-family:'DM Sans',sans-serif">${info}</span>` : ''}
+      </div>`;
     }
     html += `<div style="overflow-x:auto"><table class="scorecard" style="width:100%"><thead><tr><th class="player-col">Hole</th>`;
     spelers.forEach(s => {
@@ -4836,18 +4842,17 @@ function renderTScorecard() {
       </th>`;
     });
     html += '</tr></thead><tbody>';
-    t.holes.forEach((h, i) => {
-      html += `<tr><td class="player-col" style="font-weight:600">${i+1}<span class="hole-par">p${h.par} SI${h.si}</span></td>`;
+    holesInVolgorde.forEach((holeIdx, spelRij) => {
+      const h = t.holes[holeIdx];
+      html += `<tr><td class="player-col" style="font-weight:600">${holeIdx+1}<span class="hole-par">p${h.par} SI${h.si}</span></td>`;
       spelers.forEach((s, si) => {
-        const val = t.scores[s.id]?.[i] ?? t.scores[String(s.id)]?.[i];
-        // Beheerder: per speler (alle holes speler 1, dan alle holes speler 2)
-        // Speler: per hole (alle spelers hole 1, dan alle spelers hole 2)
+        const val = t.scores[s.id]?.[holeIdx] ?? t.scores[String(s.id)]?.[holeIdx];
         const tabIdx = isBeheerder
-          ? tabOffset + si * t.holes.length + i + 1
-          : tabOffset + i * spelers.length + si + 1;
+          ? tabOffset + si * t.holes.length + spelRij + 1
+          : tabOffset + spelRij * spelers.length + si + 1;
         html += `<td><input type="number" min="1" max="12" value="${val !== null && val !== undefined ? val : ''}"
           tabindex="${tabIdx}" onfocus="this.select()"
-          oninput="updateTScoreAndAdvance(${s.id},${i},${tabIdx},this.value)"
+          oninput="updateTScoreAndAdvance(${s.id},${holeIdx},${tabIdx},this.value)"
           style="width:42px;padding:4px;text-align:center;font-size:14px;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--dark)"></td>`;
       });
       html += '</tr>';
