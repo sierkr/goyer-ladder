@@ -4124,8 +4124,8 @@ function initToernooiSetup() {
   // Datum vandaag als default
   document.getElementById('t-datum').value = new Date().toISOString().split('T')[0];
 
-  // Speler tags
-  const sorted = [...state.spelers].sort((a,b) => a.rank - b.rank);
+  // Speler tags — gebruik master spelerslijst
+  const sorted = [...alleSpelersData].sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
   const tagsEl = document.getElementById('t-speler-tags');
 
   if (sorted.length === 0) {
@@ -4157,7 +4157,7 @@ async function startToernooi() {
   if (!datum) { toast('Voer een datum in'); return; }
 
   // Geselecteerde spelers
-  const geselecteerd = state.spelers.filter(s =>
+  const geselecteerd = alleSpelersData.filter(s =>
     document.getElementById('ttag-' + s.id)?.classList.contains('selected')
   );
   if (geselecteerd.length < 2) { toast('Selecteer minimaal 2 spelers'); return; }
