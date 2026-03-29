@@ -1585,6 +1585,10 @@ async function initFirestore() {
 
     // Laad ladders
     const laddersSnap = await getDocs(LADDERS_COL);
+    console.log('Ladders gevonden:', laddersSnap.docs.map(d => d.id + ' spelers:' + (d.data().spelers||[]).length));
+
+    const stateSnap = await getDoc(STATE_DOC);
+    console.log('State bestaat:', stateSnap.exists(), 'spelers:', (stateSnap.data()?.spelers||[]).length);
 
     // Controleer of de MP ladder al bestaat met spelers
     const mpDoc = laddersSnap.docs.find(d => d.id === 'mp');
