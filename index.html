@@ -1312,6 +1312,7 @@ const googleProvider = new GoogleAuthProvider();
 // Firestore refs
 const STATE_DOC = doc(db, 'ladder', 'state'); // legacy — voor migratie
 const USERS_DOC = doc(db, 'ladder', 'users');
+const SPELERS_DOC = doc(db, 'ladder', 'spelers'); // master spelerslijst
 const BANEN_DOC = doc(db, 'ladder', 'banen');
 const ARCHIEF_DOC = doc(db, 'ladder', 'archief');
 const UITDAGINGEN_DOC = doc(db, 'ladder', 'uitdagingen');
@@ -1382,8 +1383,9 @@ const DEFAULT_STATE = {
 };
 
 let state = JSON.parse(JSON.stringify(DEFAULT_STATE)); // actieve ladder data
-let alleLadders = []; // [{ id, naam, spelerIds }]
-let activeLadderId = null; // huidige ladder id
+let alleLadders = []; // [{ id, naam, spelerIds, spelers }]
+let activeLadderId = null;
+let alleSpelersData = []; // master lijst van alle spelers onafhankelijk van ladder
 let _firestoreReady = false;
 let _highlights = new Set();
 let archiefData = [];
@@ -1575,17 +1577,19 @@ async function slaState() {
 async function initFirestore() {
   toonLaadOverlay(true);
   try {
-    const [baanSnap, archiefSnap, uitdSnap, toernooiSnap] = await Promise.all([
+    const [baanSnap, archiefSnap, uitdSnap, toernooiSnap, spelersSnap] = await Promise.all([
       getDoc(BANEN_DOC),
       getDoc(ARCHIEF_DOC),
       getDoc(UITDAGINGEN_DOC),
-      getDoc(TOERNOOI_DOC)
+      getDoc(TOERNOOI_DOC),
+      getDoc(SPELERS_DOC)
     ]);
 
     aangepasteBanen = baanSnap.exists() ? (baanSnap.data().lijst || []) : [];
     archiefData = archiefSnap.exists() ? (archiefSnap.data().seizoenen || []) : [];
     uitdagingenData = uitdSnap.exists() ? (uitdSnap.data().lijst || []) : [];
     toernooiData = toernooiSnap.exists() ? toernooiSnap.data() : null;
+    alleSpelersData = spelersSnap.exists() ? (spelersSnap.data().lijst || []) : [];
 
     // Laad ladders
     const laddersSnap = await getDocs(LADDERS_COL);
@@ -1605,6 +1609,11 @@ async function initFirestore() {
         delete bestaandeState.actievePartij;
       }
       if (!bestaandeState.spelers) bestaandeState.spelers = [];
+      // Sla master spelerslijst op
+      if (alleSpelersData.length === 0 && bestaandeState.spelers.length > 0) {
+        alleSpelersData = bestaandeState.spelers.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp }));
+        await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+      }
       const mpRef = doc(db, 'ladders', 'mp');
       await setDoc(mpRef, { ...bestaandeState, naam: 'MP', spelerIds: bestaandeState.spelers.map(s => s.id) });
       alleLadders = [{ id: 'mp', naam: 'MP', spelerIds: bestaandeState.spelers.map(s => s.id), spelers: bestaandeState.spelers, actievePartijen: bestaandeState.actievePartijen }];
@@ -1629,6 +1638,21 @@ async function initFirestore() {
       state = actief.data();
       if (!state.actievePartijen) state.actievePartijen = [];
       activeLadderId = actief.id;
+    // Als master spelerslijst nog leeg is, opbouwen vanuit alle ladders
+    if (alleSpelersData.length === 0) {
+      const gezien = new Set();
+      alleLadders.forEach(l => {
+        (l.spelers || []).forEach(s => {
+          if (!gezien.has(s.id)) {
+            gezien.add(s.id);
+            alleSpelersData.push({ id: s.id, naam: s.naam, hcp: s.hcp });
+          }
+        });
+      });
+      if (alleSpelersData.length > 0) {
+        await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+      }
+    }
     }
 
   } catch(e) {
@@ -3029,25 +3053,8 @@ async function verwijderActievePartij() {
 //  ADMIN
 // ============================================================
 function renderAdmin() {
-  // Verzamel alle unieke spelers uit alle ladders
-  const alleSpelers = [];
-  const gezien = new Set();
-  alleLadders.forEach(l => {
-    (l.spelers || []).forEach(s => {
-      if (!gezien.has(s.id)) {
-        gezien.add(s.id);
-        alleSpelers.push(s);
-      }
-    });
-  });
-  // Voeg ook spelers uit actieve ladder toe die misschien niet in cache zitten
-  (state.spelers || []).forEach(s => {
-    if (!gezien.has(s.id)) {
-      gezien.add(s.id);
-      alleSpelers.push(s);
-    }
-  });
-  const sorted = alleSpelers.sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
+  // Gebruik master spelerslijst — onafhankelijk van ladder membership
+  const sorted = [...alleSpelersData].sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
   const list = document.getElementById('admin-player-list');
   if (!list) return;
   if (sorted.length === 0) {
@@ -3116,7 +3123,11 @@ async function saveNewPlayer() {
 
     // Voeg speler toe aan ladder
     const newRank = state.spelers.length + 1;
-    state.spelers.push({ id: state.nextId++, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
+    const newSpeler = { id: state.nextId++, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 };
+    state.spelers.push(newSpeler);
+    // Voeg toe aan master spelerslijst
+    alleSpelersData.push({ id: newSpeler.id, naam, hcp });
+    await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
     await slaState();
 
     // Voeg account toe aan users lijst
@@ -3152,6 +3163,10 @@ async function saveEditPlayer() {
   const oudeNaam = s.naam;
   s.naam = naam;
   s.hcp = hcp;
+  // Update master spelerslijst
+  const masterSpeler = alleSpelersData.find(ms => ms.id === id);
+  if (masterSpeler) { masterSpeler.naam = naam; masterSpeler.hcp = hcp; }
+  await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
   await slaState();
 
   // Sync naam/hcp naar alle andere ladders
@@ -3190,6 +3205,9 @@ async function saveEditPlayer() {
 
 async function removePlayer(id) {
   if (!confirm('Speler verwijderen uit alle ladders?')) return;
+  // Verwijder uit master spelerslijst
+  alleSpelersData = alleSpelersData.filter(s => s.id !== id);
+  await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
   // Verwijder uit actieve ladder
   state.spelers = state.spelers.filter(s => s.id !== id);
   state.spelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
@@ -4305,18 +4323,8 @@ async function openLadderSpelersModal(ladderId) {
   _ladderSpelersId = ladderId;
   document.getElementById('ladder-spelers-titel').textContent = `Spelers in "${ladder.naam}"`;
 
-  // Verzamel alle unieke spelers uit alle ladders
-  const alleSpelers = [];
-  const gezien = new Set();
-  alleLadders.forEach(l => {
-    (l.spelers || []).forEach(s => {
-      if (!gezien.has(s.id)) {
-        gezien.add(s.id);
-        alleSpelers.push(s);
-      }
-    });
-  });
-  alleSpelers.sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
+  // Gebruik master spelerslijst zodat ook niet-ingedeelde spelers zichtbaar zijn
+  const alleSpelers = [...alleSpelersData].sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
 
   // Haal ladder data vers op uit Firestore voor meest actuele spelerIds
   const ladderSnap = await getDoc(doc(db, 'ladders', ladderId));
@@ -4545,6 +4553,11 @@ async function registreerSpeler() {
     st.spelers.push({ id: newId, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
     st.nextId = newId + 1;
     st.spelerIds = (st.spelerIds || []).concat([newId]);
+    // Voeg toe aan master spelerslijst
+    const spelersSnap2 = await getDoc(SPELERS_DOC);
+    const masterLijst = spelersSnap2.exists() ? (spelersSnap2.data().lijst || []) : [];
+    masterLijst.push({ id: newId, naam, hcp });
+    await setDoc(SPELERS_DOC, { lijst: masterLijst });
     await setDoc(STATE_DOC, st);
     // Update ook de ladders collectie als die al bestaat
     const mpSnap = await getDoc(doc(db, 'ladders', 'mp'));
