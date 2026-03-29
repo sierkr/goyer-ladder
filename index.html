@@ -1634,6 +1634,7 @@ async function initFirestore() {
       state = actief.data();
       if (!state.actievePartijen) state.actievePartijen = [];
       activeLadderId = actief.id;
+      console.log('Else branch: activeLadderId:', activeLadderId, 'state.spelers:', state.spelers?.length, 'alleLadders[0].spelers:', alleLadders[0]?.spelers?.length);
     }
 
   } catch(e) {
