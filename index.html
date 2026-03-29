@@ -3129,7 +3129,6 @@ async function openAddPlayer() {
     const users = snap.exists() ? (snap.data().lijst || []) : [];
     const spelersNamen = alleSpelersData.map(s => s.naam.toLowerCase());
     const nogGeen = users.filter(u =>
-      u.rol !== 'beheerder' &&
       !spelersNamen.some(n => n === (u.gebruikersnaam || u.naam || '').toLowerCase())
     );
 
@@ -4474,6 +4473,8 @@ async function slaLadderSpelersOp() {
         gevonden = (l.spelers || []).find(s => s.id === id);
         if (gevonden) break;
       }
+      // Fallback: zoek in master spelerslijst
+      if (!gevonden) gevonden = alleSpelersData.find(s => s.id === id);
       nieuweSpelers.push({
         id, naam: gevonden?.naam || 'Onbekend', hcp: gevonden?.hcp || 0,
         rank: nieuweSpelers.length + 1, partijen: 0, gewonnen: 0
