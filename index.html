@@ -1548,9 +1548,14 @@ async function initFirestore() {
     if (user) {
       await setIngelogd(user);
     } else {
-      // Niet ingelogd
+      // Niet ingelogd — check eerst of er een invite token in de URL zit
       huidigeBruiker = null;
-      document.getElementById('login-scherm').classList.add('actief');
+      const heeftInvite = new URLSearchParams(location.search).has('invite');
+      if (heeftInvite) {
+        await checkInviteLink();
+      } else {
+        document.getElementById('login-scherm').classList.add('actief');
+      }
     }
   });
 }
@@ -4247,7 +4252,6 @@ window.slaProfielHcpOp = slaProfielHcpOp;
 window.vraagNotificatieToestemming = vraagNotificatieToestemming;
 
 initFirestore();
-checkInviteLink();
 </script>
 </body>
 </html>
