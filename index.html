@@ -1202,7 +1202,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.2.6</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.2.7</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4239,12 +4239,19 @@ function initToernooiSetup() {
   // Datum vandaag als default
   document.getElementById('t-datum').value = new Date().toISOString().split('T')[0];
 
-  // Speler tags — gebruik master spelerslijst, filter spelers die al in actief toernooi zitten
+  // Speler tags — kleur op basis van ladder membership en toernooi bezetting
   const bezetteSpelerIds = new Set(
     alleToernooien.flatMap(t => (t.spelers || []).map(s => String(s.id)))
   );
-  const sorted = [...alleSpelersData]
-    .sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
+
+  // Bepaal welke spelers in de geselecteerde ladder zitten
+  const geselecteerdeLadderId = document.getElementById('t-ladder')?.value || '';
+  const geselecteerdeLadder = alleLadders.find(l => l.id === geselecteerdeLadderId);
+  const ladderSpelerIds = new Set(
+    (geselecteerdeLadder?.spelers || []).map(s => String(s.id))
+  );
+
+  const sorted = [...alleSpelersData].sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
   const tagsEl = document.getElementById('t-speler-tags');
 
   if (sorted.length === 0) {
@@ -4254,19 +4261,28 @@ function initToernooiSetup() {
 
   tagsEl.innerHTML = sorted.map(s => {
     const bezet = bezetteSpelerIds.has(String(s.id));
-    return `<span class="tag${bezet ? ' disabled' : ''}" id="ttag-${s.id}"
-      onclick="${bezet ? '' : `toggleTSpeler('${s.id}')`}"
-      style="${bezet ? 'opacity:0.4;cursor:not-allowed;' : ''}"
-      title="${bezet ? 'Speelt al mee in ander toernooi' : ''}"
+    const inLadder = !geselecteerdeLadderId || ladderSpelerIds.has(String(s.id));
+    const isRood = bezet || !inLadder;
+    const title = bezet ? 'Speelt al mee in ander toernooi' : !inLadder ? 'Niet in geselecteerde ladder' : '';
+    const kleur = isRood
+      ? 'background:#fde8e8;color:#c0392b;border-color:#f1a9a9'
+      : 'background:var(--green-pale);color:var(--green);border-color:var(--green)';
+    return `<span class="tag" id="ttag-${s.id}"
+      onclick="toggleTSpeler('${s.id}')"
+      style="${kleur}"
+      title="${title}"
     >${s.naam}</span>`;
   }).join('');
+
+  // Herrender tags bij wisselen ladder
+  const ladderSelEl = document.getElementById('t-ladder');
+  if (ladderSelEl) ladderSelEl.onchange = () => initToernooiSetup();
 }
 
 function toggleTSpeler(id) {
   const tag = document.getElementById('ttag-' + id);
   if (tag) tag.classList.toggle('selected');
 }
-
 async function startToernooi() {
   const naam = document.getElementById('t-naam').value.trim();
   const datum = document.getElementById('t-datum').value;
@@ -4287,11 +4303,6 @@ async function startToernooi() {
     document.getElementById('ttag-' + s.id)?.classList.contains('selected')
   );
   if (geselecteerd.length < 2) { toast('Selecteer minimaal 2 spelers'); return; }
-
-  // Check: geen spelers die al in actief toernooi zitten
-  const bezetteIds = new Set(alleToernooien.flatMap(t => (t.spelers||[]).map(s => String(s.id))));
-  const bezet = geselecteerd.find(s => bezetteIds.has(String(s.id)));
-  if (bezet) { toast(`${bezet.naam.split(' ')[0]} speelt al mee in een ander toernooi`); return; }
 
   // Holes ophalen — ingebouwd of aangepast
   let holes = [];
