@@ -4068,15 +4068,21 @@ function renderToernooi() {
         s.naam.toLowerCase().includes((huidigeBruiker?.gebruikersnaam || '').split(' ')[0].toLowerCase())
       ));
 
-  // Toon actieve toernooien als kaarten + setup voor beheerder
   const wrap = document.getElementById('toernooi-actief-wrap');
   const setup = document.getElementById('toernooi-setup-wrap');
 
+  // Beheerder ziet altijd de setup om nieuwe toernooien aan te maken
+  if (isBeheerder) {
+    setup.style.display = 'block';
+    initToernooiSetup();
+  } else {
+    setup.style.display = 'none';
+  }
+
   if (mijnToernooien.length > 0) {
-    setup.style.display = isBeheerder ? 'block' : 'none';
     wrap.style.display = 'block';
 
-    // Render lijst van toernooien als tabs
+    // Render tabs als meerdere toernooien
     let html = '';
     if (mijnToernooien.length > 1) {
       html += `<div style="display:flex;gap:8px;overflow-x:auto;padding:12px 16px;border-bottom:1px solid var(--border);scrollbar-width:none">`;
@@ -4088,19 +4094,16 @@ function renderToernooi() {
     }
     wrap.innerHTML = html + '<div id="toernooi-detail"></div>';
 
-    if (!actieveToernooiId && mijnToernooien.length > 0) {
+    if (!actieveToernooiId || !mijnToernooien.find(t => t.id === actieveToernooiId)) {
       actieveToernooiId = mijnToernooien[0].id;
       toernooiData = mijnToernooien[0];
     }
     renderToernooiActief();
   } else {
     wrap.style.display = 'none';
-    setup.style.display = isBeheerder ? 'block' : 'none';
     if (!isBeheerder) {
       setup.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">🏅</div><p>Geen actief toernooi.</p></div></div>';
       setup.style.display = 'block';
-    } else {
-      initToernooiSetup();
     }
   }
 }
@@ -4199,12 +4202,45 @@ function renderToernooiActief() {
   const t = toernooiData;
   if (!t) return;
 
-  // Update static elements if they exist (single toernooi view)
-  const naamEl = document.getElementById('t-actief-naam');
-  const infoEl = document.getElementById('t-actief-info');
-  if (naamEl) naamEl.textContent = t.naam;
-  if (infoEl) infoEl.textContent =
-    `${t.datum} · ${t.baan} · ${t.holes.length} holes · ${t.spelers.length} spelers · W=${t.ptWin} T=${t.ptTie} L=${t.ptLoss}`;
+  const isBeheerder = huidigeBruiker?.rol === 'beheerder';
+  const detail = document.getElementById('toernooi-detail');
+  if (!detail) return;
+
+  detail.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <h2>${t.naam}</h2>
+        <span class="badge badge-gold">Bezig</span>
+      </div>
+      <div class="card-body" style="padding:10px 16px;font-size:13px;color:var(--mid)">
+        ${t.datum} · ${t.baan} · ${t.holes.length} holes · ${t.spelers.length} spelers · W=${t.ptWin} T=${t.ptTie} L=${t.ptLoss}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h2>Ranglijst</h2></div>
+      <div id="t-ranglijst"></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h2>Scores invoeren</h2>
+        <button class="btn btn-sm btn-ghost" onclick="toggleTScorecard()">Toon/verberg</button>
+      </div>
+      <div id="t-scorecard-wrap" style="overflow-x:auto">
+        <table class="scorecard" id="t-scorecard-table">
+          <thead id="t-scorecard-head"></thead>
+          <tbody id="t-scorecard-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h2>Onderlinge stand</h2></div>
+      <div id="t-matrix" style="overflow-x:auto;padding:8px"></div>
+    </div>
+    ${isBeheerder ? `
+    <button class="btn btn-gold btn-block" onclick="openToernooiAfsluiten()" style="margin-bottom:8px">✓ Toernooi afsluiten</button>
+    <button class="btn btn-ghost btn-block" onclick="annuleerToernooi()" style="margin-bottom:16px;color:var(--red)">Toernooi annuleren</button>
+    ` : ''}
+  `;
 
   renderTScorecard();
   renderTRanglijst();
