@@ -1216,7 +1216,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.4.2</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.4.3</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -1553,6 +1553,16 @@ async function setIngelogd(firebaseUser) {
     adminBtn.style.display = '';
     document.getElementById('nav-archief-btn').style.display = '';
     document.getElementById('nav-toernooi-btn').style.display = '';
+  } else {
+    // Toon toernooi tab ook voor spelers als ze deelnemen aan een actief toernooi
+    const gebruikersnaam = (huidigeBruiker.gebruikersnaam || '').toLowerCase();
+    const voornaam = gebruikersnaam.split(' ')[0];
+    const mijnToernooien = alleToernooien.filter(t =>
+      (t.spelers || []).some(s => s.naam.toLowerCase().includes(voornaam))
+    );
+    if (mijnToernooien.length > 0) {
+      document.getElementById('nav-toernooi-btn').style.display = '';
+    }
   }
   profielBtn.style.display = '';
   logoutBtn.style.display = '';
