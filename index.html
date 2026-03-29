@@ -1075,6 +1075,12 @@
       <div class="card-collapse ingeklapt">
         <div class="card-body">
         <div class="form-group">
+          <label>Ladder (voor rankingverwerking)</label>
+          <select id="t-ladder">
+            <option value="">— Geen ladder koppelen —</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label>Naam</label>
           <input type="text" id="t-naam" placeholder="bijv. Clubkampioenschap 2025">
         </div>
@@ -4139,6 +4145,13 @@ function selecteerToernooi(id) {
 }
 
 function initToernooiSetup() {
+  // Ladder select
+  const ladderSel = document.getElementById('t-ladder');
+  if (ladderSel) {
+    ladderSel.innerHTML = '<option value="">— Geen ladder koppelen —</option>' +
+      alleLadders.map(l => `<option value="${l.id}">${l.naam}</option>`).join('');
+  }
+
   // Baan select
   const baanSel = document.getElementById('t-baan');
   baanSel.innerHTML = Object.keys(BANEN_DB).filter(n => n !== 'Handmatig invoeren').map(n =>
@@ -4188,9 +4201,11 @@ async function startToernooi() {
   const ptTie = parseFloat(document.getElementById('t-pt-tie').value);
   const ptLoss = parseFloat(document.getElementById('t-pt-loss').value);
   const hcpPct = parseFloat(document.getElementById('t-hcp-pct').value) / 100;
+  const ladderId = document.getElementById('t-ladder')?.value || null;
 
   if (!naam) { toast('Voer een naam in'); return; }
   if (!datum) { toast('Voer een datum in'); return; }
+  if (!ladderId) { toast('Selecteer een ladder'); return; }
 
   // Geselecteerde spelers
   const geselecteerd = alleSpelersData.filter(s =>
@@ -4220,7 +4235,7 @@ async function startToernooi() {
   const nieuweToernooi = {
     status: 'actief',
     naam, datum, baan: baanNaam, holes,
-    ptWin, ptTie, ptLoss, hcpPct,
+    ptWin, ptTie, ptLoss, hcpPct, ladderId,
     spelers: geselecteerd.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp })),
     scores,
     timestamp: Date.now()
@@ -4649,38 +4664,49 @@ async function bevestigToernooiAfsluiten() {
   const volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]}))
     .sort((a,b) => b.pt - a.pt || b.w - a.w);
 
-  // Pas ladder ranking aan — winnaar stijgt, rest in volgorde
-  // Simpel: winnaar gaat naar positie van hoogst gerankte deelnemer
-  const deelnemerIds = volgorde.map(e => e.s.id);
-  const deelnemerSpelers = deelnemerIds.map(id => state.spelers.find(s => s.id === id)).filter(Boolean);
-  const sortedRanks = [...deelnemerSpelers].map(s => s.rank).sort((a,b) => a-b);
+  // Haal gekoppelde ladder op
+  const ladderId = t.ladderId;
+  if (!ladderId) { toast('Geen ladder gekoppeld aan dit toernooi'); closeModal('modal-toernooi-afsluiten'); return; }
 
-  // Wijs ranks toe in volgorde van toernooi eindstand
+  // Laad ladder data
+  const ladderSnap = await getDoc(doc(db, 'ladders', ladderId));
+  if (!ladderSnap.exists()) { toast('Ladder niet gevonden'); return; }
+  const ladderData = ladderSnap.data();
+  const ladderSpelerIds = new Set((ladderData.spelers || []).map(s => String(s.id)));
+
+  // Filter: alleen deelnemers die in de ladder zitten
+  const deelnemers = volgorde.filter(e => ladderSpelerIds.has(String(e.s.id)));
+  if (deelnemers.length === 0) { toast('Geen deelnemers gevonden in de ladder'); return; }
+
+  // Wijs ranks toe op basis van toernooi eindstand
+  const deelnemerSpelers = deelnemers.map(e => ladderData.spelers.find(s => String(s.id) === String(e.s.id))).filter(Boolean);
+  const sortedRanks = [...deelnemerSpelers].map(s => s.rank).sort((a,b) => a-b);
   deelnemerSpelers.forEach((speler, idx) => {
     speler.rank = sortedRanks[idx];
-    speler.partijen += (t.spelers.length - 1);
-    speler.gewonnen += volgorde.find(e => e.s.id === speler.id)?.w || 0;
+    speler.partijen = (speler.partijen || 0) + (deelnemers.length - 1);
+    speler.gewonnen = (speler.gewonnen || 0) + (deelnemers.find(e => String(e.s.id) === String(speler.id))?.w || 0);
   });
 
   // Normaliseer ranks
-  [...state.spelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
-  await slaState();
+  [...ladderData.spelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
+  await setDoc(doc(db, 'ladders', ladderId), ladderData);
 
-  // Sla toernooi op in archief met volledige uitslag en matrix
+  // Update actieve ladder cache
+  const ladderIdx = alleLadders.findIndex(l => l.id === ladderId);
+  if (ladderIdx >= 0) alleLadders[ladderIdx].spelers = ladderData.spelers;
+  if (ladderId === activeLadderId) state.spelers = ladderData.spelers;
+
+  // Sla toernooi op in archief
   const archiefSnap = await getDoc(ARCHIEF_DOC);
   const archief = archiefSnap.exists() ? archiefSnap.data() : { seizoenen: [] };
   if (!archief.toernooien) archief.toernooien = [];
 
-  // Bereken matrix voor archief (al berekend hierboven)
   const matrixArchief = t.spelers.map((sA, i) =>
     t.spelers.map((sB, j) => i === j ? 'X' : (matrix[i][j] || '-'))
   );
 
   archief.toernooien.unshift({
-    naam: t.naam,
-    datum: t.datum,
-    baan: t.baan,
-    holes: t.holes.length,
+    naam: t.naam, datum: t.datum, baan: t.baan, holes: t.holes.length,
     ptWin: t.ptWin, ptTie: t.ptTie, ptLoss: t.ptLoss,
     ranglijst: volgorde.map(e => ({ naam: e.s.naam, hcp: Math.round(e.s.hcp), punten: e.pt, won: e.w, tied: e.ti, lost: e.l })),
     spelerNamen: t.spelers.map(s => s.naam.split(' ')[0]),
@@ -4689,8 +4715,8 @@ async function bevestigToernooiAfsluiten() {
   });
   await setDoc(ARCHIEF_DOC, archief);
 
-  // Verwijder actief toernooi
-  if (actieveToernooiId) await setDoc(doc(db, "toernooien", actieveToernooiId), { ...toernooiData, status: "afgerond" });
+  // Sluit toernooi af
+  if (actieveToernooiId) await setDoc(doc(db, 'toernooien', actieveToernooiId), { ...toernooiData, status: 'afgerond' });
   alleToernooien = alleToernooien.filter(t => t.id !== actieveToernooiId);
   toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
   actieveToernooiId = toernooiData?.id || null;
