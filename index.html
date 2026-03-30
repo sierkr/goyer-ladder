@@ -611,6 +611,9 @@
       <input type="password" id="login-pass" placeholder="••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter') loginSubmit()">
     </div>
     <button class="btn btn-primary btn-block" onclick="loginSubmit()" style="margin-top:4px">Inloggen →</button>
+    <button class="btn btn-block" onclick="loginAlsBeheerder()" style="margin-top:8px;background:white;color:var(--green);border:1.5px solid var(--green);font-size:14px">
+      🔐 Inloggen als beheerder
+    </button>
     <button onclick="openWachtwoordVergeten()" style="background:none;border:none;color:var(--light);font-size:13px;margin-top:12px;width:100%;cursor:pointer;font-family:'DM Sans',sans-serif">
       Wachtwoord vergeten?
     </button>
@@ -1305,7 +1308,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.9.0</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.9.1</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -1482,7 +1485,8 @@ import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword,
   signOut, GoogleAuthProvider, signInWithPopup,
   sendPasswordResetEmail, updatePassword, EmailAuthProvider,
-  reauthenticateWithCredential, createUserWithEmailAndPassword
+  reauthenticateWithCredential, createUserWithEmailAndPassword,
+  sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
@@ -1689,6 +1693,53 @@ async function loginSubmit() {
       'auth/invalid-credential': 'E-mail of wachtwoord onjuist',
     };
     toonLoginFout(berichten[e.code] || 'Inloggen mislukt, probeer opnieuw');
+  }
+}
+
+async function loginAlsBeheerder() {
+  try {
+    const email = document.getElementById('login-email').value.trim().toLowerCase();
+    if (!email) { toonLoginFout('Vul eerst je e-mailadres in'); return; }
+
+    // Check of email een beheerder rol heeft in ladder/users
+    const snap = await getDoc(USERS_DOC);
+    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const user = users.find(u => (u.email || '').toLowerCase() === email);
+
+    if (!user) { toonLoginFout('Geen account gevonden met dit e-mailadres'); return; }
+    if (user.rol !== 'beheerder') { toonLoginFout('Dit account heeft geen beheerdersrechten'); return; }
+
+    const actionCodeSettings = {
+      url: window.location.href.split('?')[0],
+      handleCodeInApp: true
+    };
+    await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+    window.localStorage.setItem('emailVoorLink', email);
+
+    const fout = document.getElementById('login-fout');
+    fout.style.color = 'var(--green)';
+    fout.textContent = `✓ Inloglink verstuurd naar ${email} — check je email`;
+    fout.style.display = 'block';
+  } catch(e) {
+    console.error('Magic link fout:', e);
+    toonLoginFout('Versturen mislukt: ' + (e.message || e.code));
+  }
+}
+
+// Controleer bij laden of er een magic link in de URL zit
+async function checkMagicLink() {
+  if (isSignInWithEmailLink(auth, window.location.href)) {
+    let email = window.localStorage.getItem('emailVoorLink');
+    if (!email) email = 'sierkr@gmail.com'; // fallback
+    try {
+      await signInWithEmailLink(auth, email, window.location.href);
+      window.localStorage.removeItem('emailVoorLink');
+      // Verwijder de link parameters uit de URL
+      window.history.replaceState(null, '', window.location.pathname);
+    } catch(e) {
+      console.error('Magic link inloggen mislukt:', e);
+      toonLoginFout('Link is verlopen of ongeldig. Vraag een nieuwe link aan.');
+    }
   }
 }
 
@@ -6350,6 +6401,7 @@ window.bevestigBeheerUitslag = bevestigBeheerUitslag;
 window.verwijderActievePartij = verwijderActievePartij;
 window.verschuifRank = verschuifRank;
 window.loginSubmit = loginSubmit;
+window.loginAlsBeheerder = loginAlsBeheerder;
 window.loginMetGoogle = loginMetGoogle;
 window.uitloggen = uitloggen;
 window.openWachtwoordVergeten = openWachtwoordVergeten;
@@ -6446,6 +6498,7 @@ window.autoAdvance = autoAdvance;
 window.slaProfielHcpOp = slaProfielHcpOp;
 window.vraagNotificatieToestemming = vraagNotificatieToestemming;
 
+checkMagicLink();
 initFirestore();
 </script>
 </body>
