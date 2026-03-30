@@ -1305,7 +1305,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.9.3</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.9.4</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -1752,6 +1752,7 @@ async function wijzigWachtwoord() {
   const huidig = document.getElementById('huidig-wachtwoord').value;
   const nieuw = document.getElementById('nieuw-wachtwoord').value;
   const bevestig = document.getElementById('bevestig-wachtwoord').value;
+  if (!huidig) { toast('Voer je huidige wachtwoord in'); return; }
   if (nieuw.length < 4) { toast('Nieuw wachtwoord minimaal 4 tekens'); return; }
   if (nieuw !== bevestig) { toast('Wachtwoorden komen niet overeen'); return; }
   try {
@@ -1759,11 +1760,21 @@ async function wijzigWachtwoord() {
     const credential = EmailAuthProvider.credential(user.email, huidig);
     await reauthenticateWithCredential(user, credential);
     await updatePassword(user, nieuw);
+    document.getElementById('huidig-wachtwoord').value = '';
+    document.getElementById('nieuw-wachtwoord').value = '';
+    document.getElementById('bevestig-wachtwoord').value = '';
     closeModal('modal-wachtwoord-wijzigen');
     toast('Wachtwoord gewijzigd ✓');
   } catch(e) {
-    if (e.code === 'auth/wrong-password') toast('Huidig wachtwoord onjuist');
-    else toast('Wijzigen mislukt, probeer opnieuw');
+    console.error('Wachtwoord wijzigen fout:', e.code, e.message);
+    const berichten = {
+      'auth/wrong-password': 'Huidig wachtwoord onjuist',
+      'auth/invalid-credential': 'Huidig wachtwoord onjuist',
+      'auth/too-many-requests': 'Te veel pogingen, probeer later opnieuw',
+      'auth/weak-password': 'Nieuw wachtwoord is te zwak',
+      'auth/requires-recent-login': 'Log opnieuw in en probeer het dan'
+    };
+    toast(berichten[e.code] || `Wijzigen mislukt (${e.code})`);
   }
 }
 
