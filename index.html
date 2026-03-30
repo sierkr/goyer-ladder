@@ -1238,7 +1238,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.6.3</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.6.4</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4727,6 +4727,20 @@ async function startToernooi() {
   alleToernooien.push(nieuweToernooi);
   toernooiData = nieuweToernooi;
   actieveToernooiId = newRef.id;
+
+  // Start realtime listener voor nieuw toernooi
+  const unsub = onSnapshot(doc(db, 'toernooien', newRef.id), (snap) => {
+    if (!snap.exists()) return;
+    const nieuweData = { id: snap.id, ...snap.data() };
+    const idx = alleToernooien.findIndex(x => x.id === snap.id);
+    if (idx >= 0) alleToernooien[idx] = nieuweData;
+    if (actieveToernooiId === snap.id) {
+      toernooiData = nieuweData;
+      const detail = document.getElementById('toernooi-detail');
+      if (detail) { renderTScorecard(); renderTMatrix(); if (nieuweData.uitslagZichtbaar) renderTRanglijst(); }
+    }
+  });
+  _toernooiListeners.push(unsub);
 
   toast('Toernooi gestart! 🏅');
   closeModal('modal-flight-indeling');
