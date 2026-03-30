@@ -698,7 +698,7 @@
     <div id="flight-lijst"></div>
     <button class="btn btn-ghost btn-block btn-sm" onclick="voegFlightToe()" style="margin-top:8px">+ Flight toevoegen</button>
     <div class="modal-actions" style="margin-top:16px">
-      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-flight-indeling')">Annuleren</button>
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-flight-indeling')">← Terug</button>
       <button class="btn btn-primary" style="flex:2" onclick="startToernooi()">Toernooi starten →</button>
     </div>
   </div>
@@ -1118,7 +1118,7 @@
               <option value="custom">Aangepast...</option>
             </select>
           </div>
-          <div class="form-group" style="margin:0" id="t-holes-custom-wrap" style="display:none">
+          <div class="form-group" style="margin:0;display:none" id="t-holes-custom-wrap">
             <label>Aangepast</label>
             <input type="number" id="t-holes-custom" min="1" max="18" placeholder="bijv. 12" style="text-align:center">
           </div>
@@ -1238,7 +1238,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.6.5</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.6.7</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4751,14 +4751,9 @@ async function startToernooi() {
   // Reset formulier
   document.getElementById('t-naam').value = '';
   document.getElementById('t-datum').value = '';
-  const ladderSel = document.getElementById('t-ladder');
-  if (ladderSel) { ladderSel.value = ''; ladderSel._initDone = false; }
-  // Wis alle selecties
-  document.querySelectorAll('#t-speler-tags .tag').forEach(t => {
-    t.classList.remove('selected');
-    t.style.outline = 'none';
-    t.style.fontWeight = '500';
-  });
+  // Reset ladder checkboxes
+  document.querySelectorAll('#t-spelers-ladders input, #t-ranking-ladders input').forEach(cb => cb.checked = false);
+  renderTGeselecteerdeSpelers();
   // Klap setup kaart in
   const setupHeader = document.querySelector('#toernooi-setup-wrap .card-header.inklapbaar');
   if (setupHeader && !setupHeader.classList.contains('ingeklapt')) {
@@ -4766,7 +4761,8 @@ async function startToernooi() {
     const collapse = setupHeader.nextElementSibling;
     if (collapse) collapse.classList.add('ingeklapt');
   }
-  renderToernooiSpelerTags();
+  // Toon actief toernooi
+  document.getElementById('toernooi-actief-wrap').style.display = 'block';
   renderToernooi();
 }
 
