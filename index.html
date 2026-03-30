@@ -1294,7 +1294,6 @@
 <div class="modal-overlay" id="modal-toernooi-afsluiten">
   <div class="modal">
     <h3>Toernooi afsluiten</h3>
-    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">De eindstand wordt opgeslagen en de ladder rankings worden aangepast.</p>
     <div id="t-eindstand"></div>
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-toernooi-afsluiten')">Annuleren</button>
@@ -1305,7 +1304,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.9.5</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.9.7</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -1705,6 +1704,11 @@ async function loginMetGoogle() {
 }
 
 function uitloggen() {
+  // Stop alle Firestore listeners voor uitloggen
+  _vasteListeners.forEach(unsub => unsub());
+  _vasteListeners = [];
+  _toernooiListeners.forEach(unsub => unsub());
+  _toernooiListeners = [];
   signOut(auth);
   huidigeBruiker = null;
   document.getElementById('login-scherm').classList.add('actief');
@@ -1942,7 +1946,7 @@ async function initFirestore() {
 
   // Live listener op actieve ladder
   if (activeLadderId) {
-    onSnapshot(doc(db, 'ladders', activeLadderId), (snap) => {
+    _vasteListeners.push(onSnapshot(doc(db, 'ladders', activeLadderId), (snap) => {
       if (!snap.exists() || !huidigeBruiker) return;
       state = snap.data();
       if (!state.actievePartijen) state.actievePartijen = [];
@@ -1955,27 +1959,27 @@ async function initFirestore() {
       if (activePage === 'ronde') renderRonde();
       if (activePage === 'profiel') renderProfiel();
       if (activePage === 'toernooi') renderToernooi();
-    });
+    }));
   }
 
   // Live listeners op alle andere ladders (voor badges in spelers beheer)
   alleLadders.filter(l => l.id !== activeLadderId).forEach(ladder => {
-    onSnapshot(doc(db, 'ladders', ladder.id), (snap) => {
+    _vasteListeners.push(onSnapshot(doc(db, 'ladders', ladder.id), (snap) => {
       if (!snap.exists() || !huidigeBruiker) return;
       const idx = alleLadders.findIndex(l => l.id === ladder.id);
       if (idx >= 0) alleLadders[idx].spelers = snap.data().spelers || [];
       const activePage = document.querySelector('.page.active')?.id?.replace('page-','');
       if (activePage === 'admin') renderAdmin();
-    });
+    }));
   });
 
   // Live listener op master spelerslijst
-  onSnapshot(SPELERS_DOC, (snap) => {
+  _vasteListeners.push(onSnapshot(SPELERS_DOC, (snap) => {
     if (!snap.exists() || !huidigeBruiker) return;
     alleSpelersData = snap.data().lijst || [];
     const activePage = document.querySelector('.page.active')?.id?.replace('page-','');
     if (activePage === 'admin') renderAdmin();
-  });
+  }));
 
   _firestoreReady = true;
 
@@ -4529,6 +4533,7 @@ function renderToernooi() {
 }
 
 let _toernooiListeners = []; // bijhouden om later te unsubscriben
+let _vasteListeners = []; // ladder + spelers listeners
 
 async function herlaadToernooien() {
   try {
