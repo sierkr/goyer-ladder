@@ -1304,7 +1304,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.0.1</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.0.2</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -3554,16 +3554,16 @@ async function renderAdminSpelersEnAccounts() {
       ? `<span style="font-size:11px;color:var(--light)">${account.email}</span>`
       : `<span style="font-size:11px;color:#ccc">geen account</span>`;
 
-    return `<div class="admin-row" style="flex-wrap:wrap;gap:4px">
-      <div style="flex:1;min-width:120px">
-        <div style="font-weight:600;font-size:14px">${s.naam}</div>
+    return `<div class="admin-row" style="flex-wrap:nowrap;gap:6px;align-items:center">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.naam}</div>
         <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:2px">
           ${emailTekst}
           ${rolBadge}
-          ${ladderBadges}
         </div>
       </div>
-      <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace;flex-shrink:0">hcp ${Math.round(s.hcp)}</span>
+      <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0">${ladderBadges}</div>
+      <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace;flex-shrink:0;white-space:nowrap">hcp ${Math.round(s.hcp)}</span>
       <button class="btn btn-sm btn-ghost" onclick="openEditPlayer(${s.id})">✏️</button>
       <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removePlayer(${s.id})">✕</button>
     </div>`;
@@ -5813,7 +5813,11 @@ async function bevestigToernooiAfsluiten() {
         await setDoc(doc(db, 'ladders', ladderId), ladderData);
         const ladderIdx = alleLadders.findIndex(l => l.id === ladderId);
         if (ladderIdx >= 0) alleLadders[ladderIdx].spelers = ladderData.spelers;
-        if (ladderId === activeLadderId) state.spelers = ladderData.spelers;
+        if (ladderId === activeLadderId) {
+          state.spelers = ladderData.spelers;
+          // Snapshot na toernooi ranking update
+          await slaSnapshotOp(`🏅 Na toernooi: ${t.naam}`);
+        }
       }
     }
   }
@@ -6232,7 +6236,12 @@ async function herstelSnapshot(snapId) {
     const snapDoc = await getDoc(doc(db, 'snapshots', snapId));
     if (!snapDoc.exists()) { toast('Snapshot niet gevonden'); return; }
     const data = snapDoc.data();
-    state.spelers = data.spelers;
+    // Herstel spelers inclusief partijen en gewonnen statistieken
+    state.spelers = data.spelers.map(s => ({
+      ...s,
+      partijen: s.partijen ?? 0,
+      gewonnen: s.gewonnen ?? 0
+    }));
     await slaState();
     renderLadder();
     toast('Ladderstand hersteld ✓');
