@@ -1308,7 +1308,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.9.1</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.9.2</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -1730,11 +1730,17 @@ async function loginAlsBeheerder() {
 async function checkMagicLink() {
   if (isSignInWithEmailLink(auth, window.location.href)) {
     let email = window.localStorage.getItem('emailVoorLink');
-    if (!email) email = 'sierkr@gmail.com'; // fallback
+    if (!email) {
+      // Op mobiel kan localStorage leeg zijn als link in andere browser opent
+      email = prompt('Bevestig je e-mailadres om in te loggen:');
+      if (!email) {
+        toonLoginFout('E-mailadres vereist om in te loggen via link');
+        return;
+      }
+    }
     try {
-      await signInWithEmailLink(auth, email, window.location.href);
+      await signInWithEmailLink(auth, email.trim(), window.location.href);
       window.localStorage.removeItem('emailVoorLink');
-      // Verwijder de link parameters uit de URL
       window.history.replaceState(null, '', window.location.pathname);
     } catch(e) {
       console.error('Magic link inloggen mislukt:', e);
