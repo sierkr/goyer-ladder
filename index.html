@@ -1304,7 +1304,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.0.2</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.0.4</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -2683,9 +2683,10 @@ function renderRonde() {
   document.getElementById('ronde-holes-badge').textContent = p.holes.length + ' holes' + (ladderNaam ? ' · ' + ladderNaam : '');
   renderScorecard();
   renderMatchOverview();
-  // HCP slagen blok
+  // HCP slagen blok — gebruik partijHcp als die beschikbaar is
   if (p.spelers && p.holes) {
-    renderHcpBlok(p.spelers, p.holes, 0.75, 'ronde-hcp-blok');
+    const hcpSpelers = p.spelers.map(s => ({ ...s, hcp: s.partijHcp ?? s.hcp }));
+    renderHcpBlok(hcpSpelers, p.holes, 0.75, 'ronde-hcp-blok');
   }
 }
 
