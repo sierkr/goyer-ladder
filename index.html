@@ -1283,7 +1283,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.7.4</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.7.6</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4411,11 +4411,31 @@ async function herlaadToernooien() {
               }
               if (nieuweData.uitslagZichtbaar) renderTRanglijst();
             } else {
-              // Voor spelers: altijd volledig updaten
+              // Voor spelers: update data maar render scorekaart niet opnieuw (toetsenbord blijft open)
+              const oudeMatrixIngeklapt = toernooiData?.matrixIngeklapt;
+              const oudeUitslagZichtbaar = toernooiData?.uitslagZichtbaar;
               toernooiData = nieuweData;
-              renderTScorecard();
-              renderTMatrix();
-              if (nieuweData.uitslagZichtbaar) renderTRanglijst();
+
+              // Matrix inklapstatus direct volgen (verstoort toetsenbord niet)
+              if (nieuweData.matrixIngeklapt !== oudeMatrixIngeklapt) {
+                const collapse = document.getElementById('t-matrix-collapse');
+                const header = collapse?.previousElementSibling;
+                if (collapse) collapse.classList.toggle('ingeklapt', !!nieuweData.matrixIngeklapt);
+                if (header) header.classList.toggle('ingeklapt', !!nieuweData.matrixIngeklapt);
+              }
+
+              // Scores updaten zonder scorekaart te herrenderen
+              clearTimeout(window._matrixUpdateTimer);
+              window._matrixUpdateTimer = setTimeout(() => renderTMatrix(), 2000);
+
+              // Uitslag zichtbaar geworden
+              if (nieuweData.uitslagZichtbaar && !oudeUitslagZichtbaar) {
+                renderTScorecard();
+                renderTMatrix();
+                renderTRanglijst();
+              } else if (nieuweData.uitslagZichtbaar) {
+                renderTRanglijst();
+              }
             }
           }
         }
@@ -5038,7 +5058,7 @@ function renderToernooiActief() {
         ${isBeheerder ? `onclick="toggleToernooiMatrix()"` : ''}>
         <h2>Onderlinge stand</h2>
       </div>
-      <div class="card-collapse ${t.matrixIngeklapt && !uitslag ? 'ingeklapt' : ''}">
+      <div class="card-collapse ${t.matrixIngeklapt && !uitslag ? 'ingeklapt' : ''}" id="t-matrix-collapse">
         <div id="t-matrix" style="overflow-x:auto;padding:8px"></div>
       </div>
     </div>
@@ -5215,7 +5235,7 @@ function selecteerFlightTab(fi) {
 
 function updateTScoreAndAdvance(spelerId, holeIdx, tabIdx, val) {
   updateTScore(spelerId, holeIdx, val);
-  // Auto-advance alleen voor beheerder (op mobiel verstoort focus het toetsenbord)
+  // Auto-advance alleen voor beheerder
   if (val.length > 0 && huidigeBruiker?.rol === 'beheerder') {
     setTimeout(() => {
       const next = document.querySelector(`input[tabindex="${tabIdx + 1}"]`);
@@ -5234,7 +5254,14 @@ function updateTScore(spelerId, holeIdx, val) {
   if (idx >= 0) alleToernooien[idx] = JSON.parse(JSON.stringify(toernooiData));
   // Update totaalrij inline (zonder scorecard te herrenderen)
   updateTTotaalRijInline();
-  renderTMatrix();
+  const isBeheerder = huidigeBruiker?.rol === 'beheerder';
+  if (isBeheerder) {
+    renderTMatrix();
+  } else {
+    // Voor spelers: matrix pas updaten bij inactiviteit (toetsenbord blijft open)
+    clearTimeout(window._matrixUpdateTimer);
+    window._matrixUpdateTimer = setTimeout(() => renderTMatrix(), 2000);
+  }
   if (toernooiData.uitslagZichtbaar) renderTRanglijst();
   // Update knop status
   if (huidigeBruiker?.rol === 'beheerder') {
