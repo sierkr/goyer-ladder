@@ -1283,7 +1283,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.7.0</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.7.1</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4408,8 +4408,16 @@ async function herlaadToernooien() {
                 // Nieuwe scores van andere gebruikers — toon refresh knop
                 const btn = document.getElementById('t-refresh-btn');
                 if (btn) btn.style.display = '';
+                // Matrix debounced updaten (niet meteen om focus niet te verstoren)
+                clearTimeout(window._matrixUpdateTimer);
+                window._matrixUpdateTimer = setTimeout(() => {
+                  // Alleen updaten als er geen actieve input focus is
+                  const activeEl = document.activeElement;
+                  if (!activeEl || activeEl.tagName !== 'INPUT' || activeEl.type !== 'number') {
+                    renderTMatrix();
+                  }
+                }, 2000);
               }
-              renderTMatrix();
               if (nieuweData.uitslagZichtbaar) renderTRanglijst();
             } else {
               // Voor spelers: altijd volledig updaten
@@ -5235,7 +5243,9 @@ function updateTScore(spelerId, holeIdx, val) {
   if (idx >= 0) alleToernooien[idx] = JSON.parse(JSON.stringify(toernooiData));
   // Update totaalrij inline (zonder scorecard te herrenderen)
   updateTTotaalRijInline();
-  renderTMatrix();
+  // Matrix debounced updaten zodat focus behouden blijft
+  clearTimeout(window._matrixUpdateTimer);
+  window._matrixUpdateTimer = setTimeout(() => renderTMatrix(), 500);
   if (toernooiData.uitslagZichtbaar) renderTRanglijst();
   // Update knop status
   if (huidigeBruiker?.rol === 'beheerder') {
