@@ -1322,7 +1322,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.8.2</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.8.3</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -1642,11 +1642,11 @@ async function setIngelogd(firebaseUser) {
 
     huidigeBruiker = { uid: firebaseUser.uid, email: firebaseUser.email, gebruikersnaam: besteNaam, rol: profiel.rol };
 
-    // Email verificatie vereist voor beheerder — eenmalig per sessie
-    if (profiel.rol === 'beheerder' && !window._beheerderGeverifieerd) {
-      document.getElementById('modal-email-verificatie').classList.add('open');
-      return; // Wacht op verificatie — vervolgIngelogd() wordt aangeroepen na bevestiging
-    }
+    // Email verificatie tijdelijk uitgeschakeld
+    // if (profiel.rol === 'beheerder' && !window._beheerderGeverifieerd) {
+    //   document.getElementById('modal-email-verificatie').classList.add('open');
+    //   return;
+    // }
 
   } catch(e) {
     console.error('setIngelogd error:', e);
