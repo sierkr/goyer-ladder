@@ -1283,7 +1283,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.7.6</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.7.7</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -5263,17 +5263,15 @@ function updateTScore(spelerId, holeIdx, val) {
     window._matrixUpdateTimer = setTimeout(() => renderTMatrix(), 2000);
   }
   if (toernooiData.uitslagZichtbaar) renderTRanglijst();
-  // Update knop status
-  if (huidigeBruiker?.rol === 'beheerder') {
-    const alles = alleScoresIngevuld(toernooiData);
-    const btn = document.getElementById('t-uitslag-btn');
-    if (btn) {
-      btn.disabled = !alles;
-      btn.style.opacity = alles ? '1' : '0.5';
-      btn.style.cursor = alles ? 'pointer' : 'not-allowed';
-      btn.textContent = `📊 Naar de uitslag${alles ? '' : ' (scores onvolledig)'}`;
-      btn.onclick = alles ? toonToernooiUitslag : null;
-    }
+  // Update uitslag knop status voor iedereen
+  const alles = alleScoresIngevuld(toernooiData);
+  const btn = document.getElementById('t-uitslag-btn');
+  if (btn) {
+    btn.disabled = !alles;
+    btn.style.opacity = alles ? '1' : '0.5';
+    btn.style.cursor = alles ? 'pointer' : 'not-allowed';
+    btn.textContent = `📊 Naar de uitslag${alles ? '' : ' (scores onvolledig)'}`;
+    btn.onclick = alles ? toonToernooiUitslag : null;
   }
   clearTimeout(window._tSaveTimer);
   window._tSaveTimer = setTimeout(async () => {
