@@ -1304,27 +1304,19 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.9.9</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.0.0</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
-      <h2>Spelers beheren</h2>
+      <h2>Spelers & accounts</h2>
       <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
         <button class="btn btn-sm btn-primary" onclick="openAddPlayer()">+ Speler</button>
       </div>
     </div>
     <div class="card-collapse ingeklapt">
       <div id="admin-player-list"></div>
-    </div>
-  </div>
-  <div class="card" id="admin-sectie-accounts">
-    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
-      <h2>Accounts beheren</h2>
-      <div onclick="event.stopPropagation()">
-        <button class="btn btn-sm btn-primary" onclick="openAddUser()">+ Account</button>
+      <div style="padding:10px 16px;font-size:12px;color:var(--light);border-top:1px solid var(--border)">
+        💡 Om een emailadres te wijzigen: Firebase Console → Authentication → gebruiker zoeken → ✏️
       </div>
-    </div>
-    <div class="card-collapse ingeklapt">
-      <div id="admin-user-list"></div>
     </div>
   </div>
   <div class="card" id="admin-sectie-ladders">
@@ -1416,6 +1408,15 @@
       <label>Handicap</label>
       <input type="number" id="edit-player-hcp" step="1" min="-10" max="54">
     </div>
+    <div class="form-group" id="edit-player-rol-wrap">
+      <label>Rol</label>
+      <select id="edit-player-rol">
+        <option value="speler">Speler</option>
+        <option value="coordinator">Coordinator</option>
+        <option value="beheerder">Beheerder</option>
+      </select>
+    </div>
+    <div id="edit-player-email-info" style="font-size:12px;color:var(--light);padding:4px 0 8px"></div>
     <input type="hidden" id="edit-player-id">
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-edit-player')">Annuleren</button>
@@ -1753,6 +1754,7 @@ function openWachtwoordWijzigen() {
 }
 
 async function wijzigWachtwoord() {
+  alert('wijzigWachtwoord aangeroepen');
   const huidig = document.getElementById('huidig-wachtwoord').value;
   const nieuw = document.getElementById('nieuw-wachtwoord').value;
   const bevestig = document.getElementById('bevestig-wachtwoord').value;
@@ -2043,7 +2045,6 @@ function showPage(name) {
         if (idx >= 0) alleLadders[idx].spelers = d.data().spelers || [];
       });
       renderAdmin();
-      renderAdminUsers();
       renderAdminLadders();
       laadInviteStatus();
     });
@@ -3503,7 +3504,7 @@ function renderAdmin() {
   const isCoord = isCoordinatorRol();
 
   // Verberg beheerder-only secties voor coordinator
-  ['admin-sectie-spelers','admin-sectie-accounts','admin-sectie-seizoen'].forEach(id => {
+  ['admin-sectie-spelers','admin-sectie-seizoen'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = isBeheerder ? '' : 'none';
   });
@@ -3519,31 +3520,82 @@ function renderAdmin() {
   if (!isCoord) return;
 
   if (isBeheerder) {
-    // Gebruik master spelerslijst — onafhankelijk van ladder membership
-    const sorted = [...alleSpelersData].sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
-    const list = document.getElementById('admin-player-list');
-    if (list) {
-      if (sorted.length === 0) {
-        list.innerHTML = '<div class="empty"><div class="empty-icon">👤</div><p>Geen spelers. Voeg een speler toe via + Speler.</p></div>';
-      } else {
-        list.innerHTML = sorted.map(s => {
-          const spelersLadders = alleLadders.filter(l => (l.spelers || []).some(sp => sp.id === s.id));
-          const ladderBadges = spelersLadders.map(l => `<span class="badge badge-grey" style="font-size:10px">${l.naam}</span>`).join(' ');
-          return `
-          <div class="admin-row">
-            <span class="name">${s.naam}</span>
-            <div style="display:flex;gap:4px;flex-wrap:wrap">${ladderBadges}</div>
-            <span class="hcp">hcp ${Math.round(s.hcp)}</span>
-            <button class="btn btn-sm btn-ghost" onclick="openEditPlayer(${s.id})">✏️</button>
-            <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removePlayer(${s.id})">✕</button>
-          </div>
-        `}).join('');
-      }
-    }
+    renderAdminSpelersEnAccounts();
   }
 
-  renderAdminUsers();
   renderAdminLadders();
+}
+
+async function renderAdminSpelersEnAccounts() {
+  const list = document.getElementById('admin-player-list');
+  if (!list) return;
+
+  // Laad accounts
+  let users = [];
+  try {
+    const snap = await getDoc(USERS_DOC);
+    users = snap.exists() ? (snap.data().lijst || []) : [];
+  } catch(e) {}
+
+  // Combineer spelers met accounts
+  const sorted = [...alleSpelersData].sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
+
+  // Spelers met of zonder account
+  const rijen = sorted.map(s => {
+    const account = users.find(u =>
+      u.gebruikersnaam?.toLowerCase() === s.naam.toLowerCase() ||
+      (u.uid && u.uid === s.uid)
+    );
+    const ladders = alleLadders.filter(l => (l.spelers || []).some(sp => sp.id === s.id));
+    const ladderBadges = ladders.map(l => `<span class="badge badge-grey" style="font-size:10px">${l.naam}</span>`).join(' ');
+    const rolBadge = account?.rol && account.rol !== 'speler'
+      ? `<span class="badge" style="font-size:10px;background:var(--green-pale);color:var(--green)">${account.rol}</span>`
+      : '';
+    const emailTekst = account?.email
+      ? `<span style="font-size:11px;color:var(--light)">${account.email}</span>`
+      : `<span style="font-size:11px;color:#ccc">geen account</span>`;
+
+    return `<div class="admin-row" style="flex-wrap:wrap;gap:4px">
+      <div style="flex:1;min-width:120px">
+        <div style="font-weight:600;font-size:14px">${s.naam}</div>
+        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:2px">
+          ${emailTekst}
+          ${rolBadge}
+          ${ladderBadges}
+        </div>
+      </div>
+      <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace;flex-shrink:0">hcp ${Math.round(s.hcp)}</span>
+      <button class="btn btn-sm btn-ghost" onclick="openEditPlayer(${s.id})">✏️</button>
+      <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removePlayer(${s.id})">✕</button>
+    </div>`;
+  });
+
+  // Accounts zonder speler
+  const accountsZonderSpeler = users.filter(u =>
+    !alleSpelersData.some(s => s.naam.toLowerCase() === u.gebruikersnaam?.toLowerCase())
+  );
+  const extraRijen = accountsZonderSpeler.map(u => {
+    const rolBadge = u.rol && u.rol !== 'speler'
+      ? `<span class="badge" style="font-size:10px;background:var(--green-pale);color:var(--green)">${u.rol}</span>`
+      : '';
+    return `<div class="admin-row" style="flex-wrap:wrap;gap:4px">
+      <div style="flex:1;min-width:120px">
+        <div style="font-weight:600;font-size:14px">${u.gebruikersnaam || u.naam || '—'}</div>
+        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:2px">
+          <span style="font-size:11px;color:var(--light)">${u.email}</span>
+          ${rolBadge}
+          <span class="badge badge-grey" style="font-size:10px">geen ladder</span>
+        </div>
+      </div>
+      <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace;flex-shrink:0">hcp —</span>
+      <button class="btn btn-sm btn-ghost" onclick="openEditUser(${users.indexOf(u)})">✏️</button>
+      <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removeUser(${users.indexOf(u)})">✕</button>
+    </div>`;
+  });
+
+  list.innerHTML = rijen.length + extraRijen.length === 0
+    ? '<div class="empty"><div class="empty-icon">👤</div><p>Geen spelers.</p></div>'
+    : [...rijen, ...extraRijen].join('');
 }
 
 async function openAddPlayer() {
@@ -3669,8 +3721,7 @@ async function saveNewPlayer() {
   }
 }
 
-function openEditPlayer(id) {
-  // Zoek in master lijst, dan in actieve ladder
+async function openEditPlayer(id) {
   let s = alleSpelersData.find(p => p.id === id);
   if (!s) s = state.spelers.find(p => p.id === id);
   if (!s) {
@@ -3680,9 +3731,29 @@ function openEditPlayer(id) {
     }
   }
   if (!s) { toast('Speler niet gevonden'); return; }
+
   document.getElementById('edit-player-id').value = id;
   document.getElementById('edit-player-name').value = s.naam;
   document.getElementById('edit-player-hcp').value = Math.round(s.hcp);
+
+  // Laad rol en email uit accounts
+  try {
+    const snap = await getDoc(USERS_DOC);
+    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const account = users.find(u => u.gebruikersnaam?.toLowerCase() === s.naam.toLowerCase());
+    const rolEl = document.getElementById('edit-player-rol');
+    const emailEl = document.getElementById('edit-player-email-info');
+    if (account) {
+      rolEl.value = account.rol || 'speler';
+      emailEl.textContent = `📧 ${account.email}`;
+    } else {
+      rolEl.value = 'speler';
+      emailEl.textContent = 'Geen account gekoppeld';
+    }
+  } catch(e) {
+    document.getElementById('edit-player-rol').value = 'speler';
+  }
+
   document.getElementById('modal-edit-player').classList.add('open');
 }
 
@@ -3724,19 +3795,21 @@ async function saveEditPlayer() {
     }
   }
 
-  // Update gebruikersnaam in accounts lijst
+  // Update gebruikersnaam en rol in accounts lijst
   try {
     const snap = await getDoc(USERS_DOC);
     const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const rol = document.getElementById('edit-player-rol').value;
     const user = users.find(u =>
       u.gebruikersnaam?.toLowerCase() === oudeNaam.toLowerCase() ||
       u.gebruikersnaam?.toLowerCase() === oudeNaam.split(' ')[0].toLowerCase()
     );
     if (user) {
       user.gebruikersnaam = naam;
+      user.rol = rol;
       await setDoc(USERS_DOC, { lijst: users });
     }
-  } catch(e) { console.error('Naam update account mislukt:', e); }
+  } catch(e) { console.error('Naam/rol update account mislukt:', e); }
 
   closeModal('modal-edit-player');
   renderAdmin();
@@ -4007,7 +4080,7 @@ async function saveEditUser() {
     if (pass) users[idx].wachtwoord = pass;
     await setDoc(USERS_DOC, { lijst: sorteerUsers(users) });
     closeModal('modal-edit-user');
-    renderAdminUsers();
+    renderAdmin();
     toast('Account bijgewerkt ✓');
   } catch(e) { toast('Fout bij opslaan'); }
 }
@@ -4052,7 +4125,7 @@ async function saveNewUser() {
     users.push({ uid, email, gebruikersnaam, rol });
     await setDoc(USERS_DOC, { lijst: sorteerUsers(users) });
     closeModal('modal-add-user');
-    renderAdminUsers();
+    renderAdmin();
     toast('Account aangemaakt ✓');
   } catch(e) {
     toast('Fout bij opslaan: ' + e.message);
@@ -4100,7 +4173,7 @@ async function removeUser(idx) {
       }
     }
 
-    renderAdminUsers();
+    renderAdmin();
     renderAdmin();
     renderLadder();
     toast('Account en speler verwijderd ✓');
