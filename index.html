@@ -627,6 +627,51 @@
   </div>
 </div>
 
+<!-- Toernooi speler beheer modal -->
+<div class="modal-overlay" id="modal-toernooi-spelers">
+  <div class="modal">
+    <h3>Spelers beheren</h3>
+
+    <!-- Verwijderen -->
+    <p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:8px">Verwijderen</p>
+    <div id="toernooi-speler-verwijder-lijst" style="margin-bottom:16px"></div>
+
+    <div class="divider"></div>
+
+    <!-- Bestaande speler toevoegen -->
+    <p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:8px">Bestaande speler toevoegen</p>
+    <div style="position:relative;margin-bottom:8px">
+      <input type="text" id="toernooi-speler-zoek" placeholder="Zoek speler..." autocomplete="off"
+        oninput="zoekToernooiSpelerModal(this.value)" onfocus="zoekToernooiSpelerModal(this.value)"
+        onblur="setTimeout(sluitToernooiSpelerModal, 150)">
+      <div id="toernooi-speler-zoek-lijst" style="position:absolute;top:100%;left:0;right:0;background:white;border:1.5px solid var(--green);border-radius:8px;max-height:160px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,0.1);display:none;margin-top:2px"></div>
+    </div>
+    <div class="form-group" style="margin-bottom:8px">
+      <label>Flight</label>
+      <select id="toernooi-speler-flight-sel"></select>
+    </div>
+    <button class="btn btn-primary btn-block btn-sm" onclick="voegBestaandeSpelerToeAanToernooi()" style="margin-bottom:16px">+ Toevoegen</button>
+
+    <div class="divider"></div>
+
+    <!-- Gastspeler toevoegen -->
+    <p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:8px">Gastspeler toevoegen</p>
+    <div style="display:grid;grid-template-columns:1fr 80px;gap:8px;margin-bottom:8px">
+      <input type="text" id="toernooi-gast-naam" placeholder="Naam gastspeler">
+      <input type="number" id="toernooi-gast-hcp" placeholder="hcp" style="text-align:center">
+    </div>
+    <div class="form-group" style="margin-bottom:8px">
+      <label>Flight</label>
+      <select id="toernooi-gast-flight-sel"></select>
+    </div>
+    <button class="btn btn-primary btn-block btn-sm" onclick="voegGastspelerToeAanToernooi()" style="margin-bottom:8px">+ Gastspeler toevoegen</button>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-block" onclick="closeModal('modal-toernooi-spelers')">Sluiten</button>
+    </div>
+  </div>
+</div>
+
 <!-- Ladder instellingen modal -->
 <div class="modal-overlay" id="modal-ladder-instellingen">
   <div class="modal">
@@ -1238,7 +1283,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.6.7</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.6.8</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4783,21 +4828,127 @@ async function toonToernooiUitslag() {
   toast('Uitslag zichtbaar! 🏆');
 }
 
-function openVerwijderToernooiSpeler() {
+let _toernooiSpelerToevoegen = null; // geselecteerde speler voor toevoegen
+
+function openToernooiSpelersBeheer() {
   const t = toernooiData;
   if (!t) return;
-  const html = t.spelers.map(s => `
-    <div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-      <span style="flex:1">${s.naam}</span>
-      <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px"
-        onclick="verwijderToernooiSpeler('${s.id}')">Verwijderen</button>
+
+  // Vul verwijder lijst
+  const verwijderLijst = document.getElementById('toernooi-speler-verwijder-lijst');
+  verwijderLijst.innerHTML = t.spelers.map(s => `
+    <div style="display:flex;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+      <span style="flex:1;font-size:14px">${s.naam}${s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}</span>
+      <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:12px"
+        onclick="verwijderToernooiSpelerNieuw('${s.id}')">✕</button>
     </div>
   `).join('');
-  // Gebruik een simpele modal via confirm-achtig scherm
-  const modal = document.getElementById('modal-archief-detail');
-  document.getElementById('archief-detail-titel').textContent = 'Speler verwijderen';
-  document.getElementById('archief-detail-inhoud').innerHTML = html;
-  modal.classList.add('open');
+
+  // Vul flight selects
+  const flightOpties = (t.flights || [{ naam: 'Flight 1' }]).map((f, i) =>
+    `<option value="${i}">${f.naam}</option>`).join('');
+  document.getElementById('toernooi-speler-flight-sel').innerHTML = flightOpties;
+  document.getElementById('toernooi-gast-flight-sel').innerHTML = flightOpties;
+
+  // Reset zoek
+  document.getElementById('toernooi-speler-zoek').value = '';
+  document.getElementById('toernooi-gast-naam').value = '';
+  document.getElementById('toernooi-gast-hcp').value = '';
+  _toernooiSpelerToevoegen = null;
+
+  document.getElementById('modal-toernooi-spelers').classList.add('open');
+}
+
+function zoekToernooiSpelerModal(zoek) {
+  const lijst = document.getElementById('toernooi-speler-zoek-lijst');
+  if (!lijst) return;
+  const t = toernooiData;
+  const huidigeIds = new Set(t.spelers.map(s => String(s.id)));
+  const term = zoek.toLowerCase().trim();
+  const pool = alleSpelersData.filter(s => !huidigeIds.has(String(s.id)))
+    .filter(s => !term || s.naam.toLowerCase().includes(term))
+    .sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
+
+  lijst.innerHTML = pool.length === 0
+    ? '<div style="padding:10px 14px;font-size:13px;color:var(--light)">Geen spelers gevonden</div>'
+    : pool.map(s => `
+      <div onclick="selecteerToernooiSpelerModal(${s.id},'${s.naam.replace(/'/g,"\\'")}',${s.hcp})"
+        style="padding:10px 14px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"
+        onmouseenter="this.style.background='var(--green-pale)'" onmouseleave="this.style.background=''">
+        <span>${s.naam}</span>
+        <span style="color:var(--light);font-size:12px">hcp ${Math.round(s.hcp)}</span>
+      </div>`).join('');
+  lijst.style.display = 'block';
+}
+
+function selecteerToernooiSpelerModal(id, naam, hcp) {
+  _toernooiSpelerToevoegen = { id, naam, hcp };
+  document.getElementById('toernooi-speler-zoek').value = naam;
+  sluitToernooiSpelerModal();
+}
+
+function sluitToernooiSpelerModal() {
+  const l = document.getElementById('toernooi-speler-zoek-lijst');
+  if (l) l.style.display = 'none';
+}
+
+async function voegBestaandeSpelerToeAanToernooi() {
+  if (!_toernooiSpelerToevoegen) { toast('Selecteer eerst een speler'); return; }
+  const t = toernooiData;
+  const fi = parseInt(document.getElementById('toernooi-speler-flight-sel').value) || 0;
+  const speler = { id: _toernooiSpelerToevoegen.id, naam: _toernooiSpelerToevoegen.naam, hcp: _toernooiSpelerToevoegen.hcp, gast: false };
+
+  t.spelers.push(speler);
+  t.scores[String(speler.id)] = Array(t.holes.length).fill(null);
+  if (t.flights?.[fi]) {
+    t.flights[fi].spelerIds = [...(t.flights[fi].spelerIds || []), speler.id];
+  }
+  await setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(t)));
+  closeModal('modal-toernooi-spelers');
+  renderToernooiActief();
+  toast(`${speler.naam.split(' ')[0]} toegevoegd ✓`);
+}
+
+async function voegGastspelerToeAanToernooi() {
+  const naam = document.getElementById('toernooi-gast-naam').value.trim();
+  const hcp = parseFloat(document.getElementById('toernooi-gast-hcp').value) || 0;
+  if (!naam) { toast('Voer een naam in'); return; }
+  const t = toernooiData;
+  const fi = parseInt(document.getElementById('toernooi-gast-flight-sel').value) || 0;
+  const gastId = 90000 + Math.floor(Math.random() * 9999);
+  const speler = { id: gastId, naam, hcp, gast: true };
+
+  t.spelers.push(speler);
+  t.scores[String(gastId)] = Array(t.holes.length).fill(null);
+  if (t.flights?.[fi]) {
+    t.flights[fi].spelerIds = [...(t.flights[fi].spelerIds || []), gastId];
+  }
+  await setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(t)));
+  closeModal('modal-toernooi-spelers');
+  renderToernooiActief();
+  toast(`${naam} toegevoegd als gastspeler ✓`);
+}
+
+async function verwijderToernooiSpelerNieuw(spelerId) {
+  if (!toernooiData || !actieveToernooiId) return;
+  if (!confirm('Speler verwijderen uit dit toernooi?')) return;
+  const id = String(spelerId);
+  toernooiData.spelers = toernooiData.spelers.filter(s => String(s.id) !== id);
+  delete toernooiData.scores[spelerId];
+  delete toernooiData.scores[id];
+  if (toernooiData.flights) {
+    toernooiData.flights.forEach(f => {
+      f.spelerIds = (f.spelerIds || []).filter(sid => String(sid) !== id);
+    });
+  }
+  await setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(toernooiData)));
+  closeModal('modal-toernooi-spelers');
+  renderToernooiActief();
+  toast('Speler verwijderd ✓');
+}
+
+function openVerwijderToernooiSpeler() {
+  openToernooiSpelersBeheer();
 }
 
 async function verwijderToernooiSpeler(spelerId) {
@@ -4882,7 +5033,7 @@ function renderToernooiActief() {
       <div class="card-header inklapbaar ${uitslag ? 'ingeklapt' : ''}" onclick="toggleAdminKaart(this)">
         <h2>${isBeheerder ? 'Scores' : 'Mijn scorekaart'}</h2>
         <div style="display:flex;gap:6px" onclick="event.stopPropagation()">
-          ${isBeheerder ? `<button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="openVerwijderToernooiSpeler()">− Speler</button>` : ''}
+          ${isBeheerder ? `<button class="btn btn-sm btn-ghost" onclick="openToernooiSpelersBeheer()">👥 Spelers</button>` : ''}
         </div>
       </div>
       <div class="card-collapse ${uitslag ? 'ingeklapt' : ''}">
@@ -5960,6 +6111,13 @@ window.toonToernooiUitslag = toonToernooiUitslag;
 window.openVerwijderToernooiSpeler = openVerwijderToernooiSpeler;
 window.verwijderToernooiSpeler = verwijderToernooiSpeler;
 window.selecteerFlightTab = selecteerFlightTab;
+window.openToernooiSpelersBeheer = openToernooiSpelersBeheer;
+window.zoekToernooiSpelerModal = zoekToernooiSpelerModal;
+window.selecteerToernooiSpelerModal = selecteerToernooiSpelerModal;
+window.sluitToernooiSpelerModal = sluitToernooiSpelerModal;
+window.voegBestaandeSpelerToeAanToernooi = voegBestaandeSpelerToeAanToernooi;
+window.voegGastspelerToeAanToernooi = voegGastspelerToeAanToernooi;
+window.verwijderToernooiSpelerNieuw = verwijderToernooiSpelerNieuw;
 window.toggleTSpelersLadder = toggleTSpelersLadder;
 window.toggleTRankingLadder = toggleTRankingLadder;
 window.zoekToernooiSpeler = zoekToernooiSpeler;
