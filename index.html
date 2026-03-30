@@ -1304,7 +1304,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.0.6</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.0.7</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -4709,9 +4709,9 @@ function initToernooiSetup() {
   const spelersLaddersEl = document.getElementById('t-spelers-ladders');
   if (spelersLaddersEl) {
     spelersLaddersEl.innerHTML = alleLadders.map(l => `
-      <label style="display:flex;align-items:center;gap:6px;padding:5px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:13px;user-select:none">
-        <input type="checkbox" value="${l.id}" onchange="toggleTSpelersLadder('${l.id}', this.checked)" style="accent-color:var(--green)">
-        ${l.naam}
+      <label style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 12px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;user-select:none;min-width:56px;text-align:center">
+        <span>${l.naam}</span>
+        <input type="checkbox" value="${l.id}" onchange="toggleTSpelersLadder('${l.id}', this.checked)" style="accent-color:var(--green);width:18px;height:18px">
       </label>
     `).join('');
   }
@@ -4720,9 +4720,9 @@ function initToernooiSetup() {
   const rankingLaddersEl = document.getElementById('t-ranking-ladders');
   if (rankingLaddersEl) {
     rankingLaddersEl.innerHTML = alleLadders.map(l => `
-      <label style="display:flex;align-items:center;gap:6px;padding:5px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:13px;user-select:none">
-        <input type="checkbox" value="${l.id}" onchange="toggleTRankingLadder('${l.id}', this.checked)" style="accent-color:var(--green)">
-        ${l.naam}
+      <label style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 12px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;user-select:none;min-width:56px;text-align:center">
+        <span>${l.naam}</span>
+        <input type="checkbox" value="${l.id}" onchange="toggleTRankingLadder('${l.id}', this.checked)" style="accent-color:var(--green);width:18px;height:18px">
       </label>
     `).join('');
   }
