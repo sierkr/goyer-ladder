@@ -1304,7 +1304,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.9.7</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.9.8</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -1760,30 +1760,27 @@ async function wijzigWachtwoord() {
   if (nieuw.length < 4) { toast('Nieuw wachtwoord minimaal 4 tekens'); return; }
   if (nieuw !== bevestig) { toast('Wachtwoorden komen niet overeen'); return; }
   if (nieuw === huidig) { toast('Nieuw wachtwoord moet anders zijn'); return; }
+  toast('Bezig...');
   try {
     const user = auth.currentUser;
     if (!user) { toast('Niet ingelogd'); return; }
-    console.log('Reauth voor:', user.email);
-    const credential = EmailAuthProvider.credential(user.email, huidig);
-    await reauthenticateWithCredential(user, credential);
-    console.log('Reauth geslaagd, wachtwoord updaten...');
+    // Eerst reauth proberen
+    try {
+      const credential = EmailAuthProvider.credential(user.email, huidig);
+      await reauthenticateWithCredential(user, credential);
+    } catch(reAuthErr) {
+      toast('Huidig wachtwoord onjuist (' + reAuthErr.code + ')');
+      return;
+    }
+    // Dan wachtwoord updaten
     await updatePassword(user, nieuw);
-    console.log('Wachtwoord succesvol gewijzigd');
     document.getElementById('huidig-wachtwoord').value = '';
     document.getElementById('nieuw-wachtwoord').value = '';
     document.getElementById('bevestig-wachtwoord').value = '';
     closeModal('modal-wachtwoord-wijzigen');
     toast('Wachtwoord gewijzigd ✓');
   } catch(e) {
-    console.error('Wachtwoord wijzigen fout:', e.code, e.message);
-    const berichten = {
-      'auth/wrong-password': 'Huidig wachtwoord onjuist',
-      'auth/invalid-credential': 'Huidig wachtwoord onjuist',
-      'auth/too-many-requests': 'Te veel pogingen, probeer later opnieuw',
-      'auth/weak-password': 'Nieuw wachtwoord is te zwak',
-      'auth/requires-recent-login': 'Log opnieuw in en probeer het dan'
-    };
-    toast(berichten[e.code] || `Wijzigen mislukt (${e.code})`);
+    toast('Wijzigen mislukt: ' + e.code);
   }
 }
 
