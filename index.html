@@ -1304,7 +1304,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.0.0</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.0.1</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -2985,10 +2985,9 @@ function openUitslagModal() {
         <button onclick="skipMatchup(${idx})" id="skip-${idx}" class="btn btn-sm btn-ghost" style="color:var(--red);border-color:#f5c6cb;font-size:11px;padding:4px 8px" title="Matchup overslaan">✕ overslaan</button>
       </div>`;
 
-    if (gespeeld === 0) {
-      html += `<p style="font-size:12px;color:var(--light)">Geen holes gespeeld</p>`;
-    } else if (standA === 0) {
-      html += `<p style="font-size:12px;color:var(--gold);margin-bottom:6px">⚡ Gelijkspel (${gespeeld} holes) — kies de winnaar</p>
+    if (gespeeld === 0 || standA === 0) {
+      const label = gespeeld === 0 ? 'Geen scores — kies de winnaar of sla over' : `⚡ Gelijkspel (${gespeeld} holes) — kies de winnaar`;
+      html += `<p style="font-size:12px;color:var(--gold);margin-bottom:6px">${label}</p>
         <div style="display:flex;gap:8px">
           <button class="btn btn-sm ${winnaar === 'A' ? 'btn-primary' : 'btn-ghost'}"
             onclick="setWinnaar(${idx},'A')" id="win-${idx}-A">${nA} wint</button>
@@ -5573,6 +5572,20 @@ function editToernooiHcp(spelerId) {
   renderTScorecard();
   renderTRanglijst();
   renderTMatrix();
+  // HCP blok verversen met actieve flight spelers
+  const isBeheerder = huidigeBruiker?.rol === 'beheerder';
+  const flights = toernooiData.flights || [];
+  let hcpSpelers = toernooiData.spelers;
+  if (!isBeheerder && flights.length > 0) {
+    const voornaam = (huidigeBruiker?.gebruikersnaam || '').toLowerCase().split(' ')[0];
+    const mijnFlight = flights.find(f => (f.spelerIds || []).some(sid => {
+      const sp = toernooiData.spelers.find(s => String(s.id) === String(sid));
+      return sp && sp.naam.toLowerCase().includes(voornaam);
+    }));
+    if (mijnFlight) hcpSpelers = (mijnFlight.spelerIds || []).map(sid =>
+      toernooiData.spelers.find(s => String(s.id) === String(sid))).filter(Boolean);
+  }
+  renderHcpBlok(hcpSpelers, toernooiData.holes, toernooiData.hcpPct ?? 0.75, 'toernooi-hcp-blok');
   toast(`Handicap ${speler.naam.split(' ')[0]} bijgewerkt ✓`);
 }
 
