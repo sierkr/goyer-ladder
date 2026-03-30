@@ -1303,7 +1303,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.7.9</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.8.0</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -2433,6 +2433,8 @@ function mijnPartij() {
 }
 
 async function startPartij() {
+
+  try {
   const baanNaam = document.getElementById('baan-select').value;
   if (!baanNaam) { toast('Selecteer eerst een baan'); return; }
 
@@ -2536,6 +2538,7 @@ async function startPartij() {
 
   toast('Partij gestart! ⛳');
   document.querySelectorAll('nav button')[2].click();
+  } catch(e) { console.error('startPartij mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 // ============================================================
@@ -3372,6 +3375,8 @@ function setBeheerWinnaar(idx, kant) {
 }
 
 async function bevestigBeheerUitslag() {
+
+  try {
   const p = (state.actievePartijen || []).find(ap => ap.partijId === _beheerPartijId);
   if (!p) return;
   if (_beheerWinnaars.some(w => w === null)) { toast('Wijs voor elke match een winnaar aan'); return; }
@@ -3435,6 +3440,7 @@ async function bevestigBeheerUitslag() {
   await slaState();
   slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam.split(' ')[0]).join(' vs ')}`);
   showLadderChanges(changes);
+  } catch(e) { console.error('bevestigBeheerUitslag mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 async function annuleerEigenPartij() {
@@ -3534,6 +3540,8 @@ function toggleHandmatigToevoegen() {
 }
 
 async function voegAccountToeAlsSpeler(email, naam) {
+
+  try {
   const hcpStr = prompt(`Playing handicap voor ${naam}:`, '10');
   if (hcpStr === null) return;
   const hcp = Math.round(parseFloat(hcpStr));
@@ -3547,6 +3555,7 @@ async function voegAccountToeAlsSpeler(email, naam) {
   closeModal('modal-add-player');
   renderAdmin();
   toast(`${naam} toegevoegd aan spelersbeheer ✓ — voeg hem toe aan een ladder via Ladders beheren`);
+  } catch(e) { console.error('voegAccountToeAlsSpeler mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 async function saveNewPlayer() {
@@ -3680,6 +3689,8 @@ async function saveEditPlayer() {
 }
 
 async function removePlayer(id) {
+
+  try {
   if (!confirm('Speler verwijderen uit alle ladders?')) return;
   // Verwijder uit master spelerslijst
   alleSpelersData = alleSpelersData.filter(s => s.id !== id);
@@ -3704,6 +3715,7 @@ async function removePlayer(id) {
   }
   renderAdmin();
   toast('Speler verwijderd uit alle ladders');
+  } catch(e) { console.error('removePlayer mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 // ============================================================
@@ -4831,6 +4843,8 @@ function verplaatsSpelerFlight(vanFi, si, naarFi) {
 }
 
 async function startToernooi() {
+
+  try {
   const naam = document.getElementById('t-naam').value.trim();
   const datum = document.getElementById('t-datum').value;
   const baanNaam = document.getElementById('t-baan').value;
@@ -4928,6 +4942,7 @@ async function startToernooi() {
   // Toon actief toernooi
   document.getElementById('toernooi-actief-wrap').style.display = 'block';
   renderToernooi();
+  } catch(e) { console.error('startToernooi mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 async function toggleToernooiMatrix() {
@@ -4938,6 +4953,8 @@ async function toggleToernooiMatrix() {
 }
 
 async function toonToernooiUitslag() {
+
+  try {
   if (!toernooiData || !actieveToernooiId) return;
   toernooiData.uitslagZichtbaar = true;
   const idx = alleToernooien.findIndex(t => t.id === actieveToernooiId);
@@ -4945,6 +4962,7 @@ async function toonToernooiUitslag() {
   await setDoc(doc(db, 'toernooien', actieveToernooiId), toernooiData);
   renderToernooiActief();
   toast('Uitslag zichtbaar! 🏆');
+  } catch(e) { console.error('toonToernooiUitslag mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 let _toernooiSpelerToevoegen = null; // geselecteerde speler voor toevoegen
@@ -5012,6 +5030,8 @@ function sluitToernooiSpelerModal() {
 }
 
 async function voegBestaandeSpelerToeAanToernooi() {
+
+  try {
   if (!_toernooiSpelerToevoegen) { toast('Selecteer eerst een speler'); return; }
   const t = toernooiData;
   const fi = parseInt(document.getElementById('toernooi-speler-flight-sel').value) || 0;
@@ -5026,9 +5046,12 @@ async function voegBestaandeSpelerToeAanToernooi() {
   closeModal('modal-toernooi-spelers');
   renderToernooiActief();
   toast(`${speler.naam.split(' ')[0]} toegevoegd ✓`);
+  } catch(e) { console.error('voegBestaandeSpelerToeAanToernooi mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 async function voegGastspelerToeAanToernooi() {
+
+  try {
   const naam = document.getElementById('toernooi-gast-naam').value.trim();
   const hcp = parseFloat(document.getElementById('toernooi-gast-hcp').value) || 0;
   if (!naam) { toast('Voer een naam in'); return; }
@@ -5046,9 +5069,12 @@ async function voegGastspelerToeAanToernooi() {
   closeModal('modal-toernooi-spelers');
   renderToernooiActief();
   toast(`${naam} toegevoegd als gastspeler ✓`);
+  } catch(e) { console.error('voegGastspelerToeAanToernooi mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 async function verwijderToernooiSpelerNieuw(spelerId) {
+
+  try {
   if (!toernooiData || !actieveToernooiId) return;
   if (!confirm('Speler verwijderen uit dit toernooi?')) return;
   const id = String(spelerId);
@@ -5064,6 +5090,7 @@ async function verwijderToernooiSpelerNieuw(spelerId) {
   closeModal('modal-toernooi-spelers');
   renderToernooiActief();
   toast('Speler verwijderd ✓');
+  } catch(e) { console.error('verwijderToernooiSpelerNieuw mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 function openVerwijderToernooiSpeler() {
@@ -5071,6 +5098,8 @@ function openVerwijderToernooiSpeler() {
 }
 
 async function verwijderToernooiSpeler(spelerId) {
+
+  try {
   if (!toernooiData || !actieveToernooiId) return;
   if (!confirm('Speler verwijderen uit dit toernooi?')) return;
   toernooiData.spelers = toernooiData.spelers.filter(s => String(s.id) !== String(spelerId));
@@ -5082,6 +5111,7 @@ async function verwijderToernooiSpeler(spelerId) {
   closeModal('modal-archief-detail');
   renderToernooiActief();
   toast('Speler verwijderd uit toernooi');
+  } catch(e) { console.error('verwijderToernooiSpeler mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 function alleScoresIngevuld(t) {
@@ -5186,28 +5216,6 @@ function renderToernooiActief() {
   renderTScorecard();
   if (uitslag) renderTRanglijst();
   renderTMatrix();
-
-  // HCP slagen blok — gebruik spelers uit actieve flight of alle spelers
-  if (t.spelers && t.holes) {
-    const isBeheerder = huidigeBruiker?.rol === 'beheerder';
-    let hcpSpelers = t.spelers;
-    if (!isBeheerder && t.flights?.length > 0) {
-      const gebruikersnaam = huidigeBruiker?.gebruikersnaam?.toLowerCase() || '';
-      const voornaam = gebruikersnaam.split(' ')[0];
-      const mijnFlight = t.flights.find(f =>
-        (f.spelerIds || []).some(sid => {
-          const sp = t.spelers.find(s => String(s.id) === String(sid));
-          return sp && sp.naam.toLowerCase().includes(voornaam);
-        })
-      );
-      if (mijnFlight) {
-        hcpSpelers = (mijnFlight.spelerIds || [])
-          .map(sid => t.spelers.find(s => String(s.id) === String(sid)))
-          .filter(Boolean);
-      }
-    }
-    renderHcpBlok(hcpSpelers, t.holes, t.hcpPct ?? 0.75, 'toernooi-hcp-blok');
-  }
 
   // Koppel uitslag knop
   const uitslagBtn = document.getElementById('t-uitslag-btn');
@@ -5617,6 +5625,8 @@ function openToernooiAfsluiten() {
 }
 
 async function bevestigToernooiAfsluiten() {
+
+  try {
   const t = toernooiData;
   const { punten, won, tied, lost, matrix } = berekenTPunten();
   const volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]}))
@@ -5688,9 +5698,12 @@ async function bevestigToernooiAfsluiten() {
   toast('Toernooi afgerond! 🏅 Ladder bijgewerkt.');
   renderToernooi();
   renderLadder();
+  } catch(e) { console.error('bevestigToernooiAfsluiten mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 async function annuleerToernooi() {
+
+  try {
   if (!confirm('Toernooi annuleren? Alle scores gaan verloren.')) return;
   if (actieveToernooiId) await setDoc(doc(db, "toernooien", actieveToernooiId), { ...toernooiData, status: "geannuleerd" });
   alleToernooien = alleToernooien.filter(t => t.id !== actieveToernooiId);
@@ -5698,6 +5711,7 @@ async function annuleerToernooi() {
   actieveToernooiId = toernooiData?.id || null;
   renderToernooi();
   toast('Toernooi geannuleerd');
+  } catch(e) { console.error('annuleerToernooi mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 // ============================================================
@@ -5753,6 +5767,8 @@ function verschuifStand(idx, delta) {
 }
 
 async function slaStandOp() {
+
+  try {
   const ladderId = _standAanpassenLadderId;
   if (!ladderId) return;
   _standAanpassenSpelers.forEach((s, idx) => s.rank = idx + 1);
@@ -5767,6 +5783,7 @@ async function slaStandOp() {
   closeModal('modal-stand-aanpassen');
   renderLadder();
   toast('Stand bijgewerkt ✓');
+  } catch(e) { console.error('slaStandOp mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 function openLadderInstellingen(ladderId) {
@@ -5792,6 +5809,8 @@ function openLadderInstellingen(ladderId) {
 }
 
 async function slaLadderInstellingenOp() {
+
+  try {
   const ladderId = _instellingenLadderId;
   if (!ladderId) return;
 
@@ -5819,6 +5838,7 @@ async function slaLadderInstellingenOp() {
 
   closeModal('modal-ladder-instellingen');
   toast('Instellingen opgeslagen ✓');
+  } catch(e) { console.error('slaLadderInstellingenOp mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 function getNextId() {
@@ -5842,6 +5862,8 @@ function openNieuweLadderModal() {
 }
 
 async function maakNieuweLadder() {
+
+  try {
   const naam = document.getElementById('nieuwe-ladder-naam').value.trim();
   if (!naam) { toast('Voer een naam in'); return; }
   if (alleLadders.find(l => l.naam.toLowerCase() === naam.toLowerCase())) {
@@ -5854,6 +5876,7 @@ async function maakNieuweLadder() {
   closeModal('modal-nieuwe-ladder');
   renderAdminLadders();
   toast(`Ladder "${naam}" aangemaakt ✓`);
+  } catch(e) { console.error('maakNieuweLadder mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 async function verschuifLadder(idx, delta) {
@@ -5869,6 +5892,8 @@ async function verschuifLadder(idx, delta) {
 }
 
 async function verwijderLadder(ladderId) {
+
+  try {
   const ladder = alleLadders.find(l => l.id === ladderId);
   if (!ladder) return;
   if (ladderId === 'mp') { toast('De MP ladder kan niet verwijderd worden'); return; }
@@ -5881,6 +5906,7 @@ async function verwijderLadder(ladderId) {
   }
   renderAdminLadders();
   toast('Ladder verwijderd');
+  } catch(e) { console.error('verwijderLadder mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 let _ladderSpelersId = null;
@@ -5915,6 +5941,8 @@ async function openLadderSpelersModal(ladderId) {
 }
 
 async function slaLadderSpelersOp() {
+
+  try {
   const ladderId = _ladderSpelersId;
   if (!ladderId) return;
   const checkboxes = document.querySelectorAll('#ladder-spelers-lijst input[type=checkbox]');
@@ -5957,6 +5985,7 @@ async function slaLadderSpelersOp() {
   closeModal('modal-ladder-spelers');
   renderAdminLadders();
   toast('Spelers bijgewerkt ✓');
+  } catch(e) { console.error('slaLadderSpelersOp mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 async function renderAdminLadders() {
@@ -6058,6 +6087,8 @@ async function herstelSnapshot(snapId) {
 //  UITNODIGINGSLINK
 // ============================================================
 async function genereerInviteLink() {
+
+  try {
   const ladderId = document.getElementById('invite-ladder-select')?.value || activeLadderId;
   const ladder = alleLadders.find(l => l.id === ladderId);
   const token = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
@@ -6069,6 +6100,7 @@ async function genereerInviteLink() {
   document.getElementById('invite-link-wrap').style.display = 'block';
   document.getElementById('invite-status').textContent = `Geldig tot ${new Date(verloopt).toLocaleDateString('nl-NL')} · Ladder: ${ladder?.naam || ladderId}`;
   toast('Uitnodigingslink aangemaakt ✓');
+  } catch(e) { console.error('genereerInviteLink mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
 function kopieerInviteLink() {
