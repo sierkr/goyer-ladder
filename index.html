@@ -248,14 +248,16 @@
   .delta-down { color: var(--red); font-size: 11px; font-weight: 700; }
 
   /* PARTIJ SETUP */
-  .player-slot {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-  }
+  .player-slot { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; position: relative; }
   .player-slot select { flex: 1; }
   .hcp-input { width: 70px !important; text-align: center; }
+  .speler-zoek-wrap { flex: 1; position: relative; }
+  .speler-zoek-input { width: 100%; }
+  .speler-zoek-lijst { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1.5px solid var(--green); border-radius: 8px; max-height: 200px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: none; margin-top: 2px; }
+  .speler-zoek-item { padding: 10px 14px; cursor: pointer; font-size: 14px; border-bottom: 1px solid var(--border); }
+  .speler-zoek-item:last-child { border-bottom: none; }
+  .speler-zoek-item:hover { background: var(--green-pale); color: var(--green); }
+  .speler-zoek-item.geselecteerd { color: var(--light); cursor: default; font-style: italic; }
 
   /* SCOREKAART */
   .scorecard {
@@ -943,8 +945,6 @@
       </div>
       <div class="divider"></div>
       <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px;">Spelers (2–4)</label>
-      <input type="text" id="partij-speler-zoek" placeholder="🔍 Zoek speler..." oninput="filterPartijSpelers(this.value)"
-        style="margin-bottom:10px;font-size:14px">
       <div id="player-slots"></div>
       <button class="btn btn-ghost btn-sm" onclick="addPlayerSlot()" id="add-player-btn">+ Speler toevoegen</button>
       <div class="divider"></div>
@@ -1229,7 +1229,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.6.1</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.6.2</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -2119,12 +2119,7 @@ function initPartijForm() {
              emailPrefix.includes(voornaam);
     });
     if (gekoppeld) {
-      const slot1 = document.getElementById('player-1');
-      if (slot1) {
-        slot1.value = gekoppeld.id;
-        document.getElementById('hcp-1').value = Math.round(gekoppeld.hcp);
-        refreshPlayerSlotOptions();
-      }
+      selecteerPartijSpeler(1, gekoppeld.id, gekoppeld.naam, gekoppeld.hcp);
     }
   }
 
@@ -2151,18 +2146,12 @@ function herlaadPartijSpelers() {
   addPlayerSlot();
   addPlayerSlot();
   // Pre-select eigen naam in slot 1
-  const slot1 = document.getElementById('player-1');
-  if (slot1 && huidigeBruiker) {
+  if (huidigeBruiker) {
     const spelers = getPartijLadderSpelers();
     const zelf = spelers.find(s =>
       s.naam.toLowerCase().includes(huidigeBruiker.gebruikersnaam.split(' ')[0].toLowerCase())
     );
-    if (zelf) {
-      slot1.value = zelf.id;
-      const hcpEl = document.getElementById('hcp-1');
-      if (hcpEl) hcpEl.value = Math.round(zelf.hcp);
-      refreshPlayerSlotOptions();
-    }
+    if (zelf) selecteerPartijSpeler(1, zelf.id, zelf.naam, zelf.hcp);
   }
 }
 
@@ -2185,51 +2174,68 @@ function filterPartijSpelers(zoek) {
 function addPlayerSlot() {
   if (playerSlotCount >= 4) return;
   playerSlotCount++;
+  const n = playerSlotCount;
 
-  const reedsSel = Array.from(document.querySelectorAll('.player-select'))
-    .map(s => s.value).filter(v => v !== '');
-
-  const sorted = getPartijLadderSpelers();
-  const filterd = sorted.filter(s => !reedsSel.includes(String(s.id)));
-  const opts = filterd.map(s =>
-    `<option value="${s.id}">${s.naam} (hcp ${Math.round(s.hcp)})</option>`
-  ).join('');
   const div = document.createElement('div');
   div.className = 'player-slot';
-  div.id = 'slot-' + playerSlotCount;
+  div.id = 'slot-' + n;
+  div.dataset.spelerId = '';
   div.innerHTML = `
-    <select class="player-select" id="player-${playerSlotCount}">
-      <option value="">— Kies speler —</option>
-      ${opts}
-    </select>
-    <input type="number" class="hcp-input" id="hcp-${playerSlotCount}" placeholder="hcp" step="1" min="-10" max="54">
-    ${playerSlotCount > 2 ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;padding:8px;border-radius:6px;cursor:pointer" onclick="removeSlot(${playerSlotCount})">✕</button>` : ''}
+    <div class="speler-zoek-wrap">
+      <input type="text" class="speler-zoek-input player-select" id="player-${n}" placeholder="Zoek speler..." autocomplete="off"
+        oninput="zoekPartijSpeler(${n}, this.value)"
+        onfocus="zoekPartijSpeler(${n}, this.value)"
+        onblur="setTimeout(() => sluitSpelerLijst(${n}), 150)">
+      <div class="speler-zoek-lijst" id="speler-lijst-${n}"></div>
+    </div>
+    <input type="number" class="hcp-input" id="hcp-${n}" placeholder="hcp" step="1" min="-10" max="54">
+    ${n > 2 ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;padding:8px;border-radius:6px;cursor:pointer" onclick="removeSlot(${n})">✕</button>` : ''}
   `;
   document.getElementById('player-slots').appendChild(div);
   if (playerSlotCount >= 4) document.getElementById('add-player-btn').style.display = 'none';
+}
 
-  div.querySelector('select').addEventListener('change', function() {
-    const spelers = getPartijLadderSpelers();
-    const speler = spelers.find(s => String(s.id) === String(this.value));
-    if (speler) div.querySelector('.hcp-input').value = Math.round(speler.hcp);
-    refreshPlayerSlotOptions();
-  });
+function zoekPartijSpeler(n, zoek) {
+  const lijst = document.getElementById('speler-lijst-' + n);
+  if (!lijst) return;
+  const spelers = getPartijLadderSpelers();
+  const reedsSel = Array.from(document.querySelectorAll('.player-slot'))
+    .filter(s => s.id !== 'slot-' + n)
+    .map(s => s.dataset.spelerId).filter(v => v);
+  const term = zoek.toLowerCase().trim();
+  const gefilterd = spelers
+    .filter(s => !reedsSel.includes(String(s.id)))
+    .filter(s => !term || s.naam.toLowerCase().includes(term));
+
+  if (gefilterd.length === 0) {
+    lijst.innerHTML = '<div class="speler-zoek-item geselecteerd">Geen spelers gevonden</div>';
+  } else {
+    lijst.innerHTML = gefilterd.map(s => `
+      <div class="speler-zoek-item" onclick="selecteerPartijSpeler(${n}, ${s.id}, '${s.naam.replace(/'/g,"\\'")}', ${s.hcp})">
+        ${s.naam} <span style="color:var(--light);font-size:12px">hcp ${Math.round(s.hcp)}</span>
+      </div>
+    `).join('');
+  }
+  lijst.style.display = 'block';
+}
+
+function selecteerPartijSpeler(n, id, naam, hcp) {
+  const slot = document.getElementById('slot-' + n);
+  const input = document.getElementById('player-' + n);
+  const hcpEl = document.getElementById('hcp-' + n);
+  if (slot) slot.dataset.spelerId = String(id);
+  if (input) input.value = naam;
+  if (hcpEl) hcpEl.value = Math.round(hcp);
+  sluitSpelerLijst(n);
+}
+
+function sluitSpelerLijst(n) {
+  const lijst = document.getElementById('speler-lijst-' + n);
+  if (lijst) lijst.style.display = 'none';
 }
 
 function refreshPlayerSlotOptions() {
-  const selects = Array.from(document.querySelectorAll('.player-select'));
-  const reedsSel = selects.map(s => String(s.value)).filter(v => v !== '');
-  const sorted = getPartijLadderSpelers();
-
-  selects.forEach(sel => {
-    const huidigeWaarde = sel.value;
-    const beschikbaar = sorted.filter(s =>
-      String(s.id) === huidigeWaarde || !reedsSel.includes(String(s.id))
-    );
-    sel.innerHTML = '<option value="">— Kies speler —</option>' +
-      beschikbaar.map(s => `<option value="${s.id}">${s.naam} (hcp ${Math.round(s.hcp)})</option>`).join('');
-    sel.value = huidigeWaarde;
-  });
+  // Niet meer nodig met zoekbare inputs — lege functie voor compatibiliteit
 }
 
 function removeSlot(n) {
@@ -2363,13 +2369,14 @@ async function startPartij() {
   // Collect players
   const spelers = [];
   for (let i = 1; i <= 4; i++) {
-    const sel = document.getElementById('player-' + i);
+    const slot = document.getElementById('slot-' + i);
     const hcpEl = document.getElementById('hcp-' + i);
-    if (!sel) continue;
-    if (!sel.value) continue;
-    const speler = partijLadderSpelers.find(s => s.id == sel.value);
+    if (!slot) continue;
+    const spelerId = slot.dataset.spelerId;
+    if (!spelerId) continue;
+    const speler = partijLadderSpelers.find(s => String(s.id) === String(spelerId));
     if (!speler) continue;
-    const partijHcp = Math.round(parseFloat(hcpEl.value));
+    const partijHcp = Math.round(parseFloat(hcpEl?.value));
     if (!isNaN(partijHcp) && partijHcp !== speler.hcp) {
       const sv = partijLadderSpelers.find(s => s.id === speler.id);
       if (sv) sv.hcp = partijHcp;
@@ -5875,6 +5882,9 @@ window.openLadderSpelersModal = openLadderSpelersModal;
 window.slaLadderSpelersOp = slaLadderSpelersOp;
 window.toggleLadderKaart = toggleLadderKaart;
 window.wisselLadder = wisselLadder;
+window.zoekPartijSpeler = zoekPartijSpeler;
+window.selecteerPartijSpeler = selecteerPartijSpeler;
+window.sluitSpelerLijst = sluitSpelerLijst;
 window.filterPartijSpelers = filterPartijSpelers;
 window.herlaadPartijSpelers = herlaadPartijSpelers;
 window.genereerInviteLink = genereerInviteLink;
