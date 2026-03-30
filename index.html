@@ -1283,7 +1283,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.7.7</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.7.8</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -5088,7 +5088,7 @@ function renderToernooiActief() {
       </button>
       ` : `
       <button class="btn btn-gold btn-block" onclick="openToernooiAfsluiten()" style="margin-bottom:8px">
-        ✓ Toernooi afsluiten & ladder bijwerken
+        ✓ Toernooi afsluiten${(toernooiData?.rankingLadderIds?.length > 0 || toernooiData?.ladderId) ? ' & ladder bijwerken' : ''}
       </button>
       `}
       <button class="btn btn-ghost btn-block" onclick="annuleerToernooi()" style="margin-bottom:8px;color:var(--red)">
@@ -5471,17 +5471,29 @@ function openToernooiAfsluiten() {
   const volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]}))
     .sort((a,b) => b.pt - a.pt || b.w - a.w);
 
+  const rankingLadderIds = t.rankingLadderIds?.length > 0
+    ? t.rankingLadderIds
+    : (t.ladderId ? [t.ladderId] : []);
+  const heeftRankingLadders = rankingLadderIds.length > 0;
+  const rankingLadderNamen = alleLadders
+    .filter(l => rankingLadderIds.includes(l.id))
+    .map(l => l.naam).join(', ');
+
   let html = '<div style="margin-bottom:12px">';
   volgorde.forEach((entry, rank) => {
     html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
       <div>
         <span style="font-family:'Bebas Neue';font-size:18px;color:${rank===0?'var(--gold)':'var(--light)'};margin-right:8px">${rank+1}</span>
-        <strong>${entry.s.naam}</strong>
+        <strong>${entry.s.naam}</strong>${entry.s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}
       </div>
       <span style="font-family:'DM Mono',monospace;color:var(--green);font-weight:700">${entry.pt > 0 ? '+' : ''}${entry.pt} pt</span>
     </div>`;
   });
-  html += '</div><p style="font-size:12px;color:var(--light)">De winnaar klimt op de ladder. Overige posities worden ook aangepast.</p>';
+  html += `</div><p style="font-size:12px;color:var(--light)">${
+    heeftRankingLadders
+      ? `Rankingposities worden bijgewerkt in: ${rankingLadderNamen}. Gastspelers tellen niet mee.`
+      : 'Er zijn geen ranking ladders gekoppeld aan dit toernooi. Ladders worden niet aangepast.'
+  }</p>`;
 
   document.getElementById('t-eindstand').innerHTML = html;
   document.getElementById('modal-toernooi-afsluiten').classList.add('open');
