@@ -672,23 +672,6 @@
   </div>
 </div>
 
-<!-- Email verificatie modal (beheerder) -->
-<div class="modal-overlay" id="modal-email-verificatie">
-  <div class="modal">
-    <h3>Verificatie vereist</h3>
-    <p style="font-size:14px;color:var(--mid);margin-bottom:16px">Voer je wachtwoord in om je identiteit te bevestigen.</p>
-    <div class="login-fout" id="verificatie-fout" style="display:none;margin-bottom:12px"></div>
-    <div class="form-group">
-      <label>Wachtwoord</label>
-      <input type="password" id="verificatie-pass" placeholder="••••••" onkeydown="if(event.key==='Enter') bevestigVerificatie()">
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" style="flex:1" onclick="uitloggen()">Uitloggen</button>
-      <button class="btn btn-primary" style="flex:2" onclick="bevestigVerificatie()">Bevestigen</button>
-    </div>
-  </div>
-</div>
-
 <!-- Ladder instellingen modal -->
 <div class="modal-overlay" id="modal-ladder-instellingen">
   <div class="modal">
@@ -1322,7 +1305,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.8.7</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.9.0</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -1642,12 +1625,6 @@ async function setIngelogd(firebaseUser) {
 
     huidigeBruiker = { uid: firebaseUser.uid, email: firebaseUser.email, gebruikersnaam: besteNaam, rol: profiel.rol };
 
-    // Email verificatie vereist voor beheerder — eenmalig per sessie
-    if (profiel.rol === 'beheerder' && !window._beheerderGeverifieerd) {
-      document.getElementById('modal-email-verificatie').classList.add('open');
-      return;
-    }
-
   } catch(e) {
     console.error('setIngelogd error:', e);
     toonLoginFout('Verbindingsfout, probeer opnieuw');
@@ -1728,7 +1705,6 @@ async function loginMetGoogle() {
 }
 
 function uitloggen() {
-  window._beheerderGeverifieerd = false;
   signOut(auth);
   huidigeBruiker = null;
   document.getElementById('login-scherm').classList.add('actief');
@@ -4141,25 +4117,6 @@ function closeModal(id) {
   document.getElementById(id).classList.remove('open');
 }
 
-async function bevestigVerificatie() {
-  try {
-    const pass = document.getElementById('verificatie-pass').value;
-    if (!pass) { document.getElementById('verificatie-fout').textContent = 'Voer je wachtwoord in'; document.getElementById('verificatie-fout').style.display = ''; return; }
-    const user = auth.currentUser;
-    const credential = EmailAuthProvider.credential(user.email, pass);
-    await reauthenticateWithCredential(user, credential);
-    window._beheerderGeverifieerd = true;
-    document.getElementById('verificatie-pass').value = '';
-    document.getElementById('verificatie-fout').style.display = 'none';
-    closeModal('modal-email-verificatie');
-    // Vervolg login flow
-    vervolgIngelogd();
-  } catch(e) {
-    document.getElementById('verificatie-fout').textContent = 'Wachtwoord onjuist, probeer opnieuw';
-    document.getElementById('verificatie-fout').style.display = '';
-  }
-}
-
 function isBeheerderRol() {
   return huidigeBruiker?.rol === 'beheerder';
 }
@@ -6394,7 +6351,6 @@ window.verwijderActievePartij = verwijderActievePartij;
 window.verschuifRank = verschuifRank;
 window.loginSubmit = loginSubmit;
 window.loginMetGoogle = loginMetGoogle;
-window.bevestigVerificatie = bevestigVerificatie;
 window.uitloggen = uitloggen;
 window.openWachtwoordVergeten = openWachtwoordVergeten;
 window.sluitResetWrap = sluitResetWrap;
