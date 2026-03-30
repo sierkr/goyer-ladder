@@ -1134,10 +1134,12 @@
           </div>
         </div>
         <div class="form-group">
-          <label>Ladder (voor rankingverwerking)</label>
-          <select id="t-ladder">
-            <option value="">— Geen ladder koppelen —</option>
-          </select>
+          <label>Spelers ladder(s)</label>
+          <div id="t-spelers-ladders" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div>
+        </div>
+        <div class="form-group">
+          <label>Ranking ladder(s)</label>
+          <div id="t-ranking-ladders" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div>
         </div>
         <div class="divider"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
@@ -1160,7 +1162,14 @@
         </div>
         <div class="divider"></div>
         <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px">Deelnemers selecteren</label>
-        <div id="t-speler-tags" class="tag-list" style="margin-bottom:12px"></div>
+        <div style="position:relative;margin-bottom:8px">
+          <input type="text" id="t-speler-zoek" placeholder="🔍 Zoek en selecteer speler..." autocomplete="off"
+            oninput="zoekToernooiSpeler(this.value)" onfocus="zoekToernooiSpeler(this.value)"
+            onblur="setTimeout(sluitToernooiSpelerLijst, 150)">
+          <div id="t-speler-zoek-lijst" style="position:absolute;top:100%;left:0;right:0;background:white;border:1.5px solid var(--green);border-radius:8px;max-height:200px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,0.1);display:none;margin-top:2px"></div>
+        </div>
+        <div id="t-geselecteerde-spelers" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
+        <button class="btn btn-ghost btn-sm btn-block" onclick="voegGastspelerToe()" style="margin-bottom:12px">+ Gastspeler toevoegen</button>
         <button class="btn btn-primary btn-block" onclick="openFlightIndeling()">Flight indeling →</button>
         </div>
       </div>
@@ -1229,7 +1238,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.6.2</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.6.3</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4363,81 +4372,156 @@ function selecteerToernooi(id) {
   renderToernooi();
 }
 
-function initToernooiSetup() {
-  // Ladder select — bewaar huidige waarde
-  const ladderSel = document.getElementById('t-ladder');
-  if (ladderSel) {
-    const huidigeWaarde = ladderSel.value;
-    ladderSel.innerHTML = '<option value="">— Geen ladder koppelen —</option>' +
-      alleLadders.map(l => `<option value="${l.id}">${l.naam}</option>`).join('');
-    if (huidigeWaarde && alleLadders.find(l => l.id === huidigeWaarde)) {
-      ladderSel.value = huidigeWaarde;
-    }
-    // Koppel onchange eenmalig
-    if (!ladderSel._initDone) {
-      ladderSel.onchange = () => renderToernooiSpelerTags();
-      ladderSel._initDone = true;
-    }
-  }
+let _tGeselecteerdeSpelers = []; // [{id, naam, hcp, gast}]
+let _tSpelersLadderIds = new Set(); // geselecteerde spelers ladders
+let _tRankingLadderIds = new Set(); // geselecteerde ranking ladders
 
+function initToernooiSetup() {
   // Baan select
   const baanSel = document.getElementById('t-baan');
-  baanSel.innerHTML = Object.keys(BANEN_DB).filter(n => n !== 'Handmatig invoeren').map(n =>
-    `<option value="${n}">${n}</option>`
-  ).join('');
-  aangepasteBanen.forEach(b => {
-    baanSel.innerHTML += `<option value="${b.naam}">⭐ ${b.naam}</option>`;
-  });
+  if (baanSel) {
+    baanSel.innerHTML = Object.keys(BANEN_DB).filter(n => n !== 'Handmatig invoeren').map(n =>
+      `<option value="${n}">${n}</option>`
+    ).join('');
+    aangepasteBanen.forEach(b => {
+      baanSel.innerHTML += `<option value="${b.naam}">⭐ ${b.naam}</option>`;
+    });
+  }
 
-  // Datum vandaag als default (alleen eerste keer)
-  if (!document.getElementById('t-datum').value) {
+  // Datum vandaag als default
+  if (!document.getElementById('t-datum')?.value) {
     document.getElementById('t-datum').value = new Date().toISOString().split('T')[0];
   }
 
-  renderToernooiSpelerTags();
-}
-
-function renderToernooiSpelerTags() {
-  // Speler tags — kleur op basis van ladder membership en toernooi bezetting
-  const bezetteSpelerIds = new Set(
-    alleToernooien.flatMap(t => (t.spelers || []).map(s => String(s.id)))
-  );
-
-  const geselecteerdeLadderId = document.getElementById('t-ladder')?.value || '';
-  const geselecteerdeLadder = alleLadders.find(l => l.id === geselecteerdeLadderId);
-  const ladderSpelerIds = new Set(
-    (geselecteerdeLadder?.spelers || []).map(s => String(s.id))
-  );
-
-  const sorted = [...alleSpelersData].sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
-  const tagsEl = document.getElementById('t-speler-tags');
-  if (!tagsEl) return;
-
-  if (sorted.length === 0) {
-    tagsEl.innerHTML = '<p style="font-size:13px;color:var(--light)">Geen spelers gevonden.</p>';
-    return;
+  // Ladder checkboxes — spelers ladders
+  const spelersLaddersEl = document.getElementById('t-spelers-ladders');
+  if (spelersLaddersEl) {
+    spelersLaddersEl.innerHTML = alleLadders.map(l => `
+      <label style="display:flex;align-items:center;gap:6px;padding:5px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:13px;user-select:none">
+        <input type="checkbox" value="${l.id}" onchange="toggleTSpelersLadder('${l.id}', this.checked)" style="accent-color:var(--green)">
+        ${l.naam}
+      </label>
+    `).join('');
   }
 
-  // Bewaar huidige selectie (alleen geselecteerde tags met .selected class)
-  const geselecteerd = new Set(
-    [...(tagsEl.querySelectorAll('.tag.selected') || [])].map(el => el.id.replace('ttag-', ''))
-  );
+  // Ladder checkboxes — ranking ladders
+  const rankingLaddersEl = document.getElementById('t-ranking-ladders');
+  if (rankingLaddersEl) {
+    rankingLaddersEl.innerHTML = alleLadders.map(l => `
+      <label style="display:flex;align-items:center;gap:6px;padding:5px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:13px;user-select:none">
+        <input type="checkbox" value="${l.id}" onchange="toggleTRankingLadder('${l.id}', this.checked)" style="accent-color:var(--green)">
+        ${l.naam}
+      </label>
+    `).join('');
+  }
 
-  tagsEl.innerHTML = sorted.map(s => {
-    const bezet = bezetteSpelerIds.has(String(s.id));
-    const inLadder = !geselecteerdeLadderId || ladderSpelerIds.has(String(s.id));
-    const isRood = bezet || !inLadder;
-    const wasGeselecteerd = geselecteerd.has(String(s.id));
-    const title = bezet ? 'Speelt al mee in ander toernooi' : !inLadder ? 'Niet in geselecteerde ladder' : '';
-    const kleur = isRood
-      ? 'background:#fde8e8;color:#c0392b;border-color:#f1a9a9'
-      : 'background:var(--green-pale);color:var(--green);border-color:var(--green)';
-    return `<span class="tag${wasGeselecteerd ? ' selected' : ''}" id="ttag-${s.id}"
-      onclick="toggleTSpeler('${s.id}')"
-      style="${kleur};${wasGeselecteerd ? 'outline:3px solid var(--dark);font-weight:700' : ''}"
-      title="${title}"
-    >${s.naam}</span>`;
-  }).join('');
+  renderTGeselecteerdeSpelers();
+}
+
+function toggleTSpelersLadder(ladderId, checked) {
+  if (checked) _tSpelersLadderIds.add(ladderId);
+  else _tSpelersLadderIds.delete(ladderId);
+  // Verwijder geselecteerde spelers die niet meer in een geselecteerde ladder zitten
+  if (_tSpelersLadderIds.size > 0) {
+    const geldigeIds = new Set(
+      alleLadders.filter(l => _tSpelersLadderIds.has(l.id))
+        .flatMap(l => (l.spelers || []).map(s => String(s.id)))
+    );
+    _tGeselecteerdeSpelers = _tGeselecteerdeSpelers.filter(s => s.gast || geldigeIds.has(String(s.id)));
+  }
+  renderTGeselecteerdeSpelers();
+}
+
+function toggleTRankingLadder(ladderId, checked) {
+  if (checked) _tRankingLadderIds.add(ladderId);
+  else _tRankingLadderIds.delete(ladderId);
+}
+
+function getToernooiSpelersPool() {
+  // Spelers uit geselecteerde ladders, geen duplicaten
+  const gezien = new Set();
+  const spelers = [];
+  const ladders = _tSpelersLadderIds.size > 0
+    ? alleLadders.filter(l => _tSpelersLadderIds.has(l.id))
+    : alleLadders;
+  ladders.forEach(l => {
+    (l.spelers || []).forEach(s => {
+      if (!gezien.has(s.id)) {
+        gezien.add(s.id);
+        spelers.push(s);
+      }
+    });
+  });
+  return spelers.sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
+}
+
+function zoekToernooiSpeler(zoek) {
+  const lijst = document.getElementById('t-speler-zoek-lijst');
+  if (!lijst) return;
+  const term = zoek.toLowerCase().trim();
+  const geselecteerdeIds = new Set(_tGeselecteerdeSpelers.map(s => String(s.id)));
+  const pool = getToernooiSpelersPool().filter(s => !geselecteerdeIds.has(String(s.id)));
+  const gefilterd = term ? pool.filter(s => s.naam.toLowerCase().includes(term)) : pool;
+
+  if (gefilterd.length === 0) {
+    lijst.innerHTML = `<div style="padding:10px 14px;font-size:13px;color:var(--light)">Geen spelers gevonden</div>`;
+  } else {
+    lijst.innerHTML = gefilterd.map(s => `
+      <div onclick="selecteerToernooiSpeler(${s.id},'${s.naam.replace(/'/g,"\\'")}',${s.hcp})"
+        style="padding:10px 14px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"
+        onmouseenter="this.style.background='var(--green-pale)'" onmouseleave="this.style.background=''">
+        <span>${s.naam}</span>
+        <span style="color:var(--light);font-size:12px">hcp ${Math.round(s.hcp)}</span>
+      </div>
+    `).join('');
+  }
+  lijst.style.display = 'block';
+}
+
+function selecteerToernooiSpeler(id, naam, hcp) {
+  if (!_tGeselecteerdeSpelers.find(s => s.id === id)) {
+    _tGeselecteerdeSpelers.push({ id, naam, hcp, gast: false });
+  }
+  sluitToernooiSpelerLijst();
+  const zoek = document.getElementById('t-speler-zoek');
+  if (zoek) zoek.value = '';
+  renderTGeselecteerdeSpelers();
+}
+
+function sluitToernooiSpelerLijst() {
+  const lijst = document.getElementById('t-speler-zoek-lijst');
+  if (lijst) lijst.style.display = 'none';
+}
+
+function verwijderToernooiSpelerSelectie(id) {
+  _tGeselecteerdeSpelers = _tGeselecteerdeSpelers.filter(s => s.id !== id);
+  renderTGeselecteerdeSpelers();
+}
+
+function voegGastspelerToe() {
+  const naam = prompt('Naam gastspeler:');
+  if (!naam?.trim()) return;
+  const hcpStr = prompt(`Handicap voor ${naam.trim()}:`, '10');
+  if (hcpStr === null) return;
+  const hcp = parseFloat(hcpStr) || 0;
+  const gastId = 'gast_' + Date.now();
+  _tGeselecteerdeSpelers.push({ id: gastId, naam: naam.trim(), hcp, gast: true });
+  renderTGeselecteerdeSpelers();
+}
+
+function renderTGeselecteerdeSpelers() {
+  const el = document.getElementById('t-geselecteerde-spelers');
+  if (!el) return;
+  if (_tGeselecteerdeSpelers.length === 0) {
+    el.innerHTML = '<span style="font-size:13px;color:var(--light)">Nog geen deelnemers geselecteerd</span>';
+    return;
+  }
+  el.innerHTML = _tGeselecteerdeSpelers.map(s => `
+    <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:var(--green-pale);color:var(--green);border:1.5px solid var(--green);border-radius:20px;font-size:13px">
+      ${s.naam}${s.gast ? ' <em style="font-size:11px;opacity:0.7">(gast)</em>' : ''}
+      <button onclick="verwijderToernooiSpelerSelectie('${s.id}')" style="background:none;border:none;color:var(--green);cursor:pointer;font-size:14px;padding:0;line-height:1">×</button>
+    </span>
+  `).join('');
 }
 
 function toggleTSpeler(id) {
@@ -4460,9 +4544,7 @@ function toggleHolesCustom() {
 }
 
 function openFlightIndeling() {
-  const geselecteerd = alleSpelersData.filter(s =>
-    document.getElementById('ttag-' + s.id)?.classList.contains('selected')
-  );
+  const geselecteerd = _tGeselecteerdeSpelers;
   if (geselecteerd.length < 2) { toast('Selecteer minimaal 2 spelers'); return; }
 
   const starttijd = document.getElementById('t-starttijd')?.value || '09:00';
@@ -4596,7 +4678,8 @@ async function startToernooi() {
   const ptTie = parseFloat(document.getElementById('t-pt-tie').value);
   const ptLoss = parseFloat(document.getElementById('t-pt-loss').value);
   const hcpPct = parseFloat(document.getElementById('t-hcp-pct').value) / 100;
-  const ladderId = document.getElementById('t-ladder')?.value || null;
+  const ladderId = [..._tRankingLadderIds][0] || null; // eerste ranking ladder (legacy compat)
+  const rankingLadderIds = [..._tRankingLadderIds];
 
   if (!naam) { toast('Voer een naam in'); return; }
   if (!datum) { toast('Voer een datum in'); return; }
@@ -4623,7 +4706,9 @@ async function startToernooi() {
   const nieuweToernooi = {
     status: 'actief',
     naam, datum, baan: baanNaam, holes,
-    ptWin, ptTie, ptLoss, hcpPct, ladderId: ladderId || null,
+    ptWin, ptTie, ptLoss, hcpPct,
+    ladderId: ladderId || null,
+    rankingLadderIds,
     starttijd: document.getElementById('t-starttijd')?.value || '',
     interval: parseInt(document.getElementById('t-interval')?.value) || 0,
     spelers: geselecteerd.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp })),
@@ -4646,6 +4731,9 @@ async function startToernooi() {
   toast('Toernooi gestart! 🏅');
   closeModal('modal-flight-indeling');
   _flights = [];
+  _tGeselecteerdeSpelers = [];
+  _tSpelersLadderIds = new Set();
+  _tRankingLadderIds = new Set();
   // Reset formulier
   document.getElementById('t-naam').value = '';
   document.getElementById('t-datum').value = '';
@@ -5173,16 +5261,19 @@ async function bevestigToernooiAfsluiten() {
   const volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]}))
     .sort((a,b) => b.pt - a.pt || b.w - a.w);
 
-  // Haal gekoppelde ladder op — optioneel
-  const ladderId = t.ladderId;
-  if (ladderId) {
+  // Haal alle gekoppelde ranking ladders op — optioneel
+  const rankingLadderIds = t.rankingLadderIds?.length > 0
+    ? t.rankingLadderIds
+    : (t.ladderId ? [t.ladderId] : []);
+
+  for (const ladderId of rankingLadderIds) {
     const ladderSnap = await getDoc(doc(db, 'ladders', ladderId));
     if (ladderSnap.exists()) {
       const ladderData = ladderSnap.data();
       const ladderSpelerIds = new Set((ladderData.spelers || []).map(s => String(s.id)));
       const ladderSpelersOpNaam = new Map((ladderData.spelers || []).map(s => [s.naam.toLowerCase(), s]));
       const deelnemers = volgorde.filter(e =>
-        ladderSpelerIds.has(String(e.s.id)) || ladderSpelersOpNaam.has(e.s.naam.toLowerCase())
+        !e.s.gast && (ladderSpelerIds.has(String(e.s.id)) || ladderSpelersOpNaam.has(e.s.naam.toLowerCase()))
       );
       if (deelnemers.length > 0) {
         const deelnemerSpelers = deelnemers.map(e =>
@@ -5859,6 +5950,13 @@ window.toonToernooiUitslag = toonToernooiUitslag;
 window.openVerwijderToernooiSpeler = openVerwijderToernooiSpeler;
 window.verwijderToernooiSpeler = verwijderToernooiSpeler;
 window.selecteerFlightTab = selecteerFlightTab;
+window.toggleTSpelersLadder = toggleTSpelersLadder;
+window.toggleTRankingLadder = toggleTRankingLadder;
+window.zoekToernooiSpeler = zoekToernooiSpeler;
+window.selecteerToernooiSpeler = selecteerToernooiSpeler;
+window.sluitToernooiSpelerLijst = sluitToernooiSpelerLijst;
+window.verwijderToernooiSpelerSelectie = verwijderToernooiSpelerSelectie;
+window.voegGastspelerToe = voegGastspelerToe;
 window.toggleHolesCustom = toggleHolesCustom;
 window.wijzigFlightStarttijd = wijzigFlightStarttijd;
 window.wijzigFlightStarthole = wijzigFlightStarthole;
