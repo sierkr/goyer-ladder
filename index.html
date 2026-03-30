@@ -1238,7 +1238,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.6.4</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.6.5</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4504,7 +4504,7 @@ function voegGastspelerToe() {
   const hcpStr = prompt(`Handicap voor ${naam.trim()}:`, '10');
   if (hcpStr === null) return;
   const hcp = parseFloat(hcpStr) || 0;
-  const gastId = 'gast_' + Date.now();
+  const gastId = 90000 + Math.floor(Math.random() * 9999); // hoog getal om conflict te vermijden
   _tGeselecteerdeSpelers.push({ id: gastId, naam: naam.trim(), hcp, gast: true });
   renderTGeselecteerdeSpelers();
 }
@@ -4711,7 +4711,7 @@ async function startToernooi() {
     rankingLadderIds,
     starttijd: document.getElementById('t-starttijd')?.value || '',
     interval: parseInt(document.getElementById('t-interval')?.value) || 0,
-    spelers: geselecteerd.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp })),
+    spelers: geselecteerd.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp, gast: s.gast || false })),
     flights: _flights.map(f => ({
       id: f.id, naam: f.naam,
       spelerIds: f.spelers.map(s => s.id),
