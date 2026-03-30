@@ -1304,7 +1304,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.0.4</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.0.5</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -2646,7 +2646,7 @@ function renderHcpBlok(spelers, holes, hcpPct, containerId) {
           return { nr: idx + 1, si: h.si, slagen };
         })
         .filter(h => h.slagen > 0)
-        .sort((a, b) => a.si - b.si);
+        .sort((a, b) => a.nr - b.nr);
 
       html += `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
