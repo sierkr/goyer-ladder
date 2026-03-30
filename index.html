@@ -1283,7 +1283,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.6.8</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.7.0</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4396,13 +4396,28 @@ async function herlaadToernooien() {
         const idx = alleToernooien.findIndex(x => x.id === snap.id);
         if (idx >= 0) alleToernooien[idx] = nieuweData;
         if (actieveToernooiId === snap.id) {
-          toernooiData = nieuweData;
-          // Herrender matrix en scorekaart live
+          const isBeheerder = huidigeBruiker?.rol === 'beheerder';
           const detail = document.getElementById('toernooi-detail');
           if (detail) {
-            renderTScorecard();
-            renderTMatrix();
-            if (nieuweData.uitslagZichtbaar) renderTRanglijst();
+            if (isBeheerder) {
+              // Voor beheerder: update data maar toon refresh knop
+              const oudScores = JSON.stringify(toernooiData?.scores || {});
+              const nieuwScores = JSON.stringify(nieuweData.scores || {});
+              toernooiData = nieuweData;
+              if (oudScores !== nieuwScores) {
+                // Nieuwe scores van andere gebruikers — toon refresh knop
+                const btn = document.getElementById('t-refresh-btn');
+                if (btn) btn.style.display = '';
+              }
+              renderTMatrix();
+              if (nieuweData.uitslagZichtbaar) renderTRanglijst();
+            } else {
+              // Voor spelers: altijd volledig updaten
+              toernooiData = nieuweData;
+              renderTScorecard();
+              renderTMatrix();
+              if (nieuweData.uitslagZichtbaar) renderTRanglijst();
+            }
           }
         }
       });
@@ -5033,7 +5048,10 @@ function renderToernooiActief() {
       <div class="card-header inklapbaar ${uitslag ? 'ingeklapt' : ''}" onclick="toggleAdminKaart(this)">
         <h2>${isBeheerder ? 'Scores' : 'Mijn scorekaart'}</h2>
         <div style="display:flex;gap:6px" onclick="event.stopPropagation()">
-          ${isBeheerder ? `<button class="btn btn-sm btn-ghost" onclick="openToernooiSpelersBeheer()">👥 Spelers</button>` : ''}
+          ${isBeheerder ? `
+            <button id="t-refresh-btn" class="btn btn-sm btn-ghost" onclick="refreshToernooiScorekaart()" style="display:none;background:var(--gold);color:white;border-color:var(--gold)">↺ Nieuw</button>
+            <button class="btn btn-sm btn-ghost" onclick="openToernooiSpelersBeheer()">👥 Spelers</button>
+          ` : ''}
         </div>
       </div>
       <div class="card-collapse ${uitslag ? 'ingeklapt' : ''}">
@@ -5170,17 +5188,25 @@ function renderTScorecard() {
     });
     html += '</tr>';
   });
-  html += '<tr style="background:var(--green-pale)"><td class="player-col" style="font-weight:700">Tot</td>';
+  html += '<tr class="t-totaal-rij" style="background:var(--green-pale)"><td class="player-col" style="font-weight:700">Tot</td>';
   spelers.forEach(s => {
     const scores = t.scores[s.id] || t.scores[String(s.id)] || [];
     const filled = scores.filter(v => v !== null && v !== undefined);
     const tot = filled.length ? filled.reduce((a,b) => a+Number(b), 0) : null;
-    html += `<td style="font-family:'DM Mono',monospace;font-weight:700;text-align:center">${tot !== null ? tot : '—'}</td>`;
+    html += `<td data-speler-id="${s.id}" style="font-family:'DM Mono',monospace;font-weight:700;text-align:center">${tot !== null ? tot : '—'}</td>`;
   });
   html += '</tr></tbody></table></div>';
 
   scorecardWrap.innerHTML = html;
   scorecardWrap._activeFlight = activeFi;
+}
+
+function refreshToernooiScorekaart() {
+  const btn = document.getElementById('t-refresh-btn');
+  if (btn) btn.style.display = 'none';
+  renderTScorecard();
+  renderTMatrix();
+  if (toernooiData?.uitslagZichtbaar) renderTRanglijst();
 }
 
 function selecteerFlightTab(fi) {
@@ -5204,11 +5230,12 @@ function updateTScore(spelerId, holeIdx, val) {
   const key = String(spelerId);
   if (!toernooiData.scores[key]) toernooiData.scores[key] = Array(toernooiData.holes.length).fill(null);
   toernooiData.scores[key][holeIdx] = val === '' ? null : parseInt(val);
-  // Update cache met deep copy
+  // Update cache
   const idx = alleToernooien.findIndex(t => t.id === actieveToernooiId);
   if (idx >= 0) alleToernooien[idx] = JSON.parse(JSON.stringify(toernooiData));
-  renderTScorecard(); // eerst scorecard (bouwt DOM op)
-  renderTMatrix();    // dan matrix (t-matrix element bestaat nu)
+  // Update totaalrij inline (zonder scorecard te herrenderen)
+  updateTTotaalRijInline();
+  renderTMatrix();
   if (toernooiData.uitslagZichtbaar) renderTRanglijst();
   // Update knop status
   if (huidigeBruiker?.rol === 'beheerder') {
@@ -5222,13 +5249,29 @@ function updateTScore(spelerId, holeIdx, val) {
       btn.onclick = alles ? toonToernooiUitslag : null;
     }
   }
-  // Direct opslaan (geen debounce om verlies te voorkomen)
   clearTimeout(window._tSaveTimer);
   window._tSaveTimer = setTimeout(async () => {
     try {
       await setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(toernooiData)));
     } catch(e) { console.error('Score opslaan mislukt:', e); }
   }, 800);
+}
+
+function updateTTotaalRijInline() {
+  const t = toernooiData;
+  if (!t) return;
+  // Zoek alle totaalrijen in de scorecard en update ze
+  const totaalRijen = document.querySelectorAll('#t-scorecard-wrap tr.t-totaal-rij');
+  if (totaalRijen.length === 0) return; // fallback als niet gevonden
+  totaalRijen.forEach(rij => {
+    const cellen = rij.querySelectorAll('td[data-speler-id]');
+    cellen.forEach(cel => {
+      const sid = cel.dataset.spelerId;
+      const scores = t.scores[sid] || t.scores[String(sid)] || [];
+      const filled = scores.filter(v => v !== null && v !== undefined);
+      cel.textContent = filled.length ? filled.reduce((a,b) => a + Number(b), 0) : '—';
+    });
+  });
 }
 
 function editToernooiHcp(spelerId) {
@@ -5249,17 +5292,7 @@ function editToernooiHcp(spelerId) {
 }
 
 function updateTTotalen() {
-  const t = toernooiData;
-  if (!t) return;
-  // Update totaalrijen inline zonder volledige herrender
-  const totaalRijen = document.querySelectorAll('#t-scorecard-wrap tr[data-totaal]');
-  if (totaalRijen.length === 0) {
-    // Fallback: herrender scorekaart als totaalrijen niet gevonden
-    renderTScorecard();
-    return;
-  }
-  // Normaal geval: update inline (toekomstige optimalisatie)
-  renderTScorecard();
+  updateTTotaalRijInline();
 }
 
 function toggleTScorecard() {
@@ -6111,6 +6144,7 @@ window.toonToernooiUitslag = toonToernooiUitslag;
 window.openVerwijderToernooiSpeler = openVerwijderToernooiSpeler;
 window.verwijderToernooiSpeler = verwijderToernooiSpeler;
 window.selecteerFlightTab = selecteerFlightTab;
+window.refreshToernooiScorekaart = refreshToernooiScorekaart;
 window.openToernooiSpelersBeheer = openToernooiSpelersBeheer;
 window.zoekToernooiSpelerModal = zoekToernooiSpelerModal;
 window.selecteerToernooiSpelerModal = selecteerToernooiSpelerModal;
