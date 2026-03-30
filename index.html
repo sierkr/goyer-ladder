@@ -1283,7 +1283,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.7.2</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.7.3</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -4405,18 +4405,9 @@ async function herlaadToernooien() {
               const nieuwScores = JSON.stringify(nieuweData.scores || {});
               toernooiData = nieuweData;
               if (oudScores !== nieuwScores) {
-                // Nieuwe scores van andere gebruikers — toon refresh knop
                 const btn = document.getElementById('t-refresh-btn');
                 if (btn) btn.style.display = '';
-                // Matrix debounced updaten (niet meteen om focus niet te verstoren)
-                clearTimeout(window._matrixUpdateTimer);
-                window._matrixUpdateTimer = setTimeout(() => {
-                  // Alleen updaten als er geen actieve input focus is
-                  const activeEl = document.activeElement;
-                  if (!activeEl || activeEl.tagName !== 'INPUT' || activeEl.type !== 'number') {
-                    renderTMatrix();
-                  }
-                }, 2000);
+                renderTMatrix();
               }
               if (nieuweData.uitslagZichtbaar) renderTRanglijst();
             } else {
@@ -5243,9 +5234,7 @@ function updateTScore(spelerId, holeIdx, val) {
   if (idx >= 0) alleToernooien[idx] = JSON.parse(JSON.stringify(toernooiData));
   // Update totaalrij inline (zonder scorecard te herrenderen)
   updateTTotaalRijInline();
-  // Matrix debounced updaten zodat focus behouden blijft
-  clearTimeout(window._matrixUpdateTimer);
-  window._matrixUpdateTimer = setTimeout(() => renderTMatrix(), 500);
+  renderTMatrix();
   if (toernooiData.uitslagZichtbaar) renderTRanglijst();
   // Update knop status
   if (huidigeBruiker?.rol === 'beheerder') {
@@ -5400,6 +5389,11 @@ function renderTRanglijst() {
 }
 
 function renderTMatrix() {
+  // Bewaar focus en cursor positie voor matrix render
+  const actief = document.activeElement;
+  const tabIdx = actief?.getAttribute?.('tabindex');
+  const selStart = actief?.selectionStart;
+
   const t = toernooiData;
   const n = t.spelers.length;
   const { matrix } = berekenTPunten();
@@ -5435,6 +5429,15 @@ function renderTMatrix() {
   const matrixEl = document.getElementById('t-matrix');
   if (!matrixEl) { console.log('t-matrix element niet gevonden'); return; }
   matrixEl.innerHTML = html;
+
+  // Herstel focus na matrix render
+  if (tabIdx) {
+    const herstel = document.querySelector(`input[tabindex="${tabIdx}"]`);
+    if (herstel) {
+      herstel.focus();
+      try { herstel.setSelectionRange(selStart, selStart); } catch(e) {}
+    }
+  }
 }
 
 function openToernooiAfsluiten() {
