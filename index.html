@@ -1305,7 +1305,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.9.4</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.9.5</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -1755,11 +1755,16 @@ async function wijzigWachtwoord() {
   if (!huidig) { toast('Voer je huidige wachtwoord in'); return; }
   if (nieuw.length < 4) { toast('Nieuw wachtwoord minimaal 4 tekens'); return; }
   if (nieuw !== bevestig) { toast('Wachtwoorden komen niet overeen'); return; }
+  if (nieuw === huidig) { toast('Nieuw wachtwoord moet anders zijn'); return; }
   try {
     const user = auth.currentUser;
+    if (!user) { toast('Niet ingelogd'); return; }
+    console.log('Reauth voor:', user.email);
     const credential = EmailAuthProvider.credential(user.email, huidig);
     await reauthenticateWithCredential(user, credential);
+    console.log('Reauth geslaagd, wachtwoord updaten...');
     await updatePassword(user, nieuw);
+    console.log('Wachtwoord succesvol gewijzigd');
     document.getElementById('huidig-wachtwoord').value = '';
     document.getElementById('nieuw-wachtwoord').value = '';
     document.getElementById('bevestig-wachtwoord').value = '';
