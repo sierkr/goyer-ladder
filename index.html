@@ -1322,7 +1322,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.8.4</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.8.5</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -2640,13 +2640,18 @@ function renderHcpBlok(spelers, holes, hcpPct, containerId) {
     for (let j = i + 1; j < spelers.length; j++) {
       const a = spelers[i], b = spelers[j];
       const verschil = Math.round(Math.abs(a.hcp - b.hcp) * pct);
-      const mindereHcp = a.hcp > b.hcp ? a : b; // hogere hcp = meer slagen
+      const mindereHcp = a.hcp > b.hcp ? a : b;
       const meerdereHcp = a.hcp > b.hcp ? b : a;
 
-      // Holes waarop mindereHcp een slag krijgt (SI <= verschil)
+      // Holes waarop mindereHcp slagen krijgt — ook bij meer dan 18 slagen
+      const aantalHoles = holes.length;
       const slagHoles = holes
-        .map((h, idx) => ({ nr: idx + 1, si: h.si }))
-        .filter(h => h.si <= verschil)
+        .map((h, idx) => {
+          const slagen = (h.si <= Math.min(verschil, aantalHoles) ? 1 : 0) +
+                         (h.si <= Math.max(0, verschil - aantalHoles) ? 1 : 0);
+          return { nr: idx + 1, si: h.si, slagen };
+        })
+        .filter(h => h.slagen > 0)
         .sort((a, b) => a.si - b.si);
 
       html += `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
@@ -2658,7 +2663,7 @@ function renderHcpBlok(spelers, holes, hcpPct, containerId) {
           ? `<span style="font-size:12px;color:var(--light)">Gelijke handicap — geen slagen</span>`
           : `<div style="font-size:12px;color:var(--mid);margin-bottom:3px">${naamMap[mindereHcp.id]} krijgt slagen op:</div>
              <div style="display:flex;flex-wrap:wrap;gap:4px">
-               ${slagHoles.map(h => `<span style="background:var(--green-pale);color:var(--green);border-radius:12px;padding:2px 8px;font-size:12px;font-family:'DM Mono',monospace">H${h.nr}</span>`).join('')}
+               ${slagHoles.map(h => `<span style="background:var(--green-pale);color:var(--green);border-radius:12px;padding:2px 8px;font-size:12px;font-family:'DM Mono',monospace">H${h.nr}${h.slagen > 1 ? ' (×'+h.slagen+')' : ''}</span>`).join('')}
              </div>`
         }
       </div>`;
@@ -2778,7 +2783,10 @@ function toggleScorecard() {
 function getHcpSlagenOpHole(matchup, holeIdx) {
   const p = mijnPartij();
   const hole = p.holes[holeIdx];
-  return hole.si <= matchup.hcpSlagen ? 1 : 0;
+  const aantalHoles = p.holes.length;
+  const diff = matchup.hcpSlagen;
+  return (hole.si <= Math.min(diff, aantalHoles) ? 1 : 0) +
+         (hole.si <= Math.max(0, diff - aantalHoles) ? 1 : 0);
 }
 
 function berekenMatchStand(matchup) {
@@ -5532,8 +5540,12 @@ function toggleTScorecard() {
 // Bereken netto HCP slagen die speler B krijgt tov A op een hole
 function getTHcpSlagen(spelerA, spelerB, hole, hcpPct) {
   const diff = Math.round(Math.abs(spelerA.hcp - spelerB.hcp) * hcpPct);
-  const ontvanger = spelerA.hcp < spelerB.hcp ? spelerB : spelerA; // hogere hcp krijgt slag
-  const slagOpHole = hole.si <= diff ? 1 : 0;
+  const ontvanger = spelerA.hcp < spelerB.hcp ? spelerB : spelerA;
+  // Meer dan 18 slagen: extra slag op holes met SI <= (diff - 18)
+  const aantalHoles = 18;
+  const basisSlagen = Math.min(diff, aantalHoles);
+  const extraSlagen = Math.max(0, diff - aantalHoles);
+  const slagOpHole = (hole.si <= basisSlagen ? 1 : 0) + (hole.si <= extraSlagen ? 1 : 0);
   return { diff, ontvanger, slagOpHole };
 }
 
