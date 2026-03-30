@@ -1012,6 +1012,16 @@
       </div>
     </div>
 
+    <!-- Handicap slagen blok -->
+    <div class="card">
+      <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+        <h2>Handicap slagen</h2>
+      </div>
+      <div class="card-collapse ingeklapt">
+        <div id="ronde-hcp-blok" style="padding:0 12px"></div>
+      </div>
+    </div>
+
     <!-- Match overzicht -->
     <div class="card">
       <div class="card-header"><h2>Onderlinge stand</h2></div>
@@ -1233,6 +1243,16 @@
       </div>
     </div>
 
+    <!-- Handicap slagen blok -->
+    <div class="card">
+      <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+        <h2>Handicap slagen</h2>
+      </div>
+      <div class="card-collapse ingeklapt">
+        <div id="toernooi-hcp-blok" style="padding:0 12px"></div>
+      </div>
+    </div>
+
     <!-- Ranglijst -->
     <div class="card">
       <div class="card-header"><h2>Ranglijst</h2></div>
@@ -1283,7 +1303,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.7.8</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v2.7.9</div>
   <div class="card">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers beheren</h2>
@@ -2525,23 +2545,45 @@ async function startPartij() {
 // totdat alle namen binnen de gegeven lijst uniek zijn.
 // Voorbeeld: ["Jan de Vries", "Jan Jansen"] → ["Jan d", "Jan J"]
 function kortNaam(speler, alleSpelers) {
-  const voornaam = speler.naam.split(' ')[0];
-  // Controleer of er iemand anders is met dezelfde voornaam
-  const duplicaten = alleSpelers.filter(s => s.id !== speler.id && s.naam.split(' ')[0] === voornaam);
+  const delen = speler.naam.trim().split(/\s+/);
+  const voornaam = delen[0];
+
+  // Splits naam in voornaam, tussenvoegsel (voorvoegsel), achternaam
+  // Voorvoegsels: van, de, den, der, het, te, ter, ten, 'van der' etc.
+  const voorvoegsels = new Set(['van','de','den','der','het','te','ter','ten','op','in','aan','bij']);
+  let vi = 1;
+  while (vi < delen.length - 1 && voorvoegsels.has(delen[vi].toLowerCase())) vi++;
+  const tussenvoegsel = delen.slice(1, vi).join(' '); // bijv. "van der"
+  const achternaam = delen.slice(vi).join(' ');       // bijv. "Veen"
+  const naamZonderVoornaam = [tussenvoegsel, achternaam].filter(Boolean).join(' '); // "van der Veen"
+
+  // Geen duplicaten: alleen voornaam
+  const duplicaten = alleSpelers.filter(s => s.id !== speler.id && s.naam.trim().split(/\s+/)[0] === voornaam);
   if (duplicaten.length === 0) return voornaam;
 
-  // Bepaal de achternaam (alles na de voornaam)
-  const achternaam = speler.naam.slice(voornaam.length).trim();
-  // Verzamel alle achternamen van spelers met dezelfde voornaam
-  const andereAchternamen = duplicaten.map(s => s.naam.slice(s.naam.split(' ')[0].length).trim());
+  // Bouw vergelijkbare naamZonderVoornaam voor duplicaten
+  const anderenRest = duplicaten.map(s => {
+    const d = s.naam.trim().split(/\s+/);
+    let di = 1;
+    while (di < d.length - 1 && voorvoegsels.has(d[di].toLowerCase())) di++;
+    return d.slice(1).join(' '); // tussenvoegsel + achternaam volledig
+  });
 
-  // Voeg steeds één letter toe totdat de naam uniek is
+  // Voeg steeds één letter toe aan achternaam (inclusief volledig tussenvoegsel)
+  const prefix = tussenvoegsel ? voornaam + ' ' + tussenvoegsel + ' ' : voornaam + ' ';
   for (let i = 1; i <= achternaam.length; i++) {
-    const kandidaat = voornaam + ' ' + achternaam.slice(0, i);
-    const nogSteeds = andereAchternamen.filter(a => a.slice(0, i) === achternaam.slice(0, i));
+    const kandidaat = prefix + achternaam.slice(0, i);
+    const nogSteeds = anderenRest.filter(a => {
+      const ad = a.trim().split(/\s+/);
+      let ai = 0;
+      while (ai < ad.length - 1 && voorvoegsels.has(ad[ai].toLowerCase())) ai++;
+      const aAchternaam = ad.slice(ai).join(' ');
+      const aPrefix = ad.slice(0, ai).join(' ');
+      const aKandidaat = (aPrefix ? voornaam + ' ' + aPrefix + ' ' : voornaam + ' ') + aAchternaam.slice(0, i);
+      return aKandidaat === kandidaat;
+    });
     if (nogSteeds.length === 0) return kandidaat;
   }
-  // Fallback: volledige naam
   return speler.naam;
 }
 
@@ -2550,6 +2592,45 @@ function kortNaamMap(spelers) {
   const map = {};
   spelers.forEach(s => { map[s.id] = kortNaam(s, spelers); });
   return map;
+}
+
+function renderHcpBlok(spelers, holes, hcpPct, containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const naamMap = kortNaamMap(spelers);
+  const pct = hcpPct != null ? hcpPct : 0.75;
+
+  let html = '';
+  // Alle unieke koppels
+  for (let i = 0; i < spelers.length; i++) {
+    for (let j = i + 1; j < spelers.length; j++) {
+      const a = spelers[i], b = spelers[j];
+      const verschil = Math.round(Math.abs(a.hcp - b.hcp) * pct);
+      const mindereHcp = a.hcp > b.hcp ? a : b; // hogere hcp = meer slagen
+      const meerdereHcp = a.hcp > b.hcp ? b : a;
+
+      // Holes waarop mindereHcp een slag krijgt (SI <= verschil)
+      const slagHoles = holes
+        .map((h, idx) => ({ nr: idx + 1, si: h.si }))
+        .filter(h => h.si <= verschil)
+        .sort((a, b) => a.si - b.si);
+
+      html += `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+          <span style="font-weight:600;font-size:14px">${naamMap[a.id]} vs ${naamMap[b.id]}</span>
+          <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace">${verschil} slag${verschil !== 1 ? 'en' : ''}</span>
+        </div>
+        ${verschil === 0
+          ? `<span style="font-size:12px;color:var(--light)">Gelijke handicap — geen slagen</span>`
+          : `<div style="font-size:12px;color:var(--mid);margin-bottom:3px">${naamMap[mindereHcp.id]} krijgt slagen op:</div>
+             <div style="display:flex;flex-wrap:wrap;gap:4px">
+               ${slagHoles.map(h => `<span style="background:var(--green-pale);color:var(--green);border-radius:12px;padding:2px 8px;font-size:12px;font-family:'DM Mono',monospace">H${h.nr}</span>`).join('')}
+             </div>`
+        }
+      </div>`;
+    }
+  }
+  el.innerHTML = html || '<p style="font-size:13px;color:var(--light)">Geen koppels</p>';
 }
 
 // ============================================================
@@ -2569,6 +2650,10 @@ function renderRonde() {
   document.getElementById('ronde-holes-badge').textContent = p.holes.length + ' holes' + (ladderNaam ? ' · ' + ladderNaam : '');
   renderScorecard();
   renderMatchOverview();
+  // HCP slagen blok
+  if (p.spelers && p.holes) {
+    renderHcpBlok(p.spelers, p.holes, 0.75, 'ronde-hcp-blok');
+  }
 }
 
 function renderScorecard() {
@@ -5102,6 +5187,28 @@ function renderToernooiActief() {
   if (uitslag) renderTRanglijst();
   renderTMatrix();
 
+  // HCP slagen blok — gebruik spelers uit actieve flight of alle spelers
+  if (t.spelers && t.holes) {
+    const isBeheerder = huidigeBruiker?.rol === 'beheerder';
+    let hcpSpelers = t.spelers;
+    if (!isBeheerder && t.flights?.length > 0) {
+      const gebruikersnaam = huidigeBruiker?.gebruikersnaam?.toLowerCase() || '';
+      const voornaam = gebruikersnaam.split(' ')[0];
+      const mijnFlight = t.flights.find(f =>
+        (f.spelerIds || []).some(sid => {
+          const sp = t.spelers.find(s => String(s.id) === String(sid));
+          return sp && sp.naam.toLowerCase().includes(voornaam);
+        })
+      );
+      if (mijnFlight) {
+        hcpSpelers = (mijnFlight.spelerIds || [])
+          .map(sid => t.spelers.find(s => String(s.id) === String(sid)))
+          .filter(Boolean);
+      }
+    }
+    renderHcpBlok(hcpSpelers, t.holes, t.hcpPct ?? 0.75, 'toernooi-hcp-blok');
+  }
+
   // Koppel uitslag knop
   const uitslagBtn = document.getElementById('t-uitslag-btn');
   if (uitslagBtn) uitslagBtn.onclick = toonToernooiUitslag;
@@ -5226,6 +5333,16 @@ function refreshToernooiScorekaart() {
   renderTScorecard();
   renderTMatrix();
   if (toernooiData?.uitslagZichtbaar) renderTRanglijst();
+  // Check uitslag knop na refresh
+  const alles = alleScoresIngevuld(toernooiData);
+  const uitslagBtn = document.getElementById('t-uitslag-btn');
+  if (uitslagBtn) {
+    uitslagBtn.disabled = !alles;
+    uitslagBtn.style.opacity = alles ? '1' : '0.5';
+    uitslagBtn.style.cursor = alles ? 'pointer' : 'not-allowed';
+    uitslagBtn.textContent = `📊 Naar de uitslag${alles ? '' : ' (scores onvolledig)'}`;
+    uitslagBtn.onclick = alles ? toonToernooiUitslag : null;
+  }
 }
 
 function selecteerFlightTab(fi) {
