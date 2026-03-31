@@ -1342,7 +1342,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.2.0</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.2.1</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -6811,22 +6811,27 @@ function renderKnockoutIndelingModal() {
   const lijst = document.getElementById('knockout-indeling-lijst');
   if (!lijst) return;
   const namen = _koIndelingVolgorde;
-  let html = '';
+  let html = '<div style="margin-bottom:8px;font-size:12px;color:var(--light)">Gebruik ↑↓ om spelers te verschuiven. Koppels worden automatisch gevormd per twee.</div>';
 
-  for (let i = 0; i < namen.length; i += 2) {
-    const a = namen[i];
-    const b = namen[i + 1];
-    html += `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
-      <span style="font-size:11px;color:var(--light);width:20px;text-align:center">${i/2+1}</span>
-      <div style="flex:1;background:var(--green-pale);border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600">${a || '—'}</div>
-      <span style="font-size:11px;color:var(--light)">vs</span>
-      <div style="flex:1;background:${b ? 'var(--green-pale)' : '#f0ede4'};border-radius:8px;padding:6px 10px;font-size:13px;font-weight:${b ? '600' : '400'};color:${b ? 'inherit' : 'var(--light)'}">${b || 'BYE'}</div>
-      <div style="display:flex;flex-direction:column;gap:2px">
-        <button onclick="verschuifKoSpeler(${i}, -2)" ${i < 2 ? 'disabled' : ''} style="background:var(--green-pale);border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:10px;color:var(--green)">↑</button>
-        <button onclick="verschuifKoSpeler(${i}, 2)" ${i >= namen.length - 2 ? 'disabled' : ''} style="background:#fde8e8;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:10px;color:var(--red)">↓</button>
-      </div>
-    </div>`;
-  }
+  namen.forEach((naam, idx) => {
+    const koppelNr = Math.floor(idx / 2) + 1;
+    const isEerste = idx % 2 === 0;
+    const isBye = !naam;
+    html += `
+      <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+        ${isEerste ? `<span style="font-size:10px;color:var(--light);width:20px;text-align:right">${koppelNr}</span>` : `<span style="width:20px"></span>`}
+        <div style="flex:1;background:${isBye ? '#f0ede4' : 'var(--green-pale)'};border-radius:8px;padding:6px 10px;font-size:13px;font-weight:${isBye ? '400' : '600'};color:${isBye ? 'var(--light)' : 'inherit'}">
+          ${isBye ? 'BYE' : naam}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <button onclick="verschuifKoSpeler(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} style="background:var(--green-pale);border:none;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;color:var(--green)">↑</button>
+          <button onclick="verschuifKoSpeler(${idx}, 1)" ${idx >= namen.length - 1 ? 'disabled' : ''} style="background:#fde8e8;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;color:var(--red)">↓</button>
+        </div>
+      </div>`;
+    if (idx % 2 === 1) {
+      html += `<div style="height:8px"></div>`; // scheiding tussen koppels
+    }
+  });
 
   lijst.innerHTML = html;
 }
@@ -6835,8 +6840,7 @@ function verschuifKoSpeler(idx, delta) {
   const n = _koIndelingVolgorde;
   const doel = idx + delta;
   if (doel < 0 || doel >= n.length) return;
-  // Wissel paren
-  [n[idx], n[idx+1], n[doel], n[doel+1]] = [n[doel], n[doel+1], n[idx], n[idx+1]];
+  [n[idx], n[doel]] = [n[doel], n[idx]];
   renderKnockoutIndelingModal();
 }
 
