@@ -1322,7 +1322,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.1.6</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.1.8</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -4780,7 +4780,7 @@ function initToernooiSetup() {
     spelersLaddersEl.innerHTML = alleLadders.map(l => `
       <label style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 12px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;user-select:none;min-width:56px;text-align:center">
         <span>${l.naam}</span>
-        <input type="checkbox" value="${l.id}" onchange="toggleTSpelersLadder('${l.id}', this.checked)" style="accent-color:var(--green);width:18px;height:18px">
+        <input type="checkbox" value="${l.id}" ${_tSpelersLadderIds.has(l.id) ? 'checked' : ''} onchange="toggleTSpelersLadder('${l.id}', this.checked)" style="accent-color:var(--green);width:18px;height:18px">
       </label>
     `).join('');
   }
@@ -4791,7 +4791,7 @@ function initToernooiSetup() {
     rankingLaddersEl.innerHTML = alleLadders.map(l => `
       <label style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 12px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;user-select:none;min-width:56px;text-align:center">
         <span>${l.naam}</span>
-        <input type="checkbox" value="${l.id}" onchange="toggleTRankingLadder('${l.id}', this.checked)" style="accent-color:var(--green);width:18px;height:18px">
+        <input type="checkbox" value="${l.id}" ${_tRankingLadderIds.has(l.id) ? 'checked' : ''} onchange="toggleTRankingLadder('${l.id}', this.checked)" style="accent-color:var(--green);width:18px;height:18px">
       </label>
     `).join('');
   }
@@ -5874,6 +5874,9 @@ async function bevestigToernooiAfsluiten() {
         return (ladderSpeler?.partijen || 0) >= 5;
       });
       if (deelnemers.length > 0) {
+        // Sla huidige ranks op als prevRank voor delta weergave
+        ladderData.spelers.forEach(s => { s.prevRank = s.rank; });
+
         // Sorteer van hoogste naar laagste punten zodat winnaars eerst profiteren
         const gesorteerd = [...deelnemers].sort((a,b) => b.pt - a.pt);
 
