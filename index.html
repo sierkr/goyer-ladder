@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.4.2</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.4.5</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1343,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.4.2</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.4.5</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -4155,11 +4155,13 @@ async function slaProfielHcpOp() {
     return n === gebruiker || n.split(' ')[0] === voornaam || n.includes(voornaam) || gebruiker.includes(n.split(' ')[0]);
   };
 
-  // Update in master spelerslijst
+  // Update in master spelerslijst — alleen beheerder mag ladder/spelers schrijven
   const masterSpeler = alleSpelersData.find(s => matchNaam(s.naam));
-  if (masterSpeler) {
+  if (masterSpeler && isCoordinatorRol()) {
     masterSpeler.hcp = val;
     await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+  } else if (masterSpeler) {
+    masterSpeler.hcp = val; // update lokaal voor renderProfiel
   }
 
   // Update in alle ladders
@@ -6842,7 +6844,7 @@ function renderKnockoutBracket(data, ladderId) {
           <button onclick="slaKnockoutWinnaarOp('${ladderId}',${riOrig},${pi},'${partij.a}')" class="btn btn-sm btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--green)">✓ ${nA.split(' ')[0]}</button>
           <button onclick="slaKnockoutWinnaarOp('${ladderId}',${riOrig},${pi},'${partij.b}')" class="btn btn-sm btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--green)">✓ ${nB.split(' ')[0]}</button>
         </div>` :
-        isBeheerder && winnaar ? `<button onclick="slaKnockoutWinnaarOp('${ladderId}',${riOrig},${pi},'')" class="btn btn-sm btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--light)">↩</button>` : '';
+        isBeheerder && winnaar && !isBye ? `<button onclick="slaKnockoutWinnaarOp('${ladderId}',${riOrig},${pi},'')" class="btn btn-sm btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--light)">↩</button>` : '';
 
       html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
         <div style="flex:1;font-size:13px">
@@ -6850,7 +6852,7 @@ function renderKnockoutBracket(data, ladderId) {
           <div style="color:var(--light);font-size:10px;margin:2px 0">vs</div>
           <div style="${stijlB}">${isBye ? '<em style="color:var(--light)">BYE</em>' : nB}</div>
         </div>
-        ${isBye ? `<span class="badge badge-grey" style="font-size:10px">Bye →</span>` :
+        ${isBye ? `<span class="badge badge-green" style="font-size:10px">✓ ${winnaar} →</span>` :
           winnaar ? `<span class="badge badge-green" style="font-size:10px">✓ ${winnaar}${partij.resultaat ? ` (${partij.resultaat})` : ''}</span>` :
           `<span style="font-size:11px;color:var(--light)">Nog te spelen</span>`}
         ${beheerderBtns}
