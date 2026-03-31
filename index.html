@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.3.8</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.3.9</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1343,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.3.8</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.3.9</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -1999,14 +1999,19 @@ async function initFirestore() {
     }));
   }
 
-  // Live listeners op alle andere ladders (voor badges in spelers beheer)
+  // Live listeners op alle andere ladders
   alleLadders.filter(l => l.id !== activeLadderId).forEach(ladder => {
     _vasteListeners.push(onSnapshot(doc(db, 'ladders', ladder.id), (snap) => {
       if (!snap.exists() || !huidigeBruiker) return;
       const idx = alleLadders.findIndex(l => l.id === ladder.id);
-      if (idx >= 0) alleLadders[idx].spelers = snap.data().spelers || [];
+      if (idx >= 0) {
+        alleLadders[idx].spelers = snap.data().spelers || [];
+        alleLadders[idx].data = snap.data(); // volledige data cachen voor knockout bracket
+      }
       const activePage = document.querySelector('.page.active')?.id?.replace('page-','');
+      if (activePage === 'ladder') renderLadder();
       if (activePage === 'admin') renderAdmin();
+      if (activePage === 'profiel') renderProfiel();
     }));
   });
 
