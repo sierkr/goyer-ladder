@@ -6975,7 +6975,7 @@ async function bevestigKnockoutIndeling() {
     closeModal('modal-knockout-indeling');
     renderLadder();
     toast('Indeling opgeslagen ✓');
-  } catch(e) { console.error('bevestigKnockoutIndeling mislukt:', e); toast('Er is iets misgegaan'); }
+  } catch(e) { console.error('bevestigKnockoutIndeling mislukt:', e.code, e.message, e); toast('Er is iets misgegaan: ' + (e.code || e.message)); }
 }
 
 function verwerkKnockoutVoortgang(rondes, aantalSpelers) {
