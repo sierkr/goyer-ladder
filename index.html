@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.3.2</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.3.3</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1343,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.3.2</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.3.3</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -6774,11 +6774,12 @@ function renderKnockoutBracket(data, ladderId) {
 
   let html = '<div style="overflow-x:auto;padding:12px 16px">';
 
-  rondes.forEach((ronde, ri) => {
-    const rondeNaam = ri === totaalRondes - 1 ? 'Finale' :
-                      ri === totaalRondes - 2 ? 'Halve finale' :
-                      ri === totaalRondes - 3 ? 'Kwartfinale' :
-                      `Ronde ${ri + 1}`;
+  rondes.slice().reverse().forEach((ronde, ri) => {
+    const riOrig = rondes.length - 1 - ri; // originele index voor namen
+    const rondeNaam = riOrig === totaalRondes - 1 ? 'Finale' :
+                      riOrig === totaalRondes - 2 ? 'Halve finale' :
+                      riOrig === totaalRondes - 3 ? 'Kwartfinale' :
+                      `Ronde ${riOrig + 1}`;
 
     html += `<div style="margin-bottom:16px">
       <div style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">${rondeNaam}</div>`;
@@ -6795,10 +6796,10 @@ function renderKnockoutBracket(data, ladderId) {
       // Beheerder knoppen om winnaar aan te wijzen
       const beheerderBtns = isBeheerder && !isBye && !winnaar ? `
         <div style="display:flex;flex-direction:column;gap:3px">
-          <button onclick="slaKnockoutWinnaarOp('${ladderId}',${ri},${pi},'${partij.a}')" class="btn btn-sm btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--green)">✓ ${nA.split(' ')[0]}</button>
-          <button onclick="slaKnockoutWinnaarOp('${ladderId}',${ri},${pi},'${partij.b}')" class="btn btn-sm btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--green)">✓ ${nB.split(' ')[0]}</button>
+          <button onclick="slaKnockoutWinnaarOp('${ladderId}',${riOrig},${pi},'${partij.a}')" class="btn btn-sm btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--green)">✓ ${nA.split(' ')[0]}</button>
+          <button onclick="slaKnockoutWinnaarOp('${ladderId}',${riOrig},${pi},'${partij.b}')" class="btn btn-sm btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--green)">✓ ${nB.split(' ')[0]}</button>
         </div>` :
-        isBeheerder && winnaar ? `<button onclick="slaKnockoutWinnaarOp('${ladderId}',${ri},${pi},'')" class="btn btn-sm btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--light)">↩</button>` : '';
+        isBeheerder && winnaar ? `<button onclick="slaKnockoutWinnaarOp('${ladderId}',${riOrig},${pi},'')" class="btn btn-sm btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--light)">↩</button>` : '';
 
       html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
         <div style="flex:1;font-size:13px">
