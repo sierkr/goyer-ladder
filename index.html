@@ -1322,7 +1322,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.1.2</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.1.3</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -3937,62 +3937,69 @@ function renderProfiel() {
       </div>
     </div>`;
 
-  // Statistieken
+  // Statistieken per ladder
   if (!speler) {
     document.getElementById('profiel-stats').innerHTML = '<p style="color:var(--light);font-size:13px">Nog geen spelersprofiel gekoppeld aan dit account.</p>';
     return;
   }
 
-  const winpct = speler.partijen > 0 ? Math.round(speler.gewonnen / speler.partijen * 100) : 0;
-  const verloren = speler.partijen - speler.gewonnen;
+  // Zoek speler in alle ladders
+  const ladderStats = alleLadders.map(l => {
+    const sp = (l.spelers || []).find(s =>
+      s.id === speler.id ||
+      s.naam.toLowerCase() === speler.naam.toLowerCase()
+    );
+    if (!sp) return null;
+    const winpct = sp.partijen > 0 ? Math.round(sp.gewonnen / sp.partijen * 100) : 0;
+    const verloren = (sp.partijen || 0) - (sp.gewonnen || 0);
+    return { ladder: l, sp, winpct, verloren };
+  }).filter(Boolean);
 
-  // Bereken winstreak uit uitslagen
-  let streak = 0;
-  for (const u of state.uitslagen) {
-    const matchResult = u.matchups?.find(m => m.a === speler.naam || m.b === speler.naam);
-    if (!matchResult) break;
-    if (matchResult.winnaar === speler.naam) streak++;
-    else break;
+  // Totaal over alle ladders
+  const totaalPartijen = ladderStats.reduce((s, l) => s + (l.sp.partijen || 0), 0);
+  const totaalGewonnen = ladderStats.reduce((s, l) => s + (l.sp.gewonnen || 0), 0);
+  const totaalPct = totaalPartijen > 0 ? Math.round(totaalGewonnen / totaalPartijen * 100) : 0;
+  const totaalVerloren = totaalPartijen - totaalGewonnen;
+
+  let html = '';
+
+  // Per ladder stats
+  ladderStats.forEach(({ ladder, sp, winpct, verloren }) => {
+    html += `
+    <div style="margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">${ladder.naam}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+        <div style="text-align:center;background:var(--green-pale);border-radius:10px;padding:10px">
+          <div style="font-family:'Bebas Neue';font-size:28px;color:var(--green)">${sp.rank}</div>
+          <div style="font-size:10px;color:var(--light);text-transform:uppercase">Ranking</div>
+        </div>
+        <div style="text-align:center;background:#fef3cd;border-radius:10px;padding:10px">
+          <div style="font-family:'Bebas Neue';font-size:28px;color:var(--gold)">${winpct}%</div>
+          <div style="font-size:10px;color:var(--light);text-transform:uppercase">Winpct</div>
+        </div>
+        <div style="text-align:center;background:#f0ede4;border-radius:10px;padding:10px">
+          <div style="font-family:'Bebas Neue';font-size:28px;color:var(--mid)">${sp.partijen || 0}</div>
+          <div style="font-size:10px;color:var(--light);text-transform:uppercase">Gespeeld</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--mid)">✓ ${sp.gewonnen || 0} gewonnen &nbsp; ✗ ${verloren} verloren &nbsp; 🏒 hcp ${Math.round(sp.hcp)}</div>
+    </div>`;
+  });
+
+  // Totaal als er meerdere ladders zijn
+  if (ladderStats.length > 1) {
+    html += `
+    <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+      <div style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Totaal</div>
+      <div style="font-size:13px;color:var(--mid)">✓ ${totaalGewonnen} gewonnen &nbsp; ✗ ${totaalVerloren} verloren &nbsp; ${totaalPct}% winpercentage</div>
+    </div>`;
   }
 
-  // Meest gespeeld tegen
-  const tegenTeller = {};
-  state.uitslagen.forEach(u => {
-    u.matchups?.forEach(m => {
-      if (m.a === speler.naam) tegenTeller[m.b] = (tegenTeller[m.b] || 0) + 1;
-      if (m.b === speler.naam) tegenTeller[m.a] = (tegenTeller[m.a] || 0) + 1;
-    });
-  });
-  const meestTegen = Object.entries(tegenTeller).sort((a,b) => b[1]-a[1])[0];
+  if (ladderStats.length === 0) {
+    html = '<p style="color:var(--light);font-size:13px">Niet ingedeeld in een ladder.</p>';
+  }
 
-  // Laatste partij
-  const laatste = state.uitslagen.find(u => u.spelers?.includes(speler.naam));
-
-  document.getElementById('profiel-stats').innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-      <div style="text-align:center;background:var(--green-pale);border-radius:10px;padding:12px">
-        <div style="font-family:'Bebas Neue';font-size:32px;color:var(--green)">${speler.rank}</div>
-        <div style="font-size:11px;color:var(--light);text-transform:uppercase">Ranking</div>
-      </div>
-      <div style="text-align:center;background:#fef3cd;border-radius:10px;padding:12px">
-        <div style="font-family:'Bebas Neue';font-size:32px;color:var(--gold)">${winpct}%</div>
-        <div style="font-size:11px;color:var(--light);text-transform:uppercase">Winpercentage</div>
-      </div>
-      <div style="text-align:center;background:#f0ede4;border-radius:10px;padding:12px">
-        <div style="font-family:'Bebas Neue';font-size:32px;color:var(--mid)">${speler.partijen}</div>
-        <div style="font-size:11px;color:var(--light);text-transform:uppercase">Gespeeld</div>
-      </div>
-      <div style="text-align:center;background:${streak > 2 ? 'var(--green-pale)' : '#f0ede4'};border-radius:10px;padding:12px">
-        <div style="font-family:'Bebas Neue';font-size:32px;color:${streak > 2 ? 'var(--green)' : 'var(--mid)'}">${streak}</div>
-        <div style="font-size:11px;color:var(--light);text-transform:uppercase">Winstreak</div>
-      </div>
-    </div>
-    <div style="font-size:13px;color:var(--mid);line-height:2">
-      <div>✓ Gewonnen: <strong>${speler.gewonnen}</strong> &nbsp; ✗ Verloren: <strong>${verloren}</strong></div>
-      ${meestTegen ? `<div>🏌️ Meest tegen: <strong>${meestTegen[0].split(' ')[0]}</strong> (${meestTegen[1]}x)</div>` : ''}
-      ${laatste ? `<div>📅 Laatste partij: <strong>${laatste.datum}</strong> op ${laatste.baan}</div>` : ''}
-      <div>🏒 Handicap: <strong>${Math.round(speler.hcp)}</strong></div>
-    </div>`;
+  document.getElementById('profiel-stats').innerHTML = html;
 
   const mijnUitdagingen = uitdagingenData.filter(u =>
     u.vanEmail === huidigeBruiker.email || u.naarEmail === huidigeBruiker.email
