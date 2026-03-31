@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.3.0</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.3.1</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1343,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.3.0</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.3.1</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -1616,7 +1616,6 @@ let alleLadders = []; // [{ id, naam, spelerIds, spelers }]
 let activeLadderId = null;
 let alleSpelersData = []; // master lijst van alle spelers onafhankelijk van ladder
 let _firestoreReady = false;
-let _highlights = new Set();
 let archiefData = [];
 let uitdagingenData = []; // { id, van, naar, status, timestamp }
 let toernooiData = null;  // actief toernooi object (legacy + huidige weergave)
@@ -2162,7 +2161,7 @@ function toggleLadderKaart(header, ladderId) {
 
 function renderLadderRij(s, ladderId) {
   const winpct = s.partijen > 0 ? Math.round(s.gewonnen/s.partijen*100) : 0;
-  const highlighted = _highlights.has(s.id);
+  
   let deltaHtml = '';
   if (s.prevRank != null && s.prevRank !== s.rank) {
     const d = s.prevRank - s.rank;
@@ -2187,9 +2186,9 @@ function renderLadderRij(s, ladderId) {
     ? `<button onclick="stuurUitdaging(${s.id})" style="background:none;border:1px solid #e0ddd4;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:${openUitdaging ? 'var(--gold)' : 'var(--light)'}" title="${openUitdaging ? 'Uitdaging loopt' : 'Uitdagen'}">⚔️</button>`
     : '';
 
-  return `<div class="ladder-item" style="${highlighted ? 'background:var(--green-pale);' : ''}">
+  return `<div class="ladder-item" style="">
     <div class="rank-badge ${s.rank <= 3 ? 'top3' : ''}">${s.rank}</div>
-    <div class="player-name" style="${highlighted ? 'font-weight:700;color:var(--green)' : ''}">${s.naam}</div>
+    <div class="player-name" style="">${s.naam}</div>
     <div style="min-width:30px;text-align:center">${deltaHtml}</div>
     <div class="player-stats" style="text-align:right;min-width:52px">${s.partijen}P ${s.gewonnen}W<br>${winpct}%</div>
     <div style="width:42px;text-align:center;flex-shrink:0">${uitdagingBtnHtml}</div>
@@ -3304,7 +3303,7 @@ async function bevestigUitslag() {
   state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== p.partijId);
 
   // Onthoud welke spelers zojuist gespeeld hebben voor highlight in ladder
-  _highlights = new Set(p.spelers.map(s => s.id));
+  
 
   await slaState();
   slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam.split(' ')[0]).join(' vs ')}`);
@@ -3324,7 +3323,7 @@ function sluitUitslagEnGaNaarLadder() {
   renderLadder();
   // Na 4 seconden highlight weer wissen
   setTimeout(() => {
-    _highlights = new Set();
+    
     renderLadder();
   }, 4000);
 }
@@ -3606,7 +3605,7 @@ async function bevestigBeheerUitslag() {
   });
 
   state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== _beheerPartijId);
-  _highlights = new Set(p.spelers.map(s => s.id));
+  
   await slaState();
   slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam.split(' ')[0]).join(' vs ')}`);
   showLadderChanges(changes);
@@ -6800,7 +6799,7 @@ function renderKnockoutBracket(data, ladderId) {
           <div style="${stijlB}">${isBye ? '<em style="color:var(--light)">BYE</em>' : nB}</div>
         </div>
         ${isBye ? `<span class="badge badge-grey" style="font-size:10px">Bye →</span>` :
-          winnaar ? `<span class="badge badge-green" style="font-size:10px">✓ ${winnaar.split(' ')[0]}</span>` :
+          winnaar ? `<span class="badge badge-green" style="font-size:10px">✓ ${winnaar}</span>` :
           `<span style="font-size:11px;color:var(--light)">Nog te spelen</span>`}
       </div>`;
     });
@@ -7082,7 +7081,7 @@ async function verwerkKnockoutUitslag(partij) {
     if (partijIdx === -1) return;
 
     await slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar);
-    toast(`${winnaar.split(' ')[0]} door naar volgende ronde ✓`);
+    toast(`${winnaar} door naar volgende ronde ✓`);
   } catch(e) { console.error('verwerkKnockoutUitslag mislukt:', e); }
 }
 
@@ -7108,7 +7107,7 @@ async function slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar) {
     if (ladderId === activeLadderId) state.rondes = bijgewerkt;
 
     renderLadder();
-    toast(`${winnaar.split(' ')[0]} door naar volgende ronde ✓`);
+    toast(`${winnaar} door naar volgende ronde ✓`);
   } catch(e) { console.error('slaKnockoutWinnaarOp mislukt:', e); toast('Er is iets misgegaan'); }
 }
 
