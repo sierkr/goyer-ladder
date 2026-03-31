@@ -1322,7 +1322,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.1.3</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.1.5</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -5874,15 +5874,46 @@ async function bevestigToernooiAfsluiten() {
         return (ladderSpeler?.partijen || 0) >= 5;
       });
       if (deelnemers.length > 0) {
-        const deelnemerSpelers = deelnemers.map(e =>
-          ladderData.spelers.find(s => String(s.id) === String(e.s.id) || s.naam.toLowerCase() === e.s.naam.toLowerCase())
-        ).filter(Boolean);
-        const sortedRanks = [...deelnemerSpelers].map(s => s.rank).sort((a,b) => a-b);
-        deelnemerSpelers.forEach((speler, idx) => {
-          speler.rank = sortedRanks[idx];
-          speler.partijen = (speler.partijen || 0) + (deelnemers.length - 1);
-          speler.gewonnen = (speler.gewonnen || 0) + (deelnemers.find(e => String(e.s.id) === String(speler.id))?.w || 0);
+        // Sorteer van hoogste naar laagste punten zodat winnaars eerst profiteren
+        const gesorteerd = [...deelnemers].sort((a,b) => b.pt - a.pt);
+
+        gesorteerd.forEach(e => {
+          const sp = ladderData.spelers.find(s => String(s.id) === String(e.s.id) || s.naam.toLowerCase() === e.s.naam.toLowerCase());
+          if (!sp) return;
+          const pt = e.pt || 0;
+          if (pt === 0) return; // geen aanpassing bij 0 punten
+
+          const oudeRank = sp.rank;
+          const nieuweRank = Math.max(1, Math.min(ladderData.spelers.length, oudeRank - pt));
+
+          if (nieuweRank === oudeRank) return;
+
+          // Verschuif tussenliggende spelers
+          if (nieuweRank < oudeRank) {
+            // Stijgen: spelers tussen nieuweRank en oudeRank zakken één plek
+            ladderData.spelers.forEach(s => {
+              if (s.id !== sp.id && s.rank >= nieuweRank && s.rank < oudeRank) s.rank++;
+            });
+          } else {
+            // Zakken: spelers tussen oudeRank en nieuweRank stijgen één plek
+            ladderData.spelers.forEach(s => {
+              if (s.id !== sp.id && s.rank > oudeRank && s.rank <= nieuweRank) s.rank--;
+            });
+          }
+          sp.rank = nieuweRank;
         });
+
+        // Update partijen en gewonnen stats
+        deelnemers.forEach(e => {
+          const sp = ladderData.spelers.find(s => String(s.id) === String(e.s.id) || s.naam.toLowerCase() === e.s.naam.toLowerCase());
+          if (sp) {
+            sp.partijen = (sp.partijen || 0) + (deelnemers.length - 1);
+            sp.gewonnen = (sp.gewonnen || 0) + (e.w || 0);
+          }
+        });
+
+        // Normaliseer ranks
+        [...ladderData.spelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
         [...ladderData.spelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
         await setDoc(doc(db, 'ladders', ladderId), ladderData);
         const ladderIdx = alleLadders.findIndex(l => l.id === ladderId);
