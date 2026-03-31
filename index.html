@@ -643,6 +643,7 @@
       </div>
     </div>
   </div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.3.0</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1342,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.2.8</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.3.0</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -3307,6 +3308,9 @@ async function bevestigUitslag() {
 
   await slaState();
   slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam.split(' ')[0]).join(' vs ')}`);
+
+  // Update knockout bracket als dit een knockout ladder is
+  await verwerkKnockoutUitslag(p);
 
   showLadderChanges(changes);
 }
@@ -6447,7 +6451,7 @@ async function laadSnapshots() {
           <div style="font-weight:500;font-size:13px">${data.label}</div>
           <div style="font-size:11px;color:var(--light)">${data.datum}${data.ladderNaam ? ' · ' + data.ladderNaam : ''}</div>
         </div>
-        <button class="btn btn-sm btn-ghost" onclick="herstelSnapshot('${d.id}')">↩ Herstel</button>
+        <button class="btn btn-sm btn-ghost" onclick="herstelSnapshot('${d.id}')" disabled style="opacity:0.4;cursor:not-allowed" title="Tijdelijk uitgeschakeld">↩ Herstel</button>
       </div>`;
     }).join('');
   } catch(e) {
@@ -7050,6 +7054,39 @@ function verwerkKnockoutVoortgang(rondes, aantalSpelers) {
 
   return rondes;
 }
+
+async function verwerkKnockoutUitslag(partij) {
+  try {
+    const ladderId = partij.ladderId;
+    if (!ladderId) return;
+    const snap = await getDoc(doc(db, 'ladders', ladderId));
+    if (!snap.exists()) return;
+    const data = snap.data();
+    if ((data.type || '') !== 'knockout') return;
+
+    // Bepaal winnaar — bij knockout altijd 2 spelers, 1 matchup
+    const matchup = partij.matchups?.[0];
+    if (!matchup) return;
+    const winnaarKant = partij._modalWinnaars?.[0];
+    if (!winnaarKant) return;
+    const winnaar = winnaarKant === 'A' ? matchup.spelerA.naam : matchup.spelerB.naam;
+
+    // Zoek de partij in de huidige ronde van de bracket
+    const rondes = objNaarRondes(data.rondes);
+    const rondeIdx = rondes.length - 1;
+    const ronde = rondes[rondeIdx] || [];
+    const partijIdx = ronde.findIndex(p =>
+      (p.a === matchup.spelerA.naam && p.b === matchup.spelerB.naam) ||
+      (p.a === matchup.spelerB.naam && p.b === matchup.spelerA.naam)
+    );
+    if (partijIdx === -1) return;
+
+    await slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar);
+    toast(`${winnaar.split(' ')[0]} door naar volgende ronde ✓`);
+  } catch(e) { console.error('verwerkKnockoutUitslag mislukt:', e); }
+}
+
+window.verwerkKnockoutUitslag = verwerkKnockoutUitslag;
 
 async function slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar) {
   try {
