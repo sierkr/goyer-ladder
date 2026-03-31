@@ -2279,6 +2279,10 @@ function initPartijForm() {
         if ((data.type || '') !== 'knockout') return;
         const rondes = objNaarRondes(data.rondes);
         const huidigeRonde = rondes[rondes.length - 1] || [];
+        console.log('Knockout debug:', {
+          gekoppeldNaam: gekoppeld.naam,
+          huidigeRonde: huidigeRonde.map(p => `${p.a} vs ${p.b} → ${p.winnaar}`)
+        });
         const mijnPartij = huidigeRonde.find(p =>
           (p.a === gekoppeld.naam || p.b === gekoppeld.naam) && !p.winnaar
         );
