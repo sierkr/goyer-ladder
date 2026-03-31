@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.3.7</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.3.8</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1343,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.3.7</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.3.8</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -7090,14 +7090,38 @@ async function verwerkKnockoutUitslag(partij) {
     );
     if (partijIdx === -1) return;
 
-    // Bepaal matchplay resultaat (bijv. "3&2")
-    const { standA, resterend, status } = berekenMatchStand(matchup);
+    // Bepaal matchplay resultaat direct uit partij scores
     let resultaat = '';
-    if (status === 'beslist') {
-      resultaat = `${Math.abs(standA)}&${resterend}`;
-    } else if (status === 'klaar') {
-      resultaat = standA === 0 ? 'gelijkspel' : `${Math.abs(standA)}&0`;
-    }
+    try {
+      const holes = partij.holes || [];
+      const scoresA = partij.scores[matchup.spelerA.id] || [];
+      const scoresB = partij.scores[matchup.spelerB.id] || [];
+      let standA = 0, gespeeld = 0;
+      let beslissingsStand = null, beslissingsGespeeld = null;
+      for (let i = 0; i < holes.length; i++) {
+        const sA = scoresA[i]; const sB = scoresB[i];
+        if (sA == null || sB == null) continue;
+        gespeeld++;
+        const slagA = matchup.hcpOntvanger === matchup.spelerA.id
+          ? ((holes[i].si <= Math.min(matchup.hcpSlagen, holes.length) ? 1 : 0) + (holes[i].si <= Math.max(0, matchup.hcpSlagen - holes.length) ? 1 : 0)) : 0;
+        const slagB = matchup.hcpOntvanger === matchup.spelerB.id
+          ? ((holes[i].si <= Math.min(matchup.hcpSlagen, holes.length) ? 1 : 0) + (holes[i].si <= Math.max(0, matchup.hcpSlagen - holes.length) ? 1 : 0)) : 0;
+        const nettoA = sA - slagA; const nettoB = sB - slagB;
+        if (nettoA < nettoB) standA++;
+        else if (nettoB < nettoA) standA--;
+        const resterendNa = holes.length - gespeeld;
+        if (beslissingsStand === null && Math.abs(standA) > resterendNa) {
+          beslissingsStand = standA; beslissingsGespeeld = gespeeld;
+        }
+      }
+      const resterend = holes.length - gespeeld;
+      const klaar = gespeeld === holes.length;
+      const beslist = beslissingsStand !== null;
+      const effectieveStand = beslist ? beslissingsStand : standA;
+      const resterendEff = beslist ? (holes.length - beslissingsGespeeld) : resterend;
+      if (beslist) resultaat = `${Math.abs(effectieveStand)}&${resterendEff}`;
+      else if (klaar) resultaat = effectieveStand === 0 ? 'gelijkspel' : `${Math.abs(effectieveStand)}&0`;
+    } catch(e) { console.log('Resultaat berekening mislukt:', e); }
 
     await slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar, resultaat);
     toast(`${winnaar.split(' ')[0]} door naar volgende ronde ✓`);
