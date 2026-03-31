@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.4.8</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.4.9</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1343,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.4.8</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.4.9</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -6482,7 +6482,7 @@ async function laadSnapshots() {
           <div style="font-weight:500;font-size:13px">${data.label}</div>
           <div style="font-size:11px;color:var(--light)">${data.datum}${data.ladderNaam ? ' · ' + data.ladderNaam : ''}</div>
         </div>
-        <button class="btn btn-sm btn-ghost" onclick="herstelSnapshot('${d.id}')" disabled style="opacity:0.4;cursor:not-allowed" title="Tijdelijk uitgeschakeld">↩ Herstel</button>
+        <button class="btn btn-sm btn-ghost" onclick="herstelSnapshot('${d.id}')">↩ Herstel</button>
       </div>`;
     }).join('');
   } catch(e) {
@@ -6491,23 +6491,48 @@ async function laadSnapshots() {
 }
 
 async function herstelSnapshot(snapId) {
-  if (!confirm('Ladderstand herstellen naar dit moment? De huidige stand wordt eerst opgeslagen als snapshot.')) return;
   try {
-    // Sla huidige stand op voordat we herstellen
-    await slaSnapshotOp('⚠️ Voor herstel op ' + new Date().toLocaleString('nl-NL'));
-
     const snapDoc = await getDoc(doc(db, 'snapshots', snapId));
     if (!snapDoc.exists()) { toast('Snapshot niet gevonden'); return; }
     const data = snapDoc.data();
-    // Herstel spelers inclusief partijen en gewonnen statistieken
-    state.spelers = data.spelers.map(s => ({
+    const ladderId = data.ladderId || activeLadderId;
+    const ladderNaam = data.ladderNaam || ladderId;
+
+    if (!confirm(`Ladderstand van "${ladderNaam}" herstellen naar:\n${data.label} (${data.datum})?\n\nDe huidige stand wordt eerst opgeslagen.`)) return;
+
+    // Sla huidige stand op voordat we herstellen
+    await slaSnapshotOp('⚠️ Voor herstel op ' + new Date().toLocaleString('nl-NL'));
+
+    // Laad de juiste ladder uit Firestore
+    const ladderSnap = await getDoc(doc(db, 'ladders', ladderId));
+    if (!ladderSnap.exists()) { toast('Ladder niet gevonden'); return; }
+    const ladderData = ladderSnap.data();
+
+    // Herstel spelers inclusief alle statistieken
+    ladderData.spelers = data.spelers.map(s => ({
       ...s,
       partijen: s.partijen ?? 0,
-      gewonnen: s.gewonnen ?? 0
+      gewonnen: s.gewonnen ?? 0,
+      prevRank: null
     }));
-    await slaState();
+
+    // Schrijf naar de juiste ladder
+    await setDoc(doc(db, 'ladders', ladderId), ladderData);
+
+    // Update lokale state als het de actieve ladder is
+    if (ladderId === activeLadderId) {
+      state.spelers = ladderData.spelers;
+    }
+
+    // Update alleLadders cache
+    const idx = alleLadders.findIndex(l => l.id === ladderId);
+    if (idx >= 0) {
+      alleLadders[idx].spelers = ladderData.spelers;
+      alleLadders[idx].data = ladderData;
+    }
+
     renderLadder();
-    toast('Ladderstand hersteld ✓');
+    toast(`Ladderstand "${ladderNaam}" hersteld ✓`);
     closeModal('modal-snapshots');
   } catch(e) { toast('Herstel mislukt: ' + e.message); }
 }
