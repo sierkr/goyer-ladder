@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.3.6</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.3.7</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1343,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.3.6</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.3.7</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -6817,7 +6817,7 @@ function renderKnockoutBracket(data, ladderId) {
           <div style="${stijlB}">${isBye ? '<em style="color:var(--light)">BYE</em>' : nB}</div>
         </div>
         ${isBye ? `<span class="badge badge-grey" style="font-size:10px">Bye →</span>` :
-          winnaar ? `<span class="badge badge-green" style="font-size:10px">✓ ${winnaar.split(' ')[0]}${partij.resultaat ? ` (${partij.resultaat})` : ''}</span>` :
+          winnaar ? `<span class="badge badge-green" style="font-size:10px">✓ ${winnaar}${partij.resultaat ? ` (${partij.resultaat})` : ''}</span>` :
           `<span style="font-size:11px;color:var(--light)">Nog te spelen</span>`}
         ${beheerderBtns}
       </div>`;
