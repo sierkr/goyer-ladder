@@ -581,6 +581,24 @@
         <label>Playing handicap (Goyer)</label>
         <input type="number" id="reg-hcp" placeholder="bijv. 12" min="-10" max="54" inputmode="numeric">
       </div>
+      <div style="background:#f9f7f2;border-radius:10px;padding:14px;margin:12px 0;font-size:12px;color:var(--mid);line-height:1.6;max-height:220px;overflow-y:auto">
+        <strong style="font-size:13px;color:var(--dark);display:block;margin-bottom:8px">Welkom bij de Goyer Golf MP Ladder</strong>
+        <strong>Over de ladder</strong><br>
+        De Goyer-ladder is een gezelligheidsinitiatief en heeft een minimaal competitief karakter. Echter streeft de commissie naar een levendige ladder met aan het eind een acceptabele en niet al te verrassende winnaar.<br><br>
+        Iedereen kan meedoen aan de slotwedstrijd die een eigen uitslag kent. Alleen de deelnemers met 5 of meer ladderwedstrijden doen mee voor het eindklassement.<br><br>
+        <strong>Speldeelname</strong><br>
+        Je neemt vrijwillig deel aan de matchplay competitie van Goyer Golf Club. De beheerder kan je account verwijderen als je langere tijd inactief bent.<br><br>
+        <strong>Gegevens die worden opgeslagen</strong><br>
+        Je naam en e-mailadres (voor inloggen en identificatie), je handicap (voor eerlijk spel) en je speelresultaten: gespeelde partijen, gewonnen partijen en rankingpositie.<br><br>
+        <strong>Gebruik van je gegevens</strong><br>
+        Je gegevens zijn zichtbaar voor andere deelnemers. Ze worden niet gedeeld met derden en bewaard zolang je deelneemt. Je kunt ze laten verwijderen via de beheerder.<br><br>
+        <strong>Technisch</strong><br>
+        De app gebruikt Google Firebase voor opslag en authenticatie. Je e-mailadres wordt bij Google opgeslagen conform hun privacybeleid.
+      </div>
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-bottom:12px">
+        <input type="checkbox" id="reg-akkoord" style="margin-top:3px;accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
+        <span style="font-size:13px;color:var(--mid)">Ik heb de informatie gelezen en ga akkoord</span>
+      </label>
       <button class="btn btn-primary btn-block" onclick="registreerSpeler()" style="margin-top:8px">Registreren →</button>
       <p style="font-size:12px;color:var(--light);text-align:center;margin-top:16px">
         Al een account? <button onclick="document.getElementById('registratie-scherm').style.display='none';document.getElementById('login-scherm').classList.add('actief')" style="background:none;border:none;color:var(--green);cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif">Ga naar inloggen</button>
@@ -1304,7 +1322,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.0.9</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.1.0</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -6373,6 +6391,7 @@ async function registreerSpeler() {
   if (!email || !email.includes('@')) { fout.textContent = 'Vul een geldig e-mailadres in'; fout.style.display = 'block'; return; }
   if (pass.length < 6) { fout.textContent = 'Wachtwoord moet minimaal 6 tekens zijn'; fout.style.display = 'block'; return; }
   if (isNaN(hcp)) { fout.textContent = 'Vul je playing handicap in'; fout.style.display = 'block'; return; }
+  if (!document.getElementById('reg-akkoord')?.checked) { fout.textContent = 'Ga akkoord met de voorwaarden om verder te gaan'; fout.style.display = 'block'; return; }
 
   const naam = `${voornaam} ${achternaam}`;
 
