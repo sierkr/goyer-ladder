@@ -690,6 +690,19 @@
   </div>
 </div>
 
+<!-- Knockout ronde indeling modal -->
+<div class="modal-overlay" id="modal-knockout-indeling">
+  <div class="modal" style="max-width:480px">
+    <h3>Ronde 1 indeling</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:12px">Sleep spelers of gebruik de pijltjes om de indeling aan te passen.</p>
+    <div id="knockout-indeling-lijst" style="max-height:400px;overflow-y:auto"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-knockout-indeling')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="bevestigKnockoutIndeling()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
 <!-- Ladder instellingen modal -->
 <div class="modal-overlay" id="modal-ladder-instellingen">
   <div class="modal">
@@ -774,6 +787,13 @@
     <div class="form-group">
       <label>Naam</label>
       <input type="text" id="nieuwe-ladder-naam" placeholder="bijv. Dames">
+    </div>
+    <div class="form-group">
+      <label>Type</label>
+      <select id="nieuwe-ladder-type">
+        <option value="ranking">Ranking ladder</option>
+        <option value="knockout">Knock-out ladder</option>
+      </select>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-nieuwe-ladder')">Annuleren</button>
@@ -1322,7 +1342,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.1.9</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.2.0</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -2109,6 +2129,12 @@ async function renderLadder() {
   }));
 
   wrap.innerHTML = ladderData.map(l => {
+    const isKnockout = (l.data.type || l.type) === 'knockout';
+
+    if (isKnockout) {
+      return renderKnockoutLadderKaart(l);
+    }
+
     const spelers = [...(l.data.spelers || [])].sort((a,b) => a.rank - b.rank);
     const lijstHtml = spelers.length === 0
       ? '<div class="empty"><p>Nog geen spelers.</p></div>'
@@ -6187,14 +6213,15 @@ async function maakNieuweLadder() {
 
   try {
   const naam = document.getElementById('nieuwe-ladder-naam').value.trim();
+  const type = document.getElementById('nieuwe-ladder-type')?.value || 'ranking';
   if (!naam) { toast('Voer een naam in'); return; }
   if (alleLadders.find(l => l.naam.toLowerCase() === naam.toLowerCase())) {
     toast('Een ladder met deze naam bestaat al'); return;
   }
   const id = naam.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
-  const nieuweData = { ...JSON.parse(JSON.stringify(DEFAULT_STATE)), naam, spelerIds: [] };
+  const nieuweData = { ...JSON.parse(JSON.stringify(DEFAULT_STATE)), naam, spelerIds: [], type };
   await setDoc(doc(db, 'ladders', id), nieuweData);
-  alleLadders.push({ id, naam, spelerIds: [], spelers: [] });
+  alleLadders.push({ id, naam, spelerIds: [], spelers: [], type });
   closeModal('modal-nieuwe-ladder');
   renderAdminLadders();
   toast(`Ladder "${naam}" aangemaakt ✓`);
@@ -6336,7 +6363,7 @@ async function renderAdminLadders() {
       </div>` : ''}
       <div style="flex:1">
         <div style="font-weight:600">${l.naam}</div>
-        <div style="font-size:11px;color:var(--light)">${(l.spelers||[]).length} spelers</div>
+        <div style="font-size:11px;color:var(--light)">${(l.spelers||[]).length} spelers${(l.data?.type || l.type) === 'knockout' ? ' · knock-out' : ''}</div>
       </div>
       <button class="btn btn-sm btn-ghost" onclick="openLadderSpelersModal('${l.id}')">👥 Spelers</button>
       <button class="btn btn-sm btn-ghost" onclick="openStandAanpassen('${l.id}')">↕ Stand</button>
@@ -6647,7 +6674,280 @@ window.setBeheerWinnaar = setBeheerWinnaar;
 window.bevestigBeheerUitslag = bevestigBeheerUitslag;
 window.verwijderActievePartij = verwijderActievePartij;
 window.verschuifRank = verschuifRank;
-window.loginSubmit = loginSubmit;
+// ============================================================
+//  KNOCKOUT LADDER
+// ============================================================
+let _koLadderId = null;
+let _koIndelingVolgorde = []; // tijdelijke indeling voor modal
+
+function renderKnockoutLadderKaart(l) {
+  const data = l.data;
+  const rondes = data.rondes || [];
+  const spelers = data.spelers || [];
+  const isBeheerder = isCoordinatorRol();
+  const huidigRonde = rondes.length;
+  const seizoenActief = spelers.length > 0;
+
+  let badgeTekst = seizoenActief ? `Ronde ${huidigRonde || 1}` : 'Geen seizoen';
+  let inhoud = '';
+
+  if (!seizoenActief) {
+    inhoud = `<div class="empty"><p>Nog geen seizoen gestart.</p></div>`;
+  } else {
+    inhoud = renderKnockoutBracket(data, l.id);
+  }
+
+  const beheerderKnoppen = isBeheerder ? `
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap">
+      ${rondes.length === 0 && seizoenActief ? `<button class="btn btn-sm btn-primary" onclick="openKnockoutIndeling('${l.id}')">⚙️ Ronde 1 indeling</button>` : ''}
+      ${rondes.length > 0 ? `<button class="btn btn-sm btn-ghost" onclick="openKnockoutIndeling('${l.id}')">✏️ Indeling aanpassen</button>` : ''}
+      <button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="nieuwKnockoutSeizoen('${l.id}')">🔄 Nieuw seizoen</button>
+    </div>` : '';
+
+  return `<div class="card" style="margin-bottom:16px">
+    <div class="card-header inklapbaar" onclick="toggleLadderKaart(this,'${l.id}')">
+      <h2>${l.naam} <span style="font-size:12px;color:var(--light);font-family:'DM Sans'">knock-out</span></h2>
+      <span class="badge badge-gold">${badgeTekst}</span>
+    </div>
+    <div class="card-collapse" id="ladder-collapse-${l.id}">
+      <div id="ladder-list-${l.id}">${inhoud}</div>
+      ${beheerderKnoppen}
+    </div>
+  </div>`;
+}
+
+function renderKnockoutBracket(data, ladderId) {
+  const rondes = data.rondes || [];
+  const spelers = data.spelers || [];
+  if (spelers.length === 0) return '<div class="empty"><p>Geen spelers.</p></div>';
+  if (rondes.length === 0) return '<div style="padding:12px 16px;font-size:13px;color:var(--light)">Ronde 1 is nog niet ingedeeld.</div>';
+
+  // Bereken totaal rondes
+  const aantalSpelers = spelers.length;
+  const bracketGrootte = Math.pow(2, Math.ceil(Math.log2(aantalSpelers)));
+  const totaalRondes = Math.log2(bracketGrootte);
+
+  let html = '<div style="overflow-x:auto;padding:12px 16px">';
+
+  rondes.forEach((ronde, ri) => {
+    const rondeNaam = ri === totaalRondes - 1 ? 'Finale' :
+                      ri === totaalRondes - 2 ? 'Halve finale' :
+                      ri === totaalRondes - 3 ? 'Kwartfinale' :
+                      `Ronde ${ri + 1}`;
+
+    html += `<div style="margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">${rondeNaam}</div>`;
+
+    ronde.forEach((partij, pi) => {
+      const nA = partij.a || 'BYE';
+      const nB = partij.b || 'BYE';
+      const winnaar = partij.winnaar;
+      const isBye = !partij.b || !partij.a;
+
+      const stijlA = winnaar === partij.a ? 'font-weight:700;color:var(--green)' : winnaar && winnaar !== partij.a ? 'color:var(--light);text-decoration:line-through' : '';
+      const stijlB = winnaar === partij.b ? 'font-weight:700;color:var(--green)' : winnaar && winnaar !== partij.b ? 'color:var(--light);text-decoration:line-through' : '';
+
+      html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1;font-size:13px">
+          <div style="${stijlA}">${nA}</div>
+          <div style="color:var(--light);font-size:10px;margin:2px 0">vs</div>
+          <div style="${stijlB}">${isBye ? '<em style="color:var(--light)">BYE</em>' : nB}</div>
+        </div>
+        ${isBye ? `<span class="badge badge-grey" style="font-size:10px">Bye →</span>` :
+          winnaar ? `<span class="badge badge-green" style="font-size:10px">✓ ${winnaar.split(' ')[0]}</span>` :
+          `<span style="font-size:11px;color:var(--light)">Nog te spelen</span>`}
+      </div>`;
+    });
+
+    html += '</div>';
+  });
+
+  // Finale winnaar
+  const finaleRonde = rondes[rondes.length - 1];
+  if (finaleRonde?.length === 1 && finaleRonde[0].winnaar && rondes.length === totaalRondes) {
+    html += `<div style="text-align:center;padding:16px;background:var(--green-pale);border-radius:10px;margin-top:8px">
+      <div style="font-family:'Bebas Neue';font-size:24px;color:var(--gold)">🏆 ${finaleRonde[0].winnaar}</div>
+      <div style="font-size:12px;color:var(--mid)">Winnaar knock-out ladder</div>
+    </div>`;
+  }
+
+  html += '</div>';
+  return html;
+}
+
+async function openKnockoutIndeling(ladderId) {
+  _koLadderId = ladderId;
+  const ladder = alleLadders.find(l => l.id === ladderId);
+  const snap = await getDoc(doc(db, 'ladders', ladderId));
+  const data = snap.exists() ? snap.data() : {};
+  const spelers = data.spelers || [];
+  const rondes = data.rondes || [];
+
+  // Als ronde 1 al bestaat, toon die indeling
+  // Anders: random indeling genereren
+  let indeling;
+  if (rondes.length > 0) {
+    indeling = rondes[0].map(p => ({ a: p.a, b: p.b }));
+    // Zet speler namen in volgorde
+    _koIndelingVolgorde = rondes[0].flatMap(p => [p.a, p.b].filter(Boolean));
+  } else {
+    // Random shuffle
+    const namen = spelers.map(s => s.naam);
+    for (let i = namen.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [namen[i], namen[j]] = [namen[j], namen[i]];
+    }
+    // Aanvullen met byes tot macht van 2
+    const bracketGrootte = Math.pow(2, Math.ceil(Math.log2(namen.length)));
+    while (namen.length < bracketGrootte) namen.push(null);
+    _koIndelingVolgorde = namen;
+  }
+
+  renderKnockoutIndelingModal();
+  document.getElementById('modal-knockout-indeling').classList.add('open');
+}
+
+function renderKnockoutIndelingModal() {
+  const lijst = document.getElementById('knockout-indeling-lijst');
+  if (!lijst) return;
+  const namen = _koIndelingVolgorde;
+  let html = '';
+
+  for (let i = 0; i < namen.length; i += 2) {
+    const a = namen[i];
+    const b = namen[i + 1];
+    html += `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:11px;color:var(--light);width:20px;text-align:center">${i/2+1}</span>
+      <div style="flex:1;background:var(--green-pale);border-radius:8px;padding:6px 10px;font-size:13px;font-weight:600">${a || '—'}</div>
+      <span style="font-size:11px;color:var(--light)">vs</span>
+      <div style="flex:1;background:${b ? 'var(--green-pale)' : '#f0ede4'};border-radius:8px;padding:6px 10px;font-size:13px;font-weight:${b ? '600' : '400'};color:${b ? 'inherit' : 'var(--light)'}">${b || 'BYE'}</div>
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <button onclick="verschuifKoSpeler(${i}, -2)" ${i < 2 ? 'disabled' : ''} style="background:var(--green-pale);border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:10px;color:var(--green)">↑</button>
+        <button onclick="verschuifKoSpeler(${i}, 2)" ${i >= namen.length - 2 ? 'disabled' : ''} style="background:#fde8e8;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:10px;color:var(--red)">↓</button>
+      </div>
+    </div>`;
+  }
+
+  lijst.innerHTML = html;
+}
+
+function verschuifKoSpeler(idx, delta) {
+  const n = _koIndelingVolgorde;
+  const doel = idx + delta;
+  if (doel < 0 || doel >= n.length) return;
+  // Wissel paren
+  [n[idx], n[idx+1], n[doel], n[doel+1]] = [n[doel], n[doel+1], n[idx], n[idx+1]];
+  renderKnockoutIndelingModal();
+}
+
+async function bevestigKnockoutIndeling() {
+  try {
+    const snap = await getDoc(doc(db, 'ladders', _koLadderId));
+    if (!snap.exists()) return;
+    const data = snap.data();
+    const namen = _koIndelingVolgorde;
+
+    // Bouw ronde 1
+    const ronde1 = [];
+    for (let i = 0; i < namen.length; i += 2) {
+      const a = namen[i];
+      const b = namen[i + 1];
+      const partij = { a: a || null, b: b || null, winnaar: null };
+      // Automatisch bye verwerken
+      if (!b) partij.winnaar = a;
+      if (!a) partij.winnaar = b;
+      ronde1.push(partij);
+    }
+
+    // Als er al rondes zijn, vervang alleen ronde 1
+    const rondes = data.rondes || [];
+    rondes[0] = ronde1;
+
+    // Verwerk byes en genereer volgende rondes indien nodig
+    const bijgewerkt = verwerkKnockoutVoortgang(rondes, namen.length);
+
+    await setDoc(doc(db, 'ladders', _koLadderId), { ...data, rondes: bijgewerkt });
+    closeModal('modal-knockout-indeling');
+    renderLadder();
+    toast('Indeling opgeslagen ✓');
+  } catch(e) { console.error('bevestigKnockoutIndeling mislukt:', e); toast('Er is iets misgegaan'); }
+}
+
+function verwerkKnockoutVoortgang(rondes, aantalSpelers) {
+  // Verwerk winnaars van elke ronde naar de volgende
+  const bracketGrootte = Math.pow(2, Math.ceil(Math.log2(aantalSpelers)));
+  const totaalRondes = Math.log2(bracketGrootte);
+
+  for (let ri = 0; ri < rondes.length; ri++) {
+    const ronde = rondes[ri];
+    const volgendeRi = ri + 1;
+
+    // Alle winnaars van deze ronde
+    const winnaars = ronde.map(p => p.winnaar).filter(Boolean);
+    if (winnaars.length !== ronde.length) break; // Nog niet alle partijen gespeeld
+
+    if (volgendeRi >= totaalRondes) break; // Finale klaar
+
+    // Maak volgende ronde als die nog niet bestaat
+    if (!rondes[volgendeRi]) {
+      const volgendeRonde = [];
+      for (let i = 0; i < winnaars.length; i += 2) {
+        const partij = { a: winnaars[i] || null, b: winnaars[i+1] || null, winnaar: null };
+        if (!partij.b) partij.winnaar = partij.a;
+        if (!partij.a) partij.winnaar = partij.b;
+        volgendeRonde.push(partij);
+      }
+      rondes[volgendeRi] = volgendeRonde;
+    }
+  }
+
+  return rondes;
+}
+
+async function slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar) {
+  try {
+    const snap = await getDoc(doc(db, 'ladders', ladderId));
+    if (!snap.exists()) return;
+    const data = snap.data();
+    const rondes = data.rondes || [];
+    if (!rondes[rondeIdx] || !rondes[rondeIdx][partijIdx]) return;
+
+    rondes[rondeIdx][partijIdx].winnaar = winnaar;
+
+    // Verwerk voortgang
+    const bijgewerkt = verwerkKnockoutVoortgang(rondes, (data.spelers || []).length);
+    await setDoc(doc(db, 'ladders', ladderId), { ...data, rondes: bijgewerkt });
+
+    // Update cache
+    const idx = alleLadders.findIndex(l => l.id === ladderId);
+    if (idx >= 0) alleLadders[idx].data = { ...data, rondes: bijgewerkt };
+    if (ladderId === activeLadderId) state.rondes = bijgewerkt;
+
+    renderLadder();
+    toast(`${winnaar.split(' ')[0]} door naar volgende ronde ✓`);
+  } catch(e) { console.error('slaKnockoutWinnaarOp mislukt:', e); toast('Er is iets misgegaan'); }
+}
+
+async function nieuwKnockoutSeizoen(ladderId) {
+  if (!confirm('Nieuw seizoen starten? De huidige bracket wordt gewist.')) return;
+  try {
+    const snap = await getDoc(doc(db, 'ladders', ladderId));
+    if (!snap.exists()) return;
+    const data = snap.data();
+    await setDoc(doc(db, 'ladders', ladderId), { ...data, rondes: [] });
+    const idx = alleLadders.findIndex(l => l.id === ladderId);
+    if (idx >= 0) alleLadders[idx].data = { ...data, rondes: [] };
+    await openKnockoutIndeling(ladderId);
+    renderLadder();
+    toast('Nieuw seizoen gestart — stel ronde 1 in ✓');
+  } catch(e) { console.error('nieuwKnockoutSeizoen mislukt:', e); toast('Er is iets misgegaan'); }
+}
+
+window.openKnockoutIndeling = openKnockoutIndeling;
+window.verschuifKoSpeler = verschuifKoSpeler;
+window.bevestigKnockoutIndeling = bevestigKnockoutIndeling;
+window.slaKnockoutWinnaarOp = slaKnockoutWinnaarOp;
+window.nieuwKnockoutSeizoen = nieuwKnockoutSeizoen;
 window.loginMetGoogle = loginMetGoogle;
 window.uitloggen = uitloggen;
 window.openWachtwoordVergeten = openWachtwoordVergeten;
