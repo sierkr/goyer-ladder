@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.4.9</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.5.0</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1343,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.4.9</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.5.0</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -4430,19 +4430,24 @@ async function bevestigNieuwSeizoen() {
   const naam = document.getElementById('seizoen-naam').value.trim();
   if (!naam) { toast('Geef het seizoen een naam'); return; }
 
-  // Archiveer huidig seizoen
+  // Archiveer huidig seizoen — inclusief spelers met 0 partijen
+  const alleSpelersInLadder = [...state.spelers].sort((a,b) => a.rank - b.rank);
   const seizoen = {
     naam,
     datum: new Date().toLocaleDateString('nl-NL'),
     timestamp: Date.now(),
-    eindstand: [...state.spelers].sort((a,b) => a.rank - b.rank).map(s => ({
+    eindstand: alleSpelersInLadder.map(s => ({
       rank: s.rank,
       naam: s.naam,
-      partijen: s.partijen,
-      gewonnen: s.gewonnen,
+      partijen: s.partijen || 0,
+      gewonnen: s.gewonnen || 0,
       hcp: Math.round(s.hcp)
     })),
-    uitslagen: [...state.uitslagen]
+    uitslagen: [...state.uitslagen].map(u => ({
+      baan: u.baan || '',
+      datum: u.datum || '',
+      spelers: u.spelers || []
+    }))
   };
 
   archiefData.unshift(seizoen);
@@ -4593,29 +4598,70 @@ function openArchiefDetail(idx) {
   if (!s) return;
   document.getElementById('archief-detail-titel').textContent = s.naam;
 
-  let html = '<div style="margin-bottom:16px">';
-  html += `<p style="font-size:13px;color:var(--light);margin-bottom:12px">Eindstand — ${s.datum}</p>`;
+  // Seizoensoverzicht statistieken
+  const eindstand = s.eindstand || [];
+  const totalPartijen = eindstand.reduce((t, sp) => t + (sp.partijen || 0), 0);
+  const actief = eindstand.filter(sp => (sp.partijen || 0) > 0);
+  const inactief = eindstand.filter(sp => (sp.partijen || 0) === 0);
 
-  s.eindstand?.forEach(sp => {
-    const winpct = sp.partijen > 0 ? Math.round(sp.gewonnen/sp.partijen*100) : 0;
-    html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0ede4">
+  // Gespeelde banen samenvatting
+  const baanTeller = {};
+  (s.uitslagen || []).forEach(u => {
+    if (u.baan) baanTeller[u.baan] = (baanTeller[u.baan] || 0) + 1;
+  });
+  const baanSamenvatting = Object.entries(baanTeller)
+    .sort((a, b) => b[1] - a[1])
+    .map(([b, n]) => `${b} ${n}x`)
+    .join(' · ');
+
+  let html = '';
+
+  // Header statistieken
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px">
+    <div style="text-align:center;background:var(--green-pale);border-radius:10px;padding:10px">
+      <div style="font-family:'Bebas Neue';font-size:26px;color:var(--green)">${eindstand.length}</div>
+      <div style="font-size:10px;color:var(--light);text-transform:uppercase">Spelers</div>
+    </div>
+    <div style="text-align:center;background:#fef3cd;border-radius:10px;padding:10px">
+      <div style="font-family:'Bebas Neue';font-size:26px;color:var(--gold)">${totalPartijen}</div>
+      <div style="font-size:10px;color:var(--light);text-transform:uppercase">Partijen</div>
+    </div>
+    <div style="text-align:center;background:#f0ede4;border-radius:10px;padding:10px">
+      <div style="font-family:'Bebas Neue';font-size:26px;color:var(--mid)">${actief.length}</div>
+      <div style="font-size:10px;color:var(--light);text-transform:uppercase">Actief</div>
+    </div>
+  </div>`;
+
+  // Gespeelde banen
+  if (baanSamenvatting) {
+    html += `<div style="font-size:12px;color:var(--mid);margin-bottom:16px;padding:8px 10px;background:#f9f7f2;border-radius:8px">
+      ⛳ ${baanSamenvatting}
+    </div>`;
+  }
+
+  // Eindstand — actieve spelers
+  html += `<div style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Eindstand</div>`;
+  actief.forEach(sp => {
+    const winpct = sp.partijen > 0 ? Math.round(sp.gewonnen / sp.partijen * 100) : 0;
+    const verloren = (sp.partijen || 0) - (sp.gewonnen || 0);
+    html += `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f0ede4">
       <span style="font-family:'Bebas Neue';font-size:20px;color:${sp.rank<=3?'var(--gold)':'var(--light)'};min-width:28px">${sp.rank}</span>
-      <span style="flex:1;font-weight:500">${sp.naam}</span>
-      <span style="font-size:12px;color:var(--light)">${sp.partijen}P ${sp.gewonnen}W ${winpct}%</span>
+      <span style="flex:1;font-weight:500;font-size:14px">${sp.naam}</span>
+      <span style="font-size:11px;color:var(--mid);font-family:'DM Mono',monospace">${sp.partijen}G ${sp.gewonnen}W ${verloren}V ${winpct}%</span>
+      <span style="font-size:11px;color:var(--light)">hcp ${sp.hcp}</span>
     </div>`;
   });
-  html += '</div>';
 
-  if (s.uitslagen?.length > 0) {
-    html += `<p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:8px">Gespeelde partijen (${s.uitslagen.length})</p>`;
-    html += s.uitslagen.slice(0, 10).map(u => `
-      <div style="padding:8px 0;border-bottom:1px solid #f0ede4;font-size:13px">
-        <div style="display:flex;justify-content:space-between">
-          <span style="font-weight:500">${u.baan}</span>
-          <span style="color:var(--light)">${u.datum}</span>
-        </div>
-      </div>`).join('');
-    if (s.uitslagen.length > 10) html += `<p style="font-size:12px;color:var(--light);padding:8px 0">... en ${s.uitslagen.length - 10} meer</p>`;
+  // Niet gespeeld
+  if (inactief.length > 0) {
+    html += `<div style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 6px">Niet gespeeld</div>`;
+    inactief.forEach(sp => {
+      html += `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #f0ede4">
+        <span style="font-family:'Bebas Neue';font-size:20px;color:var(--light);min-width:28px">${sp.rank}</span>
+        <span style="flex:1;font-size:13px;color:var(--light)">${sp.naam}</span>
+        <span style="font-size:11px;color:#ccc">hcp ${sp.hcp}</span>
+      </div>`;
+    });
   }
 
   document.getElementById('archief-detail-inhoud').innerHTML = html;
