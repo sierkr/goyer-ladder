@@ -1342,7 +1342,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.2.2</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.2.3</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -6819,17 +6819,20 @@ function renderKnockoutIndelingModal() {
     const isEerste = idx % 2 === 0;
     const isBye = !naam;
     html += `
-      <div draggable="${!isBye}" 
-        ondragstart="koDragStart(event,${idx})" 
-        ondragover="koDragOver(event)" 
+      <div draggable="${!isBye}"
+        ondragstart="koDragStart(event,${idx})"
+        ondragover="koDragOver(event)"
         ondrop="koDrop(event,${idx})"
         ondragend="koDragEnd(event)"
+        ontouchstart="koTouchStart(event,${idx})"
+        ontouchmove="koTouchMove(event)"
+        ontouchend="koTouchEnd(event,${idx})"
         data-idx="${idx}"
-        style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);cursor:${isBye ? 'default' : 'grab'}">
-        ${isEerste 
-          ? `<span style="font-size:10px;color:var(--light);width:20px;text-align:right;flex-shrink:0">${koppelNr}</span>` 
+        style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);cursor:${isBye ? 'default' : 'grab'};touch-action:none;user-select:none">
+        ${isEerste
+          ? `<span style="font-size:10px;color:var(--light);width:20px;text-align:right;flex-shrink:0">${koppelNr}</span>`
           : `<span style="width:20px;flex-shrink:0"></span>`}
-        <div style="flex:1;background:${isBye ? '#f0ede4' : 'var(--green-pale)'};border-radius:8px;padding:8px 12px;font-size:13px;font-weight:${isBye ? '400' : '600'};color:${isBye ? 'var(--light)' : 'inherit'};transition:background 0.1s">
+        <div style="flex:1;background:${isBye ? '#f0ede4' : 'var(--green-pale)'};border-radius:8px;padding:8px 12px;font-size:13px;font-weight:${isBye ? '400' : '600'};color:${isBye ? 'var(--light)' : 'inherit'}">
           ${isBye ? 'BYE' : `⠿ ${naam}`}
         </div>
       </div>
@@ -6840,45 +6843,98 @@ function renderKnockoutIndelingModal() {
 }
 
 let _koDragIdx = null;
+let _koTouchClone = null;
+let _koTouchStartY = 0;
 
 function koDragStart(event, idx) {
   _koDragIdx = idx;
   event.dataTransfer.effectAllowed = 'move';
-  setTimeout(() => {
-    const el = event.target;
-    if (el) el.style.opacity = '0.4';
-  }, 0);
+  setTimeout(() => { if (event.target) event.target.style.opacity = '0.4'; }, 0);
 }
-
 function koDragOver(event) {
   event.preventDefault();
   event.dataTransfer.dropEffect = 'move';
-  // Highlight doel
-  document.querySelectorAll('#knockout-indeling-lijst [data-idx]').forEach(el => {
-    el.style.background = '';
-  });
+  document.querySelectorAll('#knockout-indeling-lijst [data-idx]').forEach(el => el.style.background = '');
   const doel = event.currentTarget;
   if (doel && _koDragIdx !== null && parseInt(doel.dataset.idx) !== _koDragIdx) {
-    doel.style.background = 'rgba(74,124,89,0.08)';
+    doel.style.background = 'rgba(74,124,89,0.1)';
   }
 }
-
 function koDrop(event, doelIdx) {
   event.preventDefault();
   if (_koDragIdx === null || _koDragIdx === doelIdx) return;
   const n = _koIndelingVolgorde;
-  if (!n[_koDragIdx]) return; // geen BYE slepen
+  if (!n[_koDragIdx]) return;
   [n[_koDragIdx], n[doelIdx]] = [n[doelIdx], n[_koDragIdx]];
   _koDragIdx = null;
   renderKnockoutIndelingModal();
 }
-
 function koDragEnd(event) {
   _koDragIdx = null;
   document.querySelectorAll('#knockout-indeling-lijst [data-idx]').forEach(el => {
-    el.style.opacity = '';
-    el.style.background = '';
+    el.style.opacity = ''; el.style.background = '';
   });
+}
+
+// Touch support voor mobiel
+function koTouchStart(event, idx) {
+  if (!_koIndelingVolgorde[idx]) return; // geen BYE
+  _koDragIdx = idx;
+  _koTouchStartY = event.touches[0].clientY;
+  const el = event.currentTarget;
+  el.style.opacity = '0.4';
+
+  // Maak een clone die meesleept
+  _koTouchClone = el.cloneNode(true);
+  _koTouchClone.style.position = 'fixed';
+  _koTouchClone.style.zIndex = '9999';
+  _koTouchClone.style.width = el.offsetWidth + 'px';
+  _koTouchClone.style.pointerEvents = 'none';
+  _koTouchClone.style.opacity = '0.85';
+  _koTouchClone.style.transform = 'scale(1.02)';
+  _koTouchClone.style.background = 'white';
+  _koTouchClone.style.boxShadow = '0 4px 16px rgba(0,0,0,0.15)';
+  _koTouchClone.style.borderRadius = '8px';
+  _koTouchClone.style.top = el.getBoundingClientRect().top + 'px';
+  _koTouchClone.style.left = el.getBoundingClientRect().left + 'px';
+  document.body.appendChild(_koTouchClone);
+}
+
+function koTouchMove(event) {
+  event.preventDefault();
+  if (!_koTouchClone) return;
+  const touch = event.touches[0];
+  _koTouchClone.style.top = (touch.clientY - 30) + 'px';
+
+  // Highlight element onder vinger
+  document.querySelectorAll('#knockout-indeling-lijst [data-idx]').forEach(el => el.style.background = '');
+  const elOnder = document.elementFromPoint(touch.clientX, touch.clientY);
+  const rij = elOnder?.closest('[data-idx]');
+  if (rij && parseInt(rij.dataset.idx) !== _koDragIdx) {
+    rij.style.background = 'rgba(74,124,89,0.1)';
+  }
+}
+
+function koTouchEnd(event) {
+  if (_koTouchClone) { _koTouchClone.remove(); _koTouchClone = null; }
+  document.querySelectorAll('#knockout-indeling-lijst [data-idx]').forEach(el => {
+    el.style.opacity = ''; el.style.background = '';
+  });
+
+  if (_koDragIdx === null) return;
+
+  const touch = event.changedTouches[0];
+  const elOnder = document.elementFromPoint(touch.clientX, touch.clientY);
+  const rij = elOnder?.closest('[data-idx]');
+  if (rij) {
+    const doelIdx = parseInt(rij.dataset.idx);
+    if (doelIdx !== _koDragIdx) {
+      const n = _koIndelingVolgorde;
+      [n[_koDragIdx], n[doelIdx]] = [n[doelIdx], n[_koDragIdx]];
+      renderKnockoutIndelingModal();
+    }
+  }
+  _koDragIdx = null;
 }
 
 function verschuifKoSpeler(idx, delta) {
@@ -6996,6 +7052,9 @@ window.koDragStart = koDragStart;
 window.koDragOver = koDragOver;
 window.koDrop = koDrop;
 window.koDragEnd = koDragEnd;
+window.koTouchStart = koTouchStart;
+window.koTouchMove = koTouchMove;
+window.koTouchEnd = koTouchEnd;
 window.openKnockoutIndeling = openKnockoutIndeling;
 window.verschuifKoSpeler = verschuifKoSpeler;
 window.bevestigKnockoutIndeling = bevestigKnockoutIndeling;
