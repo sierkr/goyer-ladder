@@ -1304,7 +1304,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.0.8</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.0.9</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -2789,6 +2789,8 @@ function berekenMatchStand(matchup) {
   let standA = 0;
   let gespeeld = 0;
   let resultatenPerHole = [];
+  let beslissingsStand = null;
+  let beslissingsGespeeld = null;
 
   for (let i = 0; i < p.holes.length; i++) {
     const sA = p.scores[matchup.spelerA.id][i];
@@ -2802,14 +2804,24 @@ function berekenMatchStand(matchup) {
     if (nettoA < nettoB) { standA++; resultatenPerHole.push('A'); }
     else if (nettoB < nettoA) { standA--; resultatenPerHole.push('B'); }
     else { resultatenPerHole.push('T'); }
+
+    // Controleer of matchup op dit moment beslist is
+    const resterendNa = p.holes.length - gespeeld;
+    if (beslissingsStand === null && Math.abs(standA) > resterendNa) {
+      beslissingsStand = standA;
+      beslissingsGespeeld = gespeeld;
+    }
   }
 
   const resterend = p.holes.length - gespeeld;
-  // Wiskundig beslist: voorsprong groter dan resterend holes
-  const beslist = Math.abs(standA) > resterend;
   const klaar = gespeeld === p.holes.length;
+  const beslist = beslissingsStand !== null;
 
-  return { standA, gespeeld, resterend, resultatenPerHole, status: klaar ? 'klaar' : beslist ? 'beslist' : 'lopend' };
+  // Als beslist: gebruik de stand op moment van beslissing (bevroren)
+  const effectieveStand = beslist ? beslissingsStand : standA;
+  const resterendOpBeslissing = beslist ? (p.holes.length - beslissingsGespeeld) : resterend;
+
+  return { standA: effectieveStand, gespeeld, resterend: resterendOpBeslissing, resultatenPerHole, status: klaar && !beslist ? 'klaar' : beslist ? 'beslist' : 'lopend', beslissingsGespeeld };
 }
 
 function renderMatchOverview() {
@@ -2823,7 +2835,16 @@ function renderMatchOverview() {
     const nB = naamMap[m.spelerB.id];
 
     let scoreText, scoreLeadA, scoreLeadB;
-    if (standA === 0) {
+    if (status === 'beslist' || status === 'klaar') {
+      const up = Math.abs(standA);
+      if (status === 'beslist') {
+        scoreText = `${up}&${resterend}`;
+      } else {
+        scoreText = standA === 0 ? 'TIED' : `${up}&0`;
+      }
+      scoreLeadA = standA > 0;
+      scoreLeadB = standA < 0;
+    } else if (standA === 0) {
       scoreText = 'TIED'; scoreLeadA = false; scoreLeadB = false;
     } else if (standA > 0) {
       scoreText = `${standA} UP`; scoreLeadA = true; scoreLeadB = false;
@@ -2833,10 +2854,10 @@ function renderMatchOverview() {
 
     // Statusregel
     let statusLabel;
-    if (status === 'klaar') statusLabel = 'Klaar';
+    if (status === 'klaar' && standA === 0) statusLabel = 'Gelijkspel';
+    else if (status === 'klaar') statusLabel = `${standA > 0 ? nA : nB} wint`;
     else if (status === 'beslist') {
-      const winnaarNaam = standA > 0 ? nA : nB;
-      statusLabel = `${winnaarNaam} wint • ${resterend} hole${resterend > 1 ? 's' : ''} resterend`;
+      statusLabel = `${standA > 0 ? nA : nB} wint`;
     } else {
       statusLabel = resterend + ' te gaan';
     }
