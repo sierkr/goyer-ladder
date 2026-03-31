@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.3.9</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.4.0</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1343,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.3.9</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.4.0</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -4139,20 +4139,44 @@ function renderProfiel() {
 async function slaProfielHcpOp() {
 
   try {
-  const val = parseInt(document.getElementById('profiel-hcp-input').value);
+  const val = parseFloat(document.getElementById('profiel-hcp-input').value);
   if (isNaN(val)) { toast('Voer een geldige handicap in'); return; }
 
-  // Zoek gekoppelde speler
   const gebruiker = huidigeBruiker.gebruikersnaam.toLowerCase().trim();
-  const speler = state.spelers.find(s => {
-    const naam = s.naam.toLowerCase().trim();
-    return naam === gebruiker || naam.split(' ')[0] === gebruiker.split(' ')[0] ||
-           naam.includes(gebruiker.split(' ')[0]) || gebruiker.includes(naam.split(' ')[0]);
-  });
+  const voornaam = gebruiker.split(' ')[0];
 
-  if (!speler) { toast('Geen gekoppeld spelersprofiel gevonden'); return; }
-  speler.hcp = val;
-  await slaState();
+  const matchNaam = (naam) => {
+    const n = naam.toLowerCase().trim();
+    return n === gebruiker || n.split(' ')[0] === voornaam || n.includes(voornaam) || gebruiker.includes(n.split(' ')[0]);
+  };
+
+  // Update in master spelerslijst
+  const masterSpeler = alleSpelersData.find(s => matchNaam(s.naam));
+  if (masterSpeler) {
+    masterSpeler.hcp = val;
+    await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+  }
+
+  // Update in alle ladders
+  let gevonden = false;
+  for (const ladder of alleLadders) {
+    const snap = await getDoc(doc(db, 'ladders', ladder.id));
+    if (!snap.exists()) continue;
+    const data = snap.data();
+    const speler = (data.spelers || []).find(s => matchNaam(s.naam));
+    if (speler) {
+      speler.hcp = val;
+      await setDoc(doc(db, 'ladders', ladder.id), data);
+      gevonden = true;
+      // Update actieve state ook
+      if (ladder.id === activeLadderId) {
+        const sp = state.spelers.find(s => matchNaam(s.naam));
+        if (sp) sp.hcp = val;
+      }
+    }
+  }
+
+  if (!gevonden && !masterSpeler) { toast('Geen gekoppeld spelersprofiel gevonden'); return; }
   toast('Playing Handicap bijgewerkt ✓');
   renderProfiel();
   } catch(e) { console.error('slaProfielHcpOp mislukt:', e); }
