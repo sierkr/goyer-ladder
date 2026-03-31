@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.3.5</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.3.6</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1343,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.3.5</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.3.6</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -3704,8 +3704,8 @@ async function renderAdminSpelersEnAccounts() {
           ${emailTekst}
           ${rolBadge}
         </div>
+        ${ladderBadges ? `<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:3px">${ladderBadges}</div>` : ''}
       </div>
-      <div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0">${ladderBadges}</div>
       <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace;flex-shrink:0;white-space:nowrap">hcp ${Math.round(s.hcp)}</span>
       <button class="btn btn-sm btn-ghost" onclick="openEditPlayer(${s.id})">✏️</button>
       <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removePlayer(${s.id})">✕</button>
