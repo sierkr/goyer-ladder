@@ -1322,7 +1322,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.1.5</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.1.6</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -6477,6 +6477,16 @@ async function registreerSpeler() {
       <a href="${location.origin}${location.pathname}" style="color:var(--green);font-weight:600">Klik hier om in te loggen →</a>`;
     succes.style.display = 'block';
 
+    // Tel gebruik van uitnodigingslink
+    try {
+      const inviteRef = doc(db, 'ladder', `invite_${targetLadderId}`);
+      const inviteSnap = await getDoc(inviteRef);
+      if (inviteSnap.exists()) {
+        const data = inviteSnap.data();
+        await setDoc(inviteRef, { ...data, gebruik: (data.gebruik || 0) + 1 });
+      }
+    } catch(e) { console.log('Invite teller mislukt:', e); }
+
   } catch(e) {
     _bezigMetRegistratie = false;
     if (e.code === 'auth/email-already-in-use') {
@@ -6508,7 +6518,8 @@ async function laadInviteStatus() {
     if (!el) return;
     if (snap.exists() && snap.data().verloopt > Date.now()) {
       const url = `${location.origin}${location.pathname}?invite=${snap.data().token}&ladder=${ladderId}`;
-      el.textContent = `Actief — geldig tot ${new Date(snap.data().verloopt).toLocaleDateString('nl-NL')}`;
+      const gebruik = snap.data().gebruik || 0;
+      el.textContent = `Actief — geldig tot ${new Date(snap.data().verloopt).toLocaleDateString('nl-NL')} · ${gebruik} keer gebruikt`;
       document.getElementById('invite-link-text').textContent = url;
       document.getElementById('invite-link-wrap').style.display = 'block';
     } else {
