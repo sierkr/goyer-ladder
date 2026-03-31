@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.3.3</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.3.5</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1343,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.3.3</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.3.5</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -6774,6 +6774,15 @@ function renderKnockoutBracket(data, ladderId) {
 
   let html = '<div style="overflow-x:auto;padding:12px 16px">';
 
+  // Finale winnaar bovenaan
+  const finaleRonde = rondes[rondes.length - 1];
+  if (finaleRonde?.length === 1 && finaleRonde[0].winnaar && finaleRonde[0].winnaar !== '' && rondes.length === totaalRondes) {
+    html += `<div style="text-align:center;padding:16px;background:var(--green-pale);border-radius:10px;margin-bottom:16px">
+      <div style="font-family:'Bebas Neue';font-size:24px;color:var(--gold)">🏆 ${finaleRonde[0].winnaar}</div>
+      <div style="font-size:12px;color:var(--mid)">Winnaar knock-out ladder</div>
+    </div>`;
+  }
+
   rondes.slice().reverse().forEach((ronde, ri) => {
     const riOrig = rondes.length - 1 - ri; // originele index voor namen
     const rondeNaam = riOrig === totaalRondes - 1 ? 'Finale' :
@@ -6808,7 +6817,7 @@ function renderKnockoutBracket(data, ladderId) {
           <div style="${stijlB}">${isBye ? '<em style="color:var(--light)">BYE</em>' : nB}</div>
         </div>
         ${isBye ? `<span class="badge badge-grey" style="font-size:10px">Bye →</span>` :
-          winnaar ? `<span class="badge badge-green" style="font-size:10px">✓ ${winnaar.split(' ')[0]}</span>` :
+          winnaar ? `<span class="badge badge-green" style="font-size:10px">✓ ${winnaar.split(' ')[0]}${partij.resultaat ? ` (${partij.resultaat})` : ''}</span>` :
           `<span style="font-size:11px;color:var(--light)">Nog te spelen</span>`}
         ${beheerderBtns}
       </div>`;
@@ -6816,15 +6825,6 @@ function renderKnockoutBracket(data, ladderId) {
 
     html += '</div>';
   });
-
-  // Finale winnaar
-  const finaleRonde = rondes[rondes.length - 1];
-  if (finaleRonde?.length === 1 && finaleRonde[0].winnaar && finaleRonde[0].winnaar !== '' && rondes.length === totaalRondes) {
-    html += `<div style="text-align:center;padding:16px;background:var(--green-pale);border-radius:10px;margin-top:8px">
-      <div style="font-family:'Bebas Neue';font-size:24px;color:var(--gold)">🏆 ${finaleRonde[0].winnaar}</div>
-      <div style="font-size:12px;color:var(--mid)">Winnaar knock-out ladder</div>
-    </div>`;
-  }
 
   html += '</div>';
   return html;
@@ -7090,14 +7090,23 @@ async function verwerkKnockoutUitslag(partij) {
     );
     if (partijIdx === -1) return;
 
-    await slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar);
-    toast(`${winnaar} door naar volgende ronde ✓`);
+    // Bepaal matchplay resultaat (bijv. "3&2")
+    const { standA, resterend, status } = berekenMatchStand(matchup);
+    let resultaat = '';
+    if (status === 'beslist') {
+      resultaat = `${Math.abs(standA)}&${resterend}`;
+    } else if (status === 'klaar') {
+      resultaat = standA === 0 ? 'gelijkspel' : `${Math.abs(standA)}&0`;
+    }
+
+    await slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar, resultaat);
+    toast(`${winnaar.split(' ')[0]} door naar volgende ronde ✓`);
   } catch(e) { console.error('verwerkKnockoutUitslag mislukt:', e); }
 }
 
 window.verwerkKnockoutUitslag = verwerkKnockoutUitslag;
 
-async function slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar) {
+async function slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar, resultaat) {
   try {
     const snap = await getDoc(doc(db, 'ladders', ladderId));
     if (!snap.exists()) return;
@@ -7106,6 +7115,7 @@ async function slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar) {
     if (!rondes[rondeIdx] || !rondes[rondeIdx][partijIdx]) return;
 
     rondes[rondeIdx][partijIdx].winnaar = winnaar || '';
+    if (resultaat !== undefined) rondes[rondeIdx][partijIdx].resultaat = resultaat || '';
 
     // Verwerk voortgang
     const bijgewerkt = verwerkKnockoutVoortgang(rondes, (data.spelers || []).length);
