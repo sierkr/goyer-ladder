@@ -1304,7 +1304,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.0.7</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.0.8</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -3006,11 +3006,25 @@ function openUitslagModal() {
   document.getElementById('modal-matches').innerHTML = html;
   document.getElementById('modal-uitslag').classList.add('open');
 
+  // Bepaal winnaars en timestamps — automatisch bepaalde winnaars krijgen
+  // timestamp op basis van wanneer de beslissende hole gespeeld werd
   p._modalWinnaars = p.matchups.map(m => {
     const { standA } = berekenMatchStand(m);
     if (standA > 0) return 'A';
     if (standA < 0) return 'B';
     return null;
+  });
+  // Timestamp per matchup — bepaalt verwerkingsvolgorde
+  p._modalTimestamps = p.matchups.map((m, idx) => {
+    const winnaar = p._modalWinnaars[idx];
+    if (!winnaar) return Infinity; // handmatig, nog niet bepaald
+    // Zoek de laatste ingevulde hole van de winnaar of verliezer
+    const spelerA = m.spelerA, spelerB = m.spelerB;
+    const scoresA = p.scores[spelerA.id] || [];
+    const scoresB = p.scores[spelerB.id] || [];
+    // Gebruik het aantal ingevulde holes als proxy voor tijdvolgorde
+    const ingevuld = scoresA.filter(v => v !== null).length + scoresB.filter(v => v !== null).length;
+    return ingevuld > 0 ? -ingevuld : Infinity; // meer holes = eerder klaar
   });
   p._modalSkipped = new Array(p.matchups.length).fill(false);
 }
@@ -3018,6 +3032,9 @@ function openUitslagModal() {
 function setWinnaar(idx, kant) {
   const p = mijnPartij();
   p._modalWinnaars[idx] = kant;
+  // Sla tijdstip op voor verwerkingsvolgorde
+  if (!p._modalTimestamps) p._modalTimestamps = new Array(p.matchups.length).fill(Infinity);
+  p._modalTimestamps[idx] = Date.now();
   const naamMap = kortNaamMap(p.spelers);
   const nA = naamMap[p.matchups[idx].spelerA.id];
   const nB = naamMap[p.matchups[idx].spelerB.id];
@@ -3075,7 +3092,13 @@ async function bevestigUitslag() {
   // Sla huidige ranks op als prevRank voor alle spelers
   state.spelers.forEach(s => { s.prevRank = s.rank; });
 
-  p.matchups.forEach((m, idx) => {
+  // Sorteer matchups op volgorde van afronding (timestamp)
+  const timestamps = p._modalTimestamps || p.matchups.map(() => 0);
+  const volgorde = p.matchups
+    .map((m, idx) => ({ m, idx, ts: timestamps[idx] ?? Infinity }))
+    .sort((a, b) => a.ts - b.ts);
+
+  volgorde.forEach(({ m, idx }) => {
     // Overgeslagen matchups tellen niet mee voor de ladder
     if (p._modalSkipped?.[idx]) return;
     const winnaarKant = p._modalWinnaars[idx];
