@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.4.6</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.4.7</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1343,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.4.6</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.4.7</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -2091,9 +2091,19 @@ async function renderLadder() {
       });
 
   if (mijnLadders.length === 0) {
-    wrap.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">🏆</div><p>Je bent nog niet toegevoegd aan een ladder.</p></div></div>';
+    // Data mogelijk nog niet geladen — automatisch opnieuw proberen na 2 seconden
+    if (!window._ladderRetryCount) window._ladderRetryCount = 0;
+    if (window._ladderRetryCount < 3) {
+      window._ladderRetryCount++;
+      wrap.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">⏳</div><p>Laden…</p></div></div>';
+      setTimeout(() => renderLadder(), 2000);
+    } else {
+      window._ladderRetryCount = 0;
+      wrap.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">🏆</div><p>Je bent nog niet toegevoegd aan een ladder.</p></div></div>';
+    }
     return;
   }
+  window._ladderRetryCount = 0;
 
   // Render elke ladder als inklapbare kaart
   // Gebruik gecachede data waar mogelijk, anders getDoc
