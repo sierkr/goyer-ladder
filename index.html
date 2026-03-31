@@ -1342,7 +1342,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.2.3</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.2.4</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -6741,7 +6741,7 @@ function renderKnockoutBracket(data, ladderId) {
     ronde.forEach((partij, pi) => {
       const nA = partij.a || 'BYE';
       const nB = partij.b || 'BYE';
-      const winnaar = partij.winnaar;
+      const winnaar = partij.winnaar || '';
       const isBye = !partij.b || !partij.a;
 
       const stijlA = winnaar === partij.a ? 'font-weight:700;color:var(--green)' : winnaar && winnaar !== partij.a ? 'color:var(--light);text-decoration:line-through' : '';
@@ -6764,7 +6764,7 @@ function renderKnockoutBracket(data, ladderId) {
 
   // Finale winnaar
   const finaleRonde = rondes[rondes.length - 1];
-  if (finaleRonde?.length === 1 && finaleRonde[0].winnaar && rondes.length === totaalRondes) {
+  if (finaleRonde?.length === 1 && finaleRonde[0].winnaar && finaleRonde[0].winnaar !== '' && rondes.length === totaalRondes) {
     html += `<div style="text-align:center;padding:16px;background:var(--green-pale);border-radius:10px;margin-top:8px">
       <div style="font-family:'Bebas Neue';font-size:24px;color:var(--gold)">🏆 ${finaleRonde[0].winnaar}</div>
       <div style="font-size:12px;color:var(--mid)">Winnaar knock-out ladder</div>
@@ -6952,12 +6952,12 @@ async function bevestigKnockoutIndeling() {
     const data = snap.data();
     const namen = _koIndelingVolgorde;
 
-    // Bouw ronde 1
+    // Bouw ronde 1 — Firestore accepteert geen null in arrays, gebruik lege string voor bye
     const ronde1 = [];
     for (let i = 0; i < namen.length; i += 2) {
-      const a = namen[i];
-      const b = namen[i + 1];
-      const partij = { a: a || null, b: b || null, winnaar: null };
+      const a = namen[i] || '';
+      const b = namen[i + 1] || '';
+      const partij = { a, b, winnaar: '' };
       // Automatisch bye verwerken
       if (!b) partij.winnaar = a;
       if (!a) partij.winnaar = b;
@@ -6997,7 +6997,7 @@ function verwerkKnockoutVoortgang(rondes, aantalSpelers) {
     if (!rondes[volgendeRi]) {
       const volgendeRonde = [];
       for (let i = 0; i < winnaars.length; i += 2) {
-        const partij = { a: winnaars[i] || null, b: winnaars[i+1] || null, winnaar: null };
+        const partij = { a: winnaars[i] || '', b: winnaars[i+1] || '', winnaar: '' };
         if (!partij.b) partij.winnaar = partij.a;
         if (!partij.a) partij.winnaar = partij.b;
         volgendeRonde.push(partij);
@@ -7017,7 +7017,7 @@ async function slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar) {
     const rondes = data.rondes || [];
     if (!rondes[rondeIdx] || !rondes[rondeIdx][partijIdx]) return;
 
-    rondes[rondeIdx][partijIdx].winnaar = winnaar;
+    rondes[rondeIdx][partijIdx].winnaar = winnaar || '';
 
     // Verwerk voortgang
     const bijgewerkt = verwerkKnockoutVoortgang(rondes, (data.spelers || []).length);
