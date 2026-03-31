@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.4.7</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.4.8</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1343,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.4.7</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.4.8</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -2091,12 +2091,33 @@ async function renderLadder() {
       });
 
   if (mijnLadders.length === 0) {
-    // Data mogelijk nog niet geladen — automatisch opnieuw proberen na 2 seconden
     if (!window._ladderRetryCount) window._ladderRetryCount = 0;
     if (window._ladderRetryCount < 3) {
       window._ladderRetryCount++;
       wrap.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">⏳</div><p>Laden…</p></div></div>';
-      setTimeout(() => renderLadder(), 2000);
+      setTimeout(async () => {
+        // Herlaad alleLadders vers uit Firestore
+        try {
+          const [laddersSnap, volgordeSnap] = await Promise.all([
+            getDocs(LADDERS_COL),
+            getDoc(doc(db, 'ladder', 'ladderVolgorde'))
+          ]);
+          const volgorde = volgordeSnap.exists() ? (volgordeSnap.data().volgorde || []) : [];
+          alleLadders = laddersSnap.docs.map(d => ({
+            id: d.id, naam: d.data().naam, type: d.data().type || 'ranking',
+            spelerIds: d.data().spelerIds || [], spelers: d.data().spelers || [],
+            actievePartijen: d.data().actievePartijen || [], config: d.data().config || null,
+            data: d.data()
+          }));
+          if (volgorde.length > 0) {
+            alleLadders.sort((a, b) => {
+              const ai = volgorde.indexOf(a.id), bi = volgorde.indexOf(b.id);
+              if (ai === -1) return 1; if (bi === -1) return -1; return ai - bi;
+            });
+          }
+        } catch(e) { console.error('Herlaad ladders mislukt:', e); }
+        renderLadder();
+      }, 1500);
     } else {
       window._ladderRetryCount = 0;
       wrap.innerHTML = '<div class="card"><div class="empty"><div class="empty-icon">🏆</div><p>Je bent nog niet toegevoegd aan een ladder.</p></div></div>';
