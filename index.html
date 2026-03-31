@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.4.5</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.4.6</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1343,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.4.5</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.4.6</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -1930,39 +1930,7 @@ async function initFirestore() {
       state = actief.data();
       if (!state.actievePartijen) state.actievePartijen = [];
       activeLadderId = actief.id;
-    // Eenmalige fix: verwijder duplicaten uit alle ladders
-    for (const ladder of alleLadders) {
-      const lSnap = await getDoc(doc(db, 'ladders', ladder.id));
-      if (!lSnap.exists()) continue;
-      const lData = lSnap.data();
-      const gezien = new Set();
-      const voor = (lData.spelers || []).length;
-      lData.spelers = (lData.spelers || []).filter(s => {
-        if (gezien.has(s.id)) return false;
-        gezien.add(s.id);
-        return true;
-      });
-      lData.spelerIds = [...new Set(lData.spelerIds || [])];
-      if (lData.spelers.length < voor) {
-        lData.spelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
-        await setDoc(doc(db, 'ladders', ladder.id), lData);
-        ladder.spelers = lData.spelers;
-        if (ladder.id === activeLadderId) state.spelers = lData.spelers;
-        console.log(`Duplicaten verwijderd uit ${ladder.naam}:`, voor - lData.spelers.length);
-      }
-    }
-    // Eenmalige herstel: voeg ontbrekende spelers toe aan master lijst
-    const teHerstellen = ['Erik Prillevitz', 'Kay van de Linde', 'Frits de Vries'];
-    let herstelNodig = false;
-    for (const naam of teHerstellen) {
-      if (!alleSpelersData.find(s => s.naam.toLowerCase() === naam.toLowerCase())) {
-        const maxId = Math.max(0, ...alleSpelersData.map(s => s.id || 0), ...alleLadders.flatMap(l => (l.spelers||[]).map(s => s.id || 0)));
-        alleSpelersData.push({ id: maxId + 1, naam, hcp: 10 });
-        herstelNodig = true;
-      }
-    }
-    if (herstelNodig) await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
-    // Als master spelerslijst nog leeg is, opbouwen vanuit alle ladders
+    // Als master spelerslijst leeg is, opbouwen vanuit alle ladders
     if (alleSpelersData.length === 0) {
       const gezien = new Set();
       alleLadders.forEach(l => {
@@ -2306,7 +2274,7 @@ function vulKnockoutTegenstander(spelersNaam) {
         if (tegenspeler) selecteerPartijSpeler(2, tegenspeler.id, tegenspeler.naam, tegenspeler.hcp);
       }
     }
-  }).catch(e => console.log('Knockout tegenstander laden mislukt:', e));
+  }).catch(e => console.error('vulKnockoutTegenstander mislukt:', e));
 }
 
 function getPartijLadderSpelers() {
@@ -2317,7 +2285,6 @@ function getPartijLadderSpelers() {
 }
 
 function herlaadPartijSpelers() {
-  console.log('herlaadPartijSpelers aangeroepen, ladder:', document.getElementById('partij-ladder-select')?.value);
   // Reset zoekbalk
   const zoek = document.getElementById('partij-speler-zoek');
   if (zoek) zoek.value = '';
@@ -3307,7 +3274,7 @@ async function bevestigUitslag() {
         winnaar: p._modalWinnaars[i] === 'A' ? m.spelerA.naam : m.spelerB.naam
       }))
     });
-  } catch(e) { console.log('Scorekaart opslaan mislukt:', e); }
+  } catch(e) { console.error('Scorekaart opslaan mislukt:', e); }
 
   // Verwijder deze partij uit actievePartijen
   state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== p.partijId);
@@ -3372,8 +3339,8 @@ async function verwijderOudeUitslagen() {
     const q = query(UITSLAGEN_COL, where('timestamp', '<', dertigDagenGelden));
     const snap = await getDocs(q);
     snap.forEach(async d => await deleteDoc(d.ref));
-    if (snap.size > 0) console.log(`${snap.size} oude scorekaarten verwijderd`);
-  } catch(e) { console.log('Opschonen mislukt:', e); }
+    // oude scorekaarten opgeschoond
+  } catch(e) { console.error('Opschonen mislukt:', e); }
 }
 
 async function openScorekaartDetail(uitslag) {
@@ -5946,7 +5913,6 @@ function renderTMatrix() {
   });
   html += '</table>';
   const matrixEl = document.getElementById('t-matrix');
-  if (!matrixEl) { console.log('t-matrix element niet gevonden'); return; }
   matrixEl.innerHTML = html;
 
   // Herstel focus na matrix render
@@ -6386,7 +6352,6 @@ async function slaLadderSpelersOp() {
         if (gevonden) break;
       }
       if (!gevonden) gevonden = alleSpelersData.find(s => Number(s.id) === id);
-      console.log(`Speler ID ${id}: gevonden=${gevonden?.naam || 'NIET GEVONDEN'}`);
       nieuweSpelers.push({
         id, naam: gevonden?.naam || 'Onbekend', hcp: gevonden?.hcp || 0,
         rank: nieuweSpelers.length + 1, partijen: 0, gewonnen: 0
@@ -6466,7 +6431,7 @@ async function slaSnapshotOp(label) {
       datum: new Date().toLocaleString('nl-NL'),
       spelers: JSON.parse(JSON.stringify(state.spelers))
     });
-  } catch(e) { console.log('Snapshot mislukt:', e); }
+  } catch(e) { console.error('Snapshot mislukt:', e); }
 }
 
 async function laadSnapshots() {
@@ -6554,7 +6519,6 @@ async function checkInviteLink() {
   let geldig = false;
   try {
     const snapLadder = await getDoc(doc(db, 'ladder', `invite_${ladderId}`));
-    console.log('Invite doc:', `ladder/invite_${ladderId}`, '| exists:', snapLadder.exists());
     if (snapLadder.exists()) {
       const data = snapLadder.data();
     }
@@ -6646,7 +6610,7 @@ async function registreerSpeler() {
         const data = inviteSnap.data();
         await setDoc(inviteRef, { ...data, gebruik: (data.gebruik || 0) + 1 });
       }
-    } catch(e) { console.log('Invite teller mislukt:', e); }
+    } catch(e) { console.error('Invite teller mislukt:', e); }
 
   } catch(e) {
     _bezigMetRegistratie = false;
@@ -6867,6 +6831,7 @@ function renderKnockoutBracket(data, ladderId) {
 }
 
 async function openKnockoutIndeling(ladderId) {
+  try {
   _koLadderId = ladderId;
   const ladder = alleLadders.find(l => l.id === ladderId);
   const snap = await getDoc(doc(db, 'ladders', ladderId));
@@ -6896,6 +6861,7 @@ async function openKnockoutIndeling(ladderId) {
 
   renderKnockoutIndelingModal();
   document.getElementById('modal-knockout-indeling').classList.add('open');
+  } catch(e) { console.error('openKnockoutIndeling mislukt:', e); toast('Er is iets misgegaan'); }
 }
 
 function renderKnockoutIndelingModal() {
@@ -7159,7 +7125,7 @@ async function verwerkKnockoutUitslag(partij) {
       const resterendEff = beslist ? (holes.length - beslissingsGespeeld) : resterend;
       if (beslist) resultaat = `${Math.abs(effectieveStand)}&${resterendEff}`;
       else if (klaar) resultaat = effectieveStand === 0 ? 'gelijkspel' : `${Math.abs(effectieveStand)}&0`;
-    } catch(e) { console.log('Resultaat berekening mislukt:', e); }
+    } catch(e) { console.error('Resultaat berekening mislukt:', e); }
 
     await slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar, resultaat);
     toast(`${winnaar.split(' ')[0]} door naar volgende ronde ✓`);
