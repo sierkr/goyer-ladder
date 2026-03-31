@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.4.1</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.4.2</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1343,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.4.1</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.4.2</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -7068,7 +7068,6 @@ async function bevestigKnockoutIndeling() {
 }
 
 function verwerkKnockoutVoortgang(rondes, aantalSpelers) {
-  // Verwerk winnaars van elke ronde naar de volgende
   const bracketGrootte = Math.pow(2, Math.ceil(Math.log2(aantalSpelers)));
   const totaalRondes = Math.log2(bracketGrootte);
 
@@ -7076,11 +7075,14 @@ function verwerkKnockoutVoortgang(rondes, aantalSpelers) {
     const ronde = rondes[ri];
     const volgendeRi = ri + 1;
 
-    // Alle winnaars van deze ronde
-    const winnaars = ronde.map(p => p.winnaar).filter(Boolean);
-    if (winnaars.length !== ronde.length) break; // Nog niet alle partijen gespeeld
+    // Alle winnaars — lege string = nog niet gespeeld, echte naam = winnaar
+    const alleWinnaars = ronde.map(p => p.winnaar);
+    const nogTeSpelen = alleWinnaars.filter(w => !w).length;
+    if (nogTeSpelen > 0) break; // Nog niet alle partijen gespeeld
 
     if (volgendeRi >= totaalRondes) break; // Finale klaar
+
+    const winnaars = alleWinnaars; // alle winnaars inclusief byes
 
     // Maak volgende ronde als die nog niet bestaat
     if (!rondes[volgendeRi]) {
