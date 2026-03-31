@@ -1322,7 +1322,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.1.8</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.1.9</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -2022,6 +2022,8 @@ async function initFirestore() {
 
 // Wissel naar een andere ladder
 async function wisselLadder(ladderId) {
+
+  try {
   if (ladderId === activeLadderId) return;
   const snap = await getDoc(doc(db, 'ladders', ladderId));
   if (!snap.exists()) return;
@@ -2030,6 +2032,7 @@ async function wisselLadder(ladderId) {
   if (!state.actievePartijen) state.actievePartijen = [];
   renderLadder();
   renderUitslagen();
+  } catch(e) { console.error('wisselLadder mislukt:', e); }
 }
 
 function toonLaadOverlay(toon) {
@@ -2076,6 +2079,8 @@ function showPage(name) {
 //  LADDER
 // ============================================================
 async function renderLadder() {
+
+  try {
   const wrap = document.getElementById('ladder-kaarten');
   if (!wrap) return;
 
@@ -2119,6 +2124,7 @@ async function renderLadder() {
       </div>
     </div>`;
   }).join('');
+  } catch(e) { console.error('renderLadder mislukt:', e); }
 }
 
 function toggleLadderKaart(header, ladderId) {
@@ -2781,11 +2787,14 @@ function renderScorecard() {
 }
 
 async function updateScore(spelerId, holeIdx, val) {
+
+  try {
   const p = mijnPartij();
   if (!p) return;
   p.scores[spelerId][holeIdx] = val === '' ? null : parseInt(val);
   await slaState();
   renderMatchOverview();
+  } catch(e) { console.error('updateScore mislukt:', e); }
 }
 
 function toggleScorecard() {
@@ -2927,6 +2936,8 @@ function openToevoegenModal() {
 }
 
 async function bevestigToevoegenRonde() {
+
+  try {
   const p = mijnPartij();
   if (!p) return;
   const sel = document.getElementById('toevoegen-speler-select');
@@ -2961,9 +2972,12 @@ async function bevestigToevoegenRonde() {
   closeModal('modal-toevoegen-ronde');
   renderRonde();
   toast(`${speler.naam.split(' ')[0]} toegevoegd ✓`);
+  } catch(e) { console.error('bevestigToevoegenRonde mislukt:', e); }
 }
 
 async function editPartijHcp(spelerId) {
+
+  try {
   const p = mijnPartij();
   if (!p) return;
   const speler = p.spelers.find(s => s.id == spelerId);
@@ -2986,9 +3000,12 @@ async function editPartijHcp(spelerId) {
   await slaState();
   renderRonde();
   toast(`Handicap ${speler.naam.split(' ')[0]} bijgewerkt ✓`);
+  } catch(e) { console.error('editPartijHcp mislukt:', e); }
 }
 
 async function verwijderSpelerUitRonde(spelerId) {
+
+  try {
   const p = mijnPartij();
   if (!p) return;
   const speler = p.spelers.find(s => s.id === spelerId);
@@ -3003,6 +3020,7 @@ async function verwijderSpelerUitRonde(spelerId) {
   await slaState();
   renderRonde();
   toast(`${speler.naam.split(' ')[0]} verwijderd uit partij`);
+  } catch(e) { console.error('verwijderSpelerUitRonde mislukt:', e); }
 }
 
 // ============================================================
@@ -3539,6 +3557,8 @@ async function bevestigBeheerUitslag() {
 }
 
 async function annuleerEigenPartij() {
+
+  try {
   if (!confirm('Partij annuleren? De scores worden niet opgeslagen en de ladder wordt niet aangepast.')) return;
   const p = mijnPartij();
   if (!p) return;
@@ -3547,15 +3567,19 @@ async function annuleerEigenPartij() {
   closeModal('modal-uitslag');
   renderRonde();
   toast('Partij geannuleerd');
+  } catch(e) { console.error('annuleerEigenPartij mislukt:', e); }
 }
 
 async function verwijderActievePartij() {
+
+  try {
   if (!confirm('Partij verwijderen? Dit kan niet ongedaan worden.')) return;
   state.actievePartijen = (state.actievePartijen || []).filter(ap => ap.partijId !== _beheerPartijId);
   await slaState();
   closeModal('modal-beheer-partij');
   renderUitslagen();
   toast('Partij verwijderd');
+  } catch(e) { console.error('verwijderActievePartij mislukt:', e); }
 }
 
 // ============================================================
@@ -4052,6 +4076,8 @@ function renderProfiel() {
 }
 
 async function slaProfielHcpOp() {
+
+  try {
   const val = parseInt(document.getElementById('profiel-hcp-input').value);
   if (isNaN(val)) { toast('Voer een geldige handicap in'); return; }
 
@@ -4068,6 +4094,7 @@ async function slaProfielHcpOp() {
   await slaState();
   toast('Playing Handicap bijgewerkt ✓');
   renderProfiel();
+  } catch(e) { console.error('slaProfielHcpOp mislukt:', e); }
 }
 
 // ============================================================
@@ -4254,6 +4281,8 @@ async function removeUser(idx) {
 // ============================================================
 
 async function verschuifRank(id, delta) {
+
+  try {
   const speler = state.spelers.find(s => s.id === id);
   if (!speler) return;
 
@@ -4267,6 +4296,7 @@ async function verschuifRank(id, delta) {
 
   await slaState();
   renderAdmin();
+  } catch(e) { console.error('verschuifRank mislukt:', e); }
 }
 
 function resetData() {
@@ -4352,6 +4382,8 @@ async function bevestigNieuwSeizoen() {
 }
 
 async function renderArchief() {
+
+  try {
   const list = document.getElementById('archief-list');
   document.getElementById('archief-count').textContent = archiefData.length;
 
@@ -4410,9 +4442,12 @@ async function renderArchief() {
   }
 
   list.innerHTML = html;
+  } catch(e) { console.error('renderArchief mislukt:', e); }
 }
 
 async function openToernooiDetail(idx) {
+
+  try {
   const archiefSnap = await getDoc(ARCHIEF_DOC);
   const t = archiefSnap.exists() ? (archiefSnap.data().toernooien || [])[idx] : null;
   if (!t) return;
@@ -4460,6 +4495,7 @@ async function openToernooiDetail(idx) {
 
   document.getElementById('archief-detail-inhoud').innerHTML = html;
   document.getElementById('modal-archief-detail').classList.add('open');
+  } catch(e) { console.error('openToernooiDetail mislukt:', e); }
 }
 
 function openArchiefDetail(idx) {
@@ -4506,17 +4542,23 @@ function vraagNotificatieToestemming() {
 }
 
 async function stuurNotificatie(naarUid, titel, bericht) {
+
+  try {
   // Geen push — notificatie wordt zichtbaar via Firestore live update
+  } catch(e) { console.error('stuurNotificatie mislukt:', e); }
 }
 
 // ============================================================
 //  UITDAGINGEN
 // ============================================================
 async function laadUitdagingen() {
+
+  try {
   if (!huidigeBruiker) return;
   const snap = await getDoc(UITDAGINGEN_DOC);
   uitdagingenData = snap.exists() ? (snap.data().lijst || []) : [];
   toonUitdagingBadge();
+  } catch(e) { console.error('laadUitdagingen mislukt:', e); }
 }
 
 function toonUitdagingBadge() {
@@ -4532,6 +4574,8 @@ function toonUitdagingBadge() {
 }
 
 async function stuurUitdaging(naarSpelerId) {
+
+  try {
   const naarSpeler = state.spelers.find(s => s.id === naarSpelerId);
   if (!naarSpeler) return;
 
@@ -4575,9 +4619,12 @@ async function stuurUitdaging(naarSpelerId) {
 
   toast(`Uitdaging verstuurd naar ${naarSpeler.naam.split(' ')[0]} ✓`);
   renderLadder(); // refresh voor uitdagingsknop
+  } catch(e) { console.error('stuurUitdaging mislukt:', e); }
 }
 
 async function reageerUitdaging(uitdagingId, accepteer) {
+
+  try {
   const idx = uitdagingenData.findIndex(u => u.id === uitdagingId);
   if (idx === -1) return;
   uitdagingenData[idx].status = accepteer ? 'geaccepteerd' : 'geweigerd';
@@ -4596,13 +4643,17 @@ async function reageerUitdaging(uitdagingId, accepteer) {
 
   toonUitdagingBadge();
   renderProfiel();
+  } catch(e) { console.error('reageerUitdaging mislukt:', e); }
 }
 
 async function verwijderUitdaging(uitdagingId) {
+
+  try {
   uitdagingenData = uitdagingenData.filter(u => u.id !== uitdagingId);
   await setDoc(UITDAGINGEN_DOC, { lijst: uitdagingenData });
   toonUitdagingBadge();
   renderProfiel();
+  } catch(e) { console.error('verwijderUitdaging mislukt:', e); }
 }
 
 // ============================================================
@@ -5151,10 +5202,13 @@ async function startToernooi() {
 }
 
 async function toggleToernooiMatrix() {
+
+  try {
   if (!toernooiData || !actieveToernooiId) return;
   toernooiData.matrixIngeklapt = !toernooiData.matrixIngeklapt;
   await setDoc(doc(db, 'toernooien', actieveToernooiId), toernooiData);
   renderToernooiActief();
+  } catch(e) { console.error('toggleToernooiMatrix mislukt:', e); }
 }
 
 async function toonToernooiUitslag() {
@@ -5994,6 +6048,8 @@ let _standAanpassenLadderId = null;
 let _standAanpassenSpelers = [];
 
 async function openStandAanpassen(ladderId) {
+
+  try {
   const ladder = alleLadders.find(l => l.id === ladderId);
   if (!ladder) return;
   _standAanpassenLadderId = ladderId;
@@ -6005,6 +6061,7 @@ async function openStandAanpassen(ladderId) {
   document.getElementById('stand-aanpassen-titel').textContent = `Stand — ${ladder.naam}`;
   renderStandAanpassenLijst();
   document.getElementById('modal-stand-aanpassen').classList.add('open');
+  } catch(e) { console.error('openStandAanpassen mislukt:', e); }
 }
 
 function renderStandAanpassenLijst() {
@@ -6145,6 +6202,8 @@ async function maakNieuweLadder() {
 }
 
 async function verschuifLadder(idx, delta) {
+
+  try {
   const nieuwIdx = idx + delta;
   if (nieuwIdx < 0 || nieuwIdx >= alleLadders.length) return;
   // Wissel posities
@@ -6154,6 +6213,7 @@ async function verschuifLadder(idx, delta) {
   await setDoc(doc(db, 'ladder', 'ladderVolgorde'), { volgorde });
   renderAdminLadders();
   laadInviteStatus();
+  } catch(e) { console.error('verschuifLadder mislukt:', e); }
 }
 
 async function verwijderLadder(ladderId) {
@@ -6177,6 +6237,8 @@ async function verwijderLadder(ladderId) {
 let _ladderSpelersId = null;
 
 async function openLadderSpelersModal(ladderId) {
+
+  try {
   const ladder = alleLadders.find(l => l.id === ladderId);
   if (!ladder) return;
   _ladderSpelersId = ladderId;
@@ -6203,6 +6265,7 @@ async function openLadderSpelersModal(ladderId) {
   `).join('');
 
   document.getElementById('modal-ladder-spelers').classList.add('open');
+  } catch(e) { console.error('openLadderSpelersModal mislukt:', e); }
 }
 
 async function slaLadderSpelersOp() {
@@ -6254,6 +6317,8 @@ async function slaLadderSpelersOp() {
 }
 
 async function renderAdminLadders() {
+
+  try {
   const list = document.getElementById('admin-ladders-list');
   if (!list) return;
   const isBeheerder = isBeheerderRol();
@@ -6281,6 +6346,7 @@ async function renderAdminLadders() {
       ` : ''}
     </div>
   `).join('');
+  } catch(e) { console.error('renderAdminLadders mislukt:', e); }
 }
 
 // ============================================================
@@ -6398,7 +6464,6 @@ async function checkInviteLink() {
     console.log('Invite doc:', `ladder/invite_${ladderId}`, '| exists:', snapLadder.exists());
     if (snapLadder.exists()) {
       const data = snapLadder.data();
-      console.log('Token match:', data.token === token, '| Verlopen:', data.verloopt < Date.now(), '| Nu:', Date.now(), '| Verloopt:', data.verloopt);
     }
     if (snapLadder.exists() && snapLadder.data().token === token && snapLadder.data().verloopt > Date.now()) {
       geldig = true;
