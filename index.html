@@ -1342,7 +1342,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.2.5</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.2.6</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -2269,6 +2269,29 @@ function initPartijForm() {
     });
     if (gekoppeld) {
       selecteerPartijSpeler(1, gekoppeld.id, gekoppeld.naam, gekoppeld.hcp);
+
+      // Check of de geselecteerde ladder een knockout ladder is
+      // en vul dan automatisch de tegenstander in
+      const ladderId = document.getElementById('partij-ladder-select')?.value || activeLadderId;
+      const ladder = alleLadders.find(l => l.id === ladderId);
+      const isKnockout = (ladder?.data?.type || ladder?.type) === 'knockout';
+      if (isKnockout && ladder) {
+        const snap = alleLadders.find(l => l.id === ladderId);
+        const rondesRaw = snap?.data?.rondes;
+        const rondes = objNaarRondes(rondesRaw);
+        const huidigeRonde = rondes[rondes.length - 1] || [];
+        // Zoek de partij van de ingelogde speler in de huidige ronde
+        const mijnPartij = huidigeRonde.find(p =>
+          (p.a === gekoppeld.naam || p.b === gekoppeld.naam) && !p.winnaar
+        );
+        if (mijnPartij) {
+          const tegenstander = mijnPartij.a === gekoppeld.naam ? mijnPartij.b : mijnPartij.a;
+          const tegenspeler = getPartijLadderSpelers().find(s => s.naam === tegenstander);
+          if (tegenspeler) {
+            selecteerPartijSpeler(2, tegenspeler.id, tegenspeler.naam, tegenspeler.hcp);
+          }
+        }
+      }
     }
   }
 
