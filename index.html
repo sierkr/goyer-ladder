@@ -1322,7 +1322,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.1.1</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.1.2</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -5832,7 +5832,7 @@ function openToernooiAfsluiten() {
   });
   html += `</div><p style="font-size:12px;color:var(--light)">${
     heeftRankingLadders
-      ? `Rankingposities worden bijgewerkt voor de betreffende spelers in: ${rankingLadderNamen}. Gastspelers tellen niet mee.`
+      ? `Rankingposities worden bijgewerkt voor de betreffende spelers in: ${rankingLadderNamen}. Alleen spelers met 5+ ladderwedstrijden. Gastspelers tellen niet mee.`
       : 'Er zijn geen ranking ladders gekoppeld aan dit toernooi. Ladders worden niet aangepast.'
   }</p>`;
 
@@ -5861,7 +5861,11 @@ async function bevestigToernooiAfsluiten() {
       const ladderSpelersOpNaam = new Map((ladderData.spelers || []).map(s => [s.naam.toLowerCase(), s]));
       const deelnemers = volgorde.filter(e =>
         !e.s.gast && (ladderSpelerIds.has(String(e.s.id)) || ladderSpelersOpNaam.has(e.s.naam.toLowerCase()))
-      );
+      ).filter(e => {
+        // Alleen spelers met 5+ ladderwedstrijden doen mee voor ranking
+        const ladderSpeler = ladderData.spelers.find(s => String(s.id) === String(e.s.id) || s.naam.toLowerCase() === e.s.naam.toLowerCase());
+        return (ladderSpeler?.partijen || 0) >= 5;
+      });
       if (deelnemers.length > 0) {
         const deelnemerSpelers = deelnemers.map(e =>
           ladderData.spelers.find(s => String(s.id) === String(e.s.id) || s.naam.toLowerCase() === e.s.naam.toLowerCase())
