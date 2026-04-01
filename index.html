@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.5.0</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.5.2</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1343,7 +1343,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.5.0</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.5.2</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -1540,6 +1540,17 @@ const googleProvider = new GoogleAuthProvider();
 // Firestore refs
 const STATE_DOC = doc(db, 'ladder', 'state'); // legacy — voor migratie
 const USERS_DOC = doc(db, 'ladder', 'users');
+
+// Users cache helpers — voorkomt herhaalde Firestore reads
+async function getUsers(forceFresh = false) {
+  if (!forceFresh && _usersCache !== null) return _usersCache;
+  const users = await getUsers();
+  return _usersCache;
+}
+async function saveUsers(lijst) {
+  _usersCache = lijst;
+  await setDoc(USERS_DOC, { lijst });
+}
 const SPELERS_DOC = doc(db, 'ladder', 'spelers'); // master spelerslijst
 const BANEN_DOC = doc(db, 'ladder', 'banen');
 const ARCHIEF_DOC = doc(db, 'ladder', 'archief');
@@ -1617,6 +1628,7 @@ let activeLadderId = null;
 let alleSpelersData = []; // master lijst van alle spelers onafhankelijk van ladder
 let _firestoreReady = false;
 let archiefData = [];
+let _usersCache = null; // cache voor ladder/users document
 let uitdagingenData = []; // { id, van, naar, status, timestamp }
 let toernooiData = null;  // actief toernooi object (legacy + huidige weergave)
 let alleToernooien = []; // alle actieve toernooien
@@ -1629,8 +1641,7 @@ let actieveToernooiId = null; // toernooi dat de beheerder/deelnemer nu bekijkt
 // Zet UI in ingelogde staat
 async function setIngelogd(firebaseUser) {
   try {
-    const snap = await getDoc(USERS_DOC);
-    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const users = await getUsers();
 
     // Whitelist check — alleen bekende e-mailadressen mogen inloggen
     const profiel = users.find(u => u.uid === firebaseUser.uid || u.email?.toLowerCase() === firebaseUser.email?.toLowerCase());
@@ -1645,7 +1656,7 @@ async function setIngelogd(firebaseUser) {
     // Koppel uid automatisch als die nog niet ingevuld is
     if (!profiel.uid && firebaseUser.uid) {
       profiel.uid = firebaseUser.uid;
-      await setDoc(USERS_DOC, { lijst: users });
+      await saveUsers(users);
     }
 
     const displayNaam = profiel.gebruikersnaam || firebaseUser.displayName || firebaseUser.email.split('@')[0];
@@ -2050,16 +2061,9 @@ function showPage(name) {
   if (name === 'ronde') renderRonde();
   if (name === 'uitslagen') renderUitslagen();
   if (name === 'admin') {
-    // Herlaad vers uit Firestore
-    Promise.all([
-      getDoc(SPELERS_DOC),
-      getDocs(collection(db, 'ladders'))
-    ]).then(([spelersSnap, laddersSnap2]) => {
+    // Alleen spelerslijst vers ophalen — ladders worden bijgehouden via listeners
+    getDoc(SPELERS_DOC).then(spelersSnap => {
       if (spelersSnap.exists()) alleSpelersData = spelersSnap.data().lijst || [];
-      laddersSnap2.docs.forEach(d => {
-        const idx = alleLadders.findIndex(l => l.id === d.id);
-        if (idx >= 0) alleLadders[idx].spelers = d.data().spelers || [];
-      });
       renderAdmin();
       renderAdminLadders();
       laadInviteStatus();
@@ -3683,8 +3687,7 @@ async function renderAdminSpelersEnAccounts() {
   // Laad accounts
   let users = [];
   try {
-    const snap = await getDoc(USERS_DOC);
-    users = snap.exists() ? (snap.data().lijst || []) : [];
+    const users = await getUsers();
   } catch(e) {}
 
   // Combineer spelers met accounts
@@ -3760,8 +3763,7 @@ async function openAddPlayer() {
 
   // Laad accounts die nog geen speler zijn
   try {
-    const snap = await getDoc(USERS_DOC);
-    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const users = await getUsers();
     const spelersIds = alleSpelersData.map(s => s.id);
     const nogGeen = users.filter(u =>
       !alleSpelersData.some(s => s.naam.toLowerCase() === (u.gebruikersnaam || u.naam || '').toLowerCase()) &&
@@ -3827,8 +3829,7 @@ async function saveNewPlayer() {
   if (pass.length < 6) { toast('Wachtwoord minimaal 6 tekens'); return; }
 
   try {
-    const snap = await getDoc(USERS_DOC);
-    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const users = await getUsers();
 
     if (users.find(u => u.email === email)) {
       toast('Dit e-mailadres is al in gebruik'); return;
@@ -3860,7 +3861,7 @@ async function saveNewPlayer() {
 
     // Voeg account toe aan users lijst
     users.push({ uid, email, gebruikersnaam: naam, rol: 'speler' });
-    await setDoc(USERS_DOC, { lijst: sorteerUsers(users) });
+    await saveUsers(sorteerUsers(users));
 
     closeModal('modal-add-player');
     renderAdmin();
@@ -3888,8 +3889,7 @@ async function openEditPlayer(id) {
 
   // Laad rol en email uit accounts
   try {
-    const snap = await getDoc(USERS_DOC);
-    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const users = await getUsers();
     const account = users.find(u => u.gebruikersnaam?.toLowerCase() === s.naam.toLowerCase());
     const rolEl = document.getElementById('edit-player-rol');
     const emailEl = document.getElementById('edit-player-email-info');
@@ -3947,8 +3947,7 @@ async function saveEditPlayer() {
 
   // Update gebruikersnaam en rol in accounts lijst
   try {
-    const snap = await getDoc(USERS_DOC);
-    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const users = await getUsers();
     const rol = document.getElementById('edit-player-rol').value;
     const user = users.find(u =>
       u.gebruikersnaam?.toLowerCase() === oudeNaam.toLowerCase() ||
@@ -3957,7 +3956,7 @@ async function saveEditPlayer() {
     if (user) {
       user.gebruikersnaam = naam;
       user.rol = rol;
-      await setDoc(USERS_DOC, { lijst: users });
+      await saveUsers(users);
     }
   } catch(e) { console.error('Naam/rol update account mislukt:', e); }
 
@@ -4206,8 +4205,7 @@ async function renderAdminUsers() {
   const list = document.getElementById('admin-user-list');
   list.innerHTML = '<div style="padding:12px 16px;color:var(--light);font-size:13px">Laden…</div>';
   try {
-    const snap = await getDoc(USERS_DOC);
-    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const users = await getUsers();
     if (users.length === 0) {
       list.innerHTML = '<div class="empty"><p>Nog geen accounts.<br><small style="color:var(--light)">Standaard: beheerder / golf2025</small></p></div>';
       return;
@@ -4234,8 +4232,7 @@ async function renderAdminUsers() {
 
 async function openEditUser(idx) {
   try {
-    const snap = await getDoc(USERS_DOC);
-    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const users = await getUsers();
     const u = users[idx];
     if (!u) return;
     document.getElementById('edit-user-name').value = u.gebruikersnaam;
@@ -4255,8 +4252,7 @@ async function saveEditUser() {
   if (pass && pass.length < 6) { toast('Wachtwoord minimaal 6 tekens'); return; }
 
   try {
-    const snap = await getDoc(USERS_DOC);
-    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const users = await getUsers();
     // Check duplicate name (ignore self)
     if (users.find((u, i) => u.gebruikersnaam === naam && i !== idx)) {
       toast('Gebruikersnaam al in gebruik'); return;
@@ -4264,7 +4260,7 @@ async function saveEditUser() {
     users[idx].gebruikersnaam = naam;
     users[idx].rol = rol;
     if (pass) users[idx].wachtwoord = pass;
-    await setDoc(USERS_DOC, { lijst: sorteerUsers(users) });
+    await saveUsers(sorteerUsers(users));
     closeModal('modal-edit-user');
     renderAdmin();
     toast('Account bijgewerkt ✓');
@@ -4305,11 +4301,10 @@ async function saveNewUser() {
       else { toast('Fout bij aanmaken: ' + authErr.message); return; }
     }
 
-    const snap = await getDoc(USERS_DOC);
-    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const users = await getUsers();
     const gebruikersnaam = email.split('@')[0].replace(/[^a-z0-9 ]/g, '');
     users.push({ uid, email, gebruikersnaam, rol });
-    await setDoc(USERS_DOC, { lijst: sorteerUsers(users) });
+    await saveUsers(sorteerUsers(users));
     closeModal('modal-add-user');
     renderAdmin();
     toast('Account aangemaakt ✓');
@@ -4320,8 +4315,7 @@ async function saveNewUser() {
 
 async function removeUser(idx) {
   try {
-    const snap = await getDoc(USERS_DOC);
-    const users = snap.exists() ? (snap.data().lijst || []) : [];
+    const users = await getUsers();
     const user = users[idx];
     if (!user) return;
 
@@ -4331,7 +4325,7 @@ async function removeUser(idx) {
 
     // Verwijder uit users lijst
     users.splice(idx, 1);
-    await setDoc(USERS_DOC, { lijst: users });
+    await saveUsers(users);
 
     // Zoek speler ID op naam in master lijst
     const masterSpeler = alleSpelersData.find(s => s.naam.toLowerCase() === gebruikersnaam);
@@ -4482,10 +4476,13 @@ async function renderArchief() {
   const list = document.getElementById('archief-list');
   document.getElementById('archief-count').textContent = archiefData.length;
 
-  // Laad toernooien uit archief
-  const archiefSnap = await getDoc(ARCHIEF_DOC);
-  const archiefDoc = archiefSnap.exists() ? archiefSnap.data() : {};
-  const toernooien = archiefDoc.toernooien || [];
+  // Gebruik gecachede archiefData — toernooien apart ophalen indien nodig
+  let toernooien = [];
+  if (!window._archiefToernooienCache) {
+    const archiefSnap = await getDoc(ARCHIEF_DOC);
+    window._archiefToernooienCache = archiefSnap.exists() ? (archiefSnap.data().toernooien || []) : [];
+  }
+  toernooien = window._archiefToernooienCache;
 
   let html = '';
 
@@ -4543,9 +4540,16 @@ async function renderArchief() {
 async function openToernooiDetail(idx) {
 
   try {
-  const archiefSnap = await getDoc(ARCHIEF_DOC);
-  const t = archiefSnap.exists() ? (archiefSnap.data().toernooien || [])[idx] : null;
-  if (!t) return;
+  const toernooien = window._archiefToernooienCache || [];
+  const t = toernooien[idx];
+  if (!t) {
+    // Cache nog niet gevuld — haal op
+    const archiefSnap = await getDoc(ARCHIEF_DOC);
+    window._archiefToernooienCache = archiefSnap.exists() ? (archiefSnap.data().toernooien || []) : [];
+    const tFresh = window._archiefToernooienCache[idx];
+    if (!tFresh) return;
+    return openToernooiDetail(idx); // retry met cache gevuld
+  }
 
   document.getElementById('archief-detail-titel').textContent = `🏅 ${t.naam}`;
 
@@ -4716,8 +4720,7 @@ async function stuurUitdaging(naarSpelerId) {
   if (!naarSpeler) return;
 
   // Zoek e-mail van ontvanger in users lijst
-  const snap = await getDoc(USERS_DOC);
-  const users = snap.exists() ? (snap.data().lijst || []) : [];
+  const users = await getUsers();
   const naarUser = users.find(u => {
     const naam = (u.gebruikersnaam || '').toLowerCase();
     const spelernaam = naarSpeler.naam.toLowerCase();
@@ -4769,7 +4772,7 @@ async function reageerUitdaging(uitdagingId, accepteer) {
   if (accepteer) {
     toast('Uitdaging geaccepteerd! Plan de partij in via het Partij-tabblad.');
     // Notificeer uitdager
-    const vanUser = (await getDoc(USERS_DOC)).data()?.lijst?.find(u => u.email === uitdagingenData[idx].vanEmail);
+    const vanUser = (await getUsers())?.find(u => u.email === uitdagingenData[idx].vanEmail);
     if (vanUser?.uid) {
       await stuurNotificatie(vanUser.uid, '✅ Uitdaging geaccepteerd!', `${huidigeBruiker.gebruikersnaam} heeft je uitdaging geaccepteerd`);
     }
@@ -6050,9 +6053,9 @@ async function bevestigToernooiAfsluiten() {
     : (t.ladderId ? [t.ladderId] : []);
 
   for (const ladderId of rankingLadderIds) {
-    const ladderSnap = await getDoc(doc(db, 'ladders', ladderId));
+    const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
     if (ladderSnap.exists()) {
-      const ladderData = ladderSnap.data();
+      const ladderData = snapData;
       const ladderSpelerIds = new Set((ladderData.spelers || []).map(s => String(s.id)));
       const ladderSpelersOpNaam = new Map((ladderData.spelers || []).map(s => [s.naam.toLowerCase(), s]));
       const deelnemers = volgorde.filter(e =>
@@ -6119,9 +6122,8 @@ async function bevestigToernooiAfsluiten() {
     }
   }
 
-  // Sla toernooi op in archief
-  const archiefSnap = await getDoc(ARCHIEF_DOC);
-  const archief = archiefSnap.exists() ? archiefSnap.data() : { seizoenen: [] };
+  // Sla toernooi op in archief — gebruik archiefData cache
+  const archief = { seizoenen: archiefData, toernooien: window._archiefToernooienCache || [] };
   if (!archief.toernooien) archief.toernooien = [];
 
   // Firestore ondersteunt geen nested arrays — sla matrix op als object
@@ -6189,9 +6191,9 @@ async function openStandAanpassen(ladderId) {
   if (!ladder) return;
   _standAanpassenLadderId = ladderId;
 
-  const snap = await getDoc(doc(db, 'ladders', ladderId));
-  if (!snap.exists()) return;
-  _standAanpassenSpelers = [...(snap.data().spelers || [])].sort((a,b) => a.rank - b.rank);
+  const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
+  if (!snapExists) return;
+  _standAanpassenSpelers = [...(snapData.spelers || [])].sort((a,b) => a.rank - b.rank);
 
   document.getElementById('stand-aanpassen-titel').textContent = `Stand — ${ladder.naam}`;
   renderStandAanpassenLijst();
@@ -6229,9 +6231,9 @@ async function slaStandOp() {
   const ladderId = _standAanpassenLadderId;
   if (!ladderId) return;
   _standAanpassenSpelers.forEach((s, idx) => s.rank = idx + 1);
-  const snap = await getDoc(doc(db, 'ladders', ladderId));
-  if (!snap.exists()) return;
-  const data = snap.data();
+  const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
+  if (!snapExists) return;
+  const data = snapData;
   data.spelers = _standAanpassenSpelers;
   await setDoc(doc(db, 'ladders', ladderId), data);
   const idx = alleLadders.findIndex(l => l.id === ladderId);
@@ -6281,9 +6283,9 @@ async function slaLadderInstellingenOp() {
   };
 
   // Sla op in Firestore
-  const snap = await getDoc(doc(db, 'ladders', ladderId));
+  const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
   if (snap.exists()) {
-    const data = snap.data();
+    const data = snapData;
     data.config = config;
     await setDoc(doc(db, 'ladders', ladderId), data);
   }
@@ -6304,6 +6306,20 @@ function getNextId() {
   const maxAlleLadders = alleLadders.reduce((m, l) =>
     Math.max(m, ...(l.spelers || []).map(s => Number(s.id) || 0)), 0);
   return Math.max(maxAlleSpelers, maxAlleLadders) + 1;
+}
+
+// Helper: haal ladder data op — gebruik cache als beschikbaar, anders Firestore
+async function getLadderData(ladderId) {
+  const cached = alleLadders.find(l => l.id === ladderId);
+  if (cached?.data) return { exists: true, data: cached.data, _cached: true };
+  if (ladderId === activeLadderId) return { exists: true, data: state, _cached: true };
+  const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
+  if (snap.exists()) {
+    // Update cache
+    const idx = alleLadders.findIndex(l => l.id === ladderId);
+    if (idx >= 0) alleLadders[idx].data = snapData;
+  }
+  return { exists: snap.exists(), data: snap.exists() ? snap.data() : null };
 }
 
 function getLadderConfig() {
@@ -6383,10 +6399,9 @@ async function openLadderSpelersModal(ladderId) {
   // Gebruik master spelerslijst zodat ook niet-ingedeelde spelers zichtbaar zijn
   const alleSpelers = [...alleSpelersData].sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
 
-  // Haal ladder data vers op uit Firestore voor meest actuele spelerIds
-  const ladderSnap = await getDoc(doc(db, 'ladders', ladderId));
-  const ladderDataVers = ladderSnap.exists() ? ladderSnap.data() : {};
-  const versSpelers = ladderDataVers.spelers || [];
+  // Gebruik cache voor meest actuele spelerIds
+  const { exists: ladderExists, data: ladderDataVers } = await getLadderData(ladderId);
+  const versSpelers = ladderDataVers?.spelers || [];
   const huidigeIds = new Set(versSpelers.map(s => Number(s.id)));
 
   document.getElementById('ladder-spelers-lijst').innerHTML = alleSpelers.length === 0
@@ -6412,8 +6427,8 @@ async function slaLadderSpelersOp() {
   const checkboxes = document.querySelectorAll('#ladder-spelers-lijst input[type=checkbox]');
   const geselecteerdeIds = [...checkboxes].filter(c => c.checked).map(c => parseInt(c.value));
 
-  const snap = await getDoc(doc(db, 'ladders', ladderId));
-  const ladderData = snap.exists() ? snap.data() : { ...JSON.parse(JSON.stringify(DEFAULT_STATE)), naam: alleLadders.find(l=>l.id===ladderId)?.naam };
+  const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
+  const ladderData = snapExists ? snapData : { ...JSON.parse(JSON.stringify(DEFAULT_STATE)), naam: alleLadders.find(l=>l.id===ladderId)?.naam };
 
   const huidigeSpelers = ladderData.spelers || [];
   const nieuweSpelers = [];
@@ -6457,8 +6472,7 @@ async function renderAdminLadders() {
   const list = document.getElementById('admin-ladders-list');
   if (!list) return;
   const isBeheerder = isBeheerderRol();
-  const snaps = await Promise.all(alleLadders.map(l => getDoc(doc(db, 'ladders', l.id))));
-  snaps.forEach((snap, i) => { if (snap.exists()) alleLadders[i].spelers = snap.data().spelers || []; });
+  // Gebruik cache — listeners houden alleLadders al up to date
 
   list.innerHTML = alleLadders.map((l, idx) => `
     <div class="admin-row">
@@ -6550,9 +6564,9 @@ async function herstelSnapshot(snapId) {
     await slaSnapshotOp('⚠️ Voor herstel op ' + new Date().toLocaleString('nl-NL'));
 
     // Laad de juiste ladder uit Firestore
-    const ladderSnap = await getDoc(doc(db, 'ladders', ladderId));
-    if (!ladderSnap.exists()) { toast('Ladder niet gevonden'); return; }
-    const ladderData = ladderSnap.data();
+    const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
+    if (!snapExists) { toast('Ladder niet gevonden'); return; }
+    const ladderData = snapData;
 
     // Herstel spelers inclusief alle statistieken
     ladderData.spelers = data.spelers.map(s => ({
@@ -6671,10 +6685,9 @@ async function registreerSpeler() {
     const uid = cred.user.uid;
 
     // Stap 2: Nu ingelogd — schrijf naar Firestore
-    const usersSnap = await getDoc(USERS_DOC);
-    const users = usersSnap.exists() ? (usersSnap.data().lijst || []) : [];
+    const users = await getUsers(true); // forceFresh bij registratie
     users.push({ naam, gebruikersnaam: naam, email, uid, rol: 'speler' });
-    await setDoc(USERS_DOC, { lijst: users });
+    await saveUsers(users);
 
     // Haal ID op uit de gekoppelde ladder
     const targetLadderId = window._inviteLadderId || 'mp';
@@ -6936,8 +6949,8 @@ async function openKnockoutIndeling(ladderId) {
   try {
   _koLadderId = ladderId;
   const ladder = alleLadders.find(l => l.id === ladderId);
-  const snap = await getDoc(doc(db, 'ladders', ladderId));
-  const data = snap.exists() ? snap.data() : {};
+  const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
+  const data = snap.exists() ? snapData : {};
   const spelers = data.spelers || [];
   const rondes = objNaarRondes(data.rondes);
 
@@ -7106,9 +7119,9 @@ function verschuifKoSpeler(idx, delta) {
 
 async function bevestigKnockoutIndeling() {
   try {
-    const snap = await getDoc(doc(db, 'ladders', _koLadderId));
-    if (!snap.exists()) return;
-    const data = snap.data();
+    const { exists: snapExists, data: snapData } = await getLadderData(_koLadderId);
+    if (!snapExists) return;
+    const data = snapData;
     const namen = _koIndelingVolgorde;
 
     // Bouw ronde 1 — Firestore accepteert geen null in arrays, gebruik lege string voor bye
@@ -7174,9 +7187,9 @@ async function verwerkKnockoutUitslag(partij) {
   try {
     const ladderId = partij.ladderId;
     if (!ladderId) return;
-    const snap = await getDoc(doc(db, 'ladders', ladderId));
-    if (!snap.exists()) return;
-    const data = snap.data();
+    const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
+    if (!snapExists) return;
+    const data = snapData;
     if ((data.type || '') !== 'knockout') return;
 
     // Bepaal winnaar — bij knockout altijd 2 spelers, 1 matchup
@@ -7238,9 +7251,9 @@ window.verwerkKnockoutUitslag = verwerkKnockoutUitslag;
 
 async function slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar, resultaat) {
   try {
-    const snap = await getDoc(doc(db, 'ladders', ladderId));
-    if (!snap.exists()) return;
-    const data = snap.data();
+    const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
+    if (!snapExists) return;
+    const data = snapData;
     const rondes = objNaarRondes(data.rondes);
     if (!rondes[rondeIdx] || !rondes[rondeIdx][partijIdx]) return;
 
@@ -7264,9 +7277,9 @@ async function slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar, resu
 async function nieuwKnockoutSeizoen(ladderId) {
   if (!confirm('Nieuw seizoen starten? De huidige bracket wordt gewist.')) return;
   try {
-    const snap = await getDoc(doc(db, 'ladders', ladderId));
-    if (!snap.exists()) return;
-    const data = snap.data();
+    const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
+    if (!snapExists) return;
+    const data = snapData;
     await setDoc(doc(db, 'ladders', ladderId), { ...data, rondes: rondesNaarObj([]) });
     const idx = alleLadders.findIndex(l => l.id === ladderId);
     if (idx >= 0) alleLadders[idx].data = { ...data, rondes: [] };
