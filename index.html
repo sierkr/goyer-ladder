@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.6.2</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.6.3</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1345,7 +1345,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.6.2</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.6.3</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -1686,6 +1686,22 @@ async function setIngelogd(firebaseUser) {
   vervolgIngelogd();
 }
 
+function updateSiteTitel() {
+  if (!huidigeBruiker) return;
+  const voornaam = (huidigeBruiker.gebruikersnaam || '').toLowerCase().split(' ')[0];
+  const mijnLadders = isCoordinatorRol()
+    ? alleLadders
+    : alleLadders.filter(l => (l.spelers || []).some(s => s.naam.toLowerCase().includes(voornaam)));
+  const h1Second = document.getElementById('h1-second');
+  if (h1Second) {
+    const alleenHeerendag = mijnLadders.length === 1 &&
+      mijnLadders[0].naam.toLowerCase().includes('heerendag');
+    h1Second.textContent = alleenHeerendag
+      ? ` ${mijnLadders[0].naam} Ladder`
+      : ' MP Ladder';
+  }
+}
+
 function vervolgIngelogd() {
   document.getElementById('login-scherm').classList.remove('actief');
   document.getElementById('login-fout').style.display = 'none';
@@ -1718,34 +1734,13 @@ function vervolgIngelogd() {
   laadUitdagingen();
 
   // Pas sitetitel aan — alleen als speler uitsluitend in de Heerendag ladder zit
-  const gebruikersnaam = (huidigeBruiker.gebruikersnaam || '').toLowerCase();
-  const voornaam = gebruikersnaam.split(' ')[0];
-  const mijnLadders = isCoordinatorRol()
-    ? alleLadders
-    : alleLadders.filter(l => (l.spelers || []).some(s => s.naam.toLowerCase().includes(voornaam)));
-  const h1Second = document.getElementById('h1-second');
-  if (h1Second) {
-    const alleenHeerendag = mijnLadders.length === 1 &&
-      mijnLadders[0].naam.toLowerCase().includes('heerendag');
-    h1Second.textContent = alleenHeerendag
-      ? ` ${mijnLadders[0].naam} Ladder`
-      : ' MP Ladder';
-  }
+  updateSiteTitel();
 
   // Extra refresh na 2 seconden als ladder nog leeg is (race condition bij inloggen)
   setTimeout(() => {
     const wrap = document.getElementById('ladder-kaarten');
     if (wrap && wrap.querySelector('.empty-icon')) renderLadder();
-    // Titel opnieuw zetten na laden alleLadders
-    const vn = (huidigeBruiker?.gebruikersnaam || '').toLowerCase().split(' ')[0];
-    const mijnL = isCoordinatorRol()
-      ? alleLadders
-      : alleLadders.filter(l => (l.spelers || []).some(s => s.naam.toLowerCase().includes(vn)));
-    const h1 = document.getElementById('h1-second');
-    if (h1) {
-      const alleenHeerendag = mijnL.length === 1 && mijnL[0].naam.toLowerCase().includes('heerendag');
-      h1.textContent = alleenHeerendag ? ` ${mijnL[0].naam} Ladder` : ' MP Ladder';
-    }
+    updateSiteTitel();
   }, 2000);
 }
 
@@ -2011,6 +2006,7 @@ async function initFirestore() {
       if (activePage === 'ronde') renderRonde();
       if (activePage === 'profiel') renderProfiel();
       if (activePage === 'toernooi') renderToernooi();
+      updateSiteTitel();
     }));
   }
 
@@ -2027,6 +2023,7 @@ async function initFirestore() {
       if (activePage === 'ladder') renderLadder();
       if (activePage === 'admin') renderAdmin();
       if (activePage === 'profiel') renderProfiel();
+      updateSiteTitel();
     }));
   });
 
