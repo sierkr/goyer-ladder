@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.5.3</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.5.4</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1345,7 +1345,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.5.3</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.5.4</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -1546,7 +1546,8 @@ const USERS_DOC = doc(db, 'ladder', 'users');
 // Users cache helpers — voorkomt herhaalde Firestore reads
 async function getUsers(forceFresh = false) {
   if (!forceFresh && _usersCache !== null) return _usersCache;
-  const users = await getUsers();
+  const snap = await getDoc(USERS_DOC);
+  _usersCache = snap.exists() ? (snap.data().lijst || []) : [];
   return _usersCache;
 }
 async function saveUsers(lijst) {
