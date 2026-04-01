@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.5.5</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.5.6</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1345,7 +1345,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.5.5</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.5.6</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -2748,17 +2748,10 @@ function renderHcpBlok(spelers, holes, hcpPct, containerId) {
         .sort((a, b) => a.nr - b.nr);
 
       html += `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
           <span style="font-weight:600;font-size:14px">${naamMap[a.id]} vs ${naamMap[b.id]}</span>
-          <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace">${verschil} slag${verschil !== 1 ? 'en' : ''}</span>
+          <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace">${verschil === 0 ? 'Gelijke handicap' : `${naamMap[mindereHcp.id]} krijgt ${verschil} slag${verschil !== 1 ? 'en' : ''}`}</span>
         </div>
-        ${verschil === 0
-          ? `<span style="font-size:12px;color:var(--light)">Gelijke handicap — geen slagen</span>`
-          : `<div style="font-size:12px;color:var(--mid);margin-bottom:3px">${naamMap[mindereHcp.id]} krijgt slagen op:</div>
-             <div style="display:flex;flex-wrap:wrap;gap:4px">
-               ${slagHoles.map(h => `<span style="background:var(--green-pale);color:var(--green);border-radius:12px;padding:2px 8px;font-size:12px;font-family:'DM Mono',monospace">H${h.nr}${h.slagen > 1 ? ' (×'+h.slagen+')' : ''}</span>`).join('')}
-             </div>`
-        }
       </div>`;
     }
   }
@@ -2818,7 +2811,7 @@ function renderScorecard() {
   p.holes.forEach((h, holeIdx) => {
     bodyHtml += `<tr>
       <td style="padding:6px 8px;font-family:'DM Mono',monospace;font-size:12px;white-space:nowrap">
-        <span style="font-weight:600">${p.startHole + holeIdx}</span>
+        <span style="font-weight:600">${((p.startHole - 1 + holeIdx) % 18) + 1}</span>
         <span class="hole-par"> p${h.par}</span>
         <span class="hole-si"> SI${h.si}</span>
       </td>`;
