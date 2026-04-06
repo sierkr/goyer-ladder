@@ -383,4 +383,4 @@ async function verwijderUitdaging(uitdagingId) {
 
 // ============================================================
 
-export { openNieuwSeizoenModal, bevestigNieuwSeizoen, renderArchief, openArchiefDetail, vraagNotificatieToestemming, stuurNotificatie, toonUitdagingBadge, stuurUitdaging, reageerUitdaging, verwijderUitdaging };
+export { openNieuwSeizoenModal, bevestigNieuwSeizoen, renderArchief, openArchiefDetail, stuurNotificatie, toonUitdagingBadge, stuurUitdaging, reageerUitdaging, verwijderUitdaging };;
