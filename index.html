@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.6.8</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.6.9</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1345,7 +1345,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.6.8</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.6.9</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -2433,7 +2433,12 @@ function zoekPartijSpeler(n, zoek) {
     lijst.innerHTML = '<div class="speler-zoek-item geselecteerd">Geen spelers gevonden</div>';
   } else {
     lijst.innerHTML = gefilterd.map(s => `
-      <div class="speler-zoek-item" data-id="${s.id}" data-naam="${s.naam.replace(/"/g,'&quot;')}" data-hcp="${s.hcp}" onclick="selecteerPartijSpelerEl(${n}, this)">
+      <div class="speler-zoek-item"
+        data-id="${s.id}"
+        data-naam="${s.naam.replace(/"/g,'&quot;')}"
+        data-hcp="${s.hcp}"
+        onmousedown="event.preventDefault();selecteerPartijSpelerEl(${n}, this)"
+        ontouchstart="selecteerPartijSpelerEl(${n}, this)">
         ${s.naam} <span style="color:var(--light);font-size:12px">hcp ${Math.round(s.hcp)}</span>
       </div>
     `).join('');
