@@ -1,5 +1,6 @@
 // ============================================================
 //  app.js — Entry point, importeert alle modules
+//  v2.0.1
 // ============================================================
 import { initApp, uitloggen, loginSubmit, loginMetGoogle,
   openWachtwoordVergeten, sluitResetWrap, stuurResetEmail,
@@ -119,4 +120,18 @@ window.toggleAdminKaart = toggleAdminKaart;
 window.wisselLadder = wisselLadder;
 
 // ─── Start de app ─────────────────────────────────────────────
-initApp();
+console.log('app.js: alle modules geladen, initApp starten');
+try {
+  initApp();
+  console.log('initApp: aangeroepen');
+} catch(e) {
+  console.error('initApp mislukt:', e);
+}
+
+// ─── Versienummer rechtsboven ──────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const badge = document.getElementById('versie-badge');
+  if (badge) badge.textContent = 'v2.0.1';
+  // Debug: toon v2 altijd zichtbaar
+  if (badge) badge.style.display = '';
+});
