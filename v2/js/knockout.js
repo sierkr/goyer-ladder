@@ -594,4 +594,4 @@ window.vraagNotificatieToestemming = vraagNotificatieToestemming;
 initFirestore();
 
 
-export { renderKnockoutLadderKaart, openKnockoutIndeling, renderKnockoutIndelingModal, slaKnockoutIndelingOp, verwerkKnockoutWinnaar, nieuwKnockoutSeizoen };
+export { rondesNaarObj, objNaarRondes, renderKnockoutLadderKaart, renderKnockoutBracket, openKnockoutIndeling, renderKnockoutIndelingModal, koDragStart, koDragOver, koDrop, koDragEnd, koTouchStart, koTouchMove, koTouchEnd, verschuifKoSpeler, bevestigKnockoutIndeling, verwerkKnockoutVoortgang, verwerkKnockoutUitslag, slaKnockoutWinnaarOp, nieuwKnockoutSeizoen, toggleAdminKaart };

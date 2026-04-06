@@ -619,4 +619,4 @@ function showLadderChanges(changes) {
 
 // ============================================================
 
-export { renderRonde, renderScorecard, renderMatchOverview, updateScore, autoAdvance, editPartijHcp, verwijderSpelerUitRonde, annuleerEigenPartij, verwijderActievePartij, bevestigUitslag, openUitslagModal, vulUitslagModal };
+export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges };

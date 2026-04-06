@@ -34,4 +34,4 @@ function showPage(name) {
 
 // ============================================================
 
-export { showPage, wisselLadder, toonLaadOverlay };
+export { showPage };

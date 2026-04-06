@@ -674,4 +674,4 @@ window.verwijderActievePartij = verwijderActievePartij;
 window.verschuifRank = verschuifRank;
 // ============================================================
 
-export { renderLadderInstellingen, slaLadderInstellingenOp, renderLadderBeheer, renderLadderSpelers, renderSnapshots, herstelSnapshot, maakSnapshot, laadInviteStatus, genereerInviteLink, openKnockoutIndeling };
+export { openStandAanpassen, renderStandAanpassenLijst, verschuifStand, slaStandOp, openLadderInstellingen, slaLadderInstellingenOp, openNieuweLadderModal, maakNieuweLadder, verschuifLadder, verwijderLadder, openLadderSpelersModal, slaLadderSpelersOp, renderAdminLadders, openSnapshotsModal, slaSnapshotOp, laadSnapshots, herstelSnapshot };
