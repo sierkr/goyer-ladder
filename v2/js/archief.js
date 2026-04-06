@@ -1,16 +1,13 @@
 // ============================================================
 //  archief.js
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, SPELERS_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';;
-import { store } from './store.js';;
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, SPELERS_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
+import { store } from './store.js';
 import * as S from './store.js';
-import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';;
-import { renderAdmin, renderProfiel } from './admin.js';;
-import { renderLadder } from './ladder.js';;
+import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+import { renderAdmin, renderProfiel } from './admin.js';
+import { renderLadder } from './ladder.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
-  query, where, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
 
 //  SEIZOENEN & ARCHIEF
 // ============================================================
@@ -383,4 +380,4 @@ async function verwijderUitdaging(uitdagingId) {
 
 // ============================================================
 
-export { openNieuwSeizoenModal, bevestigNieuwSeizoen, renderArchief, openArchiefDetail, stuurNotificatie, toonUitdagingBadge, stuurUitdaging, reageerUitdaging, verwijderUitdaging };;
+export { openNieuwSeizoenModal, bevestigNieuwSeizoen, renderArchief, openArchiefDetail, stuurNotificatie, toonUitdagingBadge, stuurUitdaging, reageerUitdaging, verwijderUitdaging };

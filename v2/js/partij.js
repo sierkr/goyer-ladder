@@ -1,13 +1,12 @@
 // ============================================================
 //  partij.js — Partij aanmaken, banen, naam helpers
 // ============================================================
-import { db, BANEN_DB, LADDERS_COL, SPELERS_DOC, DEFAULT_STATE } from './config.js';;
-import { store } from './store.js';;
+import { db, BANEN_DB, LADDERS_COL, SPELERS_DOC, DEFAULT_STATE } from './config.js';
+import { store } from './store.js';
 import * as S from './store.js';
-import { slaState, getLadderData, getNextId, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';;
-import { objNaarRondes } from './knockout.js';;
+import { slaState, getLadderData, getNextId, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
+import { objNaarRondes } from './knockout.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
 
 //  PARTIJ SETUP
 // ============================================================

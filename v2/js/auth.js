@@ -5,15 +5,11 @@ import { db, auth, googleProvider, STATE_DOC, USERS_DOC, SPELERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
   INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB } from './config.js';
 import { store, DEFAULT_LADDER_CONFIG } from './store.js';
-import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc,
-  getDocs, addDoc, query, where, orderBy, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword,
-  signOut, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail,
-  updatePassword, EmailAuthProvider, reauthenticateWithCredential,
-  createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 // Toegang tot gedeelde state via store
 import * as S from './store.js';
+import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, updatePassword, EmailAuthProvider, reauthenticateWithCredential, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 //  AUTH / LOGIN — Firebase Authentication
 // ============================================================
