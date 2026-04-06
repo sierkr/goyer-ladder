@@ -140,35 +140,9 @@ async function slaLadderInstellingenOp() {
   } catch(e) { console.error('slaLadderInstellingenOp mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
-function getNextId() {
-  // Centrale ID teller — altijd hoger dan hoogste bekende ID
-  const maxAlleSpelers = alleSpelersData.reduce((m, s) => Math.max(m, Number(s.id) || 0), 0);
-  const maxAlleLadders = alleLadders.reduce((m, l) =>
-    Math.max(m, ...(l.spelers || []).map(s => Number(s.id) || 0)), 0);
-  return Math.max(maxAlleSpelers, maxAlleLadders) + 1;
-}
 
 // Helper: haal ladder data op — gebruik cache als beschikbaar, anders Firestore
-async function getLadderData(ladderId) {
-  const cached = alleLadders.find(l => l.id === ladderId);
-  if (cached?.data) return { exists: true, data: cached.data, _cached: true };
-  if (ladderId === activeLadderId) return { exists: true, data: state, _cached: true };
-  try {
-    const snap = await getDoc(doc(db, 'ladders', ladderId));
-    if (snap.exists()) {
-      const idx = alleLadders.findIndex(l => l.id === ladderId);
-      if (idx >= 0) alleLadders[idx].data = snap.data();
-    }
-    return { exists: snap.exists(), data: snap.exists() ? snap.data() : null };
-  } catch(e) {
-    console.error('getLadderData mislukt:', e);
-    return { exists: false, data: null };
-  }
-}
 
-function getLadderConfig() {
-  return state.config || alleLadders.find(l => l.id === activeLadderId)?.config || DEFAULT_LADDER_CONFIG;
-}
 
 // ============================================================
 //  LADDERS BEHEREN
@@ -444,198 +418,13 @@ async function herstelSnapshot(snapId) {
 // ============================================================
 //  UITNODIGINGSLINK
 // ============================================================
-async function genereerInviteLink() {
 
-  try {
-  const ladderId = document.getElementById('invite-ladder-select')?.value || activeLadderId;
-  const ladder = alleLadders.find(l => l.id === ladderId);
-  const token = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
-  const verloopt = Date.now() + 14 * 24 * 60 * 60 * 1000;
-  // Sla per ladder een invite op
-  await setDoc(doc(db, 'ladder', `invite_${ladderId}`), { token, verloopt, ladderId, ladderNaam: ladder?.naam || ladderId, aangemaakt: Date.now() });
-  const url = `${location.origin}${location.pathname}?invite=${token}&ladder=${ladderId}`;
-  document.getElementById('invite-link-text').textContent = url;
-  document.getElementById('invite-link-wrap').style.display = 'block';
-  document.getElementById('invite-status').textContent = `Geldig tot ${new Date(verloopt).toLocaleDateString('nl-NL')} · Ladder: ${ladder?.naam || ladderId}`;
-  toast('Uitnodigingslink aangemaakt ✓');
-  } catch(e) { console.error('genereerInviteLink mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
-}
 
-function kopieerInviteLink() {
-  const tekst = document.getElementById('invite-link-text').textContent;
-  navigator.clipboard.writeText(tekst).then(() => toast('Link gekopieerd! ✓'));
-}
-
-async function checkInviteLink() {
-  const params = new URLSearchParams(location.search);
-  const token = params.get('invite');
-  const ladderId = params.get('ladder') || 'mp';
-  if (!token) return;
-  document.getElementById('login-scherm').classList.remove('actief');
-  document.getElementById('registratie-scherm').style.display = 'block';
-  // Sla ladderId op voor gebruik bij registratie
-  window._inviteLadderId = ladderId;
-  // Valideer token — probeer per-ladder invite en fallback naar globale invite
-  let geldig = false;
-  try {
-    const snapLadder = await getDoc(doc(db, 'ladder', `invite_${ladderId}`));
-    if (snapLadder.exists()) {
-      const data = snapLadder.data();
-    }
-    if (snapLadder.exists() && snapLadder.data().token === token && snapLadder.data().verloopt > Date.now()) {
-      geldig = true;
-    } else {
-      const snapGlobal = await getDoc(INVITE_DOC);
-      if (snapGlobal.exists() && snapGlobal.data().token === token && snapGlobal.data().verloopt > Date.now()) {
-        geldig = true;
-      }
-    }
-  } catch(e) { console.error('Invite check fout:', e); }
-  if (!geldig) {
-    document.getElementById('reg-formulier').style.display = 'none';
-    const fout = document.getElementById('reg-fout');
-    fout.textContent = 'Deze uitnodigingslink is verlopen of ongeldig. Vraag de beheerder om een nieuwe link.';
-    fout.style.display = 'block';
-  }
-}
 
 let _bezigMetRegistratie = false;
 
-async function registreerSpeler() {
-  const voornaam = document.getElementById('reg-voornaam').value.trim();
-  const achternaam = document.getElementById('reg-achternaam').value.trim();
-  const email = document.getElementById('reg-email').value.trim().toLowerCase();
-  const pass = document.getElementById('reg-pass').value;
-  const hcp = parseInt(document.getElementById('reg-hcp').value);
-  const fout = document.getElementById('reg-fout');
-  const succes = document.getElementById('reg-succes');
 
-  fout.style.display = 'none';
-  succes.style.display = 'none';
 
-  if (!voornaam) { fout.textContent = 'Vul je voornaam in'; fout.style.display = 'block'; return; }
-  if (!achternaam) { fout.textContent = 'Vul je achternaam in'; fout.style.display = 'block'; return; }
-  if (!email || !email.includes('@')) { fout.textContent = 'Vul een geldig e-mailadres in'; fout.style.display = 'block'; return; }
-  if (pass.length < 6) { fout.textContent = 'Wachtwoord moet minimaal 6 tekens zijn'; fout.style.display = 'block'; return; }
-  if (isNaN(hcp)) { fout.textContent = 'Vul je playing handicap in'; fout.style.display = 'block'; return; }
-  if (!document.getElementById('reg-akkoord')?.checked) { fout.textContent = 'Ga akkoord met de voorwaarden om verder te gaan'; fout.style.display = 'block'; return; }
-
-  const naam = `${voornaam} ${achternaam}`;
-
-  try {
-    _bezigMetRegistratie = true;
-    // Stap 1: Maak Auth account aan en log direct in
-    const cred = await createUserWithEmailAndPassword(auth, email, pass);
-    const uid = cred.user.uid;
-
-    // Stap 2: Nu ingelogd — schrijf naar Firestore
-    const users = await getUsers(true); // forceFresh bij registratie
-    if (!users.some(u => u.email?.toLowerCase() === email.toLowerCase())) {
-      users.push({ naam, gebruikersnaam: naam, email, uid, rol: 'speler' });
-      await saveUsers(users);
-    }
-
-    // Haal ID op uit de gekoppelde ladder
-    const targetLadderId = window._inviteLadderId || 'mp';
-    const ladderSnap = await getDoc(doc(db, 'ladders', targetLadderId));
-    const ladderData = ladderSnap.exists() ? ladderSnap.data() : { spelers: [], nextId: 1 };
-    ladderData.spelers = ladderData.spelers || [];
-    const newId = getNextId();
-    const newRank = ladderData.spelers.length + 1;
-
-    // Voeg toe aan ladder — controleer eerst op duplicaten
-    const bestaatAl = ladderData.spelers.some(s => 
-      s.naam.toLowerCase() === naam.toLowerCase() || s.email === email
-    );
-    if (!bestaatAl) {
-      ladderData.spelers.push({ id: newId, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
-      ladderData.spelerIds = (ladderData.spelerIds || []).concat([newId]);
-      ladderData.nextId = newId + 1;
-      await setDoc(doc(db, 'ladders', targetLadderId), ladderData);
-    }
-
-    // Voeg toe aan master spelerslijst — controleer op duplicaten
-    const spelersSnap2 = await getDoc(SPELERS_DOC);
-    const masterLijst = spelersSnap2.exists() ? (spelersSnap2.data().lijst || []) : [];
-    if (!masterLijst.some(s => s.naam.toLowerCase() === naam.toLowerCase())) {
-      masterLijst.push({ id: newId, naam, hcp });
-      await setDoc(SPELERS_DOC, { lijst: masterLijst });
-    }
-
-    const ladderNaam = ladderData.naam || alleLadders.find(l => l.id === targetLadderId)?.naam || targetLadderId;
-
-    _bezigMetRegistratie = false;
-    document.getElementById('reg-formulier').style.display = 'none';
-    succes.innerHTML = `<strong>Welkom ${voornaam}!</strong> Je bent succesvol geregistreerd en staat nu in de <strong>${ladderNaam}</strong> ladder.<br><br>
-      <a href="${location.origin}${location.pathname}" style="color:var(--green);font-weight:600">Klik hier om in te loggen →</a>`;
-    succes.style.display = 'block';
-
-    // Tel gebruik van uitnodigingslink
-    try {
-      const inviteRef = doc(db, 'ladder', `invite_${targetLadderId}`);
-      const inviteSnap = await getDoc(inviteRef);
-      if (inviteSnap.exists()) {
-        const data = inviteSnap.data();
-        await setDoc(inviteRef, { ...data, gebruik: (data.gebruik || 0) + 1 });
-      }
-    } catch(e) { console.error('Invite teller mislukt:', e); }
-
-  } catch(e) {
-    _bezigMetRegistratie = false;
-    if (e.code === 'auth/email-already-in-use') {
-      fout.innerHTML = `Dit e-mailadres is al geregistreerd.<br><br>
-        <strong>Wachtwoord vergeten?</strong> Ga naar de <a href="${location.origin}${location.pathname}" style="color:var(--green)">inlogpagina</a> 
-        en klik op "Wachtwoord vergeten?". Je ontvangt een reset-link per e-mail. 
-        <em>Controleer ook je spambox.</em>`;
-    } else {
-      fout.textContent = 'Registratie mislukt: ' + e.message;
-    }
-    fout.style.display = 'block';
-  }
-}
-
-async function laadInviteStatus() {
-  try {
-    const sel = document.getElementById('invite-ladder-select');
-    if (sel) {
-      const huidigeWaarde = sel.value;
-      sel.innerHTML = alleLadders.map(l => `<option value="${l.id}">${l.naam}</option>`).join('');
-      if (huidigeWaarde && alleLadders.find(l => l.id === huidigeWaarde)) {
-        sel.value = huidigeWaarde;
-      }
-      sel.onchange = () => laadInviteStatus();
-    }
-    const ladderId = sel?.value || activeLadderId;
-    const snap = await getDoc(doc(db, 'ladder', `invite_${ladderId}`));
-    const el = document.getElementById('invite-status');
-    if (!el) return;
-    if (snap.exists() && snap.data().verloopt > Date.now()) {
-      const url = `${location.origin}${location.pathname}?invite=${snap.data().token}&ladder=${ladderId}`;
-      const gebruik = snap.data().gebruik || 0;
-      el.textContent = `Actief — geldig tot ${new Date(snap.data().verloopt).toLocaleDateString('nl-NL')} · ${gebruik} keer gebruikt`;
-      document.getElementById('invite-link-text').textContent = url;
-      document.getElementById('invite-link-wrap').style.display = 'block';
-    } else {
-      el.textContent = 'Geen actieve uitnodiging voor deze ladder.';
-      document.getElementById('invite-link-wrap').style.display = 'none';
-    }
-  } catch(e) {}
-}
-
-function autoAdvance(input) {
-  const tabIdx = parseInt(input.getAttribute('tabindex'));
-  if (!tabIdx) {
-    const inputs = Array.from(document.querySelectorAll('input[type=number]'));
-    const idx = inputs.indexOf(input);
-    if (idx >= 0 && idx < inputs.length - 1) {
-      inputs[idx + 1].focus();
-      inputs[idx + 1].select();
-    }
-    return;
-  }
-  const next = document.querySelector(`input[tabindex="${tabIdx + 1}"]`);
-  if (next) { next.focus(); next.select(); }
-}
 
 // ============================================================
 //  WINDOW EXPORTS

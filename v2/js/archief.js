@@ -275,11 +275,6 @@ function openArchiefDetail(idx) {
 // ============================================================
 //  NOTIFICATIES (in-app only — push uitgeschakeld)
 // ============================================================
-function registreerNotificatieToken() {}  // uitgeschakeld
-
-function vraagNotificatieToestemming() {
-  toast('Notificaties worden ondersteund in een toekomstige versie');
-}
 
 async function stuurNotificatie(naarUid, titel, bericht) {
 
@@ -291,15 +286,6 @@ async function stuurNotificatie(naarUid, titel, bericht) {
 // ============================================================
 //  UITDAGINGEN
 // ============================================================
-async function laadUitdagingen() {
-
-  try {
-  if (!huidigeBruiker) return;
-  const snap = await getDoc(UITDAGINGEN_DOC);
-  uitdagingenData = snap.exists() ? (snap.data().lijst || []) : [];
-  toonUitdagingBadge();
-  } catch(e) { console.error('laadUitdagingen mislukt:', e); }
-}
 
 function toonUitdagingBadge() {
   const open = uitdagingenData.filter(u =>

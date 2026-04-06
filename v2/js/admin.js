@@ -751,19 +751,7 @@ function closeModal(id) {
   document.getElementById(id).classList.remove('open');
 }
 
-function isBeheerderRol() {
-  return huidigeBruiker?.rol === 'beheerder';
-}
-function isCoordinatorRol() {
-  return huidigeBruiker?.rol === 'coordinator' || huidigeBruiker?.rol === 'beheerder';
-}
 
-function toast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2500);
-}
 
 // Close modal on overlay click
 document.querySelectorAll('.modal-overlay').forEach(o => {
