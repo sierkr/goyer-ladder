@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.6.3</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.6.4</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1345,7 +1345,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.6.3</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.6.4</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -6100,7 +6100,7 @@ async function bevestigToernooiAfsluiten() {
 
   for (const ladderId of rankingLadderIds) {
     const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
-    if (ladderSnap.exists()) {
+    if (snapExists) {
       const ladderData = snapData;
       const ladderSpelerIds = new Set((ladderData.spelers || []).map(s => String(s.id)));
       const ladderSpelersOpNaam = new Map((ladderData.spelers || []).map(s => [s.naam.toLowerCase(), s]));
@@ -6330,8 +6330,7 @@ async function slaLadderInstellingenOp() {
 
   // Sla op in Firestore
   const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
-  if (snap.exists()) {
-    const data = snapData;
+  if (snapExists) {
     data.config = config;
     await setDoc(doc(db, 'ladders', ladderId), data);
   }
@@ -6359,11 +6358,11 @@ async function getLadderData(ladderId) {
   const cached = alleLadders.find(l => l.id === ladderId);
   if (cached?.data) return { exists: true, data: cached.data, _cached: true };
   if (ladderId === activeLadderId) return { exists: true, data: state, _cached: true };
-  const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
+  const snap = await getDoc(doc(db, 'ladders', ladderId));
   if (snap.exists()) {
     // Update cache
     const idx = alleLadders.findIndex(l => l.id === ladderId);
-    if (idx >= 0) alleLadders[idx].data = snapData;
+    if (idx >= 0) alleLadders[idx].data = snap.data();
   }
   return { exists: snap.exists(), data: snap.exists() ? snap.data() : null };
 }
@@ -6996,7 +6995,7 @@ async function openKnockoutIndeling(ladderId) {
   _koLadderId = ladderId;
   const ladder = alleLadders.find(l => l.id === ladderId);
   const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
-  const data = snap.exists() ? snapData : {};
+  const data = snapExists ? snapData : {};
   const spelers = data.spelers || [];
   const rondes = objNaarRondes(data.rondes);
 
