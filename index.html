@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.6.5</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.6.6</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1345,7 +1345,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.6.5</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.6.6</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -6738,8 +6738,10 @@ async function registreerSpeler() {
 
     // Stap 2: Nu ingelogd — schrijf naar Firestore
     const users = await getUsers(true); // forceFresh bij registratie
-    users.push({ naam, gebruikersnaam: naam, email, uid, rol: 'speler' });
-    await saveUsers(users);
+    if (!users.some(u => u.email?.toLowerCase() === email.toLowerCase())) {
+      users.push({ naam, gebruikersnaam: naam, email, uid, rol: 'speler' });
+      await saveUsers(users);
+    }
 
     // Haal ID op uit de gekoppelde ladder
     const targetLadderId = window._inviteLadderId || 'mp';
@@ -6749,17 +6751,24 @@ async function registreerSpeler() {
     const newId = getNextId();
     const newRank = ladderData.spelers.length + 1;
 
-    // Voeg toe aan ladder
-    ladderData.spelers.push({ id: newId, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
-    ladderData.spelerIds = (ladderData.spelerIds || []).concat([newId]);
-    ladderData.nextId = newId + 1;
-    await setDoc(doc(db, 'ladders', targetLadderId), ladderData);
+    // Voeg toe aan ladder — controleer eerst op duplicaten
+    const bestaatAl = ladderData.spelers.some(s => 
+      s.naam.toLowerCase() === naam.toLowerCase() || s.email === email
+    );
+    if (!bestaatAl) {
+      ladderData.spelers.push({ id: newId, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
+      ladderData.spelerIds = (ladderData.spelerIds || []).concat([newId]);
+      ladderData.nextId = newId + 1;
+      await setDoc(doc(db, 'ladders', targetLadderId), ladderData);
+    }
 
-    // Voeg toe aan master spelerslijst
+    // Voeg toe aan master spelerslijst — controleer op duplicaten
     const spelersSnap2 = await getDoc(SPELERS_DOC);
     const masterLijst = spelersSnap2.exists() ? (spelersSnap2.data().lijst || []) : [];
-    masterLijst.push({ id: newId, naam, hcp });
-    await setDoc(SPELERS_DOC, { lijst: masterLijst });
+    if (!masterLijst.some(s => s.naam.toLowerCase() === naam.toLowerCase())) {
+      masterLijst.push({ id: newId, naam, hcp });
+      await setDoc(SPELERS_DOC, { lijst: masterLijst });
+    }
 
     const ladderNaam = alleLadders.find(l => l.id === targetLadderId)?.naam || targetLadderId;
 
