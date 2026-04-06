@@ -1,8 +1,8 @@
 // ============================================================
 //  ladder.js — Ladder rendering, ranking weergave
 // ============================================================
-import { db, LADDERS_COL, DEFAULT_LADDER_CONFIG } from './config.js';
-import { store, DEFAULT_LADDER_CONFIG as DLC } from './store.js';
+import { db, LADDERS_COL } from './config.js';
+import { store, DEFAULT_LADDER_CONFIG } from './store.js';
 import * as S from './store.js';
 import { slaState, getLadderConfig, getLadderData, getNextId,
   isBeheerderRol, isCoordinatorRol, toast } from './auth.js';

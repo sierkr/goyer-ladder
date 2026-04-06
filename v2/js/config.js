@@ -11,7 +11,7 @@ import {
   reauthenticateWithCredential, createUserWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
   authDomain: "goyer-golf-mp-ladder.firebaseapp.com",
   projectId: "goyer-golf-mp-ladder",
@@ -20,13 +20,13 @@ const firebaseConfig = {
   appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
 };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
-const googleProvider = new GoogleAuthProvider();
+export const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app);
+export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
 // Firestore refs
-const STATE_DOC = doc(db, 'ladder', 'state'); // legacy — voor migratie
-const USERS_DOC = doc(db, 'ladder', 'users');
+export const STATE_DOC = doc(db, 'ladder', 'state'); // legacy — voor migratie
+export const USERS_DOC = doc(db, 'ladder', 'users');
 
 // Users cache helpers — voorkomt herhaalde Firestore reads
 async function getUsers(forceFresh = false) {
@@ -42,27 +42,27 @@ async function saveUsers(lijst) {
   try { await setDoc(USERS_DOC, { lijst }); }
   catch(e) { console.error('saveUsers mislukt:', e); }
 }
-const SPELERS_DOC = doc(db, 'ladder', 'spelers'); // master spelerslijst
-const BANEN_DOC = doc(db, 'ladder', 'banen');
-const ARCHIEF_DOC = doc(db, 'ladder', 'archief');
-const UITDAGINGEN_DOC = doc(db, 'ladder', 'uitdagingen');
-const TOERNOOI_DOC = doc(db, 'ladder', 'toernooi'); // legacy
-const TOERNOOIEN_COL = collection(db, 'toernooien');
-const UITSLAGEN_COL = collection(db, 'uitslagen');
-const INVITE_DOC = doc(db, 'ladder', 'invite');
-const SNAPSHOTS_COL = collection(db, 'snapshots');
-const LADDERS_COL = collection(db, 'ladders');
+export const SPELERS_DOC = doc(db, 'ladder', 'spelers'); // master spelerslijst
+export const BANEN_DOC = doc(db, 'ladder', 'banen');
+export const ARCHIEF_DOC = doc(db, 'ladder', 'archief');
+export const UITDAGINGEN_DOC = doc(db, 'ladder', 'uitdagingen');
+export const TOERNOOI_DOC = doc(db, 'ladder', 'toernooi'); // legacy
+export const TOERNOOIEN_COL = collection(db, 'toernooien');
+export const UITSLAGEN_COL = collection(db, 'uitslagen');
+export const INVITE_DOC = doc(db, 'ladder', 'invite');
+export const SNAPSHOTS_COL = collection(db, 'snapshots');
+export const LADDERS_COL = collection(db, 'ladders');
 
 // Ingelogde gebruiker (alleen in geheugen, niet in Firestore)
-let huidigeBruiker = null; // { gebruikersnaam, rol }
-let aangepasteBanen = []; // { naam, aangemaakt_door, holes: [{par, si}] }
+export let huidigeBruiker = null; // { gebruikersnaam, rol }
+export let aangepasteBanen = []; // { naam, aangemaakt_door, holes: [{par, si}] }
 
 // ============================================================
 //  DATA
 // ============================================================
 
 // Banen database (NL selectie, PAR + SI per hole)
-const BANEN_DB = {
+export const BANEN_DB = {
   "De Goyer (thuisbaan)": {
     holes: [
       {par:4,si:16},{par:3,si:10},{par:4,si:6},{par:5,si:2},{par:3,si:18},
@@ -106,18 +106,9 @@ const BANEN_DB = {
   "Handmatig invoeren": { holes: null }
 };
 
-const DEFAULT_STATE = {
+export const DEFAULT_STATE = {
   spelers: [],
   nextId: 1,
   actievePartijen: [],
   uitslagen: []
-};
-
-// Exporteer alles wat andere modules nodig hebben
-export { 
-  db, auth, googleProvider,
-  STATE_DOC, USERS_DOC, SPELERS_DOC, BANEN_DOC, ARCHIEF_DOC,
-  UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL, UITSLAGEN_COL,
-  INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL,
-  BANEN_DB, DEFAULT_STATE
 };
