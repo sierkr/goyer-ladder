@@ -643,7 +643,7 @@
       </div>
     </div>
   </div>
-  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.6.7</div>
+  <div style="position:fixed;bottom:8px;right:10px;font-size:10px;color:rgba(255,255,255,0.3);font-family:'DM Mono',monospace">v3.6.8</div>
 </div>
 
 <!-- Toernooi speler beheer modal -->
@@ -1345,7 +1345,7 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
-  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.6.7</div>
+  <div style="text-align:right;font-size:11px;color:var(--light);padding:4px 4px 0;font-family:'DM Mono',monospace">v3.6.8</div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>
@@ -2433,12 +2433,19 @@ function zoekPartijSpeler(n, zoek) {
     lijst.innerHTML = '<div class="speler-zoek-item geselecteerd">Geen spelers gevonden</div>';
   } else {
     lijst.innerHTML = gefilterd.map(s => `
-      <div class="speler-zoek-item" onclick="selecteerPartijSpeler(${n}, ${s.id}, '${s.naam.replace(/'/g,"\\'")}', ${s.hcp})">
+      <div class="speler-zoek-item" data-id="${s.id}" data-naam="${s.naam.replace(/"/g,'&quot;')}" data-hcp="${s.hcp}" onclick="selecteerPartijSpelerEl(${n}, this)">
         ${s.naam} <span style="color:var(--light);font-size:12px">hcp ${Math.round(s.hcp)}</span>
       </div>
     `).join('');
   }
   lijst.style.display = 'block';
+}
+
+function selecteerPartijSpelerEl(n, el) {
+  const id = parseInt(el.dataset.id);
+  const naam = el.dataset.naam;
+  const hcp = parseFloat(el.dataset.hcp);
+  selecteerPartijSpeler(n, id, naam, hcp);
 }
 
 function selecteerPartijSpeler(n, id, naam, hcp) {
@@ -2598,7 +2605,8 @@ async function startPartij() {
     if (!slot) continue;
     const spelerId = slot.dataset.spelerId;
     if (!spelerId) continue;
-    const speler = partijLadderSpelers.find(s => String(s.id) === String(spelerId));
+    const speler = partijLadderSpelers.find(s => String(s.id) === String(spelerId))
+      || alleSpelersData.find(s => String(s.id) === String(spelerId));
     if (!speler) continue;
     const partijHcp = Math.round(parseFloat(hcpEl?.value));
     if (!isNaN(partijHcp) && partijHcp !== speler.hcp) {
@@ -7448,6 +7456,7 @@ window.slaLadderSpelersOp = slaLadderSpelersOp;
 window.toggleLadderKaart = toggleLadderKaart;
 window.wisselLadder = wisselLadder;
 window.zoekPartijSpeler = zoekPartijSpeler;
+window.selecteerPartijSpelerEl = selecteerPartijSpelerEl;
 window.selecteerPartijSpeler = selecteerPartijSpeler;
 window.sluitSpelerLijst = sluitSpelerLijst;
 window.filterPartijSpelers = filterPartijSpelers;
