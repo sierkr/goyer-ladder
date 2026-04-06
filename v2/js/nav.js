@@ -1,10 +1,20 @@
 // ============================================================
 //  nav.js — Navigatie, showPage, wisselLadder
 // ============================================================
-import { db, auth } from './config.js';
-import { store } from './store.js';
+import { db, auth } from './config.js';;
+import { store } from './store.js';;
 import * as S from './store.js';
-import { getDoc, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { herlaadToernooien, renderToernooi } from './toernooi.js';;
+import { initPartijForm } from './partij.js';;
+import { laadInviteStatus } from './auth.js';;
+import { renderAdmin, renderProfiel } from './admin.js';;
+import { renderAdminLadders } from './beheer.js';;
+import { renderArchief } from './archief.js';;
+import { renderLadder } from './ladder.js';;
+import { renderRonde } from './ronde.js';;
+import { renderUitslagen } from './uitslagen.js';;
+import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
 
 //  NAVIGATION
 // ============================================================
