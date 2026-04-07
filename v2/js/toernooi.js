@@ -242,7 +242,7 @@ function zoekToernooiSpeler(zoek) {
   const lijst = document.getElementById('t-speler-zoek-lijst');
   if (!lijst) return;
   const term = zoek.toLowerCase().trim();
-  const geselecteerdeIds = new Set(_tGeselecteerdeSpelers.map(s => String(s.id)));
+  const geselecteerdeIds = new Set(store._tGeselecteerdeSpelers.map(s => String(s.id)));
   const pool = getToernooiSpelersPool().filter(s => !geselecteerdeIds.has(String(s.id)));
   const gefilterd = term ? pool.filter(s => s.naam.toLowerCase().includes(term)) : pool;
 
@@ -262,8 +262,8 @@ function zoekToernooiSpeler(zoek) {
 }
 
 function selecteerToernooiSpeler(id, naam, hcp) {
-  if (!_tGeselecteerdeSpelers.find(s => s.id === id)) {
-    _tGeselecteerdeSpelers.push({ id, naam, hcp, gast: false });
+  if (!store._tGeselecteerdeSpelers.find(s => s.id === id)) {
+    store._tGeselecteerdeSpelers.push({ id, naam, hcp, gast: false });
   }
   sluitToernooiSpelerLijst();
   const zoek = document.getElementById('t-speler-zoek');
@@ -277,7 +277,7 @@ function sluitToernooiSpelerLijst() {
 }
 
 function verwijderToernooiSpelerSelectie(id) {
-  store._tGeselecteerdeSpelers = _tGeselecteerdeSpelers.filter(s => s.id !== id);
+  store._tGeselecteerdeSpelers = store._tGeselecteerdeSpelers.filter(s => s.id !== id);
   renderTGeselecteerdeSpelers();
 }
 
@@ -288,11 +288,12 @@ function voegGastspelerToe() {
   if (hcpStr === null) return;
   const hcp = parseFloat(hcpStr) || 0;
   const gastId = 90000 + Math.floor(Math.random() * 9999); // hoog getal om conflict te vermijden
-  _tGeselecteerdeSpelers.push({ id: gastId, naam: naam.trim(), hcp, gast: true });
+  store._tGeselecteerdeSpelers.push({ id: gastId, naam: naam.trim(), hcp, gast: true });
   renderTGeselecteerdeSpelers();
 }
 
 function renderTGeselecteerdeSpelers() {
+  const _tGeselecteerdeSpelers = store._tGeselecteerdeSpelers;
   const el = document.getElementById('t-geselecteerde-spelers');
   if (!el) return;
   if (_tGeselecteerdeSpelers.length === 0) {
