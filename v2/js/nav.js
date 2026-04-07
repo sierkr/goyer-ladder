@@ -2,8 +2,7 @@
 //  nav.js — Navigatie, showPage, wisselLadder
 // ============================================================
 import { db, auth } from './config.js';
-import { store } from './store.js';
-import * as S from './store.js';
+import { store, alleSpelersData } from './store.js';
 import { herlaadToernooien, renderToernooi } from './toernooi.js';
 import { initPartijForm } from './partij.js';
 import { laadInviteStatus } from './auth.js';

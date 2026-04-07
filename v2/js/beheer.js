@@ -2,8 +2,7 @@
 //  beheer.js
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, SPELERS_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
-import { store } from './store.js';
-import * as S from './store.js';
+import { store, state, alleLadders, activeLadderId, alleSpelersData, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { laadInviteStatus } from './auth.js';
 import { renderLadder } from './ladder.js';
@@ -27,11 +26,11 @@ async function openStandAanpassen(ladderId) {
   try {
   const ladder = alleLadders.find(l => l.id === ladderId);
   if (!ladder) return;
-  _standAanpassenLadderId = ladderId;
+  store._standAanpassenLadderId = ladderId;
 
   const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
   if (!snapExists) return;
-  _standAanpassenSpelers = [...(snapData.spelers || [])].sort((a,b) => a.rank - b.rank);
+  store._standAanpassenSpelers = [...(snapData.spelers || [])].sort((a,b) => a.rank - b.rank);
 
   document.getElementById('stand-aanpassen-titel').textContent = `Stand — ${ladder.naam}`;
   renderStandAanpassenLijst();
@@ -86,7 +85,7 @@ async function slaStandOp() {
 function openLadderInstellingen(ladderId) {
   const ladder = alleLadders.find(l => l.id === ladderId);
   if (!ladder) return;
-  _instellingenLadderId = ladderId;
+  store._instellingenLadderId = ladderId;
   const cfg = ladder.config || DEFAULT_LADDER_CONFIG;
 
   document.getElementById('ladder-instellingen-titel').textContent = `Instellingen — ${ladder.naam}`;
@@ -189,10 +188,10 @@ async function verwijderLadder(ladderId) {
   if (ladderId === 'mp') { toast('De MP ladder kan niet verwijderd worden'); return; }
   if (!confirm(`Ladder "${ladder.naam}" verwijderen? Dit kan niet ongedaan worden.`)) return;
   await deleteDoc(doc(db, 'ladders', ladderId));
-  alleLadders = alleLadders.filter(l => l.id !== ladderId);
+  store.alleLadders = alleLadders.filter(l => l.id !== ladderId);
   if (ladderId === activeLadderId) {
-    activeLadderId = alleLadders[0]?.id || null;
-    state = alleLadders[0] || state;
+    store.activeLadderId = alleLadders[0]?.id || null;
+    store.state = alleLadders[0] || state;
   }
   renderAdminLadders();
   toast('Ladder verwijderd');
@@ -206,7 +205,7 @@ async function openLadderSpelersModal(ladderId) {
   try {
   const ladder = alleLadders.find(l => l.id === ladderId);
   if (!ladder) return;
-  _ladderSpelersId = ladderId;
+  store._ladderSpelersId = ladderId;
   document.getElementById('ladder-spelers-titel').textContent = `Spelers in "${ladder.naam}"`;
 
   // Gebruik master spelerslijst zodat ook niet-ingedeelde spelers zichtbaar zijn

@@ -2,8 +2,7 @@
 //  knockout.js
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, SPELERS_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
-import { store } from './store.js';
-import * as S from './store.js';
+import { store, state, alleLadders, activeLadderId, _koLadderId, _koIndelingVolgorde, _koDragIdx, _koTouchClone, _koTouchStartY } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { initFirestore } from './auth.js';
 import { renderLadder, toggleLadderKaart } from './ladder.js';
@@ -136,7 +135,7 @@ function renderKnockoutBracket(data, ladderId) {
 
 async function openKnockoutIndeling(ladderId) {
   try {
-  _koLadderId = ladderId;
+  store._koLadderId = ladderId;
   const ladder = alleLadders.find(l => l.id === ladderId);
   const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
   const data = snapExists ? snapData : {};
@@ -149,7 +148,7 @@ async function openKnockoutIndeling(ladderId) {
   if (rondes.length > 0) {
     indeling = rondes[0].map(p => ({ a: p.a, b: p.b }));
     // Zet speler namen in volgorde
-    _koIndelingVolgorde = rondes[0].flatMap(p => [p.a, p.b].filter(Boolean));
+    store._koIndelingVolgorde = rondes[0].flatMap(p => [p.a, p.b].filter(Boolean));
   } else {
     // Random shuffle
     const namen = spelers.map(s => s.naam);
@@ -160,7 +159,7 @@ async function openKnockoutIndeling(ladderId) {
     // Aanvullen met byes tot macht van 2
     const bracketGrootte = Math.pow(2, Math.ceil(Math.log2(namen.length)));
     while (namen.length < bracketGrootte) namen.push(null);
-    _koIndelingVolgorde = namen;
+    store._koIndelingVolgorde = namen;
   }
 
   renderKnockoutIndelingModal();
@@ -208,7 +207,7 @@ let _koTouchClone = null;
 let _koTouchStartY = 0;
 
 function koDragStart(event, idx) {
-  _koDragIdx = idx;
+  store._koDragIdx = idx;
   event.dataTransfer.effectAllowed = 'move';
   setTimeout(() => { if (event.target) event.target.style.opacity = '0.4'; }, 0);
 }
@@ -227,11 +226,11 @@ function koDrop(event, doelIdx) {
   const n = _koIndelingVolgorde;
   if (!n[_koDragIdx]) return;
   [n[_koDragIdx], n[doelIdx]] = [n[doelIdx], n[_koDragIdx]];
-  _koDragIdx = null;
+  store._koDragIdx = null;
   renderKnockoutIndelingModal();
 }
 function koDragEnd(event) {
-  _koDragIdx = null;
+  store._koDragIdx = null;
   document.querySelectorAll('#knockout-indeling-lijst [data-idx]').forEach(el => {
     el.style.opacity = ''; el.style.background = '';
   });
@@ -240,13 +239,13 @@ function koDragEnd(event) {
 // Touch support voor mobiel
 function koTouchStart(event, idx) {
   if (!_koIndelingVolgorde[idx]) return; // geen BYE
-  _koDragIdx = idx;
-  _koTouchStartY = event.touches[0].clientY;
+  store._koDragIdx = idx;
+  store._koTouchStartY = event.touches[0].clientY;
   const el = event.currentTarget;
   el.style.opacity = '0.4';
 
   // Maak een clone die meesleept
-  _koTouchClone = el.cloneNode(true);
+  store._koTouchClone = el.cloneNode(true);
   _koTouchClone.style.position = 'fixed';
   _koTouchClone.style.zIndex = '9999';
   _koTouchClone.style.width = el.offsetWidth + 'px';
@@ -295,7 +294,7 @@ function koTouchEnd(event) {
       renderKnockoutIndelingModal();
     }
   }
-  _koDragIdx = null;
+  store._koDragIdx = null;
 }
 
 function verschuifKoSpeler(idx, delta) {

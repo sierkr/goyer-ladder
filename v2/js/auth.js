@@ -4,7 +4,11 @@
 import { db, auth, googleProvider, STATE_DOC, USERS_DOC, SPELERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
   INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB } from './config.js';
-import { store, DEFAULT_LADDER_CONFIG } from './store.js';
+import { store, DEFAULT_LADDER_CONFIG,
+  state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker,
+  _usersCache, archiefData, uitdagingenData, toernooiData, alleToernooien,
+  actieveToernooiId, _firestoreReady, _vasteListeners, _toernooiListeners,
+  _bezigMetRegistratie, playerSlotCount } from './store.js';
 
 // Toegang tot gedeelde state via store
 import * as S from './store.js';
@@ -265,7 +269,7 @@ async function initFirestore() {
       getDoc(doc(db, 'ladder', 'ladderVolgorde'))
     ]);
 
-    aangepasteBanen = baanSnap.exists() ? (baanSnap.data().lijst || []) : [];
+    const aangepasteBanen = baanSnap.exists() ? (baanSnap.data().lijst || []) : [];
     store.archiefData = archiefSnap.exists() ? (archiefSnap.data().seizoenen || []) : [];
     store.uitdagingenData = uitdSnap.exists() ? (uitdSnap.data().lijst || []) : [];
     store.alleSpelersData = spelersSnap.exists() ? (spelersSnap.data().lijst || []) : [];
@@ -275,7 +279,7 @@ async function initFirestore() {
     const toernooienSnap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
     store.alleToernooien = toernooienSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     // Legacy migratie: als er een oud toernooi is, migreer naar collectie
-    if (toernooiSnap.exists() && toernooiSnap.data().status === 'actief' && alleToernooien.length === 0) {
+    if (toernooiSnap.exists() && toernooiSnap.data().status === 'actief' && store.alleToernooien.length === 0) {
       const legacyData = { ...toernooiSnap.data() };
       const newRef = await addDoc(TOERNOOIEN_COL, legacyData);
       store.alleToernooien = [{ id: newRef.id, ...legacyData }];
@@ -345,7 +349,7 @@ async function initFirestore() {
       const mpDoc = laddersSnap.docs.find(d => d.id === 'mp');
       const actief = mpDoc || laddersSnap.docs[0];
       store.state = actief.data();
-      if (!state.actievePartijen) state.actievePartijen = [];
+      if (!store.state.actievePartijen) store.state.actievePartijen = [];
       store.activeLadderId = actief.id;
     // Als master spelerslijst leeg is, opbouwen vanuit alle ladders
     if (alleSpelersData.length === 0) {
@@ -369,13 +373,13 @@ async function initFirestore() {
   }
 
   // Live listener op actieve ladder
-  if (activeLadderId) {
-    _vasteListeners.push(onSnapshot(doc(db, 'ladders', activeLadderId), (snap) => {
+  if (store.activeLadderId) {
+    _vasteListeners.push(onSnapshot(doc(db, 'ladders', store.activeLadderId), (snap) => {
       if (!snap.exists() || !huidigeBruiker) return;
       store.state = snap.data();
-      if (!state.actievePartijen) state.actievePartijen = [];
-      const idx = alleLadders.findIndex(l => l.id === activeLadderId);
-      if (idx >= 0) { alleLadders[idx].spelers = state.spelers || []; alleLadders[idx].actievePartijen = state.actievePartijen; }
+      if (!store.state.actievePartijen) store.state.actievePartijen = [];
+      const idx = store.alleLadders.findIndex(l => l.id === store.activeLadderId);
+      if (idx >= 0) { store.alleLadders[idx].spelers = store.state.spelers || []; store.alleLadders[idx].actievePartijen = store.state.actievePartijen; }
       const activePage = document.querySelector('.page.active')?.id?.replace('page-','');
       if (activePage === 'ladder') renderLadder();
       if (activePage === 'uitslagen') renderUitslagen();
@@ -666,12 +670,12 @@ async function getUsers(forceFresh = false) {
   if (!forceFresh && _usersCache !== null) return _usersCache;
   try {
     const snap = await getDoc(USERS_DOC);
-    _usersCache = snap.exists() ? (snap.data().lijst || []) : [];
+    store._usersCache = snap.exists() ? (snap.data().lijst || []) : [];
   } catch(e) { console.error('getUsers mislukt:', e); _usersCache = _usersCache || []; }
   return _usersCache;
 }
 async function saveUsers(lijst) {
-  _usersCache = lijst;
+  store._usersCache = lijst;
   try { await setDoc(USERS_DOC, { lijst }); }
   catch(e) { console.error('saveUsers mislukt:', e); }
 }
@@ -723,7 +727,7 @@ async function laadUitdagingen() {
   try {
   if (!huidigeBruiker) return;
   const snap = await getDoc(UITDAGINGEN_DOC);
-  uitdagingenData = snap.exists() ? (snap.data().lijst || []) : [];
+  store.uitdagingenData = snap.exists() ? (snap.data().lijst || []) : [];
   toonUitdagingBadge();
   } catch(e) { console.error('laadUitdagingen mislukt:', e); }
 }

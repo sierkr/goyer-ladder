@@ -2,8 +2,7 @@
 //  admin.js
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, SPELERS_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
-import { store } from './store.js';
-import * as S from './store.js';
+import { store, state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, uitdagingenData } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { openNieuweLadderModal, renderAdminLadders } from './beheer.js';
 import { reageerUitdaging, verwijderUitdaging } from './archief.js';
@@ -330,7 +329,7 @@ async function removePlayer(id) {
   try {
   if (!confirm('Speler verwijderen uit alle ladders?')) return;
   // Verwijder uit master spelerslijst
-  alleSpelersData = alleSpelersData.filter(s => s.id !== id);
+  store.alleSpelersData = alleSpelersData.filter(s => s.id !== id);
   await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
   // Verwijder uit actieve ladder
   state.spelers = state.spelers.filter(s => s.id !== id);
@@ -693,7 +692,7 @@ async function removeUser(idx) {
       const spelerId = masterSpeler.id;
 
       // Verwijder uit master spelerslijst
-      alleSpelersData = alleSpelersData.filter(s => s.id !== spelerId);
+      store.alleSpelersData = alleSpelersData.filter(s => s.id !== spelerId);
       await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
 
       // Verwijder uit alle ladders

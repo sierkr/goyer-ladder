@@ -2,8 +2,7 @@
 //  partij.js — Partij aanmaken, banen, naam helpers
 // ============================================================
 import { db, BANEN_DB, LADDERS_COL, SPELERS_DOC, DEFAULT_STATE } from './config.js';
-import { store } from './store.js';
-import * as S from './store.js';
+import { store, state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
 import { slaState, getLadderData, getNextId, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { objNaarRondes } from './knockout.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -60,7 +59,7 @@ function initPartijForm() {
   sel.value = Object.keys(BANEN_DB)[0];
 
   // Player slots
-  playerSlotCount = 0;
+  store.playerSlotCount = 0;
   document.getElementById('player-slots').innerHTML = '';
   addPlayerSlot();
   addPlayerSlot();
@@ -123,7 +122,7 @@ function herlaadPartijSpelers() {
   const zoek = document.getElementById('partij-speler-zoek');
   if (zoek) zoek.value = '';
   // Herlaad spelerslots bij wisselen van ladder
-  playerSlotCount = 0;
+  store.playerSlotCount = 0;
   document.getElementById('player-slots').innerHTML = '';
   document.getElementById('add-player-btn').style.display = '';
   addPlayerSlot();
@@ -321,7 +320,7 @@ async function verwijderAangepasteBaan() {
   if (!baan) return;
   if (!confirm(`"${baanNaam}" verwijderen?`)) return;
 
-  aangepasteBanen = aangepasteBanen.filter(b => b.naam !== baanNaam);
+  store.aangepasteBanen = aangepasteBanen.filter(b => b.naam !== baanNaam);
   try {
     await setDoc(BANEN_DOC, { lijst: aangepasteBanen });
     toast('Baan verwijderd');
@@ -456,8 +455,8 @@ async function startPartij() {
     ladderData.actievePartijen.push(nieuwePartij);
     await setDoc(doc(db, 'ladders', partijLadderId), ladderData);
     // Wissel naar die ladder zodat de ronde zichtbaar is
-    activeLadderId = partijLadderId;
-    state = ladderData;
+    store.activeLadderId = partijLadderId;
+    store.state = ladderData;
   } else {
     state.actievePartijen.push(nieuwePartij);
     await slaState();

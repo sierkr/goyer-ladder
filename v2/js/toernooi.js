@@ -2,8 +2,7 @@
 //  toernooi.js
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, SPELERS_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
-import { store } from './store.js';
-import * as S from './store.js';
+import { store, state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tSpelersLadderIds, _tRankingLadderIds, _flights, aangepasteBanen } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { renderHcpBlok } from './partij.js';
 import { renderLadder } from './ladder.js';
@@ -59,8 +58,8 @@ function renderToernooi() {
     wrap.innerHTML = html + '<div id="toernooi-detail"></div>';
 
     if (!actieveToernooiId || !mijnToernooien.find(t => t.id === actieveToernooiId)) {
-      actieveToernooiId = mijnToernooien[0].id;
-      toernooiData = mijnToernooien[0];
+      store.actieveToernooiId = mijnToernooien[0].id;
+      store.toernooiData = mijnToernooien[0];
     }
     renderToernooiActief();
   } else {
@@ -82,20 +81,20 @@ let _vasteListeners = []; // ladder + spelers listeners
 async function herlaadToernooien() {
   try {
     const snap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
-    alleToernooien = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    store.alleToernooien = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     if (actieveToernooiId) {
       const gevonden = alleToernooien.find(t => t.id === actieveToernooiId);
-      toernooiData = gevonden || (alleToernooien.length > 0 ? alleToernooien[0] : null);
+      store.toernooiData = gevonden || (alleToernooien.length > 0 ? alleToernooien[0] : null);
     }
     if (!toernooiData && alleToernooien.length > 0) {
-      toernooiData = alleToernooien[0];
-      actieveToernooiId = alleToernooien[0].id;
+      store.toernooiData = alleToernooien[0];
+      store.actieveToernooiId = alleToernooien[0].id;
     }
     if (toernooiData) actieveToernooiId = toernooiData.id;
 
     // Start realtime listeners voor alle actieve toernooien
     _toernooiListeners.forEach(unsub => unsub());
-    _toernooiListeners = [];
+    store._toernooiListeners = [];
     alleToernooien.forEach(t => {
       const unsub = onSnapshot(doc(db, 'toernooien', t.id), (snap) => {
         if (!snap.exists()) return;
@@ -110,7 +109,7 @@ async function herlaadToernooien() {
               // Voor beheerder: update data maar toon refresh knop
               const oudScores = JSON.stringify(toernooiData?.scores || {});
               const nieuwScores = JSON.stringify(nieuweData.scores || {});
-              toernooiData = nieuweData;
+              store.toernooiData = nieuweData;
               if (oudScores !== nieuwScores) {
                 const btn = document.getElementById('t-refresh-btn');
                 if (btn) btn.style.display = '';
@@ -121,7 +120,7 @@ async function herlaadToernooien() {
               // Voor spelers: update data maar render scorekaart niet opnieuw (toetsenbord blijft open)
               const oudeMatrixIngeklapt = toernooiData?.matrixIngeklapt;
               const oudeUitslagZichtbaar = toernooiData?.uitslagZichtbaar;
-              toernooiData = nieuweData;
+              store.toernooiData = nieuweData;
 
               // Matrix inklapstatus direct volgen (verstoort toetsenbord niet)
               if (nieuweData.matrixIngeklapt !== oudeMatrixIngeklapt) {
@@ -153,8 +152,8 @@ async function herlaadToernooien() {
 }
 
 function selecteerToernooi(id) {
-  actieveToernooiId = id;
-  toernooiData = alleToernooien.find(t => t.id === id) || null;
+  store.actieveToernooiId = id;
+  store.toernooiData = alleToernooien.find(t => t.id === id) || null;
   renderToernooi();
 }
 
@@ -213,7 +212,7 @@ function toggleTSpelersLadder(ladderId, checked) {
       alleLadders.filter(l => _tSpelersLadderIds.has(l.id))
         .flatMap(l => (l.spelers || []).map(s => String(s.id)))
     );
-    _tGeselecteerdeSpelers = _tGeselecteerdeSpelers.filter(s => s.gast || geldigeIds.has(String(s.id)));
+    store._tGeselecteerdeSpelers = _tGeselecteerdeSpelers.filter(s => s.gast || geldigeIds.has(String(s.id)));
   }
   renderTGeselecteerdeSpelers();
 }
@@ -280,7 +279,7 @@ function sluitToernooiSpelerLijst() {
 }
 
 function verwijderToernooiSpelerSelectie(id) {
-  _tGeselecteerdeSpelers = _tGeselecteerdeSpelers.filter(s => s.id !== id);
+  store._tGeselecteerdeSpelers = _tGeselecteerdeSpelers.filter(s => s.id !== id);
   renderTGeselecteerdeSpelers();
 }
 
@@ -337,7 +336,7 @@ function openFlightIndeling() {
   const interval = parseInt(document.getElementById('t-interval')?.value) || 0;
 
   if (_flights.length === 0) {
-    _flights = [{ id: 1, naam: 'Flight 1', spelers: geselecteerd.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp })), starthole: 1, starttijd }];
+    store._flights = [{ id: 1, naam: 'Flight 1', spelers: geselecteerd.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp })), starthole: 1, starttijd }];
   } else {
     _flights.forEach((f, fi) => {
       if (!f.starttijd) f.starttijd = berekenFlightTijd(starttijd, interval, fi);
@@ -513,8 +512,8 @@ async function startToernooi() {
   const newRef = await addDoc(TOERNOOIEN_COL, nieuweToernooi);
   nieuweToernooi.id = newRef.id;
   alleToernooien.push(nieuweToernooi);
-  toernooiData = nieuweToernooi;
-  actieveToernooiId = newRef.id;
+  store.toernooiData = nieuweToernooi;
+  store.actieveToernooiId = newRef.id;
 
   // Start realtime listener voor nieuw toernooi
   const unsub = onSnapshot(doc(db, 'toernooien', newRef.id), (snap) => {
@@ -523,7 +522,7 @@ async function startToernooi() {
     const idx = alleToernooien.findIndex(x => x.id === snap.id);
     if (idx >= 0) alleToernooien[idx] = nieuweData;
     if (actieveToernooiId === snap.id) {
-      toernooiData = nieuweData;
+      store.toernooiData = nieuweData;
       const detail = document.getElementById('toernooi-detail');
       if (detail) { renderTScorecard(); renderTMatrix(); if (nieuweData.uitslagZichtbaar) renderTRanglijst(); }
     }
@@ -532,10 +531,10 @@ async function startToernooi() {
 
   toast('Toernooi gestart! 🏅');
   closeModal('modal-flight-indeling');
-  _flights = [];
-  _tGeselecteerdeSpelers = [];
-  _tSpelersLadderIds = new Set();
-  _tRankingLadderIds = new Set();
+  store._flights = [];
+  store._tGeselecteerdeSpelers = [];
+  store._tSpelersLadderIds = new Set();
+  store._tRankingLadderIds = new Set();
   // Reset formulier
   document.getElementById('t-naam').value = '';
   document.getElementById('t-datum').value = '';
@@ -1361,9 +1360,9 @@ async function bevestigToernooiAfsluiten() {
 
   // Sluit toernooi af
   if (actieveToernooiId) await setDoc(doc(db, 'toernooien', actieveToernooiId), { ...toernooiData, status: 'afgerond' });
-  alleToernooien = alleToernooien.filter(t => t.id !== actieveToernooiId);
-  toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
-  actieveToernooiId = toernooiData?.id || null;
+  store.alleToernooien = alleToernooien.filter(t => t.id !== actieveToernooiId);
+  store.toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
+  store.actieveToernooiId = toernooiData?.id || null;
 
   closeModal('modal-toernooi-afsluiten');
   toast('Toernooi afgerond! 🏅 Ladder bijgewerkt.');
@@ -1377,9 +1376,9 @@ async function annuleerToernooi() {
   try {
   if (!confirm('Toernooi annuleren? Alle scores gaan verloren.')) return;
   if (actieveToernooiId) await setDoc(doc(db, "toernooien", actieveToernooiId), { ...toernooiData, status: "geannuleerd" });
-  alleToernooien = alleToernooien.filter(t => t.id !== actieveToernooiId);
-  toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
-  actieveToernooiId = toernooiData?.id || null;
+  store.alleToernooien = alleToernooien.filter(t => t.id !== actieveToernooiId);
+  store.toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
+  store.actieveToernooiId = toernooiData?.id || null;
   renderToernooi();
   toast('Toernooi geannuleerd');
   } catch(e) { console.error('annuleerToernooi mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }

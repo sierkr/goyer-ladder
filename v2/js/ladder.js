@@ -2,9 +2,8 @@
 //  ladder.js — Ladder rendering, ranking weergave
 // ============================================================
 import { db, LADDERS_COL } from './config.js';
-import { store, DEFAULT_LADDER_CONFIG } from './store.js';
+import { store, state, alleLadders, activeLadderId, huidigeBruiker, uitdagingenData, DEFAULT_LADDER_CONFIG } from './store.js';
 import { slaState, getLadderConfig, getLadderData, getNextId, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
-import * as S from './store.js';
 import { stuurUitdaging } from './archief.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
@@ -41,7 +40,7 @@ async function renderLadder() {
             getDoc(doc(db, 'ladder', 'ladderVolgorde'))
           ]);
           const volgorde = volgordeSnap.exists() ? (volgordeSnap.data().volgorde || []) : [];
-          alleLadders = laddersSnap.docs.map(d => ({
+          store.alleLadders = laddersSnap.docs.map(d => ({
             id: d.id, naam: d.data().naam, type: d.data().type || 'ranking',
             spelerIds: d.data().spelerIds || [], spelers: d.data().spelers || [],
             actievePartijen: d.data().actievePartijen || [], config: d.data().config || null,

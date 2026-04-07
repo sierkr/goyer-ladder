@@ -58,6 +58,9 @@ export const DEFAULT_LADDER_CONFIG = {
   verliezerNaarWinnaar: false, drempel: 4
 };
 
+// ─── Aangepaste banen ───────────────────────────────────────
+export let aangepasteBanen = [];
+
 // ─── Setters (voor modules die state moeten updaten) ─────────
 // Omdat ES modules geen directe reassignment van geïmporteerde
 // let variabelen ondersteunen, gebruiken we setters.
@@ -95,5 +98,6 @@ export const store = {
   set _standAanpassenLadderId(v) { _standAanpassenLadderId = v; },
   set _instellingenLadderId(v) { _instellingenLadderId = v; },
   set _toernooiSpelerToevoegen(v) { _toernooiSpelerToevoegen = v; },
+  set aangepasteBanen(v) { aangepasteBanen = v; },
   set _beheerPartijId(v) { _beheerPartijId = v; },
 };
