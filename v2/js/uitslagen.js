@@ -13,7 +13,6 @@ import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, d
 //  UITSLAGEN
 // ============================================================
 let _beheerPartijId = null; // partijId van partij die beheerder beheert
-let _beheerWinnaars = [];
 
 async function verwijderOudeUitslagen() {
   // Verwijder scorekaarten ouder dan 30 dagen

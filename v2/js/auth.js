@@ -457,7 +457,6 @@ function toonLaadOverlay(toon) {
   document.getElementById('laad-overlay').style.display = toon ? 'flex' : 'none';
 }
 
-let playerSlotCount = 0;
 
 // ============================================================
 
@@ -522,7 +521,6 @@ async function checkInviteLink() {
   }
 }
 
-let _bezigMetRegistratie = false;
 
 async function registreerSpeler() {
   const voornaam = document.getElementById('reg-voornaam').value.trim();

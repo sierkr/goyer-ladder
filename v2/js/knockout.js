@@ -10,8 +10,6 @@ import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, d
 
 //  KNOCKOUT LADDER
 // ============================================================
-let _koLadderId = null;
-let _koIndelingVolgorde = [];
 
 // Helpers voor rondes opslag (Firestore ondersteunt geen geneste arrays)
 function rondesNaarObj(arr) {
@@ -202,9 +200,6 @@ function renderKnockoutIndelingModal() {
   lijst.innerHTML = html;
 }
 
-let _koDragIdx = null;
-let _koTouchClone = null;
-let _koTouchStartY = 0;
 
 function koDragStart(event, idx) {
   store._koDragIdx = idx;

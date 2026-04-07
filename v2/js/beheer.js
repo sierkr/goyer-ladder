@@ -16,10 +16,7 @@ const DEFAULT_LADDER_CONFIG = {
   verliezerNaarWinnaar: false, drempel: 4
 };
 
-let _instellingenLadderId = null;
 
-let _standAanpassenLadderId = null;
-let _standAanpassenSpelers = [];
 
 async function openStandAanpassen(ladderId) {
 
@@ -198,7 +195,6 @@ async function verwijderLadder(ladderId) {
   } catch(e) { console.error('verwijderLadder mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
-let _ladderSpelersId = null;
 
 async function openLadderSpelersModal(ladderId) {
 
@@ -413,7 +409,6 @@ async function herstelSnapshot(snapId) {
 //  UITNODIGINGSLINK
 // ============================================================
 
-let _bezigMetRegistratie = false;
 
 // ============================================================
 //  WINDOW EXPORTS
