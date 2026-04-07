@@ -1,5 +1,5 @@
 // ============================================================
-//  app.js — Entry point v2.1.7
+//  app.js — Entry point v2.1.8
 // ============================================================
 import { initApp, uitloggen, loginSubmit, loginMetGoogle,
   openWachtwoordVergeten, sluitResetWrap, stuurResetEmail,
@@ -17,8 +17,9 @@ import { initPartijForm, addPlayerSlot, removeSlot, onBaanSelect,
 import { renderRonde, renderScorecard, updateScore, toggleScorecard,
   openUitslagModal, bevestigUitslag, setWinnaar, skipMatchup,
   editPartijHcp, verwijderSpelerUitRonde, openToevoegenModal,
-  bevestigToevoegenRonde, sluitUitslagEnGaNaarLadder, showLadderChanges } from './ronde.js';
-import { renderUitslagen } from './uitslagen.js';
+  bevestigToevoegenRonde, sluitUitslagEnGaNaarLadder, showLadderChanges,
+  annuleerEigenPartij, verwijderActievePartij } from './ronde.js';
+import { renderUitslagen, openScorekaartDetail } from './uitslagen.js';
 import { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer,
   toggleHandmatigToevoegen, voegAccountToeAlsSpeler, saveNewPlayer,
   openEditPlayer, saveEditPlayer, removePlayer, renderProfiel,
@@ -179,10 +180,14 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 document.addEventListener('DOMContentLoaded', () => {
   const badge = document.getElementById('versie-badge');
-  if (badge) { badge.textContent = 'v2.1.7'; badge.style.display = ''; }
+  if (badge) { badge.textContent = 'v2.1.8'; badge.style.display = ''; }
   const loginBadge = document.querySelector('[style*="top:10px"][style*="right:10px"]');
-  if (loginBadge) loginBadge.textContent = 'v2.1.7';
+  if (loginBadge) loginBadge.textContent = 'v2.1.8';
 });
+
+window.openScorekaartDetail = openScorekaartDetail;
+window.annuleerEigenPartij = annuleerEigenPartij;
+window.verwijderActievePartij = verwijderActievePartij;
 
 // ─── Start ────────────────────────────────────────────────────
 try {
