@@ -12,6 +12,9 @@ import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, d
 
 //  TOERNOOI
 // ============================================================
+
+//  TOERNOOI
+// ============================================================
 function renderToernooi() {
   const isBeheerder = isCoordinatorRol();
   const gebruikersnaam = (huidigeBruiker?.gebruikersnaam || '').toLowerCase();
@@ -568,6 +571,8 @@ async function toonToernooiUitslag() {
   toast('Uitslag zichtbaar! 🏆');
   } catch(e) { console.error('toonToernooiUitslag mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
+
+let _toernooiSpelerToevoegen = null; // geselecteerde speler voor toevoegen
 
 function openToernooiSpelersBeheer() {
   const t = toernooiData;

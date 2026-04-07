@@ -100,6 +100,15 @@ async function slaLadderInstellingenOp() {
   if (!ladderId) return;
 
   const config = {
+    laagStijg: parseInt(document.getElementById('cfg-laag-stijg').value) || 4,
+    laagZak: parseInt(document.getElementById('cfg-laag-zak').value) || 2,
+    hoogStijg: parseInt(document.getElementById('cfg-hoog-stijg').value) || 1,
+    hoogZak: parseInt(document.getElementById('cfg-hoog-zak').value) || 1,
+    verliezerNaarWinnaar: document.getElementById('cfg-verliezer-naar-winnaar').checked,
+    drempel: parseInt(document.getElementById('cfg-drempel').value) || 4
+  };
+
+  
   // Sla op in Firestore
   const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
   if (snapExists) {
@@ -137,8 +146,9 @@ async function maakNieuweLadder() {
     toast('Een ladder met deze naam bestaat al'); return;
   }
   const id = naam.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
-  const nieuweData = { ...JSON.parse(JSON.stringify(DEFAULT_STATE)), naam, spelerIds: [], type };
-  await setDoc(doc(db, 'ladders', id), nieuweData);
+  const nieuweData = { id: snap.id, ...snap.data() };
+
+    await setDoc(doc(db, 'ladders', id), nieuweData);
   alleLadders.push({ id, naam, spelerIds: [], spelers: [], type });
   closeModal('modal-nieuwe-ladder');
   renderAdminLadders();
@@ -246,7 +256,8 @@ async function slaLadderSpelersOp() {
   nieuweSpelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
 
   const updatedData = { ...ladderData, spelers: nieuweSpelers, spelerIds: geselecteerdeIds };
-  await setDoc(doc(db, 'ladders', ladderId), updatedData);
+
+    await setDoc(doc(db, 'ladders', ladderId), updatedData);
 
   const idx = alleLadders.findIndex(l => l.id === ladderId);
   if (idx >= 0) { alleLadders[idx].spelerIds = geselecteerdeIds; alleLadders[idx].spelers = nieuweSpelers; }

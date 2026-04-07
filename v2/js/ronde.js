@@ -13,6 +13,9 @@ import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, d
 
 //  RONDE (live scorekaart)
 // ============================================================
+
+//  RONDE (live scorekaart)
+// ============================================================
 function renderRonde() {
   const p = mijnPartij();
   if (!p) {
@@ -541,6 +544,8 @@ async function bevestigUitslag() {
         const origIdx = p.matchups.indexOf(m);
         return {
           a: m.spelerA.naam, b: m.spelerB.naam,
+          winnaar: p._modalWinnaars[origIdx] === 'A' ? m.spelerA.naam : m.spelerB.naam
+        };
       })
   };
   state.uitslagen.unshift(uitslag);
@@ -616,4 +621,4 @@ function showLadderChanges(changes) {
 
 // ============================================================
 
-export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges };
+export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij };

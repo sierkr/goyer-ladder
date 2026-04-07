@@ -9,6 +9,9 @@ import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, d
 
 //  PARTIJ SETUP
 // ============================================================
+
+//  PARTIJ SETUP
+// ============================================================
 function alleBANEN() {
   const result = {};
   Object.entries(BANEN_DB).filter(([n]) => n !== 'Handmatig invoeren').forEach(([n,v]) => { result[n] = v; });
@@ -439,6 +442,7 @@ async function startPartij() {
     holes: activeHoles,
     startHole: startH + 1,
     spelers,
+    matchups,
     scores: {},
     timestamp: Date.now()
   };
@@ -561,10 +565,4 @@ function renderHcpBlok(spelers, holes, hcpPct, containerId) {
 
 // ============================================================
 
-export {
-  alleBANEN, initPartijForm, getPartijLadderSpelers, herlaadPartijSpelers,
-  addPlayerSlot, zoekPartijSpeler, selecteerPartijSpelerEl, selecteerPartijSpeler,
-  sluitSpelerLijst, removeSlot, onBaanSelect, renderHandmatigHoles,
-  slaAangepasteBaanOp, verwijderAangepasteBaan, mijnPartij, startPartij,
-  kortNaam, kortNaamMap, renderHcpBlok, refreshPlayerSlotOptions
-};
+export { alleBANEN, initPartijForm, getPartijLadderSpelers, herlaadPartijSpelers, addPlayerSlot, zoekPartijSpeler, selecteerPartijSpelerEl, selecteerPartijSpeler, sluitSpelerLijst, removeSlot, onBaanSelect, renderHandmatigHoles, slaAangepasteBaanOp, verwijderAangepasteBaan, mijnPartij, startPartij, kortNaam, kortNaamMap, renderHcpBlok, refreshPlayerSlotOptions, vulKnockoutTegenstander, filterPartijSpelers };

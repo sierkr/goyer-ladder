@@ -14,7 +14,8 @@ import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, d
 // Helpers voor rondes opslag (Firestore ondersteunt geen geneste arrays)
 function rondesNaarObj(arr) {
   const obj = { _count: arr.length };
-  arr.forEach((r, i) => { obj[`r${i}`] = r; });
+
+    arr.forEach((r, i) => { obj[`r${i}`] = r; });
   return obj;
 }
 function objNaarRondes(obj) {
