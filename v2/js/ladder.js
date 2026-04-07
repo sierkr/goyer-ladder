@@ -3,11 +3,11 @@
 // ============================================================
 import { db, LADDERS_COL } from './config.js';
 import { store, DEFAULT_LADDER_CONFIG } from './store.js';
+import { slaState, getLadderConfig, getLadderData, getNextId, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import * as S from './store.js';
 import { stuurUitdaging } from './archief.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-  isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 
 //  LADDER
 // ============================================================
