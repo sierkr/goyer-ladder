@@ -12,7 +12,6 @@ import { renderArchief, verwijderOudeUitslagen } from './archief.js';
 import { renderLadder } from './ladder.js';
 import { renderRonde } from './ronde.js';
 import { renderUitslagen } from './uitslagen.js';
-import { getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 //  NAVIGATION
