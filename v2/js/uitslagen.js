@@ -321,4 +321,4 @@ async function verwijderActievePartij() {
 
 // ============================================================
 
-export { openScorekaartDetail, renderUitslagen };;
+export { bevestigBeheerUitslag, openScorekaartDetail, renderUitslagen };;

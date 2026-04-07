@@ -1,5 +1,5 @@
 // ============================================================
-//  app.js — Entry point v2.1.8
+//  app.js — Entry point v2.2.0
 // ============================================================
 import { initApp, uitloggen, loginSubmit, loginMetGoogle,
   openWachtwoordVergeten, sluitResetWrap, stuurResetEmail,
@@ -19,7 +19,7 @@ import { renderRonde, renderScorecard, updateScore, toggleScorecard,
   editPartijHcp, verwijderSpelerUitRonde, openToevoegenModal,
   bevestigToevoegenRonde, sluitUitslagEnGaNaarLadder, showLadderChanges,
   annuleerEigenPartij, verwijderActievePartij } from './ronde.js';
-import { renderUitslagen, openScorekaartDetail } from './uitslagen.js';
+import { renderUitslagen, openScorekaartDetail, bevestigBeheerUitslag } from './uitslagen.js';
 import { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer,
   toggleHandmatigToevoegen, voegAccountToeAlsSpeler, saveNewPlayer,
   openEditPlayer, saveEditPlayer, removePlayer, renderProfiel,
@@ -44,7 +44,7 @@ import { renderToernooi, herlaadToernooien, selecteerToernooi,
   refreshToernooiScorekaart, selecteerFlightTab,
   updateTScoreAndAdvance, updateTScore, editToernooiHcp,
   toggleTScorecard, openToernooiAfsluiten, bevestigToernooiAfsluiten,
-  annuleerToernooi } from './toernooi.js';
+  annuleerToernooi , toggleTSpelersLadder, toggleTRankingLadder } from './toernooi.js';
 import { openStandAanpassen, verschuifStand, slaStandOp,
   openLadderInstellingen, slaLadderInstellingenOp,
   openNieuweLadderModal, maakNieuweLadder, verschuifLadder,
@@ -180,14 +180,22 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 document.addEventListener('DOMContentLoaded', () => {
   const badge = document.getElementById('versie-badge');
-  if (badge) { badge.textContent = 'v2.1.8'; badge.style.display = ''; }
+  if (badge) { badge.textContent = 'v2.2.0'; badge.style.display = ''; }
   const loginBadge = document.querySelector('[style*="top:10px"][style*="right:10px"]');
-  if (loginBadge) loginBadge.textContent = 'v2.1.8';
+  if (loginBadge) loginBadge.textContent = 'v2.2.0';
 });
 
 window.openScorekaartDetail = openScorekaartDetail;
+window.openToernooiDetail = openToernooiDetail;
+window.bevestigBeheerUitslag = bevestigBeheerUitslag;
+
 window.annuleerEigenPartij = annuleerEigenPartij;
 window.verwijderActievePartij = verwijderActievePartij;
+
+
+
+window.toggleTSpelersLadder = toggleTSpelersLadder;
+window.toggleTRankingLadder = toggleTRankingLadder;
 
 // ─── Start ────────────────────────────────────────────────────
 try {
