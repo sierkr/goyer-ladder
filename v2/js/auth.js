@@ -364,21 +364,21 @@ async function initFirestore() {
       store.state = actiefData;
       if (!store.state.actievePartijen) store.state.actievePartijen = [];
       store.activeLadderId = actief.id;
-    // Als master spelerslijst leeg is, opbouwen vanuit alle ladders
-    if (alleSpelersData.length === 0) {
-      const gezien = new Set();
-      alleLadders.forEach(l => {
-        (l.spelers || []).forEach(s => {
-          if (!gezien.has(s.id)) {
-            gezien.add(s.id);
-            alleSpelersData.push({ id: s.id, naam: s.naam, hcp: s.hcp });
-          }
+      // Als master spelerslijst leeg is, opbouwen vanuit alle ladders
+      if (store.alleSpelersData.length === 0) {
+        const gezien = new Set();
+        store.alleLadders.forEach(l => {
+          (l.spelers || []).forEach(s => {
+            if (!gezien.has(s.id)) {
+              gezien.add(s.id);
+              store.alleSpelersData.push({ id: s.id, naam: s.naam, hcp: s.hcp });
+            }
+          });
         });
-      });
-      if (alleSpelersData.length > 0) {
-        await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+        if (store.alleSpelersData.length > 0) {
+          await setDoc(SPELERS_DOC, { lijst: store.alleSpelersData });
+        }
       }
-    }
     }
 
   } catch(e) {

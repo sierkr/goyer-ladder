@@ -1,5 +1,5 @@
 // ============================================================
-//  app.js — Entry point v2.1.0
+//  app.js — Entry point v2.1.1
 // ============================================================
 import { initApp, uitloggen, loginSubmit, loginMetGoogle,
   openWachtwoordVergeten, sluitResetWrap, stuurResetEmail,
@@ -176,10 +176,12 @@ window.slaKnockoutWinnaarOp = slaKnockoutWinnaarOp;
 window.nieuwKnockoutSeizoen = nieuwKnockoutSeizoen;
 window.toggleAdminKaart = toggleAdminKaart;
 
-// ─── Versienummer ─────────────────────────────────────────────
+// ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 document.addEventListener('DOMContentLoaded', () => {
   const badge = document.getElementById('versie-badge');
-  if (badge) { badge.textContent = 'v2.1.0'; badge.style.display = ''; }
+  if (badge) { badge.textContent = 'v2.1.1'; badge.style.display = ''; }
+  const loginBadge = document.querySelector('[style*="top:10px"][style*="right:10px"]');
+  if (loginBadge) loginBadge.textContent = 'v2.1.1';
 });
 
 // ─── Start ────────────────────────────────────────────────────
