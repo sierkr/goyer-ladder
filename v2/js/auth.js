@@ -10,6 +10,11 @@ import { store, DEFAULT_LADDER_CONFIG,
   actieveToernooiId, _firestoreReady, _vasteListeners, _toernooiListeners,
   _bezigMetRegistratie, playerSlotCount } from './store.js';
 import { renderLadder } from './ladder.js';
+import { toonUitdagingBadge } from './archief.js';
+import { closeModal, renderAdmin, renderProfiel } from './admin.js';
+import { renderRonde } from './ronde.js';
+import { renderToernooi } from './toernooi.js';
+import { renderUitslagen } from './uitslagen.js';
 
 // Toegang tot gedeelde state via store
 import * as S from './store.js';

@@ -10,6 +10,9 @@ import { renderLadder } from './ladder.js';
 import { slaSnapshotOp } from './beheer.js';
 import { verwerkKnockoutUitslag } from './knockout.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { autoAdvance } from './auth.js';
+import { renderUitslagen } from './uitslagen.js';
+
 
 //  RONDE (live scorekaart)
 // ============================================================

@@ -7,6 +7,8 @@ import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextI
 import { initFirestore } from './auth.js';
 import { renderLadder, toggleLadderKaart } from './ladder.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { closeModal } from './admin.js';
+
 
 //  KNOCKOUT LADDER
 // ============================================================

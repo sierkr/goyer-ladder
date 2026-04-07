@@ -6,6 +6,8 @@ import { store, state, alleLadders, activeLadderId, huidigeBruiker, uitdagingenD
 import { slaState, getLadderConfig, getLadderData, getNextId, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { stuurUitdaging } from './archief.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { renderKnockoutLadderKaart } from './knockout.js';
+
 
 
 //  LADDER

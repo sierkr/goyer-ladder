@@ -7,6 +7,8 @@ import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextI
 import { renderAdmin, renderProfiel } from './admin.js';
 import { renderLadder } from './ladder.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { closeModal } from './admin.js';
+
 
 //  SEIZOENEN & ARCHIEF
 // ============================================================
@@ -392,4 +394,4 @@ async function verwijderOudeUitslagen() {
   } catch(e) { console.error('Opschonen mislukt:', e); }
 }
 
-export { openNieuwSeizoenModal, bevestigNieuwSeizoen, renderArchief, openArchiefDetail, stuurNotificatie, toonUitdagingBadge, stuurUitdaging, reageerUitdaging, verwijderUitdaging, verwijderOudeUitslagen };
+export { openNieuwSeizoenModal, bevestigNieuwSeizoen, renderArchief, openArchiefDetail, stuurNotificatie, toonUitdagingBadge, stuurUitdaging, reageerUitdaging, verwijderUitdaging, verwijderOudeUitslagen, toonUitdagingBadge };
