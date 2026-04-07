@@ -320,16 +320,6 @@ async function stuurUitdaging(naarSpelerId) {
   if (bestaand) { toast('Er is al een openstaande uitdaging'); return; }
 
   const uitdaging = {
-    id: `u_${Date.now()}`,
-    vanEmail: huidigeBruiker.email,
-    vanNaam: huidigeBruiker.gebruikersnaam,
-    naarEmail: naarUser.email,
-    naarNaam: naarUser.gebruikersnaam || naarSpeler.naam,
-    naarUid: naarUser.uid || null,
-    status: 'open',
-    timestamp: Date.now()
-  };
-
   uitdagingenData.push(uitdaging);
   await setDoc(UITDAGINGEN_DOC, { lijst: uitdagingenData });
 

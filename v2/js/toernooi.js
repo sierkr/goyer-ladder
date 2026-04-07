@@ -498,9 +498,6 @@ async function startToernooi() {
       starttijd: f.starttijd || ''
     })),
     scores,
-    timestamp: Date.now()
-  };
-
   const newRef = await addDoc(TOERNOOIEN_COL, nieuweToernooi);
   nieuweToernooi.id = newRef.id;
   alleToernooien.push(nieuweToernooi);

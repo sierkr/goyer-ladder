@@ -10,13 +10,6 @@ import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, d
 
 //  LADDER INSTELLINGEN
 // ============================================================
-  laagStijg: 4, laagZak: 2,
-  hoogStijg: 1, hoogZak: 1,
-  verliezerNaarWinnaar: false, drempel: 4
-};
-
-
-
 async function openStandAanpassen(ladderId) {
 
   try {
@@ -107,14 +100,6 @@ async function slaLadderInstellingenOp() {
   if (!ladderId) return;
 
   const config = {
-    laagStijg: parseInt(document.getElementById('cfg-laag-stijg').value) || 4,
-    laagZak: parseInt(document.getElementById('cfg-laag-zak').value) || 2,
-    hoogStijg: parseInt(document.getElementById('cfg-hoog-stijg').value) || 1,
-    hoogZak: parseInt(document.getElementById('cfg-hoog-zak').value) || 1,
-    verliezerNaarWinnaar: document.getElementById('cfg-verliezer-naar-winnaar').checked,
-    drempel: parseInt(document.getElementById('cfg-drempel').value) || 4
-  };
-
   // Sla op in Firestore
   const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
   if (snapExists) {

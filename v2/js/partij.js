@@ -440,10 +440,6 @@ async function startPartij() {
     startHole: startH + 1,
     spelers,
     matchups,
-    scores: {},
-    timestamp: Date.now()
-  };
-
   spelers.forEach(s => { nieuwePartij.scores[s.id] = Array(activeHoles.length).fill(null); });
 
   // Voeg toe aan de juiste ladder

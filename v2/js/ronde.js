@@ -541,8 +541,6 @@ async function bevestigUitslag() {
         const origIdx = p.matchups.indexOf(m);
         return {
           a: m.spelerA.naam, b: m.spelerB.naam,
-          winnaar: p._modalWinnaars[origIdx] === 'A' ? m.spelerA.naam : m.spelerB.naam
-        };
       })
   };
   state.uitslagen.unshift(uitslag);
