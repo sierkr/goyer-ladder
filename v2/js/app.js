@@ -1,5 +1,5 @@
 // ============================================================
-//  app.js — Entry point v2.2.0
+//  app.js — Entry point v2.2.1
 // ============================================================
 import { initApp, uitloggen, loginSubmit, loginMetGoogle,
   openWachtwoordVergeten, sluitResetWrap, stuurResetEmail,
@@ -28,7 +28,8 @@ import { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer,
   closeModal } from './admin.js';
 import { renderArchief, openArchiefDetail, openNieuwSeizoenModal,
   bevestigNieuwSeizoen, stuurUitdaging, reageerUitdaging,
-  verwijderUitdaging } from './archief.js';
+  verwijderUitdaging, openToernooiDetail, toonUitdagingBadge,
+  verwijderOudeUitslagen } from './archief.js';
 import { renderToernooi, herlaadToernooien, selecteerToernooi,
   initToernooiSetup, zoekToernooiSpeler, selecteerToernooiSpeler,
   sluitToernooiSpelerLijst, verwijderToernooiSpelerSelectie,
@@ -180,9 +181,9 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 document.addEventListener('DOMContentLoaded', () => {
   const badge = document.getElementById('versie-badge');
-  if (badge) { badge.textContent = 'v2.2.0'; badge.style.display = ''; }
+  if (badge) { badge.textContent = 'v2.2.1'; badge.style.display = ''; }
   const loginBadge = document.querySelector('[style*="top:10px"][style*="right:10px"]');
-  if (loginBadge) loginBadge.textContent = 'v2.2.0';
+  if (loginBadge) loginBadge.textContent = 'v2.2.1';
 });
 
 window.openScorekaartDetail = openScorekaartDetail;
