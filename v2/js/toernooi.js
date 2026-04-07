@@ -250,7 +250,7 @@ function zoekToernooiSpeler(zoek) {
     lijst.innerHTML = `<div style="padding:10px 14px;font-size:13px;color:var(--light)">Geen spelers gevonden</div>`;
   } else {
     lijst.innerHTML = gefilterd.map(s => `
-      <div onclick="selecteerToernooiSpeler(${s.id},'${s.naam.replace(/'/g,"\\'")}',${s.hcp})"
+      <div onpointerdown="event.preventDefault()" onclick="selecteerToernooiSpeler(${s.id},'${s.naam.replace(/'/g,"\\'")}',${s.hcp})"
         style="padding:10px 14px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"
         onmouseenter="this.style.background='var(--green-pale)'" onmouseleave="this.style.background=''">
         <span>${s.naam}</span>
