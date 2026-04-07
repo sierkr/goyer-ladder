@@ -760,4 +760,4 @@ document.querySelectorAll('.modal-overlay').forEach(o => {
 
 // ============================================================
 
-export { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer, toggleHandmatigToevoegen, voegAccountToeAlsSpeler, saveNewPlayer, openEditPlayer, saveEditPlayer, removePlayer, renderProfiel, slaProfielHcpOp, sorteerUsers, renderAdminUsers, openEditUser, saveEditUser, openAddUser, saveNewUser, removeUser, verschuifRank, resetData, closeModal };
+export { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer, toggleHandmatigToevoegen, voegAccountToeAlsSpeler, saveNewPlayer, openEditPlayer, saveEditPlayer, removePlayer, renderProfiel, slaProfielHcpOp, sorteerUsers, renderAdminUsers, openEditUser, saveEditUser, openAddUser, saveNewUser, removeUser, verschuifRank, resetData, closeModal };;

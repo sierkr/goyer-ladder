@@ -321,4 +321,4 @@ async function verwijderActievePartij() {
 
 // ============================================================
 
-export { renderUitslagen };
+export { renderUitslagen };;

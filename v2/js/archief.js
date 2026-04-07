@@ -394,4 +394,4 @@ async function verwijderOudeUitslagen() {
   } catch(e) { console.error('Opschonen mislukt:', e); }
 }
 
-export { openNieuwSeizoenModal, bevestigNieuwSeizoen, renderArchief, openArchiefDetail, stuurNotificatie, toonUitdagingBadge, stuurUitdaging, reageerUitdaging, verwijderUitdaging, verwijderOudeUitslagen, toonUitdagingBadge };
+export { openNieuwSeizoenModal, bevestigNieuwSeizoen, renderArchief, openArchiefDetail, stuurNotificatie, toonUitdagingBadge, stuurUitdaging, reageerUitdaging, verwijderUitdaging, verwijderOudeUitslagen };;;

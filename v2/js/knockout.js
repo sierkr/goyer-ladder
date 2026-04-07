@@ -481,4 +481,4 @@ function toggleAdminKaart(header) {
 }
 
 
-export { rondesNaarObj, objNaarRondes, renderKnockoutLadderKaart, renderKnockoutBracket, openKnockoutIndeling, renderKnockoutIndelingModal, koDragStart, koDragOver, koDrop, koDragEnd, koTouchStart, koTouchMove, koTouchEnd, verschuifKoSpeler, bevestigKnockoutIndeling, verwerkKnockoutVoortgang, verwerkKnockoutUitslag, slaKnockoutWinnaarOp, nieuwKnockoutSeizoen, toggleAdminKaart };
+export { rondesNaarObj, objNaarRondes, renderKnockoutLadderKaart, renderKnockoutBracket, openKnockoutIndeling, renderKnockoutIndelingModal, koDragStart, koDragOver, koDrop, koDragEnd, koTouchStart, koTouchMove, koTouchEnd, verschuifKoSpeler, bevestigKnockoutIndeling, verwerkKnockoutVoortgang, verwerkKnockoutUitslag, slaKnockoutWinnaarOp, nieuwKnockoutSeizoen, toggleAdminKaart };;

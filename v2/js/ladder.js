@@ -145,4 +145,4 @@ function renderLadderRij(s, ladderId) {
 
 // ============================================================
 
-export { renderLadder, toggleLadderKaart, renderLadderRij };
+export { renderLadder, toggleLadderKaart, renderLadderRij };;

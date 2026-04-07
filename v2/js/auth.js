@@ -755,16 +755,4 @@ async function laadUitdagingen() {
 // initApp = entry point voor app.js
 function initApp() { initFirestore(); }
 
-export {
-  initApp, initFirestore, setIngelogd, vervolgIngelogd,
-  uitloggen, loginSubmit, loginMetGoogle,
-  openWachtwoordVergeten, sluitResetWrap, stuurResetEmail,
-  openWachtwoordWijzigen, wijzigWachtwoord,
-  slaState, wisselLadder, toonLaadOverlay,
-  getUsers, saveUsers, getLadderData, getLadderConfig,
-  updateSiteTitel, toonLoginFout,
-  genereerInviteLink, kopieerInviteLink, checkInviteLink,
-  registreerSpeler, laadInviteStatus, autoAdvance,
-  getNextId, isCoordinatorRol, isBeheerderRol,
-  toast, registreerNotificatieToken, laadUitdagingen
-};
+export { initApp, initFirestore, setIngelogd, vervolgIngelogd, uitloggen, loginSubmit, loginMetGoogle, openWachtwoordVergeten, sluitResetWrap, stuurResetEmail, openWachtwoordWijzigen, wijzigWachtwoord, slaState, wisselLadder, toonLaadOverlay, getUsers, saveUsers, getLadderData, getLadderConfig, updateSiteTitel, toonLoginFout, genereerInviteLink, kopieerInviteLink, checkInviteLink, registreerSpeler, laadInviteStatus, autoAdvance, getNextId, isCoordinatorRol, isBeheerderRol, toast, registreerNotificatieToken, laadUitdagingen };;

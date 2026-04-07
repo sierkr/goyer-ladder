@@ -565,4 +565,4 @@ function renderHcpBlok(spelers, holes, hcpPct, containerId) {
 
 // ============================================================
 
-export { alleBANEN, initPartijForm, getPartijLadderSpelers, herlaadPartijSpelers, addPlayerSlot, zoekPartijSpeler, selecteerPartijSpelerEl, selecteerPartijSpeler, sluitSpelerLijst, removeSlot, onBaanSelect, renderHandmatigHoles, slaAangepasteBaanOp, verwijderAangepasteBaan, mijnPartij, startPartij, kortNaam, kortNaamMap, renderHcpBlok, refreshPlayerSlotOptions, vulKnockoutTegenstander, filterPartijSpelers };
+export { alleBANEN, initPartijForm, getPartijLadderSpelers, herlaadPartijSpelers, addPlayerSlot, zoekPartijSpeler, selecteerPartijSpelerEl, selecteerPartijSpeler, sluitSpelerLijst, removeSlot, onBaanSelect, renderHandmatigHoles, slaAangepasteBaanOp, verwijderAangepasteBaan, mijnPartij, startPartij, kortNaam, kortNaamMap, renderHcpBlok, refreshPlayerSlotOptions, vulKnockoutTegenstander, filterPartijSpelers };;
