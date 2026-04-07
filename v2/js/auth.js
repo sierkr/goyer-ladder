@@ -147,8 +147,11 @@ async function loginSubmit() {
       'auth/too-many-requests': 'Te veel pogingen, probeer later opnieuw',
       'auth/invalid-credential': 'E-mail of wachtwoord onjuist',
     };
+    toonLoginFout(berichten[e.code] || 'Inloggen mislukt, probeer opnieuw');
+  }
+}
 
-  
+async function loginMetGoogle() {
   document.getElementById('login-fout').style.display = 'none';
   try {
     await signInWithPopup(auth, googleProvider);
@@ -159,6 +162,7 @@ async function loginSubmit() {
     }
   }
 }
+
 
 function uitloggen() {
   // Stop alle Firestore listeners voor uitloggen
