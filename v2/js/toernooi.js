@@ -262,12 +262,16 @@ function zoekToernooiSpeler(zoek) {
 }
 
 function selecteerToernooiSpeler(id, naam, hcp) {
-  if (!store._tGeselecteerdeSpelers.find(s => s.id === id)) {
+  if (!store._tGeselecteerdeSpelers.find(s => String(s.id) === String(id))) {
     store._tGeselecteerdeSpelers.push({ id, naam, hcp, gast: false });
   }
-  sluitToernooiSpelerLijst();
   const zoek = document.getElementById('t-speler-zoek');
-  if (zoek) zoek.value = '';
+  if (zoek) {
+    zoek.value = '';
+    // Heropen dropdown direct met lege zoekopdracht
+    zoekToernooiSpeler('');
+    zoek.focus();
+  }
   renderTGeselecteerdeSpelers();
 }
 
@@ -277,8 +281,9 @@ function sluitToernooiSpelerLijst() {
 }
 
 function verwijderToernooiSpelerSelectie(id) {
-  store._tGeselecteerdeSpelers = store._tGeselecteerdeSpelers.filter(s => s.id !== id);
+  store._tGeselecteerdeSpelers = store._tGeselecteerdeSpelers.filter(s => String(s.id) !== String(id));
   renderTGeselecteerdeSpelers();
+  zoekToernooiSpeler(document.getElementById('t-speler-zoek')?.value || '');
 }
 
 function voegGastspelerToe() {
