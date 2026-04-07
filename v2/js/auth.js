@@ -296,11 +296,12 @@ async function initFirestore() {
 
     const stateSnap = await getDoc(STATE_DOC);
 
-    // Controleer of de MP ladder al bestaat met spelers
+    // Controleer of de MP ladder al bestaat
     const mpDoc = laddersSnap.docs.find(d => d.id === 'mp');
-    const mpHeeftSpelers = mpDoc && (mpDoc.data().spelers || []).length > 0;
+    const mpBestaat = !!mpDoc;
+    const mpHeeftSpelers = mpDoc && (mpDoc.data()?.spelers || []).length > 0;
 
-    if (!mpHeeftSpelers) {
+    if (!mpBestaat) {
       // Migreer bestaande state naar ladder "MP"
       const bestaandeState = stateSnap.exists() ? stateSnap.data() : JSON.parse(JSON.stringify(DEFAULT_STATE));
       if (!bestaandeState.actievePartijen) {
@@ -346,14 +347,21 @@ async function initFirestore() {
         });
       }
       // Zet MP als actief, anders de eerste
-      const mpDoc = laddersSnap.docs.find(d => d.id === 'mp');
-      const actief = mpDoc || laddersSnap.docs[0];
+      const mpDocSnap = laddersSnap.docs.find(d => d.id === 'mp');
+      const actief = mpDocSnap || laddersSnap.docs[0];
       if (!actief) {
         console.warn('Geen ladders gevonden in Firestore');
         toonLaadOverlay(false);
         return;
       }
-      store.state = actief.data();
+      const actiefData = actief.data();
+      console.log('v2 debug: actief ladder:', actief.id, 'data:', actiefData ? 'OK' : 'UNDEFINED');
+      if (!actiefData) {
+        console.error('Ladder data is undefined voor:', actief.id);
+        toonLaadOverlay(false);
+        return;
+      }
+      store.state = actiefData;
       if (!store.state.actievePartijen) store.state.actievePartijen = [];
       store.activeLadderId = actief.id;
     // Als master spelerslijst leeg is, opbouwen vanuit alle ladders
