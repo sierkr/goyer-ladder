@@ -75,9 +75,6 @@ function renderToernooi() {
   }
 }
 
-let _toernooiListeners = []; // bijhouden om later te unsubscriben
-let _vasteListeners = []; // ladder + spelers listeners
-
 async function herlaadToernooien() {
   try {
     const snap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
@@ -156,10 +153,6 @@ function selecteerToernooi(id) {
   store.toernooiData = alleToernooien.find(t => t.id === id) || null;
   renderToernooi();
 }
-
-let _tGeselecteerdeSpelers = []; // [{id, naam, hcp, gast}]
-let _tSpelersLadderIds = new Set(); // geselecteerde spelers ladders
-let _tRankingLadderIds = new Set(); // geselecteerde ranking ladders
 
 function initToernooiSetup() {
   // Baan select
@@ -320,7 +313,6 @@ function toggleTSpeler(id) {
 // ============================================================
 //  FLIGHT INDELING
 // ============================================================
-let _flights = []; // [{ id, naam, spelers: [{id, naam, hcp}] }]
 
 function toggleHolesCustom() {
   const sel = document.getElementById('t-holes');
@@ -576,8 +568,6 @@ async function toonToernooiUitslag() {
   toast('Uitslag zichtbaar! 🏆');
   } catch(e) { console.error('toonToernooiUitslag mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
-
-let _toernooiSpelerToevoegen = null; // geselecteerde speler voor toevoegen
 
 function openToernooiSpelersBeheer() {
   const t = toernooiData;
