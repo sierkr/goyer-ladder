@@ -436,7 +436,6 @@ async function verwerkKnockoutUitslag(partij) {
   } catch(e) { console.error('verwerkKnockoutUitslag mislukt:', e); }
 }
 
-window.verwerkKnockoutUitslag = verwerkKnockoutUitslag;
 
 async function slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar, resultaat) {
   try {
@@ -478,115 +477,12 @@ async function nieuwKnockoutSeizoen(ladderId) {
   } catch(e) { console.error('nieuwKnockoutSeizoen mislukt:', e); toast('Er is iets misgegaan'); }
 }
 
-window.koDragStart = koDragStart;
-window.koDragOver = koDragOver;
-window.koDrop = koDrop;
-window.koDragEnd = koDragEnd;
-window.koTouchStart = koTouchStart;
-window.koTouchMove = koTouchMove;
-window.koTouchEnd = koTouchEnd;
-window.openKnockoutIndeling = openKnockoutIndeling;
-window.verschuifKoSpeler = verschuifKoSpeler;
-window.bevestigKnockoutIndeling = bevestigKnockoutIndeling;
-window.slaKnockoutWinnaarOp = slaKnockoutWinnaarOp;
-window.nieuwKnockoutSeizoen = nieuwKnockoutSeizoen;
-window.loginSubmit = loginSubmit;
-window.loginMetGoogle = loginMetGoogle;
-window.uitloggen = uitloggen;
-window.openWachtwoordVergeten = openWachtwoordVergeten;
-window.sluitResetWrap = sluitResetWrap;
-window.stuurResetEmail = stuurResetEmail;
-window.openWachtwoordWijzigen = openWachtwoordWijzigen;
-window.wijzigWachtwoord = wijzigWachtwoord;
-window.openAddUser = openAddUser;
-window.saveNewUser = saveNewUser;
-window.removeUser = removeUser;
-window.openEditUser = openEditUser;
-window.saveEditUser = saveEditUser;
-window.startToernooi = startToernooi;
-window.toggleTSpeler = toggleTSpeler;
-window.updateTScore = updateTScore;
-window.toggleTScorecard = toggleTScorecard;
-window.openToernooiAfsluiten = openToernooiAfsluiten;
-window.bevestigToernooiAfsluiten = bevestigToernooiAfsluiten;
-window.annuleerToernooi = annuleerToernooi;
-window.openNieuwSeizoenModal = openNieuwSeizoenModal;
-window.bevestigNieuwSeizoen = bevestigNieuwSeizoen;
-window.openScorekaartDetail = openScorekaartDetail;
-window.openToernooiDetail = openToernooiDetail;
-window.openArchiefDetail = openArchiefDetail;
-window.stuurUitdaging = stuurUitdaging;
-window.reageerUitdaging = reageerUitdaging;
-window.verwijderUitdaging = verwijderUitdaging;
-window.editPartijHcp = editPartijHcp;
-window.editToernooiHcp = editToernooiHcp;
 function toggleAdminKaart(header) {
   header.classList.toggle('ingeklapt');
   const collapse = header.nextElementSibling;
   if (collapse) collapse.classList.toggle('ingeklapt');
 }
 
-window.toggleAdminKaart = toggleAdminKaart;
-window.openSnapshotsModal = openSnapshotsModal;
-window.herstelSnapshot = herstelSnapshot;
-window.voegAccountToeAlsSpeler = voegAccountToeAlsSpeler;
-window.toggleHandmatigToevoegen = toggleHandmatigToevoegen;
-window.toggleToernooiMatrix = toggleToernooiMatrix;
-window.updateTScoreAndAdvance = updateTScoreAndAdvance;
-window.toonToernooiUitslag = toonToernooiUitslag;
-window.openVerwijderToernooiSpeler = openVerwijderToernooiSpeler;
-window.verwijderToernooiSpeler = verwijderToernooiSpeler;
-window.selecteerFlightTab = selecteerFlightTab;
-window.refreshToernooiScorekaart = refreshToernooiScorekaart;
-window.openToernooiSpelersBeheer = openToernooiSpelersBeheer;
-window.zoekToernooiSpelerModal = zoekToernooiSpelerModal;
-window.selecteerToernooiSpelerModal = selecteerToernooiSpelerModal;
-window.sluitToernooiSpelerModal = sluitToernooiSpelerModal;
-window.voegBestaandeSpelerToeAanToernooi = voegBestaandeSpelerToeAanToernooi;
-window.voegGastspelerToeAanToernooi = voegGastspelerToeAanToernooi;
-window.verwijderToernooiSpelerNieuw = verwijderToernooiSpelerNieuw;
-window.toggleTSpelersLadder = toggleTSpelersLadder;
-window.toggleTRankingLadder = toggleTRankingLadder;
-window.zoekToernooiSpeler = zoekToernooiSpeler;
-window.selecteerToernooiSpeler = selecteerToernooiSpeler;
-window.sluitToernooiSpelerLijst = sluitToernooiSpelerLijst;
-window.verwijderToernooiSpelerSelectie = verwijderToernooiSpelerSelectie;
-window.voegGastspelerToe = voegGastspelerToe;
-window.toggleHolesCustom = toggleHolesCustom;
-window.wijzigFlightStarttijd = wijzigFlightStarttijd;
-window.wijzigFlightStarthole = wijzigFlightStarthole;
-window.openFlightIndeling = openFlightIndeling;
-window.voegFlightToe = voegFlightToe;
-window.verwijderFlight = verwijderFlight;
-window.wijzigFlightNaam = wijzigFlightNaam;
-window.wijzigFlightHcp = wijzigFlightHcp;
-window.verplaatsSpelerFlight = verplaatsSpelerFlight;
-window.selecteerToernooi = selecteerToernooi;
-window.openStandAanpassen = openStandAanpassen;
-window.verschuifStand = verschuifStand;
-window.slaStandOp = slaStandOp;
-window.openLadderInstellingen = openLadderInstellingen;
-window.slaLadderInstellingenOp = slaLadderInstellingenOp;
-window.verschuifLadder = verschuifLadder;
-window.openNieuweLadderModal = openNieuweLadderModal;
-window.maakNieuweLadder = maakNieuweLadder;
-window.verwijderLadder = verwijderLadder;
-window.openLadderSpelersModal = openLadderSpelersModal;
-window.slaLadderSpelersOp = slaLadderSpelersOp;
-window.toggleLadderKaart = toggleLadderKaart;
-window.wisselLadder = wisselLadder;
-window.zoekPartijSpeler = zoekPartijSpeler;
-window.selecteerPartijSpelerEl = selecteerPartijSpelerEl;
-window.selecteerPartijSpeler = selecteerPartijSpeler;
-window.sluitSpelerLijst = sluitSpelerLijst;
-window.filterPartijSpelers = filterPartijSpelers;
-window.herlaadPartijSpelers = herlaadPartijSpelers;
-window.genereerInviteLink = genereerInviteLink;
-window.kopieerInviteLink = kopieerInviteLink;
-window.registreerSpeler = registreerSpeler;
-window.autoAdvance = autoAdvance;
-window.slaProfielHcpOp = slaProfielHcpOp;
-window.vraagNotificatieToestemming = vraagNotificatieToestemming;
 
 initFirestore();
 

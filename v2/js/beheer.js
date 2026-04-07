@@ -421,36 +421,6 @@ let _bezigMetRegistratie = false;
 // ============================================================
 
 // Expose functions to global scope (needed because script is type=module)
-window.showPage = showPage;
-window.addPlayerSlot = addPlayerSlot;
-window.removeSlot = removeSlot;
-window.onBaanSelect = onBaanSelect;
-window.startPartij = startPartij;
-window.updateScore = updateScore;
-window.toggleScorecard = toggleScorecard;
-window.openUitslagModal = openUitslagModal;
-window.setWinnaar = setWinnaar;
-window.bevestigUitslag = bevestigUitslag;
-window.openAddPlayer = openAddPlayer;
-window.saveNewPlayer = saveNewPlayer;
-window.openEditPlayer = openEditPlayer;
-window.saveEditPlayer = saveEditPlayer;
-window.removePlayer = removePlayer;
-window.closeModal = closeModal;
-window.resetData = resetData;
-window.sluitUitslagEnGaNaarLadder = sluitUitslagEnGaNaarLadder;
-window.slaAangepasteBaanOp = slaAangepasteBaanOp;
-window.verwijderAangepasteBaan = verwijderAangepasteBaan;
-window.openToevoegenModal = openToevoegenModal;
-window.bevestigToevoegenRonde = bevestigToevoegenRonde;
-window.verwijderSpelerUitRonde = verwijderSpelerUitRonde;
-window.skipMatchup = skipMatchup;
-window.annuleerEigenPartij = annuleerEigenPartij;
-window.openBeheerPartij = openBeheerPartij;
-window.setBeheerWinnaar = setBeheerWinnaar;
-window.bevestigBeheerUitslag = bevestigBeheerUitslag;
-window.verwijderActievePartij = verwijderActievePartij;
-window.verschuifRank = verschuifRank;
 // ============================================================
 
 export { openStandAanpassen, renderStandAanpassenLijst, verschuifStand, slaStandOp, openLadderInstellingen, slaLadderInstellingenOp, openNieuweLadderModal, maakNieuweLadder, verschuifLadder, verwijderLadder, openLadderSpelersModal, slaLadderSpelersOp, renderAdminLadders, openSnapshotsModal, slaSnapshotOp, laadSnapshots, herstelSnapshot };
