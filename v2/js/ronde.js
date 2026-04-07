@@ -621,4 +621,51 @@ function showLadderChanges(changes) {
 
 // ============================================================
 
+async function annuleerEigenPartij() {
+
+  try {
+  if (!confirm('Partij annuleren? De scores worden niet opgeslagen en de ladder wordt niet aangepast.')) return;
+  const p = mijnPartij();
+  if (!p) return;
+
+  // Verwijder uit de juiste ladder (kan afwijken van activeLadderId)
+  const ladderId = p.ladderId || activeLadderId;
+  if (ladderId !== activeLadderId) {
+    const snap = await getDoc(doc(db, 'ladders', ladderId));
+    if (snap.exists()) {
+      const data = snap.data();
+      data.actievePartijen = (data.actievePartijen || []).filter(ap => ap.partijId !== p.partijId);
+      await setDoc(doc(db, 'ladders', ladderId), data);
+      const idx = alleLadders.findIndex(l => l.id === ladderId);
+      if (idx >= 0) { alleLadders[idx].actievePartijen = data.actievePartijen; if (alleLadders[idx].data) alleLadders[idx].data.actievePartijen = data.actievePartijen; }
+    }
+  } else {
+    state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== p.partijId);
+    await slaState();
+  }
+
+  closeModal('modal-uitslag');
+  renderRonde();
+  // Ga terug naar ladder tab
+  document.querySelectorAll('.page').forEach(pg => pg.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-ladder').classList.add('active');
+  document.querySelector('nav button').classList.add('active');
+  renderLadder();
+  toast('Partij geannuleerd');
+  } catch(e) { console.error('annuleerEigenPartij mislukt:', e); }
+}
+
+async function verwijderActievePartij() {
+
+  try {
+  if (!confirm('Partij verwijderen? Dit kan niet ongedaan worden.')) return;
+  state.actievePartijen = (state.actievePartijen || []).filter(ap => ap.partijId !== _beheerPartijId);
+  await slaState();
+  closeModal('modal-beheer-partij');
+  renderUitslagen();
+  toast('Partij verwijderd');
+  } catch(e) { console.error('verwijderActievePartij mislukt:', e); }
+}
+
 export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij };
