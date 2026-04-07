@@ -268,8 +268,6 @@ async function initFirestore() {
       getDoc(SPELERS_DOC),
       getDoc(doc(db, 'ladder', 'ladderVolgorde'))
     ]);
-
-    const aangepasteBanen = baanSnap.exists() ? (baanSnap.data().lijst || []) : [];
     store.archiefData = archiefSnap.exists() ? (archiefSnap.data().seizoenen || []) : [];
     store.uitdagingenData = uitdSnap.exists() ? (uitdSnap.data().lijst || []) : [];
     store.alleSpelersData = spelersSnap.exists() ? (spelersSnap.data().lijst || []) : [];

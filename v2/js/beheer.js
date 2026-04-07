@@ -10,7 +10,6 @@ import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, d
 
 //  LADDER INSTELLINGEN
 // ============================================================
-const DEFAULT_LADDER_CONFIG = {
   laagStijg: 4, laagZak: 2,
   hoogStijg: 1, hoogZak: 1,
   verliezerNaarWinnaar: false, drempel: 4
