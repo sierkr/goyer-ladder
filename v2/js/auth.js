@@ -9,6 +9,7 @@ import { store, DEFAULT_LADDER_CONFIG,
   _usersCache, archiefData, uitdagingenData, toernooiData, alleToernooien,
   actieveToernooiId, _firestoreReady, _vasteListeners, _toernooiListeners,
   _bezigMetRegistratie, playerSlotCount } from './store.js';
+import { renderLadder } from './ladder.js';
 
 // Toegang tot gedeelde state via store
 import * as S from './store.js';

@@ -162,7 +162,7 @@ function filterPartijSpelers(zoek) {
 
 function addPlayerSlot() {
   if (playerSlotCount >= 4) return;
-  playerSlotCount++;
+  store.playerSlotCount = store.playerSlotCount + 1;
   const n = playerSlotCount;
 
   const div = document.createElement('div');
@@ -241,7 +241,7 @@ function refreshPlayerSlotOptions() {
 
 function removeSlot(n) {
   document.getElementById('slot-' + n).remove();
-  playerSlotCount--;
+  store.playerSlotCount = store.playerSlotCount - 1;
   document.getElementById('add-player-btn').style.display = '';
 }
 

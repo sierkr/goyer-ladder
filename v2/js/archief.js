@@ -381,4 +381,15 @@ async function verwijderUitdaging(uitdagingId) {
 
 // ============================================================
 
-export { openNieuwSeizoenModal, bevestigNieuwSeizoen, renderArchief, openArchiefDetail, stuurNotificatie, toonUitdagingBadge, stuurUitdaging, reageerUitdaging, verwijderUitdaging };
+async function verwijderOudeUitslagen() {
+  // Verwijder scorekaarten ouder dan 30 dagen
+  const dertigDagenGelden = Date.now() - (30 * 24 * 60 * 60 * 1000);
+  try {
+    const q = query(UITSLAGEN_COL, where('timestamp', '<', dertigDagenGelden));
+    const snap = await getDocs(q);
+    snap.forEach(async d => await deleteDoc(d.ref));
+    // oude scorekaarten opgeschoond
+  } catch(e) { console.error('Opschonen mislukt:', e); }
+}
+
+export { openNieuwSeizoenModal, bevestigNieuwSeizoen, renderArchief, openArchiefDetail, stuurNotificatie, toonUitdagingBadge, stuurUitdaging, reageerUitdaging, verwijderUitdaging, verwijderOudeUitslagen };
