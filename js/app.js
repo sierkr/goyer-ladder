@@ -1,5 +1,5 @@
 // ============================================================
-//  app.js — Entry point v2.4.0
+//  app.js — Entry point v2.4.2
 // ============================================================
 import { initApp, uitloggen, loginSubmit, loginMetGoogle,
   openWachtwoordVergeten, sluitResetWrap, stuurResetEmail,
@@ -183,7 +183,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v2.4.0';
+  const VERSION = 'v2.4.2';
   const badge = document.getElementById('versie-badge');
   if (badge) { badge.textContent = VERSION; badge.style.display = ''; }
   document.querySelectorAll('.login-versie').forEach(el => el.textContent = VERSION);

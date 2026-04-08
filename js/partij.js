@@ -134,9 +134,11 @@ function herlaadPartijSpelers() {
   if (huidigeBruiker) {
     const spelers = getPartijLadderSpelers();
     const gebruikersnaam = huidigeBruiker.gebruikersnaam?.toLowerCase() || '';
-    // Eerst exacte match op volledige naam, dan op voornaam
-    const zelf = spelers.find(s => s.naam.toLowerCase() === gebruikersnaam)
-      || spelers.find(s => s.naam.toLowerCase().split(' ')[0] === gebruikersnaam.split(' ')[0]);
+    // Gebruik spelerId als dat bekend is, anders val terug op exacte naam
+    const zelf = (huidigeBruiker.spelerId
+      ? spelers.find(s => String(s.id) === String(huidigeBruiker.spelerId))
+      : null)
+      || spelers.find(s => s.naam.toLowerCase() === gebruikersnaam);
     if (zelf) {
       selecteerPartijSpeler(1, zelf.id, zelf.naam, zelf.hcp);
       vulKnockoutTegenstander(zelf.naam);

@@ -51,14 +51,27 @@ async function setIngelogd(firebaseUser) {
     let besteNaam = displayNaam;
     if (displayNaam.includes('@') || !displayNaam.includes(' ')) {
       const emailPfx = firebaseUser.email.split('@')[0].toLowerCase();
-      const gekoppeldeSpeler = (state.spelers || []).find(s => {
-        const voornaam = s.naam.toLowerCase().split(' ')[0];
-        return emailPfx.startsWith(voornaam) || voornaam.startsWith(emailPfx.substring(0, 4));
-      });
+      // Exacte match eerst, dan prefix match
+      const gekoppeldeSpeler = (alleSpelersData.length > 0 ? alleSpelersData : state.spelers || []).find(s =>
+        s.naam.toLowerCase().replace(/\s/g, '') === emailPfx ||
+        emailPfx === s.naam.toLowerCase().split(' ').join('.')
+      );
       if (gekoppeldeSpeler) besteNaam = gekoppeldeSpeler.naam;
     }
 
-    store.huidigeBruiker = { uid: firebaseUser.uid, email: firebaseUser.email, gebruikersnaam: besteNaam, rol: profiel.rol };
+    // Zoek gekoppeld speler-id via naam matching
+    const spelersLijst = alleSpelersData.length > 0 ? alleSpelersData : (state.spelers || []);
+    const gekoppeldeSpeler = spelersLijst.find(s =>
+      s.naam.toLowerCase() === besteNaam.toLowerCase()
+    );
+
+    store.huidigeBruiker = {
+      uid: firebaseUser.uid,
+      email: firebaseUser.email,
+      gebruikersnaam: besteNaam,
+      rol: profiel.rol,
+      spelerId: gekoppeldeSpeler?.id || null
+    };
 
   } catch(e) {
     console.error('setIngelogd error:', e);
@@ -71,10 +84,13 @@ async function setIngelogd(firebaseUser) {
 
 function updateSiteTitel() {
   if (!huidigeBruiker) return;
-  const voornaam = (huidigeBruiker.gebruikersnaam || '').toLowerCase().split(' ')[0];
   const mijnLadders = isCoordinatorRol()
     ? alleLadders
-    : alleLadders.filter(l => (l.spelers || []).some(s => s.naam.toLowerCase().includes(voornaam)));
+    : alleLadders.filter(l => (l.spelers || []).some(s =>
+        huidigeBruiker.spelerId
+          ? String(s.id) === String(huidigeBruiker.spelerId)
+          : s.naam.toLowerCase() === (huidigeBruiker.gebruikersnaam || '').toLowerCase()
+      ));
   const h1Second = document.getElementById('h1-second');
   if (h1Second) {
     const alleenHeerendag = mijnLadders.length === 1 &&

@@ -764,16 +764,18 @@ function renderToernooiActief() {
   if (!detail) return;
 
   const flights = t.flights || [];
+  const mijnSpelerId = huidigeBruiker?.spelerId ? String(huidigeBruiker.spelerId) : null;
   const gebruikersnaam = huidigeBruiker?.gebruikersnaam?.toLowerCase() || '';
-  const voornaam = gebruikersnaam.split(' ')[0];
   const mijnSpelerIdsInToernooi = new Set(
-    alleSpelersData.filter(s => s.naam.toLowerCase() === gebruikersnaam ||
-      s.naam.toLowerCase().startsWith(voornaam)).map(s => String(s.id))
+    alleSpelersData.filter(s =>
+      mijnSpelerId ? String(s.id) === mijnSpelerId :
+      s.naam.toLowerCase() === gebruikersnaam
+    ).map(s => String(s.id))
   );
   const mijnFlight = flights.find(f =>
     (f.spelerIds || []).some(sid => {
       const sp = t.spelers.find(s => String(s.id) === String(sid));
-      return sp && (sp.naam.toLowerCase().includes(voornaam) || mijnSpelerIdsInToernooi.has(String(sp.id)));
+      return sp && (mijnSpelerIdsInToernooi.has(String(sp.id)));
     })
   );
 
