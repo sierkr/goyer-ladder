@@ -74,18 +74,14 @@ function initPartijForm() {
 
   // Auto-selecteer ingelogde speler in slot 1
   if (huidigeBruiker) {
-    const gebruiker = huidigeBruiker.gebruikersnaam.toLowerCase().trim();
-    const emailPrefix = huidigeBruiker.email?.split('@')[0]?.toLowerCase() || '';
+    const spelerId = huidigeBruiker.spelerId;
+    const gebruikersnaam = huidigeBruiker.gebruikersnaam?.toLowerCase().trim() || '';
     const ladderSpelers = getPartijLadderSpelers();
-    const gekoppeld = ladderSpelers.find(s => {
-      const naam = s.naam.toLowerCase().trim();
-      const voornaam = naam.split(' ')[0];
-      return naam === gebruiker ||
-             voornaam === gebruiker.split(' ')[0] ||
-             voornaam === emailPrefix ||
-             naam.includes(emailPrefix) ||
-             emailPrefix.includes(voornaam);
-    });
+    console.log('initPartijForm pre-select:', { spelerId, gebruikersnaam, ladderSpelers: ladderSpelers.map(s => ({id: s.id, naam: s.naam})) });
+    const gekoppeld = spelerId
+      ? ladderSpelers.find(s => String(s.id) === String(spelerId))
+      : ladderSpelers.find(s => s.naam.toLowerCase().trim() === gebruikersnaam);
+    console.log('initPartijForm gevonden:', gekoppeld);
     if (gekoppeld) {
       selecteerPartijSpeler(1, gekoppeld.id, gekoppeld.naam, gekoppeld.hcp);
       vulKnockoutTegenstander(gekoppeld.naam);
