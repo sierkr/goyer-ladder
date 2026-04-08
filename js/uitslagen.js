@@ -143,7 +143,7 @@ function renderUitslagen() {
       </div>
       <div style="font-size:12px;color:var(--mid);margin-bottom:8px">${u.spelers.join(' · ')}</div>
       ${u.matchups.map(m => `
-        <div style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:4px">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:4px">
           <span>${m.a} vs ${m.b}</span>
           <span class="badge badge-green">⛳ ${m.winnaar}</span>
         </div>`).join('')}
