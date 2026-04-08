@@ -1,5 +1,5 @@
 // ============================================================
-//  app.js — Entry point v2.2.4
+//  app.js — Entry point v2.2.5
 // ============================================================
 import { initApp, uitloggen, loginSubmit, loginMetGoogle,
   openWachtwoordVergeten, sluitResetWrap, stuurResetEmail,
@@ -10,7 +10,7 @@ import { initApp, uitloggen, loginSubmit, loginMetGoogle,
 
 import { showPage } from './nav.js';
 import { renderLadder, toggleLadderKaart } from './ladder.js';
-import { initPartijForm, addPlayerSlot, removeSlot, onBaanSelect,
+import { initPartijForm, addPlayerSlot, voegGastSpelerToeAanPartij, removeSlot, onBaanSelect,
   startPartij, zoekPartijSpeler, selecteerPartijSpelerEl,
   sluitSpelerLijst, slaAangepasteBaanOp, verwijderAangepasteBaan,
   refreshPlayerSlotOptions } from './partij.js';
@@ -75,6 +75,7 @@ window.kopieerInviteLink = kopieerInviteLink;
 window.laadInviteStatus = laadInviteStatus;
 window.toggleLadderKaart = toggleLadderKaart;
 window.addPlayerSlot = addPlayerSlot;
+window.voegGastSpelerToeAanPartij = voegGastSpelerToeAanPartij;
 window.removeSlot = removeSlot;
 window.onBaanSelect = onBaanSelect;
 window.startPartij = startPartij;
@@ -181,9 +182,9 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 document.addEventListener('DOMContentLoaded', () => {
   const badge = document.getElementById('versie-badge');
-  if (badge) { badge.textContent = 'v2.2.4'; badge.style.display = ''; }
+  if (badge) { badge.textContent = 'v2.2.5'; badge.style.display = ''; }
   const loginBadge = document.querySelector('[style*="top:10px"][style*="right:10px"]');
-  if (loginBadge) loginBadge.textContent = 'v2.2.4';
+  if (loginBadge) loginBadge.textContent = 'v2.2.5';
 });
 
 window.openScorekaartDetail = openScorekaartDetail;

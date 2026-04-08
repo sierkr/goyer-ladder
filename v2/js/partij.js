@@ -127,7 +127,7 @@ function herlaadPartijSpelers() {
   // Herlaad spelerslots bij wisselen van ladder
   store.playerSlotCount = 0;
   document.getElementById('player-slots').innerHTML = '';
-  document.getElementById('add-player-btn').style.display = '';
+  document.getElementById('add-player-btn').style.display = ''; const gb = document.getElementById('add-guest-btn'); if(gb) gb.style.display = '';
   addPlayerSlot();
   addPlayerSlot();
   // Pre-select eigen naam in slot 1
@@ -160,6 +160,19 @@ function filterPartijSpelers(zoek) {
   });
 }
 
+function voegGastSpelerToeAanPartij() {
+  if (store.playerSlotCount >= 4) { toast('Maximaal 4 spelers'); return; }
+  const naam = prompt('Naam gastspeler:');
+  if (!naam?.trim()) return;
+  const hcpStr = prompt(`Handicap voor ${naam.trim()}:`, '10');
+  if (hcpStr === null) return;
+  const hcp = parseFloat(hcpStr) || 0;
+  const gastId = 90000 + Math.floor(Math.random() * 9999);
+  addPlayerSlot();
+  const n = store.playerSlotCount;
+  selecteerPartijSpeler(n, gastId, naam.trim(), hcp);
+}
+
 function addPlayerSlot() {
   if (playerSlotCount >= 4) return;
   store.playerSlotCount = store.playerSlotCount + 1;
@@ -181,7 +194,7 @@ function addPlayerSlot() {
     ${n > 2 ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;padding:8px;border-radius:6px;cursor:pointer" onclick="removeSlot(${n})">✕</button>` : ''}
   `;
   document.getElementById('player-slots').appendChild(div);
-  if (playerSlotCount >= 4) document.getElementById('add-player-btn').style.display = 'none';
+  if (store.playerSlotCount >= 4) { document.getElementById('add-player-btn').style.display = 'none'; const gb = document.getElementById('add-guest-btn'); if(gb) gb.style.display = 'none'; }
 }
 
 function zoekPartijSpeler(n, zoek) {
@@ -242,7 +255,7 @@ function refreshPlayerSlotOptions() {
 function removeSlot(n) {
   document.getElementById('slot-' + n).remove();
   store.playerSlotCount = store.playerSlotCount - 1;
-  document.getElementById('add-player-btn').style.display = '';
+  document.getElementById('add-player-btn').style.display = ''; const gb = document.getElementById('add-guest-btn'); if(gb) gb.style.display = '';
 }
 
 function onBaanSelect() {
@@ -565,4 +578,4 @@ function renderHcpBlok(spelers, holes, hcpPct, containerId) {
 
 // ============================================================
 
-export { alleBANEN, initPartijForm, getPartijLadderSpelers, herlaadPartijSpelers, addPlayerSlot, zoekPartijSpeler, selecteerPartijSpelerEl, selecteerPartijSpeler, sluitSpelerLijst, removeSlot, onBaanSelect, renderHandmatigHoles, slaAangepasteBaanOp, verwijderAangepasteBaan, mijnPartij, startPartij, kortNaam, kortNaamMap, renderHcpBlok, refreshPlayerSlotOptions, vulKnockoutTegenstander, filterPartijSpelers };;
+export { addPlayerSlot, alleBANEN, filterPartijSpelers, getPartijLadderSpelers, herlaadPartijSpelers, initPartijForm, kortNaam, kortNaamMap, mijnPartij, onBaanSelect, refreshPlayerSlotOptions, removeSlot, renderHandmatigHoles, renderHcpBlok, selecteerPartijSpeler, selecteerPartijSpelerEl, slaAangepasteBaanOp, sluitSpelerLijst, startPartij, verwijderAangepasteBaan, voegGastSpelerToeAanPartij, vulKnockoutTegenstander, zoekPartijSpeler };;
