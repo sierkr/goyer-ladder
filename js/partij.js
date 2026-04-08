@@ -222,6 +222,7 @@ function addPlayerSlot() {
 
 function zoekPartijSpeler(n, zoek) {
   const lijst = document.getElementById('speler-lijst-' + n);
+  const input = document.querySelector(`#slot-${n}`)?.closest('.player-slot-row')?.querySelector('input[type="text"]');
   if (!lijst) return;
   const spelers = getPartijLadderSpelers();
   const reedsSel = Array.from(document.querySelectorAll('.player-slot'))
@@ -246,6 +247,15 @@ function zoekPartijSpeler(n, zoek) {
       </div>
     `).join('');
   }
+
+  // Positie berekenen relatief aan input voor fixed positioning
+  const wrap = lijst.closest('.speler-zoek-wrap') || lijst.parentElement;
+  const rect = wrap.getBoundingClientRect();
+  lijst.style.position = 'fixed';
+  lijst.style.top = (rect.bottom + 2) + 'px';
+  lijst.style.left = rect.left + 'px';
+  lijst.style.width = rect.width + 'px';
+  lijst.style.maxHeight = Math.min(200, window.innerHeight - rect.bottom - 10) + 'px';
   lijst.style.display = 'block';
 }
 
