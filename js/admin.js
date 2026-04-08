@@ -792,9 +792,15 @@ async function koppelSpelerIds() {
     const spelersLijst = alleSpelersData.length > 0 ? alleSpelersData : (state.spelers || []);
     let gekoppeld = 0;
     let niet_gevonden = [];
+    let al_gekoppeld = [];
+
+    console.log('koppelSpelerIds: users:', users.map(u => ({ naam: u.gebruikersnaam, spelerId: u.spelerId })));
+    console.log('koppelSpelerIds: spelers:', spelersLijst.map(s => ({ id: s.id, naam: s.naam })));
 
     for (const user of users) {
-      if (user.spelerId) continue; // al gekoppeld
+      // Controleer of het huidige spelerId geldig is
+      const geldigId = user.spelerId && spelersLijst.find(s => String(s.id) === String(user.spelerId));
+      if (geldigId) { al_gekoppeld.push(user.gebruikersnaam); continue; }
 
       // Exacte naam match
       const speler = spelersLijst.find(s =>
@@ -804,17 +810,18 @@ async function koppelSpelerIds() {
       if (speler) {
         user.spelerId = speler.id;
         gekoppeld++;
+        console.log(`Gekoppeld: ${user.gebruikersnaam} → id ${speler.id}`);
       } else {
-        niet_gevonden.push(user.gebruikersnaam || user.email);
+        niet_gevonden.push(`${user.gebruikersnaam} (spelerId was: ${user.spelerId})`);
+        console.log(`Niet gevonden: ${user.gebruikersnaam}`);
       }
     }
 
-    if (gekoppeld > 0) {
-      await saveUsers(users);
-    }
+    if (gekoppeld > 0) await saveUsers(users);
 
-    const msg = `✅ ${gekoppeld} account(s) gekoppeld.` +
-      (niet_gevonden.length > 0 ? `\n\nNiet gevonden: ${niet_gevonden.join(', ')}` : '');
+    const msg = `✅ ${gekoppeld} account(s) gekoppeld.\n` +
+      `Al correct: ${al_gekoppeld.join(', ') || 'geen'}` +
+      (niet_gevonden.length > 0 ? `\n\nNiet gevonden:\n${niet_gevonden.join('\n')}` : '');
     alert(msg);
     renderAdmin();
   } catch(e) {
