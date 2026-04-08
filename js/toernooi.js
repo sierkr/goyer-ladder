@@ -739,6 +739,12 @@ function alleScoresIngevuld(t) {
   );
 }
 
+function gaNaarToernooiOverzicht() {
+  store.actieveToernooiId = null;
+  store.toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
+  renderToernooi();
+}
+
 function renderToernooiActief() {
   const t = toernooiData;
   if (!t) return;
@@ -767,7 +773,10 @@ function renderToernooiActief() {
     <div class="card">
       <div class="card-header">
         <h2>${t.naam}</h2>
-        <span class="badge badge-gold">${uitslag ? 'Uitslag' : 'Bezig'}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="badge badge-gold">${uitslag ? 'Uitslag' : 'Bezig'}</span>
+          ${alleToernooien.length > 1 ? `<button class="btn btn-sm btn-ghost" onclick="gaNaarToernooiOverzicht()" style="font-size:12px">← Overzicht</button>` : ''}
+        </div>
       </div>
       <div class="card-body" style="padding:10px 16px;font-size:13px;color:var(--mid)">
         ${t.datum} · ${t.baan} · ${t.holes.length} holes · ${t.spelers.length} spelers
@@ -1162,10 +1171,11 @@ function renderTRanglijst() {
   document.getElementById('t-ranglijst').innerHTML = volgorde.map((entry, rank) => `
     <div class="ladder-item">
       <div class="rank-badge ${rank < 3 ? 'top3' : ''}">${rank+1}</div>
-      <div class="player-name">${entry.s.naam}</div>
+      <div class="player-name">${entry.s.naam}${entry.s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}</div>
       <div style="font-size:12px;color:var(--light);text-align:right;line-height:1.6">
         ${entry.w}W ${entry.ti}T ${entry.l}L<br>
         <strong style="color:var(--dark)">${entry.pt > 0 ? '+' : ''}${entry.pt} pt</strong>
+        ${entry.s.gast ? '<br><span style="font-size:10px;color:var(--light)">telt niet mee</span>' : ''}
       </div>
     </div>
   `).join('');
@@ -1389,4 +1399,4 @@ async function annuleerToernooi() {
 
 // ============================================================
 
-export { renderToernooi, herlaadToernooien, selecteerToernooi, initToernooiSetup, toggleTSpelersLadder, toggleTRankingLadder, getToernooiSpelersPool, zoekToernooiSpeler, selecteerToernooiSpeler, sluitToernooiSpelerLijst, verwijderToernooiSpelerSelectie, voegGastspelerToe, renderTGeselecteerdeSpelers, toggleTSpeler, toggleHolesCustom, openFlightIndeling, renderFlightLijst, berekenFlightTijd, voegFlightToe, wijzigFlightStarttijd, wijzigFlightStarthole, verwijderFlight, wijzigFlightNaam, wijzigFlightHcp, verplaatsSpelerFlight, startToernooi, toggleToernooiMatrix, toonToernooiUitslag, openToernooiSpelersBeheer, zoekToernooiSpelerModal, selecteerToernooiSpelerModal, sluitToernooiSpelerModal, voegBestaandeSpelerToeAanToernooi, voegGastspelerToeAanToernooi, verwijderToernooiSpelerNieuw, openVerwijderToernooiSpeler, verwijderToernooiSpeler, alleScoresIngevuld, renderToernooiActief, renderTScorecard, refreshToernooiScorekaart, selecteerFlightTab, updateTScoreAndAdvance, updateTScore, updateTTotaalRijInline, editToernooiHcp, updateTTotalen, toggleTScorecard, getTHcpSlagen, berekenTPunten, renderTRanglijst, renderTMatrix, openToernooiAfsluiten, bevestigToernooiAfsluiten, annuleerToernooi };;
+export { alleScoresIngevuld, annuleerToernooi, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, initToernooiSetup, openFlightIndeling, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, startToernooi, toggleHolesCustom, toggleTRankingLadder, toggleTScorecard, toggleTSpeler, toggleTSpelersLadder, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpeler, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };;
