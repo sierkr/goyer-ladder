@@ -25,11 +25,16 @@ function initPartijForm() {
   const ladderSel = document.getElementById('partij-ladder-select');
   const isBeheerder = isCoordinatorRol();
   const gebruikersnaam = huidigeBruiker?.gebruikersnaam?.toLowerCase() || '';
+  const spelerId = huidigeBruiker?.spelerId;
 
   const mijnLadders = isBeheerder
     ? alleLadders
     : alleLadders.filter(l =>
-        (l.spelers || []).some(s => s.naam.toLowerCase() === gebruikersnaam)
+        (l.spelers || []).some(s =>
+          spelerId
+            ? String(s.id) === String(spelerId)
+            : s.naam.toLowerCase() === gebruikersnaam
+        )
       );
 
   ladderSel.innerHTML = mijnLadders.map(l =>
