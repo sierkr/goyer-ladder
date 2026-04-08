@@ -115,8 +115,18 @@ function vulKnockoutTegenstander(spelersNaam) {
 function getPartijLadderSpelers() {
   const ladderId = document.getElementById('partij-ladder-select')?.value || activeLadderId;
   const ladder = alleLadders.find(l => l.id === ladderId);
-  const ladderSpelers = ladder?.spelers || state.spelers;
-  return [...ladderSpelers].sort((a,b) => a.rank - b.rank);
+  const ladderSpelers = ladder?.spelers || state.spelers || [];
+
+  // Vul aan met spelers uit alleSpelersData die mogelijk ontbreken in de ladder cache
+  const bekende = new Set(ladderSpelers.map(s => String(s.id)));
+  const extra = alleSpelersData.filter(s => {
+    if (bekende.has(String(s.id))) return false;
+    // Controleer of speler in deze ladder zit via spelerIds
+    return (ladder?.spelerIds || []).includes(String(s.id)) ||
+           (ladder?.spelerIds || []).includes(s.id);
+  });
+
+  return [...ladderSpelers, ...extra].sort((a,b) => (a.rank || 999) - (b.rank || 999));
 }
 
 function herlaadPartijSpelers() {
