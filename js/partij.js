@@ -133,12 +133,12 @@ function herlaadPartijSpelers() {
   // Pre-select eigen naam in slot 1
   if (huidigeBruiker) {
     const spelers = getPartijLadderSpelers();
-    const zelf = spelers.find(s =>
-      s.naam.toLowerCase().includes(huidigeBruiker.gebruikersnaam.split(' ')[0].toLowerCase())
-    );
+    const gebruikersnaam = huidigeBruiker.gebruikersnaam?.toLowerCase() || '';
+    // Eerst exacte match op volledige naam, dan op voornaam
+    const zelf = spelers.find(s => s.naam.toLowerCase() === gebruikersnaam)
+      || spelers.find(s => s.naam.toLowerCase().split(' ')[0] === gebruikersnaam.split(' ')[0]);
     if (zelf) {
       selecteerPartijSpeler(1, zelf.id, zelf.naam, zelf.hcp);
-      // Knockout tegenstander auto-invullen
       vulKnockoutTegenstander(zelf.naam);
     }
   }
