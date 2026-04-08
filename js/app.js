@@ -112,6 +112,7 @@ window.saveNewUser = saveNewUser;
 window.removeUser = removeUser;
 window.verschuifRank = verschuifRank;
 window.resetData = resetData;
+window.koppelSpelerIds = koppelSpelerIds;
 window.closeModal = closeModal;
 window.openNieuwSeizoenModal = openNieuwSeizoenModal;
 window.bevestigNieuwSeizoen = bevestigNieuwSeizoen;

@@ -786,4 +786,41 @@ document.querySelectorAll('.modal-overlay').forEach(o => {
 
 // ============================================================
 
-export { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer, toggleHandmatigToevoegen, voegAccountToeAlsSpeler, saveNewPlayer, openEditPlayer, saveEditPlayer, removePlayer, renderProfiel, slaProfielHcpOp, sorteerUsers, renderAdminUsers, openEditUser, saveEditUser, openAddUser, saveNewUser, removeUser, verschuifRank, resetData, closeModal };;
+async function koppelSpelerIds() {
+  try {
+    const users = await getUsers(true);
+    const spelersLijst = alleSpelersData.length > 0 ? alleSpelersData : (state.spelers || []);
+    let gekoppeld = 0;
+    let niet_gevonden = [];
+
+    for (const user of users) {
+      if (user.spelerId) continue; // al gekoppeld
+
+      // Exacte naam match
+      const speler = spelersLijst.find(s =>
+        s.naam.toLowerCase() === (user.gebruikersnaam || '').toLowerCase()
+      );
+
+      if (speler) {
+        user.spelerId = speler.id;
+        gekoppeld++;
+      } else {
+        niet_gevonden.push(user.gebruikersnaam || user.email);
+      }
+    }
+
+    if (gekoppeld > 0) {
+      await saveUsers(users);
+    }
+
+    const msg = `✅ ${gekoppeld} account(s) gekoppeld.` +
+      (niet_gevonden.length > 0 ? `\n\nNiet gevonden: ${niet_gevonden.join(', ')}` : '');
+    alert(msg);
+    renderAdmin();
+  } catch(e) {
+    console.error('koppelSpelerIds mislukt:', e);
+    toast('Er is iets misgegaan');
+  }
+}
+
+export { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer, toggleHandmatigToevoegen, voegAccountToeAlsSpeler, saveNewPlayer, openEditPlayer, saveEditPlayer, removePlayer, renderProfiel, slaProfielHcpOp, sorteerUsers, renderAdminUsers, openEditUser, saveEditUser, openAddUser, saveNewUser, removeUser, verschuifRank, resetData, closeModal, koppelSpelerIds };;
