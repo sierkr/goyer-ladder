@@ -59,11 +59,19 @@ async function setIngelogd(firebaseUser) {
       if (gekoppeldeSpeler) besteNaam = gekoppeldeSpeler.naam;
     }
 
-    // Zoek gekoppeld speler-id via naam matching
+    // Zoek gekoppeld speler-id — eerst uit profiel, dan via naam
     const spelersLijst = alleSpelersData.length > 0 ? alleSpelersData : (state.spelers || []);
-    const gekoppeldeSpeler = spelersLijst.find(s =>
-      s.naam.toLowerCase() === besteNaam.toLowerCase()
-    );
+    const gekoppeldeSpeler = profiel.spelerId
+      ? spelersLijst.find(s => String(s.id) === String(profiel.spelerId))
+      : spelersLijst.find(s => s.naam.toLowerCase() === besteNaam.toLowerCase());
+
+    // Sla spelerId op in profiel als het er nog niet in zit
+    if (!profiel.spelerId && gekoppeldeSpeler) {
+      profiel.spelerId = gekoppeldeSpeler.id;
+      const users = await getUsers();
+      const idx = users.findIndex(u => u.uid === firebaseUser.uid || u.email?.toLowerCase() === firebaseUser.email?.toLowerCase());
+      if (idx >= 0) { users[idx].spelerId = gekoppeldeSpeler.id; await saveUsers(users); }
+    }
 
     store.huidigeBruiker = {
       uid: firebaseUser.uid,
@@ -609,7 +617,7 @@ async function registreerSpeler() {
     // Stap 2: Nu ingelogd — schrijf naar Firestore
     const users = await getUsers(true); // forceFresh bij registratie
     if (!users.some(u => u.email?.toLowerCase() === email.toLowerCase())) {
-      users.push({ naam, gebruikersnaam: naam, email, uid, rol: 'speler' });
+      users.push({ naam, gebruikersnaam: naam, email, uid, rol: 'speler', spelerId: newId });
       await saveUsers(users);
     }
 

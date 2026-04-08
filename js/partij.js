@@ -134,12 +134,17 @@ function herlaadPartijSpelers() {
   if (huidigeBruiker) {
     const spelers = getPartijLadderSpelers();
     const gebruikersnaam = huidigeBruiker.gebruikersnaam?.toLowerCase() || '';
-    // Gebruik spelerId als dat bekend is, anders val terug op exacte naam
-    const zelf = (huidigeBruiker.spelerId
-      ? spelers.find(s => String(s.id) === String(huidigeBruiker.spelerId))
-      : null)
-      || spelers.find(s => s.naam.toLowerCase() === gebruikersnaam);
+    const email = huidigeBruiker.email?.toLowerCase() || '';
+
+    // Zoek op spelerId, dan exacte naam, dan email prefix
+    const zelf = spelers.find(s => huidigeBruiker.spelerId && String(s.id) === String(huidigeBruiker.spelerId))
+      || spelers.find(s => s.naam.toLowerCase() === gebruikersnaam)
+      || spelers.find(s => email.startsWith(s.naam.toLowerCase().replace(/\s+/g, '.')))
+      || spelers.find(s => email.startsWith(s.naam.toLowerCase().replace(/\s+/g, '')));
+
     if (zelf) {
+      // Sla spelerId op als dat nog niet bekend was
+      if (!huidigeBruiker.spelerId) store.huidigeBruiker = { ...huidigeBruiker, spelerId: zelf.id };
       selecteerPartijSpeler(1, zelf.id, zelf.naam, zelf.hcp);
       vulKnockoutTegenstander(zelf.naam);
     }
