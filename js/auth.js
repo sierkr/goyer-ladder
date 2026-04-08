@@ -614,13 +614,6 @@ async function registreerSpeler() {
     const cred = await createUserWithEmailAndPassword(auth, email, pass);
     const uid = cred.user.uid;
 
-    // Stap 2: Nu ingelogd — schrijf naar Firestore
-    const users = await getUsers(true); // forceFresh bij registratie
-    if (!users.some(u => u.email?.toLowerCase() === email.toLowerCase())) {
-      users.push({ naam, gebruikersnaam: naam, email, uid, rol: 'speler', spelerId: newId });
-      await saveUsers(users);
-    }
-
     // Haal ID op uit de gekoppelde ladder
     const targetLadderId = window._inviteLadderId || 'mp';
     const ladderSnap = await getDoc(doc(db, 'ladders', targetLadderId));
@@ -628,6 +621,13 @@ async function registreerSpeler() {
     ladderData.spelers = ladderData.spelers || [];
     const newId = getNextId();
     const newRank = ladderData.spelers.length + 1;
+
+    // Stap 2: Nu ingelogd — schrijf naar Firestore
+    const users = await getUsers(true); // forceFresh bij registratie
+    if (!users.some(u => u.email?.toLowerCase() === email.toLowerCase())) {
+      users.push({ naam, gebruikersnaam: naam, email, uid, rol: 'speler', spelerId: newId });
+      await saveUsers(users);
+    }
 
     // Voeg toe aan ladder — controleer eerst op duplicaten
     const bestaatAl = ladderData.spelers.some(s => 
