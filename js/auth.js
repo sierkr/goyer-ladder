@@ -266,6 +266,16 @@ async function slaState() {
 // Initieel laden + live listener instellen
 async function initFirestore() {
   toonLaadOverlay(true);
+
+  // Toon loginscherm na 3 seconden als Firestore nog niet klaar is
+  const loginFallback = setTimeout(() => {
+    toonLaadOverlay(false);
+    const heeftInvite = new URLSearchParams(location.search).has('invite');
+    if (!heeftInvite && !huidigeBruiker) {
+      document.getElementById('login-scherm').classList.add('actief');
+    }
+  }, 3000);
+
   try {
     const [baanSnap, archiefSnap, uitdSnap, toernooiSnap, spelersSnap, volgordeSnap] = await Promise.all([
       getDoc(BANEN_DOC),
@@ -391,6 +401,9 @@ async function initFirestore() {
     console.error('Firestore init error:', e);
   }
 
+  // Firestore klaar — annuleer de login fallback timer
+  clearTimeout(loginFallback);
+
   // Live listener op actieve ladder
   if (store.activeLadderId) {
     _vasteListeners.push(onSnapshot(doc(db, 'ladders', store.activeLadderId), (snap) => {
@@ -436,6 +449,9 @@ async function initFirestore() {
   }));
 
   store._firestoreReady = true;
+
+  // Veiligheidsnet — overlay nooit langer dan 10 seconden tonen
+  setTimeout(() => toonLaadOverlay(false), 10000);
 
   // Start Auth listener nu Firestore data klaar is
   onAuthStateChanged(auth, async (user) => {
@@ -753,6 +769,27 @@ async function laadUitdagingen() {
 //  EXPORTS
 // ============================================================
 // initApp = entry point voor app.js
-function initApp() { initFirestore(); }
+function initApp() {
+  // Retry initFirestore bij mislukking (max 3x met toenemende wachttijd)
+  let retries = 0;
+  async function tryInit() {
+    try {
+      await initFirestore();
+    } catch(e) {
+      retries++;
+      console.warn(`initFirestore poging ${retries} mislukt:`, e);
+      if (retries < 3) {
+        const wacht = retries * 2000;
+        console.log(`Opnieuw proberen in ${wacht}ms...`);
+        setTimeout(tryInit, wacht);
+      } else {
+        console.error('initFirestore definitief mislukt na 3 pogingen');
+        toonLaadOverlay(false);
+        toonLoginFout('Verbindingsfout — ververs de pagina om opnieuw te proberen');
+      }
+    }
+  }
+  tryInit();
+}
 
 export { initApp, initFirestore, setIngelogd, vervolgIngelogd, uitloggen, loginSubmit, loginMetGoogle, openWachtwoordVergeten, sluitResetWrap, stuurResetEmail, openWachtwoordWijzigen, wijzigWachtwoord, slaState, wisselLadder, toonLaadOverlay, getUsers, saveUsers, getLadderData, getLadderConfig, updateSiteTitel, toonLoginFout, genereerInviteLink, kopieerInviteLink, checkInviteLink, registreerSpeler, laadInviteStatus, autoAdvance, getNextId, isCoordinatorRol, isBeheerderRol, toast, registreerNotificatieToken, laadUitdagingen };;
