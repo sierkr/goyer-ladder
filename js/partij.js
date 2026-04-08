@@ -168,9 +168,20 @@ function voegGastSpelerToeAanPartij() {
   if (hcpStr === null) return;
   const hcp = parseFloat(hcpStr) || 0;
   const gastId = 90000 + Math.floor(Math.random() * 9999);
-  addPlayerSlot();
-  const n = store.playerSlotCount;
-  selecteerPartijSpeler(n, gastId, naam.trim(), hcp);
+
+  // Zoek eerst een leeg slot op
+  let leegSlot = null;
+  for (let i = 1; i <= store.playerSlotCount; i++) {
+    const slot = document.getElementById('slot-' + i);
+    if (slot && !slot.dataset.spelerId) { leegSlot = i; break; }
+  }
+
+  if (leegSlot) {
+    selecteerPartijSpeler(leegSlot, gastId, naam.trim(), hcp);
+  } else {
+    addPlayerSlot();
+    selecteerPartijSpeler(store.playerSlotCount, gastId, naam.trim(), hcp);
+  }
 }
 
 function addPlayerSlot() {
@@ -391,7 +402,8 @@ async function startPartij() {
     const spelerId = slot.dataset.spelerId;
     if (!spelerId) continue;
     const speler = partijLadderSpelers.find(s => String(s.id) === String(spelerId))
-      || alleSpelersData.find(s => String(s.id) === String(spelerId));
+      || alleSpelersData.find(s => String(s.id) === String(spelerId))
+      || (parseInt(spelerId) >= 90000 ? { id: parseInt(spelerId), naam: document.getElementById('player-' + i)?.value || 'Gast', hcp: parseFloat(hcpEl?.value) || 0, gast: true } : null);
     if (!speler) continue;
     const partijHcp = Math.round(parseFloat(hcpEl?.value));
     if (!isNaN(partijHcp) && partijHcp !== speler.hcp) {
