@@ -136,14 +136,17 @@ function herlaadPartijSpelers() {
     const gebruikersnaam = huidigeBruiker.gebruikersnaam?.toLowerCase() || '';
     const email = huidigeBruiker.email?.toLowerCase() || '';
 
+    console.log('Pre-select debug:', { spelerId: huidigeBruiker.spelerId, gebruikersnaam, email, spelers: spelers.map(s => ({id: s.id, naam: s.naam})) });
+
     // Zoek op spelerId, dan exacte naam, dan email prefix
     const zelf = spelers.find(s => huidigeBruiker.spelerId && String(s.id) === String(huidigeBruiker.spelerId))
       || spelers.find(s => s.naam.toLowerCase() === gebruikersnaam)
       || spelers.find(s => email.startsWith(s.naam.toLowerCase().replace(/\s+/g, '.')))
       || spelers.find(s => email.startsWith(s.naam.toLowerCase().replace(/\s+/g, '')));
 
+    console.log('Pre-select zelf:', zelf);
+
     if (zelf) {
-      // Sla spelerId op als dat nog niet bekend was
       if (!huidigeBruiker.spelerId) store.huidigeBruiker = { ...huidigeBruiker, spelerId: zelf.id };
       selecteerPartijSpeler(1, zelf.id, zelf.naam, zelf.hcp);
       vulKnockoutTegenstander(zelf.naam);
