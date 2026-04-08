@@ -622,8 +622,22 @@ async function registreerSpeler() {
 
     store._bezigMetRegistratie = false;
     document.getElementById('reg-formulier').style.display = 'none';
-    succes.innerHTML = `<strong>Welkom ${voornaam}!</strong> Je bent succesvol geregistreerd en staat nu in de <strong>${ladderNaam}</strong> ladder.<br><br>
-      <a href="${location.origin}${location.pathname}" style="color:var(--green);font-weight:600">Klik hier om in te loggen →</a>`;
+    succes.innerHTML = `
+      <strong style="font-size:18px">Welkom ${voornaam}! 🎉</strong><br><br>
+      Je bent succesvol geregistreerd en staat nu in de <strong>${ladderNaam}</strong> ladder.<br><br>
+
+      <div style="background:#f0f7f4;border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
+        <strong>📱 App op je homescreen zetten (aanbevolen)</strong><br><br>
+        <strong>iPhone/iPad (Safari):</strong><br>
+        Tik op het deel-icoon <span style="font-size:15px">⎙</span> onderin → "Zet op beginscherm" → "Voeg toe"<br><br>
+        <strong>Android (Chrome):</strong><br>
+        Tik op de drie puntjes ⋮ rechtsboven → "Toevoegen aan startscherm"<br><br>
+        Daarna heb je de app als icoon op je telefoon, zonder adresbalk.
+      </div>
+
+      <a href="${location.origin}${location.pathname}" style="display:block;text-align:center;background:var(--green);color:white;padding:12px;border-radius:8px;font-weight:600;text-decoration:none">
+        Inloggen →
+      </a>`;
     succes.style.display = 'block';
 
     // Tel gebruik van uitnodigingslink
