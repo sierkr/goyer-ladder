@@ -81,7 +81,7 @@ function toonScorekaartModal(data) {
     data.matchups.forEach(m => {
       html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
         <span>${m.a} vs ${m.b}</span>
-        <span class="badge badge-green">⛳ ${m.winnaar.split(' ')[0]}</span>
+        <span class="badge badge-green">⛳ ${m.winnaar}</span>
       </div>`;
     });
     html += '</div>';
@@ -145,7 +145,7 @@ function renderUitslagen() {
       ${u.matchups.map(m => `
         <div style="display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:4px">
           <span>${m.a} vs ${m.b}</span>
-          <span class="badge badge-green">⛳ ${m.winnaar.split(' ')[0]}</span>
+          <span class="badge badge-green">⛳ ${m.winnaar}</span>
         </div>`).join('')}
       ${heeftScorekaart && !ouderDan30Dagen ? `<button class="btn btn-sm btn-ghost" onclick="openScorekaartDetail(${JSON.stringify(u).replace(/"/g,'&quot;')})" style="margin-top:8px">📋 Scorekaart</button>` : ''}
     </div>`;
