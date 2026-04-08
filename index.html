@@ -5,10 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Goyer Golf MP Ladder">
+<meta name="apple-mobile-web-app-title" content="MP Ladder">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#2d6a4f" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#1a3d2a" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#2d6a4f">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
 <title>Goyer Golf MP Ladder</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -1517,6 +1518,14 @@
 
 <script type="module">
   import './js/app.js';
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .catch(err => console.warn('SW registratie mislukt:', err));
+    });
+  }
 </script>
 </body>
 </html>
