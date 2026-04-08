@@ -1,5 +1,5 @@
 // ============================================================
-//  app.js — Entry point v2.4.3
+//  app.js — Entry point v2.4.4
 // ============================================================
 import { initApp, uitloggen, loginSubmit, loginMetGoogle,
   openWachtwoordVergeten, sluitResetWrap, stuurResetEmail,
@@ -25,7 +25,7 @@ import { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer,
   openEditPlayer, saveEditPlayer, removePlayer, renderProfiel,
   slaProfielHcpOp, renderAdminUsers, openEditUser, saveEditUser,
   openAddUser, saveNewUser, removeUser, verschuifRank, resetData,
-  closeModal } from './admin.js';
+  closeModal, koppelSpelerIds } from './admin.js';
 import { renderArchief, openArchiefDetail, openNieuwSeizoenModal,
   bevestigNieuwSeizoen, stuurUitdaging, reageerUitdaging,
   verwijderUitdaging, openToernooiDetail, toonUitdagingBadge,
@@ -184,7 +184,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v2.4.3';
+  const VERSION = 'v2.4.4';
   const badge = document.getElementById('versie-badge');
   if (badge) { badge.textContent = VERSION; badge.style.display = ''; }
   document.querySelectorAll('.login-versie').forEach(el => el.textContent = VERSION);
