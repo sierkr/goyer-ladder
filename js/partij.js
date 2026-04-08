@@ -537,7 +537,7 @@ function kortNaam(speler, alleSpelers) {
   const naamZonderVoornaam = [tussenvoegsel, achternaam].filter(Boolean).join(' '); // "van der Veen"
 
   // Geen duplicaten: alleen voornaam
-  const duplicaten = alleSpelers.filter(s => s.id !== speler.id && s.naam.trim().split(/\s+/)[0] === voornaam);
+  const duplicaten = alleSpelers.filter(s => s.id !== speler.id && s.naam.trim().split(/\s+/)[0].toLowerCase() === voornaam.toLowerCase());
   if (duplicaten.length === 0) return voornaam;
 
   // Bouw vergelijkbare naamZonderVoornaam voor duplicaten
