@@ -794,8 +794,6 @@ async function koppelSpelerIds() {
     let niet_gevonden = [];
     let al_gekoppeld = [];
 
-    console.log('koppelSpelerIds: users:', users.map(u => ({ naam: u.gebruikersnaam, spelerId: u.spelerId })));
-    console.log('koppelSpelerIds: spelers:', spelersLijst.map(s => ({ id: s.id, naam: s.naam })));
 
     for (const user of users) {
       // Controleer of het huidige spelerId geldig is
@@ -810,10 +808,8 @@ async function koppelSpelerIds() {
       if (speler) {
         user.spelerId = speler.id;
         gekoppeld++;
-        console.log(`Gekoppeld: ${user.gebruikersnaam} → id ${speler.id}`);
       } else {
         niet_gevonden.push(`${user.gebruikersnaam} (spelerId was: ${user.spelerId})`);
-        console.log(`Niet gevonden: ${user.gebruikersnaam}`);
       }
     }
 

@@ -77,11 +77,9 @@ function initPartijForm() {
     const spelerId = huidigeBruiker.spelerId;
     const gebruikersnaam = huidigeBruiker.gebruikersnaam?.toLowerCase().trim() || '';
     const ladderSpelers = getPartijLadderSpelers();
-    console.log('initPartijForm pre-select:', { spelerId, gebruikersnaam, ladderSpelers: ladderSpelers.map(s => ({id: s.id, naam: s.naam})) });
     const gekoppeld = spelerId
       ? ladderSpelers.find(s => String(s.id) === String(spelerId))
       : ladderSpelers.find(s => s.naam.toLowerCase().trim() === gebruikersnaam);
-    console.log('initPartijForm gevonden:', gekoppeld);
     if (gekoppeld) {
       selecteerPartijSpeler(1, gekoppeld.id, gekoppeld.naam, gekoppeld.hcp);
       vulKnockoutTegenstander(gekoppeld.naam);
@@ -135,17 +133,10 @@ function herlaadPartijSpelers() {
   if (huidigeBruiker) {
     const spelers = getPartijLadderSpelers();
     const gebruikersnaam = huidigeBruiker.gebruikersnaam?.toLowerCase() || '';
-    const email = huidigeBruiker.email?.toLowerCase() || '';
 
-    console.log('Pre-select debug:', { spelerId: huidigeBruiker.spelerId, gebruikersnaam, email, spelers: spelers.map(s => ({id: s.id, naam: s.naam})) });
-
-    // Zoek op spelerId, dan exacte naam, dan email prefix
+    // Zoek op spelerId, dan exacte naam
     const zelf = spelers.find(s => huidigeBruiker.spelerId && String(s.id) === String(huidigeBruiker.spelerId))
-      || spelers.find(s => s.naam.toLowerCase() === gebruikersnaam)
-      || spelers.find(s => email.startsWith(s.naam.toLowerCase().replace(/\s+/g, '.')))
-      || spelers.find(s => email.startsWith(s.naam.toLowerCase().replace(/\s+/g, '')));
-
-    console.log('Pre-select zelf:', zelf);
+      || spelers.find(s => s.naam.toLowerCase() === gebruikersnaam);
 
     if (zelf) {
       if (!huidigeBruiker.spelerId) store.huidigeBruiker = { ...huidigeBruiker, spelerId: zelf.id };
