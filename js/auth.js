@@ -267,10 +267,16 @@ async function slaState() {
 async function initFirestore() {
   toonLaadOverlay(true);
 
+  // Als er een uitnodigingslink is — toon registratiescherm meteen
+  const heeftInvite = new URLSearchParams(location.search).has('invite');
+  if (heeftInvite) {
+    toonLaadOverlay(false);
+    checkInviteLink(); // niet awaiten — loopt op achtergrond
+  }
+
   // Toon loginscherm na 3 seconden als Firestore nog niet klaar is
   const loginFallback = setTimeout(() => {
     toonLaadOverlay(false);
-    const heeftInvite = new URLSearchParams(location.search).has('invite');
     if (!heeftInvite && !huidigeBruiker) {
       document.getElementById('login-scherm').classList.add('actief');
     }
@@ -528,17 +534,16 @@ async function checkInviteLink() {
   const token = params.get('invite');
   const ladderId = params.get('ladder') || 'mp';
   if (!token) return;
+
+  // Toon registratiescherm meteen — valideer token op achtergrond
   document.getElementById('login-scherm').classList.remove('actief');
   document.getElementById('registratie-scherm').style.display = 'block';
-  // Sla ladderId op voor gebruik bij registratie
   window._inviteLadderId = ladderId;
+
   // Valideer token — probeer per-ladder invite en fallback naar globale invite
   let geldig = false;
   try {
     const snapLadder = await getDoc(doc(db, 'ladder', `invite_${ladderId}`));
-    if (snapLadder.exists()) {
-      const data = snapLadder.data();
-    }
     if (snapLadder.exists() && snapLadder.data().token === token && snapLadder.data().verloopt > Date.now()) {
       geldig = true;
     } else {
@@ -548,6 +553,7 @@ async function checkInviteLink() {
       }
     }
   } catch(e) { console.error('Invite check fout:', e); }
+
   if (!geldig) {
     document.getElementById('reg-formulier').style.display = 'none';
     const fout = document.getElementById('reg-fout');
