@@ -87,7 +87,7 @@ function renderScorecard() {
         min="1" max="12"
         tabindex="${tabIdx}"
         value="${val !== null ? val : ''}"
-        onfocus="this.select()" oninput="updateScore(${s.id},${holeIdx},this.value);if(this.value.length>0)autoAdvance(this)"
+        onfocus="this.select();setTimeout(()=>this.scrollIntoView({behavior:'smooth',block:'center'}),300)" oninput="updateScore(${s.id},${holeIdx},this.value);if(this.value.length>0)autoAdvance(this)"
         style="width:38px;padding:3px;text-align:center;font-size:13px;font-family:'DM Mono',monospace;border:1.5px solid #e0ddd4;border-radius:5px"
       ></td>`;
     });
@@ -363,11 +363,13 @@ function openUitslagModal() {
     const nB = naamMap[m.spelerB.id];
     let winnaar = standA > 0 ? 'A' : standA < 0 ? 'B' : null;
 
+    const heeftGast = m.spelerA.id >= 90000 || m.spelerB.id >= 90000;
     html += `<div id="matchup-row-${idx}" style="padding:12px 0;border-bottom:1px solid #f0ede4">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <span style="font-weight:600">${m.spelerA.naam} vs ${m.spelerB.naam}</span>
         <button onclick="skipMatchup(${idx})" id="skip-${idx}" class="btn btn-sm btn-ghost" style="color:var(--red);border-color:#f5c6cb;font-size:11px;padding:4px 8px" title="Matchup overslaan">✕ overslaan</button>
-      </div>`;
+      </div>
+      ${heeftGast ? `<p style="font-size:11px;color:var(--light);font-style:italic;margin-bottom:6px">⚠️ Gastspeler — telt niet mee voor ladderstand</p>` : ''}`;
 
     if (gespeeld === 0 || standA === 0) {
       const label = gespeeld === 0 ? 'Geen scores — kies de winnaar of sla over' : `⚡ Gelijkspel (${gespeeld} holes) — kies de winnaar`;
@@ -491,6 +493,11 @@ async function bevestigUitslag() {
     const sw = state.spelers.find(s => s.id === winnaar.id);
     const sv = state.spelers.find(s => s.id === verliezer.id);
 
+    // Gastspelers of spelers niet in ladder — niet verwerken in ladderstand
+    const heeftGast = winnaar.id >= 90000 || verliezer.id >= 90000 ||
+                      !state.spelers.find(s => s.id === winnaar.id) ||
+                      !state.spelers.find(s => s.id === verliezer.id);
+    if (heeftGast || !sw || !sv) return;
     const oldWrank = sw.rank;
     const oldVrank = sv.rank;
 
