@@ -739,6 +739,14 @@ function alleScoresIngevuld(t) {
   );
 }
 
+function gaNaarLadderTab() {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-ladder').classList.add('active');
+  document.querySelector('nav button').classList.add('active');
+  renderLadder();
+}
+
 function gaNaarToernooiOverzicht() {
   store.actieveToernooiId = null;
   store.toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
@@ -775,7 +783,7 @@ function renderToernooiActief() {
         <h2>${t.naam}</h2>
         <div style="display:flex;align-items:center;gap:8px">
           <span class="badge badge-gold">${uitslag ? 'Uitslag' : 'Bezig'}</span>
-          ${alleToernooien.length > 1 ? `<button class="btn btn-sm btn-ghost" onclick="gaNaarToernooiOverzicht()" style="font-size:12px">← Overzicht</button>` : ''}
+          <button class="btn btn-sm btn-ghost" onclick="gaNaarLadderTab()" style="font-size:12px">← Ladder</button>
         </div>
       </div>
       <div class="card-body" style="padding:10px 16px;font-size:13px;color:var(--mid)">
@@ -1399,4 +1407,4 @@ async function annuleerToernooi() {
 
 // ============================================================
 
-export { alleScoresIngevuld, annuleerToernooi, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, initToernooiSetup, openFlightIndeling, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, startToernooi, toggleHolesCustom, toggleTRankingLadder, toggleTScorecard, toggleTSpeler, toggleTSpelersLadder, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpeler, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };;
+export { alleScoresIngevuld, annuleerToernooi, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarLadderTab, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, initToernooiSetup, openFlightIndeling, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, startToernooi, toggleHolesCustom, toggleTRankingLadder, toggleTScorecard, toggleTSpeler, toggleTSpelersLadder, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpeler, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };;

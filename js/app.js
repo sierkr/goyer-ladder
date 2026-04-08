@@ -1,5 +1,5 @@
 // ============================================================
-//  app.js — Entry point v2.3.0
+//  app.js — Entry point v2.3.2
 // ============================================================
 import { initApp, uitloggen, loginSubmit, loginMetGoogle,
   openWachtwoordVergeten, sluitResetWrap, stuurResetEmail,
@@ -30,7 +30,7 @@ import { renderArchief, openArchiefDetail, openNieuwSeizoenModal,
   bevestigNieuwSeizoen, stuurUitdaging, reageerUitdaging,
   verwijderUitdaging, openToernooiDetail, toonUitdagingBadge,
   verwijderOudeUitslagen } from './archief.js';
-import { renderToernooi, herlaadToernooien, selecteerToernooi, gaNaarToernooiOverzicht,
+import { renderToernooi, herlaadToernooien, selecteerToernooi, gaNaarToernooiOverzicht, gaNaarLadderTab,
   initToernooiSetup, zoekToernooiSpeler, selecteerToernooiSpeler,
   sluitToernooiSpelerLijst, verwijderToernooiSpelerSelectie,
   voegGastspelerToe, toggleTSpeler, toggleHolesCustom,
@@ -156,6 +156,7 @@ window.openToernooiAfsluiten = openToernooiAfsluiten;
 window.bevestigToernooiAfsluiten = bevestigToernooiAfsluiten;
 window.annuleerToernooi = annuleerToernooi;
 window.gaNaarToernooiOverzicht = gaNaarToernooiOverzicht;
+window.gaNaarLadderTab = gaNaarLadderTab;
 window.openStandAanpassen = openStandAanpassen;
 window.verschuifStand = verschuifStand;
 window.slaStandOp = slaStandOp;
@@ -183,9 +184,9 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 document.addEventListener('DOMContentLoaded', () => {
   const badge = document.getElementById('versie-badge');
-  if (badge) { badge.textContent = 'v2.3.0'; badge.style.display = ''; }
+  if (badge) { badge.textContent = 'v2.3.2'; badge.style.display = ''; }
   const loginBadge = document.querySelector('[style*="top:10px"][style*="right:10px"]');
-  if (loginBadge) loginBadge.textContent = 'v2.3.0';
+  if (loginBadge) loginBadge.textContent = 'v2.3.2';
 });
 
 window.openScorekaartDetail = openScorekaartDetail;

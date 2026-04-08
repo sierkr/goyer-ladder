@@ -329,30 +329,56 @@ async function saveEditPlayer() {
 async function removePlayer(id) {
 
   try {
-  if (!confirm('Speler verwijderen uit alle ladders?')) return;
-  // Verwijder uit master spelerslijst
+  if (!confirm('Speler verwijderen uit alle ladders?\n\nOok het account wordt verwijderd uit de gebruikerslijst. Het Firebase inlogaccount moet je nog handmatig verwijderen in de Firebase Console.')) return;
+
+  // Zoek speler info voor account koppeling
+  const speler = alleSpelersData.find(s => s.id === id);
+
+  // 1. Verwijder uit master spelerslijst
   store.alleSpelersData = alleSpelersData.filter(s => s.id !== id);
   await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
-  // Verwijder uit actieve ladder
+
+  // 2. Verwijder account uit ladder/users
+  const users = await getUsers(true);
+  const userIdx = users.findIndex(u =>
+    u.gebruikersnaam?.toLowerCase() === speler?.naam?.toLowerCase() ||
+    (u.uid && alleSpelersData.find(s => s.id === id)?.uid === u.uid)
+  );
+  if (userIdx >= 0) {
+    users.splice(userIdx, 1);
+    await saveUsers(users);
+  }
+
+  // 3. Verwijder uit actieve ladder + ruim actieve partijen op
   state.spelers = state.spelers.filter(s => s.id !== id);
   state.spelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
+  state.actievePartijen = (state.actievePartijen || []).filter(p =>
+    !p.spelers?.some(s => s.id === id)
+  );
   await slaState();
-  // Verwijder ook uit andere ladders
+
+  // 4. Verwijder ook uit andere ladders + ruim actieve partijen op
   for (const ladder of alleLadders) {
     if (ladder.id === activeLadderId) continue;
     const snap = await getDoc(doc(db, 'ladders', ladder.id));
     if (!snap.exists()) continue;
     const data = snap.data();
-    if ((data.spelers || []).find(s => s.id === id)) {
-      data.spelers = data.spelers.filter(s => s.id !== id);
+    const inLadder = (data.spelers || []).find(s => s.id === id);
+    const heeftPartij = (data.actievePartijen || []).some(p => p.spelers?.some(s => s.id === id));
+    if (inLadder || heeftPartij) {
+      data.spelers = (data.spelers || []).filter(s => s.id !== id);
       data.spelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
       data.spelerIds = (data.spelerIds || []).filter(sid => sid !== id);
+      data.actievePartijen = (data.actievePartijen || []).filter(p =>
+        !p.spelers?.some(s => s.id === id)
+      );
       await setDoc(doc(db, 'ladders', ladder.id), data);
       ladder.spelers = data.spelers;
     }
   }
+
   renderAdmin();
-  toast('Speler verwijderd uit alle ladders');
+  toast(`${speler?.naam || 'Speler'} verwijderd ✓ — verwijder het Firebase inlogaccount nog handmatig`);
   } catch(e) { console.error('removePlayer mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
