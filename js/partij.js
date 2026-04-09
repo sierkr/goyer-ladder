@@ -440,7 +440,7 @@ async function startPartij() {
   const bezet = spelers.find(s =>
     state.actievePartijen.some(p => p.ladderId === partijLadderId && p.spelers.some(ps => ps.id === s.id))
   );
-  if (bezet) { toast(`${bezet.naam.split(' ')[0]} speelt al een actieve partij in deze ladder`); return; }
+  if (bezet) { toast(`${bezet.naam} speelt al een actieve partij in deze ladder`); return; }
 
   // Baan holes
   let holes = [];
