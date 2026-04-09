@@ -983,6 +983,10 @@
         <option value="beheerder">Beheerder</option>
       </select>
     </div>
+    <div class="form-group">
+      <label>Ladder toewijzen</label>
+      <div id="new-user-ladders" style="display:flex;flex-direction:column;gap:6px;margin-top:4px"></div>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-add-user')">Annuleren</button>
       <button class="btn btn-primary" style="flex:2" onclick="saveNewUser()">Account aanmaken</button>
@@ -1542,10 +1546,14 @@
         <label>Tijdelijk wachtwoord</label>
         <input type="password" id="new-player-pass" placeholder="minimaal 6 tekens">
       </div>
+      <div class="form-group">
+        <label>Ladder toewijzen</label>
+        <div id="new-player-ladders" style="display:flex;flex-direction:column;gap:6px;margin-top:4px"></div>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-add-player')">Annuleren</button>
-      <button class="btn btn-primary" style="flex:2" id="add-player-save-btn" onclick="saveNewPlayer()" style="display:none">Opslaan</button>
+      <button class="btn btn-primary" style="flex:2" id="add-player-save-btn" onclick="saveNewPlayer()">Opslaan</button>
     </div>
   </div>
 </div>

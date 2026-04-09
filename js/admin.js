@@ -112,6 +112,48 @@ async function renderAdminSpelersEnAccounts() {
     : [...rijen, ...extraRijen].join('');
 }
 
+
+// Vul ladder checkboxes in een container
+function renderLadderCheckboxes(containerId) {
+  const wrap = document.getElementById(containerId);
+  if (!wrap) return;
+  if (alleLadders.length === 0) {
+    wrap.innerHTML = '<span style="font-size:13px;color:var(--light)">Geen ladders beschikbaar</span>';
+    return;
+  }
+  wrap.innerHTML = alleLadders
+    .filter(l => (l.data?.type || l.type) !== 'knockout')
+    .map(l => `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+      <input type="checkbox" value="${l.id}" style="width:16px;height:16px;cursor:pointer">
+      ${l.naam}
+    </label>`).join('');
+}
+
+// Lees geselecteerde ladder IDs uit een container
+function getGeselecteerdeLadders(containerId) {
+  const wrap = document.getElementById(containerId);
+  if (!wrap) return [];
+  return Array.from(wrap.querySelectorAll('input[type=checkbox]:checked')).map(cb => cb.value);
+}
+
+// Voeg speler toe aan geselecteerde ladders
+async function voegSpelerToeAanLadders(ladderIds, speler) {
+  for (const ladderId of ladderIds) {
+    const ladder = alleLadders.find(l => l.id === ladderId);
+    const snap = await getDoc(doc(db, 'ladders', ladderId));
+    if (!snap.exists()) continue;
+    const data = snap.data();
+    const spelers = data.spelers || [];
+    if (spelers.find(s => s.id === speler.id)) continue; // al in ladder
+    const maxRank = spelers.length > 0 ? Math.max(...spelers.map(s => s.rank)) : 0;
+    spelers.push({ ...speler, rank: maxRank + 1, partijen: 0, gewonnen: 0 });
+    await setDoc(doc(db, 'ladders', ladderId), { ...data, spelers });
+    // Update cache
+    const idx = alleLadders.findIndex(l => l.id === ladderId);
+    if (idx >= 0) { alleLadders[idx].spelers = spelers; if (alleLadders[idx].data) alleLadders[idx].data.spelers = spelers; }
+  }
+}
+
 async function openAddPlayer() {
   // Reset
   document.getElementById('new-player-name').value = '';
@@ -149,6 +191,7 @@ async function openAddPlayer() {
     document.getElementById('add-player-accounts-lijst').innerHTML = '<p style="font-size:13px;color:var(--red)">Fout bij laden accounts.</p>';
   }
 
+  renderLadderCheckboxes('new-player-ladders');
   document.getElementById('modal-add-player').classList.add('open');
 }
 
@@ -213,20 +256,29 @@ async function saveNewPlayer() {
       throw authErr;
     }
 
-    // Voeg alleen toe aan master spelerslijst, niet aan een specifieke ladder
+    // Voeg toe aan master spelerslijst
     const newId = getNextId();
-    alleSpelersData.push({ id: newId, naam, hcp });
+    const nieuweSpeler = { id: newId, naam, hcp };
+    alleSpelersData.push(nieuweSpeler);
     await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
-    // Sla nextId op
     await slaState();
 
     // Voeg account toe aan users lijst
-    users.push({ uid, email, gebruikersnaam: naam, rol: 'speler' });
+    users.push({ uid, email, gebruikersnaam: naam, rol: 'speler', spelerId: newId });
     await saveUsers(sorteerUsers(users));
+
+    // Voeg toe aan geselecteerde ladders
+    const geselecteerdeLadders = getGeselecteerdeLadders('new-player-ladders');
+    if (geselecteerdeLadders.length > 0) {
+      await voegSpelerToeAanLadders(geselecteerdeLadders, nieuweSpeler);
+    }
 
     closeModal('modal-add-player');
     renderAdmin();
-    toast(`${naam} toegevoegd aan spelersbeheer ✓ — voeg hem toe aan een ladder via Ladders beheren`);
+    const ladderTekst = geselecteerdeLadders.length > 0
+      ? ` en toegevoegd aan ${geselecteerdeLadders.length} ladder(s)`
+      : ' — voeg hem toe aan een ladder via Ladders beheren';
+    toast(`${naam} aangemaakt${ladderTekst} ✓`);
   } catch(e) {
     console.error('saveNewPlayer error:', e);
     toast('Fout bij opslaan: ' + e.message);
@@ -658,6 +710,7 @@ function openAddUser() {
   document.getElementById('new-user-name').value = '';
   document.getElementById('new-user-pass').value = '';
   document.getElementById('new-user-rol').value = 'speler';
+  renderLadderCheckboxes('new-user-ladders');
   document.getElementById('modal-add-user').classList.add('open');
 }
 
@@ -692,6 +745,17 @@ async function saveNewUser() {
     const gebruikersnaam = email.split('@')[0].replace(/[^a-z0-9 ]/g, '');
     users.push({ uid, email, gebruikersnaam, rol });
     await saveUsers(sorteerUsers(users));
+    // Voeg toe aan geselecteerde ladders als speler
+    const geselecteerdeLadders = getGeselecteerdeLadders('new-user-ladders');
+    if (geselecteerdeLadders.length > 0) {
+      const newId = getNextId();
+      const nieuweSpeler = { id: newId, naam: gebruikersnaam, hcp: 0 };
+      alleSpelersData.push(nieuweSpeler);
+      await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+      await slaState();
+      await voegSpelerToeAanLadders(geselecteerdeLadders, nieuweSpeler);
+    }
+
     closeModal('modal-add-user');
     renderAdmin();
     toast('Account aangemaakt ✓');
