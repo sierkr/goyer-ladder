@@ -68,7 +68,7 @@ function renderScorecard() {
 
   p.holes.forEach((h, holeIdx) => {
     bodyHtml += `<tr>
-      <td style="padding:4px 4px 4px 2px;font-family:'DM Mono',monospace;white-space:nowrap;min-width:40px">
+      <td style="padding:4px 8px 4px 8px;font-family:'DM Mono',monospace;white-space:nowrap;min-width:44px">
         <div style="display:flex;align-items:center;gap:3px">
           <span style="font-weight:700;font-size:15px;line-height:1">${((p.startHole - 1 + holeIdx) % 18) + 1}</span>
           <div style="display:flex;flex-direction:column;line-height:1.2">
