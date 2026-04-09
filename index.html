@@ -1592,7 +1592,8 @@
             const newWorker = reg.installing;
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // Nieuwe SW klaar — toon banner alleen voor beheerder
+                // Sla update op als vlag — toon banner zodra beheerder inlogt
+                window._swUpdateBeschikbaar = true;
                 if (window._isBeheerder) {
                   const banner = document.getElementById('update-banner');
                   if (banner) banner.style.display = 'flex';
@@ -1603,8 +1604,9 @@
         })
         .catch(err => console.warn('SW registratie mislukt:', err));
 
-      // Luister ook naar controller change (SW al geïnstalleerd)
+      // Luister ook naar controller change
       navigator.serviceWorker.addEventListener('controllerchange', () => {
+        window._swUpdateBeschikbaar = true;
         if (window._isBeheerder) {
           const banner = document.getElementById('update-banner');
           if (banner) banner.style.display = 'flex';
