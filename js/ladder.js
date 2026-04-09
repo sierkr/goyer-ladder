@@ -90,7 +90,10 @@ async function renderLadder() {
 
     return `<div class="card" style="margin-bottom:16px">
       <div class="card-header inklapbaar" onclick="toggleLadderKaart(this,'${l.id}')">
-        <h2>Ladderstand ${l.naam}</h2>
+        <div style="display:flex;align-items:center;gap:10px;min-width:0">
+          <button onclick="event.stopPropagation();deelLadderAlsAfbeelding('${l.id}')" style="background:none;border:none;cursor:pointer;font-size:20px;padding:0;flex-shrink:0" title="Deel als afbeelding">📤</button>
+          <h2 style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Ladderstand ${l.naam}</h2>
+        </div>
         <span class="badge badge-green">${spelers.length} spelers</span>
       </div>
       <div class="card-collapse" id="ladder-collapse-${l.id}">
@@ -146,3 +149,130 @@ function renderLadderRij(s, ladderId) {
 // ============================================================
 
 export { renderLadder, toggleLadderKaart, renderLadderRij };;
+
+// ============================================================
+//  DEEL ALS AFBEELDING — WhatsApp stijl
+// ============================================================
+async function deelLadderAlsAfbeelding(ladderId) {
+  // Haal spelers op
+  const ladder = alleLadders.find(l => l.id === ladderId);
+  const data = ladderId === activeLadderId ? state : ladder?.data;
+  if (!data) { toast('Ladder data niet beschikbaar'); return; }
+
+  const spelers = [...(data.spelers || [])].sort((a, b) => a.rank - b.rank);
+  if (spelers.length === 0) { toast('Geen spelers om te delen'); return; }
+
+  const naam = ladder?.naam || 'Ladder';
+  const datum = new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+
+  // Canvas instellingen
+  const colW = 280;
+  const rowH = 28;
+  const headerH = 80;
+  const padding = 12;
+  const helft = Math.ceil(spelers.length / 2);
+  const rows = helft;
+  const canvasW = colW * 2 + padding * 3;
+  const canvasH = headerH + rows * rowH + padding * 2;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = canvasW * 2; // retina
+  canvas.height = canvasH * 2;
+  canvas.style.width = canvasW + 'px';
+  canvas.style.height = canvasH + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(2, 2); // retina
+
+  // Achtergrond geel
+  ctx.fillStyle = '#FFE600';
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  // Header
+  ctx.fillStyle = '#000000';
+  ctx.font = 'bold 15px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('GOYER ' + naam.toUpperCase(), canvasW / 2, 28);
+  ctx.font = 'bold 13px Arial';
+  ctx.fillText('LADDER', canvasW / 2, 46);
+  ctx.font = '11px Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText('pos.', padding, 68);
+  ctx.textAlign = 'center';
+  ctx.fillText(datum, canvasW / 2, 68);
+
+  // Scheidingslijn onder header
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(padding, headerH);
+  ctx.lineTo(canvasW - padding, headerH);
+  ctx.stroke();
+
+  // Verticale scheidingslijn midden
+  ctx.beginPath();
+  ctx.moveTo(canvasW / 2, headerH);
+  ctx.lineTo(canvasW / 2, canvasH - padding);
+  ctx.stroke();
+
+  // Spelers renderen
+  const renderKolom = (startIdx, xOffset) => {
+    for (let i = startIdx; i < startIdx + helft && i < spelers.length; i++) {
+      const s = spelers[i];
+      const y = headerH + (i - startIdx) * rowH;
+
+      // Zebra achtergrond
+      if ((i - startIdx) % 2 === 0) {
+        ctx.fillStyle = '#FFE600';
+      } else {
+        ctx.fillStyle = '#FFF176';
+      }
+      ctx.fillRect(xOffset, y, colW, rowH);
+
+      // Ranknummer
+      ctx.fillStyle = '#000';
+      ctx.font = 'bold 12px Arial';
+      ctx.textAlign = 'right';
+      ctx.fillText(String(s.rank), xOffset + 30, y + rowH - 8);
+
+      // Naam
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText(s.naam, xOffset + 38, y + rowH - 8);
+
+      // Horizontal lijn
+      ctx.strokeStyle = '#ccc';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(xOffset, y + rowH);
+      ctx.lineTo(xOffset + colW, y + rowH);
+      ctx.stroke();
+    }
+  };
+
+  renderKolom(0, padding);
+  renderKolom(helft, canvasW / 2 + padding / 2);
+
+  // Exporteren
+  canvas.toBlob(async blob => {
+    // Probeer Web Share API (mobiel)
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [new File([blob], 'ladder.png', { type: 'image/png' })] })) {
+      try {
+        await navigator.share({
+          files: [new File([blob], `goyer-${naam.toLowerCase().replace(/\s+/g,'-')}.png`, { type: 'image/png' })],
+          title: `Goyer ${naam} Ladder`
+        });
+        return;
+      } catch(e) { /* gebruiker annuleerde of share mislukt, val terug op download */ }
+    }
+    // Fallback: download
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `goyer-${naam.toLowerCase().replace(/\s+/g,'-')}-${datum.replace(' ','-')}.png`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, 'image/png');
+}
+
+window.deelLadderAlsAfbeelding = deelLadderAlsAfbeelding;
