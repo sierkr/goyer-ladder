@@ -148,13 +148,13 @@ function renderLadderRij(s, ladderId) {
 
 // ============================================================
 
-export { renderLadder, toggleLadderKaart, renderLadderRij };;
+export { renderLadder, toggleLadderKaart, renderLadderRij };
 
 // ============================================================
 //  DEEL ALS AFBEELDING — WhatsApp stijl
 // ============================================================
 async function deelLadderAlsAfbeelding(ladderId) {
-  // Haal spelers op
+  try {
   const ladder = alleLadders.find(l => l.id === ladderId);
   const data = ladderId === activeLadderId ? state : ladder?.data;
   if (!data) { toast('Ladder data niet beschikbaar'); return; }
@@ -266,6 +266,7 @@ async function deelLadderAlsAfbeelding(ladderId) {
     a.click();
     URL.revokeObjectURL(url);
   }, 'image/png');
+  } catch(e) { console.error('deelLadderAlsAfbeelding mislukt:', e); toast('Afbeelding maken mislukt'); }
 }
 
 window.deelLadderAlsAfbeelding = deelLadderAlsAfbeelding;

@@ -143,6 +143,7 @@ function getHcpSlagenOpHole(matchup, holeIdx) {
 
 function berekenMatchStand(matchup) {
   const p = mijnPartij();
+  if (!p || !p.holes || !p.scores) return { standA: 0, gespeeld: 0, resterend: 0, resultatenPerHole: [], status: 'lopend', beslissingsGespeeld: null };
   let standA = 0;
   let gespeeld = 0;
   let resultatenPerHole = [];
@@ -273,14 +274,14 @@ async function bevestigToevoegenRonde() {
   if (!p) return;
   const sel = document.getElementById('toevoegen-speler-select');
   const hcpVal = Math.round(parseFloat(document.getElementById('toevoegen-speler-hcp').value));
-  const speler = state.spelers.find(s => s.id == sel.value);
+  const speler = state.spelers.find(s => String(s.id) === String(sel.value));
   if (!speler) { toast('Kies een speler'); return; }
   if (isNaN(hcpVal)) { toast('Voer een handicap in'); return; }
 
   const nieuweSpeler = { ...speler, hcp: hcpVal, partijHcp: hcpVal };
 
   // Sla hcp op
-  const sv = state.spelers.find(s => s.id === speler.id);
+  const sv = state.spelers.find(s => String(s.id) === String(speler.id));
   if (sv && hcpVal !== sv.hcp) sv.hcp = hcpVal;
 
   // Nieuwe matchups aanmaken met alle huidige spelers
@@ -311,7 +312,7 @@ async function editPartijHcp(spelerId) {
   try {
   const p = mijnPartij();
   if (!p) return;
-  const speler = p.spelers.find(s => s.id == spelerId);
+  const speler = p.spelers.find(s => String(s.id) === String(spelerId));
   if (!speler) return;
   const nieuw = prompt(`Playing handicap voor ${speler.naam}:`, Math.round(speler.partijHcp));
   if (nieuw === null) return;
@@ -684,6 +685,7 @@ async function verwijderActievePartij() {
 }
 
 async function editMatchupSlagen(matchIdx) {
+  try {
   const p = mijnPartij();
   if (!p) return;
   const m = p.matchups[matchIdx];
@@ -699,7 +701,8 @@ async function editMatchupSlagen(matchIdx) {
   await slaState();
   renderMatchOverview();
   toast(`Slagen bijgewerkt: ${ontvanger.split(' ')[0]} +${val}`);
+  } catch(e) { console.error('editMatchupSlagen mislukt:', e); toast('Aanpassen mislukt'); }
 }
 window.editMatchupSlagen = editMatchupSlagen;
 
-export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij };;
+export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij };

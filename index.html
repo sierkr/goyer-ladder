@@ -1573,6 +1573,17 @@
   import './js/app.js';
 </script>
 <script>
+  // Globale foutafhandeling — vang onverwachte JS fouten
+  window.addEventListener('unhandledrejection', event => {
+    console.error('Onafgehandelde promise fout:', event.reason);
+    // Stil falen — geen toast want kan storend zijn tijdens spelen
+  });
+  window.onerror = (msg, src, line, col, err) => {
+    console.error('JS fout:', msg, 'in', src, 'regel', line);
+    return false; // laat browser ook loggen
+  };
+</script>
+<script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js')

@@ -348,6 +348,7 @@ async function stuurUitdaging(naarSpelerId) {
 }
 
 async function reageerUitdaging(uitdagingId, accepteer) {
+  try {
 
   try {
   const idx = uitdagingenData.findIndex(u => u.id === uitdagingId);
@@ -394,4 +395,4 @@ async function verwijderOudeUitslagen() {
   } catch(e) { console.error('Opschonen mislukt:', e); }
 }
 
-export { bevestigNieuwSeizoen, openArchiefDetail, openNieuwSeizoenModal, openToernooiDetail, reageerUitdaging, renderArchief, stuurNotificatie, stuurUitdaging, toonUitdagingBadge, verwijderOudeUitslagen, verwijderUitdaging };;;
+export { bevestigNieuwSeizoen, openArchiefDetail, openNieuwSeizoenModal, openToernooiDetail, reageerUitdaging, renderArchief, stuurNotificatie, stuurUitdaging, toonUitdagingBadge, verwijderOudeUitslagen, verwijderUitdaging };

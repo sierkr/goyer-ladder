@@ -139,18 +139,21 @@ function getGeselecteerdeLadders(containerId) {
 // Voeg speler toe aan geselecteerde ladders
 async function voegSpelerToeAanLadders(ladderIds, speler) {
   for (const ladderId of ladderIds) {
-    const ladder = alleLadders.find(l => l.id === ladderId);
-    const snap = await getDoc(doc(db, 'ladders', ladderId));
-    if (!snap.exists()) continue;
-    const data = snap.data();
-    const spelers = data.spelers || [];
-    if (spelers.find(s => s.id === speler.id)) continue; // al in ladder
-    const maxRank = spelers.length > 0 ? Math.max(...spelers.map(s => s.rank)) : 0;
-    spelers.push({ ...speler, rank: maxRank + 1, partijen: 0, gewonnen: 0 });
-    await setDoc(doc(db, 'ladders', ladderId), { ...data, spelers });
-    // Update cache
-    const idx = alleLadders.findIndex(l => l.id === ladderId);
-    if (idx >= 0) { alleLadders[idx].spelers = spelers; if (alleLadders[idx].data) alleLadders[idx].data.spelers = spelers; }
+    try {
+      const snap = await getDoc(doc(db, 'ladders', ladderId));
+      if (!snap.exists()) continue;
+      const data = snap.data();
+      const spelers = data.spelers || [];
+      if (spelers.find(s => String(s.id) === String(speler.id))) continue;
+      const maxRank = spelers.length > 0 ? Math.max(...spelers.map(s => s.rank)) : 0;
+      spelers.push({ ...speler, rank: maxRank + 1, partijen: 0, gewonnen: 0 });
+      await setDoc(doc(db, 'ladders', ladderId), { ...data, spelers });
+      const idx = alleLadders.findIndex(l => l.id === ladderId);
+      if (idx >= 0) { alleLadders[idx].spelers = spelers; if (alleLadders[idx].data) alleLadders[idx].data.spelers = spelers; }
+    } catch(e) {
+      console.error('voegSpelerToeAanLadders mislukt voor ladder', ladderId, e);
+      toast('Fout bij toevoegen aan ladder, probeer opnieuw');
+    }
   }
 }
 
@@ -894,4 +897,4 @@ async function koppelSpelerIds() {
   }
 }
 
-export { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer, toggleHandmatigToevoegen, voegAccountToeAlsSpeler, saveNewPlayer, openEditPlayer, saveEditPlayer, removePlayer, renderProfiel, slaProfielHcpOp, sorteerUsers, renderAdminUsers, openEditUser, saveEditUser, openAddUser, saveNewUser, removeUser, verschuifRank, resetData, closeModal, koppelSpelerIds };;
+export { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer, toggleHandmatigToevoegen, voegAccountToeAlsSpeler, saveNewPlayer, openEditPlayer, saveEditPlayer, removePlayer, renderProfiel, slaProfielHcpOp, sorteerUsers, renderAdminUsers, openEditUser, saveEditUser, openAddUser, saveNewUser, removeUser, verschuifRank, resetData, closeModal, koppelSpelerIds };

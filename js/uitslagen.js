@@ -336,22 +336,24 @@ function openLiveScoreBord(partijId) {
 
 async function verversLiveScoreBord() {
   if (!_livePartijId) return;
-  // Herlaad verse data uit Firestore
   const btn = document.querySelector('#modal-live-scorebord button[onclick="verversLiveScoreBord()"]');
   if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
   try {
     const { getLadderData } = await import('./auth.js');
-    await getLadderData(activeLadderId, true); // forceer verse data
-    // Zoek ook in andere ladders
+    await getLadderData(activeLadderId, true);
     for (const l of alleLadders) {
       if (l.id !== activeLadderId) {
         const snap = await getDoc(doc(db, 'ladders', l.id));
         if (snap.exists()) { l.data = snap.data(); l.actievePartijen = snap.data().actievePartijen || []; }
       }
     }
-  } catch(e) { console.error('Verversen mislukt:', e); }
-  renderLiveScoreBord();
-  if (btn) { btn.style.opacity = ''; btn.style.pointerEvents = ''; }
+    renderLiveScoreBord();
+  } catch(e) {
+    console.error('Verversen mislukt:', e);
+    toast('Verversen mislukt, probeer opnieuw');
+  } finally {
+    if (btn) { btn.style.opacity = ''; btn.style.pointerEvents = ''; }
+  }
 }
 
 function renderLiveScoreBord() {
@@ -465,4 +467,4 @@ window.verversLiveScoreBord = verversLiveScoreBord;
 
 // ============================================================
 
-export { bevestigBeheerUitslag, openScorekaartDetail, renderUitslagen };;
+export { bevestigBeheerUitslag, openScorekaartDetail, renderUitslagen };

@@ -758,10 +758,12 @@ async function saveUsers(lijst) {
   try { await setDoc(USERS_DOC, { lijst }); }
   catch(e) { console.error('saveUsers mislukt:', e); }
 }
-async function getLadderData(ladderId) {
-  const cached = alleLadders.find(l => l.id === ladderId);
-  if (cached?.data) return { exists: true, data: cached.data, _cached: true };
-  if (ladderId === activeLadderId) return { exists: true, data: state, _cached: true };
+async function getLadderData(ladderId, forceFresh = false) {
+  if (!forceFresh) {
+    const cached = alleLadders.find(l => l.id === ladderId);
+    if (cached?.data) return { exists: true, data: cached.data, _cached: true };
+    if (ladderId === activeLadderId) return { exists: true, data: state, _cached: true };
+  }
   try {
     const snap = await getDoc(doc(db, 'ladders', ladderId));
     if (snap.exists()) {
@@ -838,4 +840,4 @@ function initApp() {
   tryInit();
 }
 
-export { initApp, initFirestore, setIngelogd, vervolgIngelogd, uitloggen, loginSubmit, loginMetGoogle, openWachtwoordVergeten, sluitResetWrap, stuurResetEmail, openWachtwoordWijzigen, wijzigWachtwoord, slaState, wisselLadder, toonLaadOverlay, getUsers, saveUsers, getLadderData, getLadderConfig, updateSiteTitel, toonLoginFout, genereerInviteLink, kopieerInviteLink, checkInviteLink, registreerSpeler, laadInviteStatus, autoAdvance, getNextId, isCoordinatorRol, isBeheerderRol, toast, registreerNotificatieToken, laadUitdagingen };;
+export { initApp, initFirestore, setIngelogd, vervolgIngelogd, uitloggen, loginSubmit, loginMetGoogle, openWachtwoordVergeten, sluitResetWrap, stuurResetEmail, openWachtwoordWijzigen, wijzigWachtwoord, slaState, wisselLadder, toonLaadOverlay, getUsers, saveUsers, getLadderData, getLadderConfig, updateSiteTitel, toonLoginFout, genereerInviteLink, kopieerInviteLink, checkInviteLink, registreerSpeler, laadInviteStatus, autoAdvance, getNextId, isCoordinatorRol, isBeheerderRol, toast, registreerNotificatieToken, laadUitdagingen };
