@@ -459,6 +459,8 @@ function renderLiveScoreBord() {
 }
 
 window.openLiveScoreBord = openLiveScoreBord;
+window.openBeheerPartij = openBeheerPartij;
+window.setBeheerWinnaar = setBeheerWinnaar;
 window.verversLiveScoreBord = verversLiveScoreBord;
 
 // ============================================================
