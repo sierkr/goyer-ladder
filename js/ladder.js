@@ -168,7 +168,7 @@ async function deelLadderAlsAfbeelding(ladderId) {
   // Canvas instellingen
   const colW = 190;          // ~2/3 van 280
   const rowH = 20;           // compact
-  const headerH = 72;
+  const headerH = 46;
   const padding = 8;
   const helft = Math.ceil(spelers.length / 2);
   const rows = helft;
@@ -188,29 +188,27 @@ async function deelLadderAlsAfbeelding(ladderId) {
   ctx.fillStyle = '#FFE600';
   ctx.fillRect(0, 0, canvasW, canvasH);
 
-  // Header — titel letterlijk de ladder naam
+  // Header — titel en datum op gelijke hoogte
+  const headerY = headerH - 10;
   ctx.fillStyle = '#000000';
-  ctx.font = 'bold 16px Arial';
-  ctx.textAlign = 'center';
-  ctx.fillText('LADDERSTAND ' + naam.toUpperCase(), canvasW / 2, 24);
-  ctx.font = '12px Arial';
+  ctx.font = 'bold 15px Arial';
   ctx.textAlign = 'left';
-  ctx.fillText('pos.', padding, 46);
-  ctx.font = 'bold 12px Arial';
+  ctx.fillText('LADDERSTAND ' + naam.toUpperCase(), padding, headerY);
+  ctx.font = 'bold 13px Arial';
   ctx.textAlign = 'right';
-  ctx.fillText(datum, canvasW - padding, 46);
+  ctx.fillText(datum, canvasW - padding, headerY);
 
   // Scheidingslijn onder header
   ctx.strokeStyle = '#000';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(padding, headerH - 6);
-  ctx.lineTo(canvasW - padding, headerH - 6);
+  ctx.moveTo(padding, headerH);
+  ctx.lineTo(canvasW - padding, headerH);
   ctx.stroke();
 
   // Verticale scheidingslijn midden
   ctx.beginPath();
-  ctx.moveTo(canvasW / 2, headerH - 6);
+  ctx.moveTo(canvasW / 2, headerH);
   ctx.lineTo(canvasW / 2, canvasH - padding);
   ctx.stroke();
 
