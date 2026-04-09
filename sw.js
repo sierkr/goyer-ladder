@@ -1,5 +1,5 @@
 // Goyer Golf MP Ladder — Service Worker
-const CACHE_VERSION = 'v27';
+const CACHE_VERSION = 'v28';
 const CACHE_NAME = 'goyer-mp-' + CACHE_VERSION;
 
 const STATIC_ASSETS = [
@@ -42,12 +42,7 @@ self.addEventListener('activate', event => {
             .map(key => caches.delete(key))
       )
     ).then(() => self.clients.claim())
-      .then(() => {
-        // Forceer alle open clients om te herladen zodat nieuwe versie direct actief is
-        return self.clients.matchAll({ type: 'window' }).then(clients => {
-          clients.forEach(client => client.navigate(client.url));
-        });
-      })
+
   );
 });
 
