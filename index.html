@@ -115,26 +115,42 @@
   nav::-webkit-scrollbar { display: none; }
   nav button {
     flex: 1;
-    min-width: 72px;
-    padding: 14px 6px;
+    min-width: 64px;
+    padding: 10px 4px;
     background: none;
     border: none;
     border-bottom: 3px solid transparent;
     cursor: pointer;
     font-family: 'DM Sans', sans-serif;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--light);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.4px;
     transition: all 0.2s;
     white-space: nowrap;
     -webkit-user-select: none;
     user-select: none;
   }
+  nav button span.nav-label {
+    display: inline-block;
+    padding: 4px 8px;
+    border: 1.5px solid transparent;
+    border-radius: 6px;
+    transition: all 0.2s;
+  }
+  nav button.active span.nav-label {
+    color: var(--green);
+    border-color: var(--green);
+    background: var(--green-pale);
+  }
+  nav button:not(.active) span.nav-label:hover {
+    border-color: var(--border);
+    color: var(--mid);
+  }
   nav button.active {
     color: var(--green);
-    border-bottom-color: var(--green);
+    border-bottom-color: transparent;
   }
 
   /* PAGES */
@@ -984,15 +1000,15 @@
 </header>
 
 <nav>
-  <button class="active" onclick="showPage('ladder')">🏆 Ladder</button>
-  <button onclick="showPage('partij')">🏌️ Partij</button>
-  <button onclick="showPage('ronde')">📋 Ronde</button>
-  <button onclick="showPage('uitslagen')">📊 Uitslag</button>
-  <button onclick="showPage('help')">❓ Help</button>
-  <button onclick="showPage('archief')" id="nav-archief-btn" style="display:none">📁 Archief</button>
-  <button onclick="showPage('toernooi')" id="nav-toernooi-btn" style="display:none">🏅 Toernooi</button>
-  <button id="nav-profiel-btn" onclick="showPage('profiel')" style="display:none">👤 Profiel</button>
-  <button id="nav-admin-btn" onclick="showPage('admin')" style="display:none">⚙️ Beheer</button>
+  <button class="active" onclick="showPage('ladder')"><span class="nav-label">Ladder</span></button>
+  <button onclick="showPage('partij')"><span class="nav-label">Partij</span></button>
+  <button onclick="showPage('ronde')"><span class="nav-label">Ronde</span></button>
+  <button onclick="showPage('uitslagen')"><span class="nav-label">Uitslag</span></button>
+  <button onclick="showPage('help')"><span class="nav-label">Help</span></button>
+  <button onclick="showPage('archief')" id="nav-archief-btn" style="display:none"><span class="nav-label">Archief</span></button>
+  <button onclick="showPage('toernooi')" id="nav-toernooi-btn" style="display:none"><span class="nav-label">Toernooi</span></button>
+  <button id="nav-profiel-btn" onclick="showPage('profiel')" style="display:none"><span class="nav-label">Profiel</span></button>
+  <button id="nav-admin-btn" onclick="showPage('admin')" style="display:none"><span class="nav-label">Beheer</span></button>
 </nav>
 
 <!-- ==================== LADDER ==================== -->
