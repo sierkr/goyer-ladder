@@ -376,13 +376,13 @@ function renderLiveScoreBord() {
   document.getElementById('live-scorebord-titel').textContent = p.baan;
 
   const naamMap = {};
-  p.spelers.forEach(s => { naamMap[s.id] = s.naam.split(' ')[0]; });
+  p.spelers.forEach(s => { naamMap[s.id] = s.naam; });
 
   // Matchstand per koppel
   let matchHtml = '<div style="margin-bottom:16px">';
   p.matchups.forEach(m => {
-    const nA = naamMap[m.spelerA.id] || m.spelerA.naam.split(' ')[0];
-    const nB = naamMap[m.spelerB.id] || m.spelerB.naam.split(' ')[0];
+    const nA = m.spelerA.naam;
+    const nB = m.spelerB.naam;
     // Bereken stand
     let standA = 0, gespeeld = 0;
     p.holes.forEach((hole, i) => {
