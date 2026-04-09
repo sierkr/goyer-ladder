@@ -1,5 +1,5 @@
 // Goyer Golf MP Ladder — Service Worker
-const CACHE_VERSION = 'v22';
+const CACHE_VERSION = 'v23';
 const CACHE_NAME = 'goyer-mp-' + CACHE_VERSION;
 
 const STATIC_ASSETS = [

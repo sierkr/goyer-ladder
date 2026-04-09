@@ -104,6 +104,8 @@
   /* NAV TABS */
   nav {
     display: flex;
+    gap: 6px;
+    padding: 6px 8px;
     background: var(--nav-bg);
     border-bottom: 2px solid var(--border);
     overflow-x: auto;
@@ -116,17 +118,15 @@
   nav button {
     -webkit-appearance: none;
     appearance: none;
-    flex: 1;
-    min-width: 56px;
-    padding: 8px 4px;
+    flex: 0 0 auto;
+    padding: 0;
     background: none;
     border: none;
-    border-bottom: 3px solid transparent;
     cursor: pointer;
     font-family: 'DM Sans', sans-serif;
     font-size: 11px;
     font-weight: 700;
-    color: var(--light);
+    color: var(--dark);
     text-transform: uppercase;
     letter-spacing: 0.4px;
     transition: all 0.2s;
@@ -136,13 +136,14 @@
   }
   nav button span.nav-label {
     display: inline-block;
-    padding: 3px 7px;
+    padding: 4px 8px;
     border: 1.5px solid #000;
     border-radius: 6px;
     background: #fff;
     color: #000;
     transition: all 0.2s;
   }
+  nav button span.nav-label::before { content: none !important; }
   nav button.active span.nav-label {
     background: var(--green);
     border-color: var(--green);
