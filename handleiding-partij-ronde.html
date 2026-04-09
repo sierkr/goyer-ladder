@@ -290,6 +290,7 @@
   <a href="#ronde">Ronde &amp; scores</a>
   <a href="#uitslag">Uitslag</a>
   <a href="#ladder">Ladderstand</a>
+  <a href="#delen">Delen</a>
 </nav>
 
 <main>
@@ -446,6 +447,22 @@
     </div>
 
     <p>Het handicapblok onder de scorekaart toont per koppel hoeveel slagen wie ontvangt. Klik op <em>hcp XX</em> in de scorekaart-header om de playing handicap van een speler te wijzigen.</p>
+
+    <h3>Slagen bij minder dan 18 holes</h3>
+    <p>Bij een partij van minder dan 18 holes worden de slagen verrekend op de moeilijkste holes van het gespeelde deelveld — dat zijn de holes met de laagste Stroke Index (SI) binnen die selectie.</p>
+
+    <p>Voorbeeld: hcp 5 vs hcp 10, 6 holes gespeeld.</p>
+    <div class="formula-box">
+      <span class="comment"># Slagverschil</span><br>
+      rond(|10 − 5| × 0,75) = rond(3,75) = <strong style="color:#a8f0c4">4 slagen</strong><br><br>
+      <span class="comment"># Maar: van de 6 gespeelde holes hebben</span><br>
+      <span class="comment"># misschien maar 1 of 2 holes een SI ≤ 4</span><br>
+      <span class="comment"># → die krijgen een slag, de rest niet</span>
+    </div>
+
+    <div class="tip">
+      <strong>💡 Let op:</strong> Bij een kort deelveld (bijv. 6 holes) kunnen minder slagen daadwerkelijk vallen dan het totaal berekende verschil. Dit is correct matchplay gedrag — de slagen vallen altijd op de zwaarste holes van het gespeelde parcours.
+    </div>
   </section>
 
   <!-- ══════════════════════════════════════════════════════ -->
@@ -603,10 +620,52 @@
     <p>Meerdere partijen kunnen gelijktijdig actief zijn in dezelfde ladder. De rankberekening bij het verwerken houdt rekening met de volgorde van afsluiting: de eerst afgeronde matchup wordt als eerste verwerkt, zodat tussenliggende rankwijzigingen correct doorwerken.</p>
   </section>
 
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="delen">
+    <div class="section-header">
+      <div class="section-icon">📤</div>
+      <h2>Ladderstand delen via WhatsApp</h2>
+    </div>
+
+    <p>Elke ladder heeft een deelknop (📤) links van de naam in de kaartheader. Hiermee genereer je direct een afbeelding van de volledige stand in WhatsApp-stijl — gele achtergrond, twee kolommen, naam van de ladder en de datum.</p>
+
+    <div class="card">
+      <div class="card-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>Tik op 📤 in de ladder-header</strong>
+          <p>De knop staat links van de ladder-naam. Op de achtergrond wordt de afbeelding opgebouwd.</p>
+        </div>
+      </div>
+      <div class="card-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Deel direct via WhatsApp (mobiel)</strong>
+          <p>Op iPhone en Android verschijnt het standaard deelscherm. Kies WhatsApp en selecteer de groep. De afbeelding is direct klaar om te versturen.</p>
+        </div>
+      </div>
+      <div class="card-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>Of download de PNG (desktop)</strong>
+          <p>Op een computer wordt de afbeelding automatisch gedownload als PNG-bestand. Je kunt hem daarna uploaden in WhatsApp Web.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      De afbeelding toont alle spelers in twee kolommen, gesorteerd op rang. De ladder-naam en datum staan in de header. Het formaat is afgestemd op de bestaande WhatsApp-traditie van de Goyer matchplay groep.
+    </div>
+
+    <div class="tip">
+      <strong>💡 Tip:</strong> De ladder hoeft niet uitgeklapt te zijn om de afbeelding te genereren — de 📤 knop werkt altijd, ook als de lijst ingeklapt is.
+    </div>
+  </section>
+
 </main>
 
 <footer>
-  Goyer Golf MP Ladder · Handleiding Partij &amp; Ronde · v2.5.6
+  Goyer Golf MP Ladder · Handleiding Partij &amp; Ronde · v2.5.11
 </footer>
 
 </body>

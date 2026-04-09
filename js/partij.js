@@ -213,7 +213,7 @@ function addPlayerSlot() {
         onblur="setTimeout(() => sluitSpelerLijst(${n}), 150)">
       <div class="speler-zoek-lijst" id="speler-lijst-${n}"></div>
     </div>
-    <input type="number" class="hcp-input" id="hcp-${n}" placeholder="hcp" step="1" min="-10" max="54">
+    <input type="number" class="hcp-input" id="hcp-${n}" placeholder="hcp 18 holes" step="1" min="-10" max="54">
     ${n > 2 ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;padding:8px;border-radius:6px;cursor:pointer" onclick="removeSlot(${n})">✕</button>` : ''}
   `;
   document.getElementById('player-slots').appendChild(div);

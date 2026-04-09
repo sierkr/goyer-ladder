@@ -218,7 +218,8 @@ function renderMatchOverview() {
     const naamA_style = scoreLeadA ? 'font-weight:700;color:var(--green)' : '';
     const naamB_style = scoreLeadB ? 'font-weight:700;color:var(--green)' : '';
     const scoreStyle = scoreLeadA ? 'background:var(--green-pale);color:var(--green)' : scoreLeadB ? 'background:var(--green-pale);color:var(--green)' : '';
-    const hcpInfo = m.hcpSlagen > 0 ? `<span style="font-size:10px;color:var(--light)">${(m.hcpOntvanger === m.spelerA.id ? nA : nB) + ' +' + m.hcpSlagen + ' slag' + (m.hcpSlagen > 1 ? 'en' : '')}</span>` : '';
+    const matchIdx = p.matchups.indexOf(m);
+    const hcpInfo = `<span style="font-size:10px;color:var(--light)">${m.hcpSlagen > 0 ? (m.hcpOntvanger === m.spelerA.id ? nA : nB) + ' +' + m.hcpSlagen + ' slag' + (m.hcpSlagen > 1 ? 'en' : '') : 'Gelijke handicap'} <span onclick="editMatchupSlagen(${matchIdx})" style="cursor:pointer;opacity:0.6" title="Slagen aanpassen">✏️</span></span>`;
 
     html += `<div class="match-card">
       <div style="flex:1;min-width:0">
@@ -677,5 +678,24 @@ async function verwijderActievePartij() {
   toast('Partij verwijderd');
   } catch(e) { console.error('verwijderActievePartij mislukt:', e); }
 }
+
+async function editMatchupSlagen(matchIdx) {
+  const p = mijnPartij();
+  if (!p) return;
+  const m = p.matchups[matchIdx];
+  if (!m) return;
+  const huidig = m.hcpSlagen;
+  const ontvanger = m.hcpOntvanger === m.spelerA.id ? m.spelerA.naam : m.spelerB.naam;
+  const nieuw = prompt(`Aantal slagen voor ${ontvanger.split(' ')[0]}:
+(huidig: ${huidig})`, huidig);
+  if (nieuw === null) return;
+  const val = parseInt(nieuw);
+  if (isNaN(val) || val < 0) { toast('Ongeldig aantal slagen'); return; }
+  m.hcpSlagen = val;
+  await slaState();
+  renderMatchOverview();
+  toast(`Slagen bijgewerkt: ${ontvanger.split(' ')[0]} +${val}`);
+}
+window.editMatchupSlagen = editMatchupSlagen;
 
 export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij };;
