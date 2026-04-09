@@ -349,8 +349,6 @@ async function stuurUitdaging(naarSpelerId) {
 
 async function reageerUitdaging(uitdagingId, accepteer) {
   try {
-
-  try {
   const idx = uitdagingenData.findIndex(u => u.id === uitdagingId);
   if (idx === -1) return;
   uitdagingenData[idx].status = accepteer ? 'geaccepteerd' : 'geweigerd';
@@ -358,7 +356,6 @@ async function reageerUitdaging(uitdagingId, accepteer) {
 
   if (accepteer) {
     toast('Uitdaging geaccepteerd! Plan de partij in via het Partij-tabblad.');
-    // Notificeer uitdager
     const vanUser = (await getUsers())?.find(u => u.email === uitdagingenData[idx].vanEmail);
     if (vanUser?.uid) {
       await stuurNotificatie(vanUser.uid, '✅ Uitdaging geaccepteerd!', `${huidigeBruiker.gebruikersnaam} heeft je uitdaging geaccepteerd`);
@@ -369,7 +366,7 @@ async function reageerUitdaging(uitdagingId, accepteer) {
 
   toonUitdagingBadge();
   renderProfiel();
-  } catch(e) { console.error('reageerUitdaging mislukt:', e); }
+  } catch(e) { console.error('reageerUitdaging mislukt:', e); toast('Actie mislukt, probeer opnieuw'); }
 }
 
 async function verwijderUitdaging(uitdagingId) {
