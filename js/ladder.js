@@ -137,9 +137,9 @@ function renderLadderRij(s, ladderId) {
     ? `<button onclick="stuurUitdaging(${s.id})" style="background:none;border:1px solid #e0ddd4;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:${openUitdaging ? 'var(--gold)' : 'var(--light)'}" title="${openUitdaging ? 'Uitdaging loopt' : 'Uitdagen'}">⚔️</button>`
     : '';
 
-  return `<div class="ladder-item" style="">
-    <div class="rank-badge ${s.rank <= 3 ? 'top3' : ''}">${s.rank}</div>
-    <div class="player-name" style="">${s.naam}</div>
+  return `<div class="ladder-item" style="${isZelf ? 'background:var(--green-pale);border-left:3px solid var(--green);margin-left:-3px;' : ''}">
+    <div class="rank-badge ${s.rank <= 3 ? 'top3' : isZelf ? 'zelf' : ''}">${s.rank}</div>
+    <div class="player-name" style="${isZelf ? 'font-weight:700;color:var(--green);' : ''}">${s.naam}</div>
     <div style="min-width:30px;text-align:center">${deltaHtml}</div>
     <div class="player-stats" style="text-align:right;min-width:52px">${s.partijen}P ${s.gewonnen}W<br>${winpct}%</div>
     <div style="width:42px;text-align:center;flex-shrink:0">${uitdagingBtnHtml}</div>
