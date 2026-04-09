@@ -166,14 +166,14 @@ async function deelLadderAlsAfbeelding(ladderId) {
   const datum = new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
 
   // Canvas instellingen
-  const colW = 280;
-  const rowH = 28;
-  const headerH = 80;
-  const padding = 12;
+  const colW = 190;          // ~2/3 van 280
+  const rowH = 20;           // compact
+  const headerH = 72;
+  const padding = 8;
   const helft = Math.ceil(spelers.length / 2);
   const rows = helft;
   const canvasW = colW * 2 + padding * 3;
-  const canvasH = headerH + rows * rowH + padding * 2;
+  const canvasH = headerH + rows * rowH + padding;
 
   const canvas = document.createElement('canvas');
   canvas.width = canvasW * 2; // retina
@@ -188,30 +188,29 @@ async function deelLadderAlsAfbeelding(ladderId) {
   ctx.fillStyle = '#FFE600';
   ctx.fillRect(0, 0, canvasW, canvasH);
 
-  // Header
+  // Header — titel letterlijk de ladder naam
   ctx.fillStyle = '#000000';
-  ctx.font = 'bold 15px Arial';
+  ctx.font = 'bold 16px Arial';
   ctx.textAlign = 'center';
-  ctx.fillText('GOYER ' + naam.toUpperCase(), canvasW / 2, 28);
-  ctx.font = 'bold 13px Arial';
-  ctx.fillText('LADDER', canvasW / 2, 46);
-  ctx.font = '11px Arial';
+  ctx.fillText('LADDERSTAND ' + naam.toUpperCase(), canvasW / 2, 24);
+  ctx.font = '12px Arial';
   ctx.textAlign = 'left';
-  ctx.fillText('pos.', padding, 68);
-  ctx.textAlign = 'center';
-  ctx.fillText(datum, canvasW / 2, 68);
+  ctx.fillText('pos.', padding, 46);
+  ctx.font = 'bold 12px Arial';
+  ctx.textAlign = 'right';
+  ctx.fillText(datum, canvasW - padding, 46);
 
   // Scheidingslijn onder header
   ctx.strokeStyle = '#000';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(padding, headerH);
-  ctx.lineTo(canvasW - padding, headerH);
+  ctx.moveTo(padding, headerH - 6);
+  ctx.lineTo(canvasW - padding, headerH - 6);
   ctx.stroke();
 
   // Verticale scheidingslijn midden
   ctx.beginPath();
-  ctx.moveTo(canvasW / 2, headerH);
+  ctx.moveTo(canvasW / 2, headerH - 6);
   ctx.lineTo(canvasW / 2, canvasH - padding);
   ctx.stroke();
 
@@ -222,26 +221,22 @@ async function deelLadderAlsAfbeelding(ladderId) {
       const y = headerH + (i - startIdx) * rowH;
 
       // Zebra achtergrond
-      if ((i - startIdx) % 2 === 0) {
-        ctx.fillStyle = '#FFE600';
-      } else {
-        ctx.fillStyle = '#FFF176';
-      }
+      ctx.fillStyle = (i - startIdx) % 2 === 0 ? '#FFE600' : '#FFF176';
       ctx.fillRect(xOffset, y, colW, rowH);
 
       // Ranknummer
       ctx.fillStyle = '#000';
-      ctx.font = 'bold 12px Arial';
+      ctx.font = 'bold 13px Arial';
       ctx.textAlign = 'right';
-      ctx.fillText(String(s.rank), xOffset + 30, y + rowH - 8);
+      ctx.fillText(String(s.rank), xOffset + 28, y + rowH - 5);
 
       // Naam
-      ctx.font = '12px Arial';
+      ctx.font = '13px Arial';
       ctx.textAlign = 'left';
-      ctx.fillText(s.naam, xOffset + 38, y + rowH - 8);
+      ctx.fillText(s.naam, xOffset + 34, y + rowH - 5);
 
-      // Horizontal lijn
-      ctx.strokeStyle = '#ccc';
+      // Horizontale lijn
+      ctx.strokeStyle = '#bbb';
       ctx.lineWidth = 0.5;
       ctx.beginPath();
       ctx.moveTo(xOffset, y + rowH);
