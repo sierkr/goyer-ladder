@@ -68,10 +68,10 @@ function renderScorecard() {
 
   p.holes.forEach((h, holeIdx) => {
     bodyHtml += `<tr>
-      <td style="padding:6px 8px;font-family:'DM Mono',monospace;font-size:12px;white-space:nowrap">
-        <span style="font-weight:600">${((p.startHole - 1 + holeIdx) % 18) + 1}</span>
-        <span class="hole-par"> p${h.par}</span>
-        <span class="hole-si"> SI${h.si}</span>
+      <td style="padding:4px 4px 4px 2px;font-family:'DM Mono',monospace;white-space:nowrap;min-width:36px">
+        <span style="font-weight:700;font-size:14px;display:block;line-height:1.2">${((p.startHole - 1 + holeIdx) % 18) + 1}</span>
+        <span class="hole-par">p${h.par}</span>
+        <span class="hole-si">SI${h.si}</span>
       </td>`;
     p.spelers.forEach((s, si) => {
       const val = p.scores[s.id][holeIdx];
