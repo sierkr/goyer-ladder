@@ -30,8 +30,8 @@ async function openScorekaartDetail(uitslag) {
   // Zoek scorekaart in Firestore op basis van timestamp
   try {
     const q = query(UITSLAGEN_COL,
-      where('timestamp', '>', uitslag._timestamp - 60000),
-      where('timestamp', '<', uitslag._timestamp + 60000)
+      where('timestamp', '>', uitslag.scoreTs - 60000),
+      where('timestamp', '<', uitslag.scoreTs + 60000)
     );
     const snap = await getDocs(q);
     if (snap.empty) { toast('Scorekaart niet meer beschikbaar (ouder dan 30 dagen)'); return; }
@@ -136,8 +136,8 @@ function renderUitslagen() {
     return;
   }
   list.innerHTML = state.uitslagen.map((u, idx) => {
-    const heeftScorekaart = !!u._timestamp;
-    const ouderDan30Dagen = u._timestamp && (Date.now() - u._timestamp > 30 * 24 * 60 * 60 * 1000);
+    const heeftScorekaart = !!u.scoreTs;
+    const ouderDan30Dagen = u.scoreTs && (Date.now() - u.scoreTs > 30 * 24 * 60 * 60 * 1000);
     return `
     <div style="padding:14px 16px;border-bottom:1px solid #f0ede4">
       <div style="display:flex;justify-content:space-between;margin-bottom:6px">

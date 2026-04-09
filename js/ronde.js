@@ -551,7 +551,7 @@ async function bevestigUitslag() {
   // Save uitslag in state (samenvatting)
   const uitslag = {
     datum: new Date().toLocaleDateString('nl-NL'),
-    _timestamp: Date.now(),
+    scoreTs: Date.now(),
     baan: p.baan,
     spelers: p.spelers.map(s => s.naam),
     matchups: p.matchups
