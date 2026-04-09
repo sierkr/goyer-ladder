@@ -2,10 +2,10 @@
 //  nav.js — Navigatie, showPage, wisselLadder
 // ============================================================
 import { db, auth, SPELERS_DOC } from './config.js';
-import { store, alleSpelersData } from './store.js';
+import { store, alleSpelersData, activeLadderId } from './store.js';
 import { herlaadToernooien, renderToernooi } from './toernooi.js';
 import { initPartijForm } from './partij.js';
-import { laadInviteStatus } from './auth.js';
+import { laadInviteStatus, getLadderData } from './auth.js';
 import { renderAdmin, renderProfiel } from './admin.js';
 import { renderAdminLadders } from './beheer.js';
 import { renderArchief, verwijderOudeUitslagen } from './archief.js';
@@ -25,7 +25,15 @@ function showPage(name) {
   if (name === 'ladder') renderLadder();
   if (name === 'partij') initPartijForm();
   if (name === 'ronde') renderRonde();
-  if (name === 'uitslagen') renderUitslagen();
+  if (name === 'uitslagen') {
+    // Herlaad verse data zodat actieve partijen van anderen zichtbaar zijn
+    getLadderData(activeLadderId, true).then(result => {
+      if (result?.data) {
+        store.state = { ...store.state, ...result.data };
+      }
+      renderUitslagen();
+    }).catch(() => renderUitslagen());
+  }
   if (name === 'admin') {
     // Alleen spelerslijst vers ophalen — ladders worden bijgehouden via listeners
     getDoc(SPELERS_DOC).then(spelersSnap => {
