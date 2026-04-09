@@ -73,7 +73,7 @@ function renderScorecard() {
           <span style="font-weight:700;font-size:15px;line-height:1">${((p.startHole - 1 + holeIdx) % 18) + 1}</span>
           <div style="display:flex;flex-direction:column;line-height:1.2">
             <span class="hole-par">p${h.par}</span>
-            <span class="hole-si">SI${h.si}</span>
+            <span class="hole-si">SI ${h.si}</span>
           </div>
         </div>
       </td>`;
