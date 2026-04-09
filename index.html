@@ -884,6 +884,18 @@
 </div>
 
 <!-- Archief seizoen detail modal -->
+<div class="modal-overlay" id="modal-live-scorebord">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <h3 id="live-scorebord-titel">Live scorebord</h3>
+      <button onclick="verversLiveScoreBord()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:16px" title="Vernieuwen">🔄</button>
+    </div>
+    <div id="live-scorebord-tijd" style="font-size:11px;color:var(--light);margin-bottom:12px"></div>
+    <div id="live-scorebord-inhoud" style="overflow-y:auto;max-height:65vh"></div>
+    <button class="btn btn-primary btn-block" style="margin-top:16px" onclick="closeModal('modal-live-scorebord')">Sluiten</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-archief-detail">
   <div class="modal">
     <h3 id="archief-detail-titel">Seizoen</h3>

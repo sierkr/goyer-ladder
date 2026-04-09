@@ -288,6 +288,7 @@
   <a href="#spelers">Spelers</a>
   <a href="#hcp">Handicap</a>
   <a href="#ronde">Ronde &amp; scores</a>
+  <a href="#live">Live scorebord</a>
   <a href="#uitslag">Uitslag</a>
   <a href="#ladder">Ladderstand</a>
   <a href="#delen">Delen</a>
@@ -434,6 +435,10 @@
 
     <p>De app berekent automatisch het aantal slagen dat de speler met de hogere handicap ontvangt, op basis van de Stroke Index (SI) per hole.</p>
 
+    <div class="warn">
+      <strong>⚠️ Belangrijk:</strong> Voer altijd de playing handicap over <strong>18 holes</strong> in, ook als je maar 9 of 6 holes speelt. De app verdeelt de slagen zelf over de gespeelde holes op basis van de SI. Als je de 9-holes handicap invult, rekent de app daar nog eens 75% overheen — en dat is te weinig.
+    </div>
+
     <div class="formula-box">
       <span class="comment"># Berekening slagverschil</span><br>
       verschil = rond(|hcp_A − hcp_B| × 0,75)<br><br>
@@ -447,6 +452,9 @@
     </div>
 
     <p>Het handicapblok onder de scorekaart toont per koppel hoeveel slagen wie ontvangt. Klik op <em>hcp XX</em> in de scorekaart-header om de playing handicap van een speler te wijzigen.</p>
+
+    <h3>Slagen per matchup handmatig aanpassen</h3>
+    <p>Naast elk koppel in het matchoverzicht staat een ✏️ icoontje. Tik daarop om het aantal slagen voor die specifieke matchup direct in te voeren, onafhankelijk van de ingestelde handicaps. Dit is handig als je onderling een ander slagverschil hebt afgesproken. De matchstand wordt direct herberekend.</p>
 
     <h3>Slagen bij minder dan 18 holes</h3>
     <p>Bij een partij van minder dan 18 holes worden de slagen verrekend op de moeilijkste holes van het gespeelde deelveld — dat zijn de holes met de laagste Stroke Index (SI) binnen die selectie.</p>
@@ -500,6 +508,22 @@
 
     <h3>Scores worden live opgeslagen</h3>
     <p>Elke score-invoer wordt direct naar Firestore gestuurd. Andere spelers in de partij zien de scores live meebewegen als ze de app vernieuwen.</p>
+
+    <h3>Meekijken vanuit de Uitslag tab</h3>
+    <p>Iedereen kan het scoreverloop van actieve partijen volgen via het tabblad <strong>Uitslag</strong>. Bij elke actieve partij staat een <strong>📊 Live</strong> knop. Dat opent een modal met:</p>
+    <ul style="margin:8px 0 8px 20px;font-size:14px;color:#333">
+      <li style="margin-bottom:4px">De <strong>live matchstand</strong> per koppel (UP / DOWN / TIED / beslist)</li>
+      <li style="margin-bottom:4px">De volledige <strong>scorekaart</strong> met scores per hole, read-only</li>
+      <li>Een <strong>🔄 Vernieuwen</strong> knop rechtsboven om de laatste stand op te halen</li>
+    </ul>
+
+    <div class="note">
+      Alleen de beheerder ziet daarnaast ook de <strong>⚙️ Beheren</strong> knop waarmee de uitslag handmatig verwerkt kan worden. Voor alle andere spelers is het live scorebord puur om mee te kijken.
+    </div>
+
+    <div class="tip">
+      <strong>💡 Tip:</strong> Het scorebord ververst niet automatisch — tik op 🔄 als je de laatste scores wilt zien. Zo blijft het Firestore-verbruik laag.
+    </div>
   </section>
 
   <!-- ══════════════════════════════════════════════════════ -->
@@ -665,7 +689,7 @@
 </main>
 
 <footer>
-  Goyer Golf MP Ladder · Handleiding Partij &amp; Ronde · v2.5.11
+  Goyer Golf MP Ladder · Handleiding Partij &amp; Ronde · v2.5.16
 </footer>
 
 </body>

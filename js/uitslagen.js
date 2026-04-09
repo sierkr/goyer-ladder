@@ -119,7 +119,10 @@ function renderUitslagen() {
           <div style="font-size:13px;color:var(--mid);margin-bottom:8px">${namen}</div>
           <div style="display:flex;align-items:center;justify-content:space-between">
             <span class="badge badge-gold">hole ${ingevuld}/${p.holes.length}</span>
-            ${isBeheerder ? `<button class="btn btn-sm btn-ghost" onclick="openBeheerPartij('${p.partijId}')">⚙️ Beheren</button>` : ''}
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-sm btn-ghost" onclick="openLiveScoreBord('${p.partijId}')">📊 Live</button>
+              ${isBeheerder ? `<button class="btn btn-sm btn-ghost" onclick="openBeheerPartij('${p.partijId}')">⚙️ Beheren</button>` : ''}
+            </div>
           </div>
         </div>`;
     }).join('');
@@ -318,6 +321,145 @@ async function verwijderActievePartij() {
   toast('Partij verwijderd');
   } catch(e) { console.error('verwijderActievePartij mislukt:', e); }
 }
+
+// ============================================================
+//  LIVE SCOREBORD
+// ============================================================
+
+let _livePartijId = null;
+
+function openLiveScoreBord(partijId) {
+  _livePartijId = partijId;
+  renderLiveScoreBord();
+  document.getElementById('modal-live-scorebord').classList.add('open');
+}
+
+async function verversLiveScoreBord() {
+  if (!_livePartijId) return;
+  // Herlaad verse data uit Firestore
+  const btn = document.querySelector('#modal-live-scorebord button[onclick="verversLiveScoreBord()"]');
+  if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
+  try {
+    const { getLadderData } = await import('./auth.js');
+    await getLadderData(activeLadderId, true); // forceer verse data
+    // Zoek ook in andere ladders
+    for (const l of alleLadders) {
+      if (l.id !== activeLadderId) {
+        const snap = await getDoc(doc(db, 'ladders', l.id));
+        if (snap.exists()) { l.data = snap.data(); l.actievePartijen = snap.data().actievePartijen || []; }
+      }
+    }
+  } catch(e) { console.error('Verversen mislukt:', e); }
+  renderLiveScoreBord();
+  if (btn) { btn.style.opacity = ''; btn.style.pointerEvents = ''; }
+}
+
+function renderLiveScoreBord() {
+  // Zoek de partij in alle ladders
+  let p = (state.actievePartijen || []).find(ap => ap.partijId === _livePartijId);
+  if (!p) {
+    for (const l of alleLadders) {
+      p = (l.actievePartijen || l.data?.actievePartijen || []).find(ap => ap.partijId === _livePartijId);
+      if (p) break;
+    }
+  }
+
+  const tijdEl = document.getElementById('live-scorebord-tijd');
+  tijdEl.textContent = 'Bijgewerkt: ' + new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  if (!p) {
+    document.getElementById('live-scorebord-titel').textContent = 'Live scorebord';
+    document.getElementById('live-scorebord-inhoud').innerHTML = '<div class="empty"><p>Partij niet gevonden.</p></div>';
+    return;
+  }
+
+  document.getElementById('live-scorebord-titel').textContent = p.baan;
+
+  const naamMap = {};
+  p.spelers.forEach(s => { naamMap[s.id] = s.naam.split(' ')[0]; });
+
+  // Matchstand per koppel
+  let matchHtml = '<div style="margin-bottom:16px">';
+  p.matchups.forEach(m => {
+    const nA = naamMap[m.spelerA.id] || m.spelerA.naam.split(' ')[0];
+    const nB = naamMap[m.spelerB.id] || m.spelerB.naam.split(' ')[0];
+    // Bereken stand
+    let standA = 0, gespeeld = 0;
+    p.holes.forEach((hole, i) => {
+      const sA = p.scores[m.spelerA.id]?.[i];
+      const sB = p.scores[m.spelerB.id]?.[i];
+      if (sA == null || sB == null) return;
+      gespeeld++;
+      const aantalHoles = p.holes.length;
+      const diff = m.hcpSlagen;
+      const slagA = m.hcpOntvanger === m.spelerA.id
+        ? ((hole.si <= Math.min(diff, aantalHoles) ? 1 : 0) + (hole.si <= Math.max(0, diff - aantalHoles) ? 1 : 0)) : 0;
+      const slagB = m.hcpOntvanger === m.spelerB.id
+        ? ((hole.si <= Math.min(diff, aantalHoles) ? 1 : 0) + (hole.si <= Math.max(0, diff - aantalHoles) ? 1 : 0)) : 0;
+      if ((sA - slagA) < (sB - slagB)) standA++;
+      else if ((sA - slagA) > (sB - slagB)) standA--;
+    });
+    const resterend = p.holes.length - gespeeld;
+    const beslist = Math.abs(standA) > resterend;
+    let scoreText, kleur;
+    if (gespeeld === 0) { scoreText = 'nog niet begonnen'; kleur = 'var(--light)'; }
+    else if (standA === 0) { scoreText = 'TIED'; kleur = 'var(--mid)'; }
+    else if (beslist) {
+      scoreText = `${standA > 0 ? nA : nB} wint ${Math.abs(standA)}&${resterend}`;
+      kleur = 'var(--green)';
+    } else {
+      scoreText = standA > 0 ? `${nA} ${standA} UP` : `${nB} ${Math.abs(standA)} UP`;
+      kleur = 'var(--green)';
+    }
+    const hcpTekst = m.hcpSlagen > 0
+      ? `<span style="font-size:11px;color:var(--light)">${m.hcpOntvanger === m.spelerA.id ? nA : nB} +${m.hcpSlagen}</span>`
+      : '';
+    matchHtml += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <span style="font-weight:600;font-size:14px">${nA} vs ${nB}</span><br>
+        ${hcpTekst}
+      </div>
+      <div style="text-align:right">
+        <span style="font-weight:700;color:${kleur};font-size:13px">${scoreText}</span><br>
+        <span style="font-size:11px;color:var(--light)">${gespeeld}/${p.holes.length} holes</span>
+      </div>
+    </div>`;
+  });
+  matchHtml += '</div>';
+
+  // Scorekaart (read-only)
+  const totalen = {};
+  p.spelers.forEach(s => { totalen[s.id] = 0; });
+  let tabelHtml = '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px;width:100%">';
+  tabelHtml += '<tr><th style="background:var(--green);color:white;padding:6px 8px;text-align:left">Hole</th>';
+  p.spelers.forEach(s => {
+    tabelHtml += `<th style="background:var(--green);color:white;padding:6px 8px;text-align:center">${naamMap[s.id]}</th>`;
+  });
+  tabelHtml += '</tr>';
+  p.holes.forEach((h, i) => {
+    const holeNr = ((p.startHole - 1 + i) % 18) + 1;
+    tabelHtml += `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 8px;font-weight:600">${holeNr}<span style="font-size:10px;color:var(--light);margin-left:3px">p${h.par}</span></td>`;
+    p.spelers.forEach(s => {
+      const val = p.scores[s.id]?.[i];
+      if (val != null) totalen[s.id] += Number(val);
+      const kleur = val == null ? '' : val <= h.par - 2 ? '#d4edda' : val === h.par - 1 ? '#d8f3dc' : val === h.par + 1 ? '#fff3cd' : val >= h.par + 2 ? '#f8d7da' : '';
+      tabelHtml += `<td style="text-align:center;padding:5px;background:${kleur}">${val != null ? val : '—'}</td>`;
+    });
+    tabelHtml += '</tr>';
+  });
+  tabelHtml += '<tr style="background:var(--green-pale);font-weight:700"><td style="padding:5px 8px">Totaal</td>';
+  p.spelers.forEach(s => {
+    const filled = p.scores[s.id]?.filter(v => v != null).length || 0;
+    tabelHtml += `<td style="text-align:center;font-family:'DM Mono',monospace">${filled > 0 ? totalen[s.id] : '—'}</td>`;
+  });
+  tabelHtml += '</tr></table></div>';
+
+  document.getElementById('live-scorebord-inhoud').innerHTML = matchHtml + tabelHtml;
+}
+
+window.openLiveScoreBord = openLiveScoreBord;
+window.verversLiveScoreBord = verversLiveScoreBord;
 
 // ============================================================
 
