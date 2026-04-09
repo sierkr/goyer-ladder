@@ -137,18 +137,16 @@
   nav button span.nav-label {
     display: inline-block;
     padding: 3px 7px;
-    border: 1.5px solid transparent;
+    border: 1.5px solid #000;
     border-radius: 6px;
+    background: #fff;
+    color: #000;
     transition: all 0.2s;
   }
   nav button.active span.nav-label {
-    color: var(--green);
+    background: var(--green);
     border-color: var(--green);
-    background: var(--green-pale);
-  }
-  nav button:not(.active) span.nav-label:hover {
-    border-color: var(--border);
-    color: var(--mid);
+    color: #fff;
   }
   nav button.active {
     color: var(--green);
