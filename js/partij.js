@@ -382,13 +382,11 @@ function mijnPartij() {
   if (!huidigeBruiker?.gebruikersnaam) return null;
   const gebruiker = huidigeBruiker.gebruikersnaam.toLowerCase();
 
+  const spelerId = huidigeBruiker.spelerId;
   const zoekInPartijen = (partijen) => (partijen || []).find(p =>
     p.spelers.some(s => {
-      const naam = s.naam.toLowerCase();
-      const voornaam = naam.split(' ')[0];
-      return naam === gebruiker || voornaam === gebruiker ||
-             naam.replace(/\s/g,' ') === gebruiker ||
-             naam.replace(/\s/g,'.') === gebruiker;
+      if (spelerId) return String(s.id) === String(spelerId);
+      return s.naam.toLowerCase() === gebruiker;
     })
   ) || null;
 

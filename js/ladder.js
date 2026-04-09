@@ -23,9 +23,12 @@ async function renderLadder() {
     ? alleLadders
     : alleLadders.filter(l => {
         const spelerData = (l.spelers || []);
+        const spelerId = huidigeBruiker?.spelerId;
+        const gebruikersnaam = (huidigeBruiker?.gebruikersnaam || '').toLowerCase();
         return spelerData.some(s =>
-          s.naam.toLowerCase().includes((huidigeBruiker?.gebruikersnaam || '').split(' ')[0].toLowerCase()) ||
-          (huidigeBruiker?.gebruikersnaam || '').toLowerCase().includes(s.naam.split(' ')[0].toLowerCase())
+          spelerId
+            ? String(s.id) === String(spelerId)
+            : s.naam.toLowerCase() === gebruikersnaam
         );
       });
 
@@ -123,14 +126,16 @@ function renderLadderRij(s, ladderId) {
     deltaHtml = `<span style="font-size:11px;color:var(--light)">—</span>`;
   }
 
+  const spelerId = huidigeBruiker?.spelerId;
   const isZelf = huidigeBruiker && (
-    s.naam.toLowerCase().includes(huidigeBruiker.gebruikersnaam.toLowerCase()) ||
-    huidigeBruiker.gebruikersnaam.toLowerCase().includes(s.naam.split(' ')[0].toLowerCase())
+    spelerId
+      ? String(s.id) === String(spelerId)
+      : s.naam.toLowerCase() === huidigeBruiker.gebruikersnaam.toLowerCase()
   );
   const openUitdaging = uitdagingenData?.find(u =>
     u.status === 'open' && (
-      (u.vanEmail === huidigeBruiker?.email && u.naarNaam?.toLowerCase().includes(s.naam.split(' ')[0].toLowerCase())) ||
-      (u.naarEmail === huidigeBruiker?.email && u.vanNaam?.toLowerCase().includes(s.naam.split(' ')[0].toLowerCase()))
+      (u.vanEmail === huidigeBruiker?.email && u.naarNaam?.toLowerCase() === s.naam.toLowerCase()) ||
+      (u.naarEmail === huidigeBruiker?.email && u.vanNaam?.toLowerCase() === s.naam.toLowerCase())
     )
   );
   const uitdagingBtnHtml = huidigeBruiker && !isZelf

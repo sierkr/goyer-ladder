@@ -592,7 +592,7 @@ async function bevestigUitslag() {
   
 
   await slaState();
-  slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam.split(' ')[0]).join(' vs ')}`);
+  slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam).join(' vs ')}`);
 
   // Update knockout bracket als dit een knockout ladder is
   await verwerkKnockoutUitslag(p);

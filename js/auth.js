@@ -123,10 +123,14 @@ function vervolgIngelogd() {
     document.getElementById('nav-toernooi-btn').style.display = '';
   } else {
     // Toon toernooi tab ook voor spelers als ze deelnemen aan een actief toernooi
+    const spelerId = huidigeBruiker?.spelerId;
     const gebruikersnaam = (huidigeBruiker.gebruikersnaam || '').toLowerCase();
-    const voornaam = gebruikersnaam.split(' ')[0];
     const mijnToernooien = alleToernooien.filter(t =>
-      (t.spelers || []).some(s => s.naam.toLowerCase().includes(voornaam))
+      (t.spelers || []).some(s =>
+        spelerId
+          ? String(s.id) === String(spelerId)
+          : s.naam.toLowerCase() === gebruikersnaam
+      )
     );
     if (mijnToernooien.length > 0) {
       document.getElementById('nav-toernooi-btn').style.display = '';

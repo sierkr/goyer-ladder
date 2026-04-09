@@ -50,7 +50,7 @@ function toonScorekaartModal(data) {
   // Header
   html += '<tr><th style="background:var(--green);color:white;padding:6px;text-align:left">Hole</th>';
   spelers.forEach(s => {
-    html += `<th style="background:var(--green);color:white;padding:6px;text-align:center">${s.naam.split(' ')[0]}<br><span style="font-size:10px;font-weight:400">hcp ${Math.round(s.hcp)}</span></th>`;
+    html += `<th style="background:var(--green);color:white;padding:6px;text-align:center">${s.naam}<br><span style="font-size:10px;font-weight:400">hcp ${Math.round(s.hcp)}</span></th>`;
   });
   html += '</tr>';
 
@@ -105,7 +105,7 @@ function renderUitslagen() {
   } else {
     actiefList.innerHTML = actief.map(p => {
       const aangemaakt = new Date(p.timestamp).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
-      const namen = p.spelers.map(s => s.naam.split(' ')[0]).join(', ');
+      const namen = p.spelers.map(s => s.naam).join(', ');
       // Hoeveel holes ingevuld?
       const ingevuld = p.spelers.length > 0
         ? p.scores[p.spelers[0].id]?.filter(v => v !== null).length || 0
@@ -165,8 +165,8 @@ function openBeheerPartij(partijId) {
   // Bouw winnaar-keuze per matchup
   let html = '';
   p.matchups.forEach((m, idx) => {
-    const nA = m.spelerA.naam.split(' ')[0];
-    const nB = m.spelerB.naam.split(' ')[0];
+    const nA = m.spelerA.naam;
+    const nB = m.spelerB.naam;
     // Bereken stand op basis van ingevulde scores
     let standA = 0;
     p.holes.forEach((hole, i) => {
