@@ -1531,20 +1531,24 @@
     <!-- Handmatig toevoegen (ingeklapt) -->
     <div id="add-player-handmatig" style="display:none">
       <div class="form-group">
-        <label>Volledige naam</label>
-        <input type="text" id="new-player-name" placeholder="Voornaam Achternaam">
+        <label>Voornaam</label>
+        <input type="text" id="new-player-voornaam" placeholder="Jan" autocomplete="off">
       </div>
       <div class="form-group">
-        <label>Handicap</label>
-        <input type="number" id="new-player-hcp" step="1" min="-10" max="54" placeholder="bijv. 12">
+        <label>Achternaam</label>
+        <input type="text" id="new-player-achternaam" placeholder="de Vries" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label>Playing handicap (18 holes)</label>
+        <input type="number" id="new-player-hcp" step="1" min="-10" max="54" placeholder="bijv. 12" inputmode="numeric">
       </div>
       <div class="form-group">
         <label>E-mailadres</label>
-        <input type="email" id="new-player-account" placeholder="naam@email.com" inputmode="email">
+        <input type="email" id="new-player-account" placeholder="naam@email.com" inputmode="email" autocomplete="off">
       </div>
       <div class="form-group">
         <label>Tijdelijk wachtwoord</label>
-        <input type="password" id="new-player-pass" placeholder="minimaal 6 tekens">
+        <input type="password" id="new-player-pass" placeholder="minimaal 6 tekens" autocomplete="new-password">
       </div>
       <div class="form-group">
         <label>Ladder toewijzen</label>

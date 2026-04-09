@@ -156,7 +156,8 @@ async function voegSpelerToeAanLadders(ladderIds, speler) {
 
 async function openAddPlayer() {
   // Reset
-  document.getElementById('new-player-name').value = '';
+  document.getElementById('new-player-voornaam').value = '';
+  document.getElementById('new-player-achternaam').value = '';
   document.getElementById('new-player-hcp').value = '';
   document.getElementById('new-player-account').value = '';
   document.getElementById('new-player-pass').value = '';
@@ -222,12 +223,15 @@ async function voegAccountToeAlsSpeler(email, naam) {
 }
 
 async function saveNewPlayer() {
-  const naam = document.getElementById('new-player-name').value.trim();
+  const voornaam = document.getElementById('new-player-voornaam').value.trim();
+  const achternaam = document.getElementById('new-player-achternaam').value.trim();
+  const naam = [voornaam, achternaam].filter(Boolean).join(' ');
   const hcp = Math.round(parseFloat(document.getElementById('new-player-hcp').value));
   const email = document.getElementById('new-player-account').value.trim().toLowerCase();
   const pass = document.getElementById('new-player-pass').value;
 
-  if (!naam) { toast('Voer een naam in'); return; }
+  if (!voornaam) { toast('Voer een voornaam in'); return; }
+  if (!achternaam) { toast('Voer een achternaam in'); return; }
   if (isNaN(hcp)) { toast('Voer een handicap in'); return; }
   if (!email || !email.includes('@')) { toast('Voer een geldig e-mailadres in'); return; }
   if (pass.length < 6) { toast('Wachtwoord minimaal 6 tekens'); return; }
