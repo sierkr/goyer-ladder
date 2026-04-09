@@ -1,7 +1,7 @@
 // ============================================================
 //  app.js — Entry point v2.5.4
 // ============================================================
-import { initApp, uitloggen, loginSubmit, loginMetGoogle,
+import { initApp, uitloggen, loginSubmit, loginMetGoogle, autoAdvance,
   openWachtwoordVergeten, sluitResetWrap, stuurResetEmail,
   openWachtwoordWijzigen, wijzigWachtwoord, toonLoginFout,
   genereerInviteLink, kopieerInviteLink, registreerSpeler,
@@ -60,6 +60,7 @@ import { renderKnockoutLadderKaart, openKnockoutIndeling,
 
 // ─── Window exports ───────────────────────────────────────────
 window.showPage = showPage;
+window.autoAdvance = autoAdvance;
 window.wisselLadder = wisselLadder;
 window.uitloggen = uitloggen;
 window.loginSubmit = loginSubmit;
@@ -184,7 +185,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v2.5.14';
+  const VERSION = 'v2.5.15';
   const badge = document.getElementById('versie-badge');
   if (badge) { badge.textContent = VERSION; badge.style.display = ''; }
   document.querySelectorAll('.login-versie').forEach(el => el.textContent = VERSION);
