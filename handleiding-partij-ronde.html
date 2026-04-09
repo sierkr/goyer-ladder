@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Handleiding — Partij & Ronde · Goyer Golf MP Ladder</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&family=Playfair+Display:wght@700&display=swap');
+
+  :root {
+    --green: #2d6a4f;
+    --green-mid: #40916c;
+    --green-pale: #d8f3dc;
+    --gold: #b7950b;
+    --gold-pale: #fef9e7;
+    --red: #c0392b;
+    --mid: #555;
+    --light: #888;
+    --border: #e8e4da;
+    --bg: #f9f7f2;
+    --white: #ffffff;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: #1a1a1a;
+    line-height: 1.65;
+    font-size: 15px;
+  }
+
+  header {
+    background: var(--green);
+    color: white;
+    padding: 32px 24px 28px;
+    position: relative;
+    overflow: hidden;
+  }
+  header::after {
+    content: '⛳';
+    position: absolute;
+    right: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 64px;
+    opacity: 0.15;
+  }
+  header .label {
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    opacity: 0.7;
+    margin-bottom: 6px;
+  }
+  header h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  header p {
+    margin-top: 8px;
+    opacity: 0.8;
+    font-size: 14px;
+  }
+
+  nav.toc {
+    background: var(--white);
+    border-bottom: 1px solid var(--border);
+    padding: 0 16px;
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  nav.toc::-webkit-scrollbar { display: none; }
+  nav.toc a {
+    display: block;
+    padding: 14px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--mid);
+    text-decoration: none;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  nav.toc a:hover { color: var(--green); border-bottom-color: var(--green-pale); }
+
+  main {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 24px 16px 60px;
+  }
+
+  section {
+    margin-bottom: 40px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--green-pale);
+  }
+  .section-icon {
+    width: 36px;
+    height: 36px;
+    background: var(--green);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .section-header h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    color: var(--green);
+  }
+
+  h3 {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--green-mid);
+    margin: 20px 0 10px;
+  }
+
+  p { margin-bottom: 10px; color: #333; }
+
+  .card {
+    background: var(--white);
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+
+  .card-step {
+    display: flex;
+    gap: 14px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    align-items: flex-start;
+  }
+  .card-step:last-child { border-bottom: none; }
+
+  .step-num {
+    width: 26px;
+    height: 26px;
+    background: var(--green);
+    color: white;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .step-body strong {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 3px;
+  }
+  .step-body p {
+    font-size: 13px;
+    color: var(--mid);
+    margin: 0;
+  }
+
+  .tip {
+    background: var(--gold-pale);
+    border-left: 3px solid var(--gold);
+    border-radius: 0 8px 8px 0;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+    color: #7a6000;
+  }
+  .tip strong { color: var(--gold); }
+
+  .note {
+    background: var(--green-pale);
+    border-left: 3px solid var(--green-mid);
+    border-radius: 0 8px 8px 0;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+    color: #1a4a30;
+  }
+
+  .warn {
+    background: #fde8e8;
+    border-left: 3px solid var(--red);
+    border-radius: 0 8px 8px 0;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+    color: #7a1010;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'DM Mono', monospace;
+  }
+  .badge-green { background: var(--green-pale); color: var(--green); }
+  .badge-gold { background: var(--gold-pale); color: var(--gold); }
+  .badge-red { background: #fde8e8; color: var(--red); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin: 12px 0;
+  }
+  th {
+    background: var(--green);
+    color: white;
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+  }
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    color: #333;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: #fafaf8; }
+
+  .formula-box {
+    background: #1a1a1a;
+    color: #a8f0c4;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    margin: 12px 0;
+    line-height: 1.8;
+  }
+  .formula-box .comment { color: #666; }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 32px 0;
+  }
+
+  footer {
+    text-align: center;
+    padding: 20px;
+    font-size: 12px;
+    color: var(--light);
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="label">Goyer Golf MP Ladder · Handleiding</div>
+  <h1>Partij &amp; Ronde</h1>
+  <p>Alles over het aanmaken, spelen en afsluiten van een matchplay partij</p>
+</header>
+
+<nav class="toc">
+  <a href="#partij-aanmaken">Partij aanmaken</a>
+  <a href="#baan">Baan &amp; holes</a>
+  <a href="#spelers">Spelers</a>
+  <a href="#hcp">Handicap</a>
+  <a href="#ronde">Ronde &amp; scores</a>
+  <a href="#uitslag">Uitslag</a>
+  <a href="#ladder">Ladderstand</a>
+</nav>
+
+<main>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="partij-aanmaken">
+    <div class="section-header">
+      <div class="section-icon">🏌️</div>
+      <h2>Partij aanmaken</h2>
+    </div>
+
+    <p>Via het tabblad <strong>Partij</strong> start je een nieuwe matchplay ronde. Elke speler die ingelogd is ziet zichzelf automatisch in slot 1.</p>
+
+    <div class="card">
+      <div class="card-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>Selecteer ladder</strong>
+          <p>Als je in meerdere ladders zit, kies je hier de juiste. Alleen ladders waar jij speler van bent worden getoond. Zit je in één ladder, dan is de selector verborgen.</p>
+        </div>
+      </div>
+      <div class="card-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Kies een baan</strong>
+          <p>Selecteer een van de ingebouwde banen of een opgeslagen eigen baan. Je kunt ook handmatig PAR en SI per hole invoeren.</p>
+        </div>
+      </div>
+      <div class="card-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>Kies het aantal holes</strong>
+          <p>Standaard 18 holes. Je kunt kiezen voor 9 holes, of een aangepast starthole en aantal holes instellen.</p>
+        </div>
+      </div>
+      <div class="card-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <strong>Voeg spelers toe</strong>
+          <p>Minimaal 2, maximaal 4 spelers. Zoek op naam in het zoekveld. Pas de handicap aan als die afwijkt van het systeem.</p>
+        </div>
+      </div>
+      <div class="card-step">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <strong>Start de partij</strong>
+          <p>Druk op <strong>Partij starten</strong>. Je gaat automatisch naar het tabblad Ronde.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="tip">
+      <strong>💡 Tip:</strong> Je kunt ook een gastspeler toevoegen via de knop <em>+ Gast</em>. Gastspelers tellen niet mee voor de ladderstand, maar de scores worden wel opgeslagen op de scorekaart.
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="baan">
+    <div class="section-header">
+      <div class="section-icon">🗺️</div>
+      <h2>Baan &amp; holes</h2>
+    </div>
+
+    <h3>Ingebouwde banen</h3>
+    <p>De volgende banen zijn standaard beschikbaar met correcte PAR en Stroke Index (SI) per hole:</p>
+    <table>
+      <tr><th>Baan</th><th>Holes</th></tr>
+      <tr><td>De Goyer (thuisbaan)</td><td>18</td></tr>
+      <tr><td>Hilversumsche Golf Club</td><td>18</td></tr>
+      <tr><td>Kennemer Golf &amp; Country Club</td><td>18</td></tr>
+      <tr><td>Haagsche Golf &amp; Country Club</td><td>18</td></tr>
+      <tr><td>Amsterdamsche Golf Club</td><td>18</td></tr>
+    </table>
+
+    <h3>Eigen baan invoeren</h3>
+    <p>Kies <em>Handmatig invoeren</em> onderaan de baanlijst. Vul voor elke hole de PAR (3–6) en SI (1–18) in. Via de knop <strong>⭐ Baan opslaan voor iedereen</strong> sla je de baan op zodat alle spelers er gebruik van kunnen maken.</p>
+
+    <div class="note">
+      Opgeslagen banen zijn voor iedereen zichtbaar. Alleen de aanmaker en coördinatoren kunnen een opgeslagen baan verwijderen.
+    </div>
+
+    <h3>Aantal holes &amp; startnummer</h3>
+    <p>Je kunt kiezen voor:</p>
+    <table>
+      <tr><th>Keuze</th><th>Wat het doet</th></tr>
+      <tr><td>18 holes</td><td>Volledige ronde, start bij hole 1</td></tr>
+      <tr><td>9 holes</td><td>Eerste 9 holes</td></tr>
+      <tr><td>Aangepast</td><td>Kies starthole en aantal holes. Bij hole 18+ loopt het door naar hole 1 (wrap-around).</td></tr>
+    </table>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="spelers">
+    <div class="section-header">
+      <div class="section-icon">👥</div>
+      <h2>Spelers</h2>
+    </div>
+
+    <p>Per partij kunnen 2 tot 4 spelers meedoen. De app maakt automatisch matchups aan tussen alle koppels.</p>
+
+    <table>
+      <tr><th>Aantal spelers</th><th>Matchups</th></tr>
+      <tr><td>2 spelers</td><td>1 matchup (A vs B)</td></tr>
+      <tr><td>3 spelers</td><td>3 matchups (A vs B, A vs C, B vs C)</td></tr>
+      <tr><td>4 spelers</td><td>6 matchups</td></tr>
+    </table>
+
+    <h3>Speler zoeken</h3>
+    <p>Typ in het zoekveld om spelers te filteren op naam. Alleen spelers uit de geselecteerde ladder worden getoond.</p>
+
+    <h3>Handicap aanpassen</h3>
+    <p>De handicap wordt automatisch ingevuld vanuit de ladder. Je kunt het veld aanpassen als de <em>playing handicap</em> van die dag afwijkt. Dit heeft direct effect op de slagenberekening.</p>
+
+    <h3>Speler tijdens ronde toevoegen of verwijderen</h3>
+    <p>Via het tabblad <strong>Ronde</strong> kun je, zolang de partij loopt:</p>
+    <ul style="margin: 8px 0 8px 20px; font-size:14px; color:#333">
+      <li style="margin-bottom:4px">Een extra speler toevoegen via de <strong>+</strong>-knop</li>
+      <li style="margin-bottom:4px">Een speler verwijderen via <strong>✕ verwijder</strong> in de scorekaart-header</li>
+      <li>De handicap van een speler wijzigen via klik op <em>hcp XX</em></li>
+    </ul>
+
+    <div class="warn">
+      <strong>⚠️ Let op:</strong> Bij verwijderen van een speler gaan diens scores verloren. Minimaal 2 spelers moeten in de partij blijven.
+    </div>
+
+    <h3>Gastspelers</h3>
+    <p>Een gastspeler wordt aangemaakt met een tijdelijk ID (90000+). Gastspelers:</p>
+    <ul style="margin: 8px 0 8px 20px; font-size:14px; color:#333">
+      <li style="margin-bottom:4px">Tellen <strong>niet</strong> mee voor de ladderstand</li>
+      <li style="margin-bottom:4px">Worden wel opgenomen in de scorekaart</li>
+      <li>Worden aangeduid met ⚠️ in de uitslag modal</li>
+    </ul>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="hcp">
+    <div class="section-header">
+      <div class="section-icon">📐</div>
+      <h2>Handicap verrekening</h2>
+    </div>
+
+    <p>De app berekent automatisch het aantal slagen dat de speler met de hogere handicap ontvangt, op basis van de Stroke Index (SI) per hole.</p>
+
+    <div class="formula-box">
+      <span class="comment"># Berekening slagverschil</span><br>
+      verschil = rond(|hcp_A − hcp_B| × 0,75)<br><br>
+      <span class="comment"># Speler met hogere hcp ontvangt slagen</span><br>
+      <span class="comment"># op de holes met SI ≤ verschil</span><br><br>
+      <span class="comment"># Bij meer dan 18 slagen: extra slag op laagste SI-holes</span>
+    </div>
+
+    <div class="note">
+      De 75%-factor is de standaard matchplay verrekening (NHG-regels). Dit is niet aanpasbaar per partij, maar kan via de ladderconfiguratie worden ingesteld.
+    </div>
+
+    <p>Het handicapblok onder de scorekaart toont per koppel hoeveel slagen wie ontvangt. Klik op <em>hcp XX</em> in de scorekaart-header om de playing handicap van een speler te wijzigen.</p>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="ronde">
+    <div class="section-header">
+      <div class="section-icon">📋</div>
+      <h2>Ronde &amp; scores invoeren</h2>
+    </div>
+
+    <p>Zodra een partij gestart is, vind je de live scorekaart onder het tabblad <strong>Ronde</strong>.</p>
+
+    <h3>Scorekaart</h3>
+    <p>De scorekaart toont alle holes als rijen, met per speler een invoerveld. Vul het aantal slagen per hole in. Na het invullen van een score springt de cursor automatisch naar het volgende veld.</p>
+
+    <div class="tip">
+      <strong>💡 Mobiel:</strong> Het actieve invoerveld scrollt automatisch in beeld. Gebruik het numeriek toetsenbord. Pijltjestoetsen op iOS gaan per hole langs alle spelers.
+    </div>
+
+    <h3>Live matchstand</h3>
+    <p>Onder de scorekaart staat het <strong>matchoverzicht</strong>. Dit wordt na elke score bijgewerkt en toont:</p>
+
+    <table>
+      <tr><th>Weergave</th><th>Betekenis</th></tr>
+      <tr><td><span class="badge badge-green">3 UP</span></td><td>Speler A leidt met 3 holes</td></tr>
+      <tr><td><span class="badge">TIED</span></td><td>Gelijke stand</td></tr>
+      <tr><td><span class="badge badge-gold">2 DOWN</span></td><td>Speler A staat 2 achter</td></tr>
+      <tr><td><span class="badge badge-green">3&amp;2</span></td><td>Beslist: 3 voor, 2 te gaan</td></tr>
+      <tr><td><span class="badge badge-green">1&amp;0</span></td><td>Beslist op de laatste hole</td></tr>
+    </table>
+
+    <p>Zodra een matchup niet meer ingehaald kan worden (meer voor dan holes over), verschijnt de status <strong>beslist</strong> in groen.</p>
+
+    <h3>Scorekaart in-/uitklappen</h3>
+    <p>Via de knop <strong>Scorekaart</strong> in de ronde-header kun je de scorekaart in- of uitklappen, zodat je meer ruimte hebt voor het matchoverzicht.</p>
+
+    <h3>Scores worden live opgeslagen</h3>
+    <p>Elke score-invoer wordt direct naar Firestore gestuurd. Andere spelers in de partij zien de scores live meebewegen als ze de app vernieuwen.</p>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="uitslag">
+    <div class="section-header">
+      <div class="section-icon">🏆</div>
+      <h2>Uitslag verwerken</h2>
+    </div>
+
+    <p>Als alle holes gespeeld zijn, druk je op <strong>Uitslag invoeren</strong>. Je kunt dit ook tussentijds doen als de partij al beslist is.</p>
+
+    <h3>Spelen zonder mobiel — direct afsluiten</h3>
+    <p>Scores invoeren op de baan is optioneel. Je kunt ook gewoon op de traditionele manier spelen en achteraf de uitslag invoeren:</p>
+
+    <div class="card">
+      <div class="card-step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <strong>Start de partij zoals normaal</strong>
+          <p>Vul baan, holes en spelers in en druk op <em>Partij starten</em>. De partij staat nu als actief geregistreerd.</p>
+        </div>
+      </div>
+      <div class="card-step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <strong>Speel de ronde op de traditionele manier</strong>
+          <p>Geen scores invoeren op de telefoon. Houd de stand bij op een scorekaart of in je hoofd.</p>
+        </div>
+      </div>
+      <div class="card-step">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <strong>Ga na afloop naar Ronde → Partij afsluiten</strong>
+          <p>Open het tabblad <strong>Ronde</strong> en druk direct op <strong>Uitslag invoeren</strong>. Omdat er geen scores zijn, toont elke matchup de knoppenkeuze <em>[naam A] wint</em> / <em>[naam B] wint</em>.</p>
+        </div>
+      </div>
+      <div class="card-step">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <strong>Wijs per matchup de winnaar aan</strong>
+          <p>Tik de winnaar aan voor elke match. Gebruik <em>✕ overslaan</em> voor matches die niet gespeeld werden. Bevestig daarna de uitslag.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="tip">
+      <strong>💡 Tip:</strong> Dit is de snelste manier als je de ladder wilt bijhouden zonder iedereen achter zijn telefoon te hebben staan. De scorekaart blijft leeg, maar de ladderstand wordt correct verwerkt.
+    </div>
+
+    <h3>Uitslag modal</h3>
+    <p>Per matchup toont de modal de berekende winnaar op basis van de scores. Is de stand gelijk of zijn er geen scores, dan kies je handmatig de winnaar.</p>
+
+    <div class="card">
+      <div class="card-step">
+        <div class="step-num">✓</div>
+        <div class="step-body">
+          <strong>Automatisch bepaald</strong>
+          <p>Er zijn scores en er is een duidelijke winnaar. De badge toont de winnaar en het resultaat (bijv. <em>3&amp;2</em>). Je kunt dit niet wijzigen.</p>
+        </div>
+      </div>
+      <div class="card-step">
+        <div class="step-num">⚡</div>
+        <div class="step-body">
+          <strong>Gelijkspel — kies winnaar</strong>
+          <p>De stand is gelijk na alle holes. Kies handmatig wie wint via de knoppen.</p>
+        </div>
+      </div>
+      <div class="card-step">
+        <div class="step-num">?</div>
+        <div class="step-body">
+          <strong>Geen scores — kies winnaar</strong>
+          <p>Er zijn geen scores ingevoerd voor deze matchup. Kies handmatig de winnaar of sla de matchup over.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3>Matchup overslaan</h3>
+    <p>Via <strong>✕ overslaan</strong> bij een matchup kun je die buiten de ladderverwerking houden. De matchup wordt dan doorgestreept. Gebruik dit als een match niet gespeeld kon worden. Overgeslagen matchups tellen niet mee voor de ladderstand.</p>
+
+    <h3>Partij annuleren</h3>
+    <p>In de uitslag modal zit de knop <strong>Partij annuleren</strong>. Hiermee verwijder je de partij zonder enige aanpassing aan de ladderstand. Scores gaan verloren.</p>
+
+    <div class="warn">
+      <strong>⚠️ Let op:</strong> Annuleren kan niet ongedaan worden. Gebruik <em>overslaan</em> per matchup als je de scores wel wilt bewaren maar de ladder niet wilt aanpassen.
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="ladder">
+    <div class="section-header">
+      <div class="section-icon">📊</div>
+      <h2>Ladderstand na afloop</h2>
+    </div>
+
+    <p>Na het bevestigen van de uitslag worden de ranks automatisch herberekend op basis van de ladderconfiguratie.</p>
+
+    <h3>Rangschikking regels</h3>
+    <table>
+      <tr><th>Situatie</th><th>Winnaar</th><th>Verliezer</th></tr>
+      <tr><td>Lager gerankte wint</td><td>+4 omhoog (instelbaar)</td><td>+2 omlaag (instelbaar)</td></tr>
+      <tr><td>Hoger gerankte wint</td><td>+1 omhoog (instelbaar)</td><td>+1 omlaag (instelbaar)</td></tr>
+    </table>
+
+    <div class="note">
+      De exacte stapgrootte is instelbaar per ladder via <em>Admin → Ladders → Instellingen</em>. De standaardwaarden zijn: laag stijgt 4, laag zakt 2, hoog stijgt 1, hoog zakt 1.
+    </div>
+
+    <h3>Resultaatscherm</h3>
+    <p>Na bevestiging verschijnt een overzicht van alle rankwijzigingen. Per matchup zie je de oud en nieuw rank van winnaar en verliezer met pijlen.</p>
+    <p>Druk op <strong>Naar ladderstand</strong> om terug te gaan. De ladder toont de nieuwe standen, met pijltjes (▲/▼) voor de veranderingen ten opzichte van de vorige stand.</p>
+
+    <h3>Scorekaart bewaren</h3>
+    <p>De volledige scorekaart (alle scores per hole, per speler) wordt 30 dagen bewaard. Via het tabblad <strong>Uitslagen</strong> kun je op de knop <strong>📋 Scorekaart</strong> klikken om de details te bekijken.</p>
+
+    <div class="divider"></div>
+
+    <h3>Meerdere partijen tegelijk</h3>
+    <p>Meerdere partijen kunnen gelijktijdig actief zijn in dezelfde ladder. De rankberekening bij het verwerken houdt rekening met de volgorde van afsluiting: de eerst afgeronde matchup wordt als eerste verwerkt, zodat tussenliggende rankwijzigingen correct doorwerken.</p>
+  </section>
+
+</main>
+
+<footer>
+  Goyer Golf MP Ladder · Handleiding Partij &amp; Ronde · v2.5.6
+</footer>
+
+</body>
+</html>
