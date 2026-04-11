@@ -56,7 +56,8 @@ import { renderKnockoutLadderKaart, openKnockoutIndeling,
   renderKnockoutIndelingModal, bevestigKnockoutIndeling,
   verwerkKnockoutVoortgang, verwerkKnockoutUitslag,
   slaKnockoutWinnaarOp, nieuwKnockoutSeizoen,
-  toggleAdminKaart } from './knockout.js';
+  toggleAdminKaart, koDragStart, koDragOver, koDrop, koDragEnd,
+  koTouchStart, koTouchMove, koTouchEnd, verschuifKoSpeler } from './knockout.js';
 
 // ─── Window exports ───────────────────────────────────────────
 window.showPage = showPage;
@@ -175,6 +176,14 @@ window.openSnapshotsModal = openSnapshotsModal;
 window.slaSnapshotOp = slaSnapshotOp;
 window.herstelSnapshot = herstelSnapshot;
 window.renderKnockoutLadderKaart = renderKnockoutLadderKaart;
+window.koDragStart = koDragStart;
+window.koDragOver = koDragOver;
+window.koDrop = koDrop;
+window.koDragEnd = koDragEnd;
+window.koTouchStart = koTouchStart;
+window.koTouchMove = koTouchMove;
+window.koTouchEnd = koTouchEnd;
+window.verschuifKoSpeler = verschuifKoSpeler;
 window.openKnockoutIndeling = openKnockoutIndeling;
 window.bevestigKnockoutIndeling = bevestigKnockoutIndeling;
 window.verwerkKnockoutVoortgang = verwerkKnockoutVoortgang;
@@ -185,7 +194,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v2.5.45';
+  const VERSION = 'v2.5.46';
   const badge = document.getElementById('versie-badge');
   if (badge) { badge.textContent = VERSION; badge.style.display = ''; }
   document.querySelectorAll('.login-versie').forEach(el => el.textContent = VERSION);

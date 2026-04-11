@@ -195,9 +195,7 @@ function renderKnockoutIndelingModal() {
         </div>
         ${!isBye ? `
         <div style="padding:8px;cursor:grab;touch-action:none;flex-shrink:0;font-size:18px;color:var(--light)"
-          ontouchstart="koTouchStart(event,${idx})"
-          ontouchmove="koTouchMove(event)"
-          ontouchend="koTouchEnd(event,${idx})">⠿</div>` : '<div style="width:32px"></div>'}
+          ontouchstart="koTouchStart(event,${idx})">⠿</div>` : '<div style="width:32px"></div>'}
       </div>
       ${idx % 2 === 1 ? '<div style="height:6px"></div>' : ''}`;
   });
@@ -238,16 +236,14 @@ function koDragEnd(event) {
 
 // Touch support voor mobiel
 function koTouchStart(event, idx) {
-  if (!_koIndelingVolgorde[idx]) return; // geen BYE
-  event.preventDefault(); // voorkom scrollen alleen tijdens drag
+  if (!_koIndelingVolgorde[idx]) return;
+  event.preventDefault();
   store._koDragIdx = idx;
   store._koTouchStartY = event.touches[0].clientY;
 
-  // Pak de hele rij (parent van de handle)
   const rij = event.currentTarget.closest('[data-idx]');
   if (rij) rij.style.opacity = '0.4';
 
-  // Maak een clone van de rij die meesleept
   const cloneSource = rij || event.currentTarget;
   store._koTouchClone = cloneSource.cloneNode(true);
   _koTouchClone.style.position = 'fixed';
@@ -262,6 +258,16 @@ function koTouchStart(event, idx) {
   _koTouchClone.style.top = cloneSource.getBoundingClientRect().top + 'px';
   _koTouchClone.style.left = cloneSource.getBoundingClientRect().left + 'px';
   document.body.appendChild(_koTouchClone);
+
+  // Registreer move en end op document zodat ze altijd gevangen worden
+  document.addEventListener('touchmove', koTouchMove, { passive: false });
+  document.addEventListener('touchend', _koTouchEndHandler);
+}
+
+function _koTouchEndHandler(event) {
+  document.removeEventListener('touchmove', koTouchMove);
+  document.removeEventListener('touchend', _koTouchEndHandler);
+  koTouchEnd(event);
 }
 
 function koTouchMove(event) {
