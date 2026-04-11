@@ -194,10 +194,10 @@ function renderKnockoutIndelingModal() {
           ${isBye ? 'BYE' : naam}
         </div>
         ${!isBye ? `
-        <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0">
-          <button ontouchstart="event.stopPropagation()" onclick="verschuifKoSpeler(${idx},-1)" style="background:none;border:1px solid var(--border);border-radius:4px;width:30px;height:24px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center">↑</button>
-          <button ontouchstart="event.stopPropagation()" onclick="verschuifKoSpeler(${idx},1)" style="background:none;border:1px solid var(--border);border-radius:4px;width:30px;height:24px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center">↓</button>
-        </div>` : '<div style="width:30px"></div>'}
+        <div style="padding:8px;cursor:grab;touch-action:none;flex-shrink:0;font-size:18px;color:var(--light)"
+          ontouchstart="koTouchStart(event,${idx})"
+          ontouchmove="koTouchMove(event)"
+          ontouchend="koTouchEnd(event,${idx})">⠿</div>` : '<div style="width:32px"></div>'}
       </div>
       ${idx % 2 === 1 ? '<div style="height:6px"></div>' : ''}`;
   });
@@ -239,24 +239,28 @@ function koDragEnd(event) {
 // Touch support voor mobiel
 function koTouchStart(event, idx) {
   if (!_koIndelingVolgorde[idx]) return; // geen BYE
+  event.preventDefault(); // voorkom scrollen alleen tijdens drag
   store._koDragIdx = idx;
   store._koTouchStartY = event.touches[0].clientY;
-  const el = event.currentTarget;
-  el.style.opacity = '0.4';
 
-  // Maak een clone die meesleept
-  store._koTouchClone = el.cloneNode(true);
+  // Pak de hele rij (parent van de handle)
+  const rij = event.currentTarget.closest('[data-idx]');
+  if (rij) rij.style.opacity = '0.4';
+
+  // Maak een clone van de rij die meesleept
+  const cloneSource = rij || event.currentTarget;
+  store._koTouchClone = cloneSource.cloneNode(true);
   _koTouchClone.style.position = 'fixed';
   _koTouchClone.style.zIndex = '9999';
-  _koTouchClone.style.width = el.offsetWidth + 'px';
+  _koTouchClone.style.width = cloneSource.offsetWidth + 'px';
   _koTouchClone.style.pointerEvents = 'none';
   _koTouchClone.style.opacity = '0.85';
   _koTouchClone.style.transform = 'scale(1.02)';
-  _koTouchClone.style.background = 'white';
-  _koTouchClone.style.boxShadow = '0 4px 16px rgba(0,0,0,0.15)';
+  _koTouchClone.style.background = 'var(--green-pale)';
+  _koTouchClone.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
   _koTouchClone.style.borderRadius = '8px';
-  _koTouchClone.style.top = el.getBoundingClientRect().top + 'px';
-  _koTouchClone.style.left = el.getBoundingClientRect().left + 'px';
+  _koTouchClone.style.top = cloneSource.getBoundingClientRect().top + 'px';
+  _koTouchClone.style.left = cloneSource.getBoundingClientRect().left + 'px';
   document.body.appendChild(_koTouchClone);
 }
 
@@ -276,7 +280,7 @@ function koTouchMove(event) {
 }
 
 function koTouchEnd(event) {
-  if (_koTouchClone) { _koTouchClone.remove(); _koTouchClone = null; }
+  if (_koTouchClone) { _koTouchClone.remove(); store._koTouchClone = null; }
   document.querySelectorAll('#knockout-indeling-lijst [data-idx]').forEach(el => {
     el.style.opacity = ''; el.style.background = '';
   });
