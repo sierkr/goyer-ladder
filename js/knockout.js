@@ -185,17 +185,19 @@ function renderKnockoutIndelingModal() {
         ondragover="koDragOver(event)"
         ondrop="koDrop(event,${idx})"
         ondragend="koDragEnd(event)"
-        ontouchstart="koTouchStart(event,${idx})"
-        ontouchmove="koTouchMove(event)"
-        ontouchend="koTouchEnd(event,${idx})"
         data-idx="${idx}"
-        style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);cursor:${isBye ? 'default' : 'grab'};touch-action:none;user-select:none">
+        style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);user-select:none">
         ${isEerste
           ? `<span style="font-size:10px;color:var(--light);width:20px;text-align:right;flex-shrink:0">${koppelNr}</span>`
           : `<span style="width:20px;flex-shrink:0"></span>`}
         <div style="flex:1;background:${isBye ? '#f0ede4' : 'var(--green-pale)'};border-radius:8px;padding:8px 12px;font-size:13px;font-weight:${isBye ? '400' : '600'};color:${isBye ? 'var(--light)' : 'inherit'}">
-          ${isBye ? 'BYE' : `⠿ ${naam}`}
+          ${isBye ? 'BYE' : naam}
         </div>
+        ${!isBye ? `
+        <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0">
+          <button ontouchstart="event.stopPropagation()" onclick="verschuifKoSpeler(${idx},-1)" style="background:none;border:1px solid var(--border);border-radius:4px;width:30px;height:24px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center">↑</button>
+          <button ontouchstart="event.stopPropagation()" onclick="verschuifKoSpeler(${idx},1)" style="background:none;border:1px solid var(--border);border-radius:4px;width:30px;height:24px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center">↓</button>
+        </div>` : '<div style="width:30px"></div>'}
       </div>
       ${idx % 2 === 1 ? '<div style="height:6px"></div>' : ''}`;
   });
