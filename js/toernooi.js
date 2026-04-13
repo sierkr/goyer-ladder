@@ -846,7 +846,7 @@ function renderToernooiActief() {
       </button>
       ` : `
       <button class="btn btn-gold btn-block" onclick="openToernooiAfsluiten()" style="margin-bottom:8px">
-        ✓ Toernooi afsluiten${(toernooiData?.rankingLadderIds?.length > 0 || toernooiData?.ladderId) ? ' & ladder bijwerken' : ''}
+        ✓ Toernooi afsluiten${toernooiData?.modus !== 'strokeplay' && (toernooiData?.rankingLadderIds?.length > 0 || toernooiData?.ladderId) ? ' & ladder bijwerken' : ''}
       </button>
       `}
       <button class="btn btn-ghost btn-block" onclick="annuleerToernooi()" style="margin-bottom:8px;color:var(--red)">
@@ -1256,16 +1256,18 @@ function renderTRanglijst() {
 
   if (t.modus === 'strokeplay') {
     // ── Strokeplay ranglijst ──
+    const gekozenModus = t._ranglijstModus || 'brutto';
+    const isAbs = gekozenModus === 'abs';
+    const isNetto = gekozenModus === 'netto';
+    t._berekenModus = gekozenModus;
+
     const resultaten = berekenStrokeplayRanglijst()
       .filter(r => r.holes > 0)
       .sort((a, b) => {
         if (a.score === null) return 1;
         if (b.score === null) return -1;
-        return a.score - b.score; // laag is goed (of voor ABS: negatief = hoog)
+        return a.score - b.score;
       });
-
-    const isAbs = t.modus === 'abs';
-    const isNetto = t.modus === 'netto';
 
     t._berekenModus = null; // herstel
     // Sync radio button
@@ -1365,13 +1367,25 @@ function renderTMatrix() {
 
 function openToernooiAfsluiten() {
   const t = toernooiData;
-  const { punten, won, tied, lost } = berekenTPunten();
-  const volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]}))
-    .sort((a,b) => b.pt - a.pt || b.w - a.w);
+  const isStrokeplay = t.modus === 'strokeplay';
 
-  const rankingLadderIds = t.rankingLadderIds?.length > 0
-    ? t.rankingLadderIds
-    : (t.ladderId ? [t.ladderId] : []);
+  let volgorde;
+  if (isStrokeplay) {
+    const gekozenModus = t._ranglijstModus || 'brutto';
+    t._berekenModus = gekozenModus;
+    volgorde = berekenStrokeplayRanglijst()
+      .filter(r => r.holes > 0)
+      .sort((a, b) => (a.score ?? 999) - (b.score ?? 999));
+    t._berekenModus = null;
+  } else {
+    const { punten, won, tied, lost } = berekenTPunten();
+    volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]}))
+      .sort((a,b) => b.pt - a.pt || b.w - a.w);
+  }
+
+  const rankingLadderIds = !isStrokeplay
+    ? (t.rankingLadderIds?.length > 0 ? t.rankingLadderIds : (t.ladderId ? [t.ladderId] : []))
+    : [];
   const heeftRankingLadders = rankingLadderIds.length > 0;
   const rankingLadderNamen = alleLadders
     .filter(l => rankingLadderIds.includes(l.id))
@@ -1379,18 +1393,25 @@ function openToernooiAfsluiten() {
 
   let html = '<div style="margin-bottom:12px">';
   volgorde.forEach((entry, rank) => {
+    const naam = isStrokeplay ? entry.s.naam : entry.s.naam;
+    const gast = isStrokeplay ? entry.s.gast : entry.s.gast;
+    const score = isStrokeplay
+      ? `<span style="font-family:'DM Mono',monospace;color:var(--green);font-weight:700">${entry.label}</span>`
+      : `<span style="font-family:'DM Mono',monospace;color:var(--green);font-weight:700">${entry.pt > 0 ? '+' : ''}${entry.pt} pt</span>`;
     html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
       <div>
         <span style="font-family:'Bebas Neue';font-size:18px;color:${rank===0?'var(--gold)':'var(--light)'};margin-right:8px">${rank+1}</span>
-        <strong>${entry.s.naam}</strong>${entry.s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}
+        <strong>${naam}</strong>${gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}
       </div>
-      <span style="font-family:'DM Mono',monospace;color:var(--green);font-weight:700">${entry.pt > 0 ? '+' : ''}${entry.pt} pt</span>
+      ${score}
     </div>`;
   });
   html += `</div><p style="font-size:12px;color:var(--light)">${
-    heeftRankingLadders
-      ? `Rankingposities worden bijgewerkt voor de betreffende spelers in: ${rankingLadderNamen}. Alleen spelers met 5+ ladderwedstrijden. Gastspelers tellen niet mee.`
-      : 'Er zijn geen ranking ladders gekoppeld aan dit toernooi. Ladders worden niet aangepast.'
+    isStrokeplay
+      ? 'Strokeplay toernooi — ladderstand wordt niet aangepast.'
+      : heeftRankingLadders
+        ? `Rankingposities worden bijgewerkt voor de betreffende spelers in: ${rankingLadderNamen}. Alleen spelers met 5+ ladderwedstrijden. Gastspelers tellen niet mee.`
+        : 'Er zijn geen ranking ladders gekoppeld aan dit toernooi. Ladders worden niet aangepast.'
   }</p>`;
 
   document.getElementById('t-eindstand').innerHTML = html;
@@ -1401,6 +1422,22 @@ async function bevestigToernooiAfsluiten() {
 
   try {
   const t = toernooiData;
+
+  // Strokeplay — geen ladderaanpassing, direct afsluiten
+  if (t.modus === 'strokeplay') {
+    t.status = 'afgelopen';
+    const idx = alleToernooien.findIndex(x => x.id === actieveToernooiId);
+    if (idx >= 0) alleToernooien[idx].status = 'afgelopen';
+    const { setDoc: sd, doc: dc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    await setDoc(doc(db, 'toernooien', actieveToernooiId), t);
+    closeModal('modal-toernooi-afsluiten');
+    store.toernooiData = null;
+    store.actieveToernooiId = null;
+    renderToernooi();
+    toast('Toernooi afgesloten ✓');
+    return;
+  }
+
   const { punten, won, tied, lost, matrix } = berekenTPunten();
   const volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]}))
     .sort((a,b) => b.pt - a.pt || b.w - a.w);
