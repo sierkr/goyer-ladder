@@ -1288,9 +1288,9 @@ function renderTRanglijst() {
 
 function renderTMatrix() {
   // Verberg matrix bij strokeplay
-  const matrixEl = document.getElementById('t-matrix');
   if (toernooiData?.modus && toernooiData.modus !== 'matchplay') {
-    if (matrixEl) matrixEl.innerHTML = '';
+    const el = document.getElementById('t-matrix');
+    if (el) el.innerHTML = '';
     return;
   }
   // Bewaar focus en cursor positie voor matrix render
