@@ -92,7 +92,7 @@ async function herlaadToernooien() {
       store.toernooiData = alleToernooien[0];
       store.actieveToernooiId = alleToernooien[0].id;
     }
-    if (toernooiData) actieveToernooiId = toernooiData.id;
+    if (toernooiData) store.actieveToernooiId = toernooiData.id;
 
     // Start realtime listeners voor alle actieve toernooien
     _toernooiListeners.forEach(unsub => unsub());
@@ -1210,21 +1210,22 @@ window.kopieerLiveLink = kopieerLiveLink;
 // ── Strokeplay ranglijst berekening ────────────────────────
 function berekenStrokeplayRanglijst() {
   const t = toernooiData;
+  const modus = t._berekenModus || t.modus || 'brutto';
   return t.spelers.map(s => {
     const scores = t.scores[s.id] || t.scores[String(s.id)] || [];
     const ingevuld = scores.filter(v => v !== null && v !== undefined);
     const brutto = ingevuld.reduce((a, b) => a + Number(b), 0);
 
-    if (t.modus === 'brutto') {
+    if (modus === 'brutto') {
       return { s, score: ingevuld.length ? brutto : null, label: brutto || '—', holes: ingevuld.length };
     }
 
-    if (t.modus === 'netto') {
+    if (modus === 'netto') {
       const netto = ingevuld.length ? brutto - Math.round(s.hcp) : null;
       return { s, score: netto, label: netto !== null ? netto : '—', holes: ingevuld.length, brutto };
     }
 
-    if (t.modus === 'abs') {
+    if (modus === 'abs') {
       // Stableford netto — slagen op basis van SI en hcp
       let punten = 0;
       const hcp = Math.round(s.hcp);
@@ -1266,7 +1267,7 @@ function renderTRanglijst() {
     const isAbs = t.modus === 'abs';
     const isNetto = t.modus === 'netto';
 
-    t.modus = origModus; // herstel
+    t._berekenModus = null; // herstel
     // Sync radio button
     const radio = document.querySelector(`input[name="t-ranglijst-keuze"][value="${gekozenModus}"]`);
     if (radio) radio.checked = true;
