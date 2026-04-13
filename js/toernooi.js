@@ -1182,9 +1182,17 @@ function toernooiModusWissel(modus) {
   const strokeplay = document.getElementById('t-strokeplay-instellingen');
   const rankingWrap = document.getElementById('t-ranking-ladders-wrap');
   if (matchplay) matchplay.style.display = modus === 'matchplay' ? '' : 'none';
-  if (strokeplay) strokeplay.style.display = modus !== 'matchplay' ? '' : 'none';
+  if (strokeplay) strokeplay.style.display = modus === 'strokeplay' ? '' : 'none';
   if (rankingWrap) rankingWrap.style.display = modus === 'matchplay' ? '' : 'none';
 }
+
+function wisselRanglijstModus(modus) {
+  if (toernooiData) {
+    toernooiData._ranglijstModus = modus;
+    renderTRanglijst();
+  }
+}
+window.wisselRanglijstModus = wisselRanglijstModus;
 window.toernooiModusWissel = toernooiModusWissel;
 
 function kopieerLiveLink() {
@@ -1241,7 +1249,11 @@ function renderTRanglijst() {
   if (!el) return;
   const t = toernooiData;
 
-  if (t.modus && t.modus !== 'matchplay') {
+  // Toon/verberg modus keuze
+  const modusBar = document.getElementById('t-ranglijst-modus');
+  if (modusBar) modusBar.style.display = t.modus === 'strokeplay' ? '' : 'none';
+
+  if (t.modus === 'strokeplay') {
     // ── Strokeplay ranglijst ──
     const resultaten = berekenStrokeplayRanglijst()
       .filter(r => r.holes > 0)
@@ -1253,6 +1265,11 @@ function renderTRanglijst() {
 
     const isAbs = t.modus === 'abs';
     const isNetto = t.modus === 'netto';
+
+    t.modus = origModus; // herstel
+    // Sync radio button
+    const radio = document.querySelector(`input[name="t-ranglijst-keuze"][value="${gekozenModus}"]`);
+    if (radio) radio.checked = true;
 
     el.innerHTML = resultaten.length === 0
       ? '<div class="empty"><p>Nog geen scores ingevoerd.</p></div>'

@@ -1282,18 +1282,12 @@
         </div>
         <div class="form-group">
           <label>Speelwijze</label>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+          <div style="display:flex;gap:6px;margin-top:4px">
             <label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:12px;font-weight:600">
               <input type="radio" name="t-modus" value="matchplay" checked onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Matchplay
             </label>
             <label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:12px;font-weight:600">
-              <input type="radio" name="t-modus" value="brutto" onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Brutto
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:12px;font-weight:600">
-              <input type="radio" name="t-modus" value="netto" onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Netto
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:12px;font-weight:600">
-              <input type="radio" name="t-modus" value="abs" onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Stableford
+              <input type="radio" name="t-modus" value="strokeplay" onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Strokeplay
             </label>
           </div>
         </div>
@@ -1372,6 +1366,19 @@
     <!-- Ranglijst -->
     <div class="card">
       <div class="card-header"><h2>Ranglijst</h2></div>
+      <div id="t-ranglijst-modus" style="display:none;padding:10px 16px 4px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:5px;padding:3px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:12px;font-weight:600">
+            <input type="radio" name="t-ranglijst-keuze" value="brutto" checked onchange="wisselRanglijstModus(this.value)" style="accent-color:var(--green)"> Brutto
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;padding:3px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:12px;font-weight:600">
+            <input type="radio" name="t-ranglijst-keuze" value="netto" onchange="wisselRanglijstModus(this.value)" style="accent-color:var(--green)"> Netto
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;padding:3px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:12px;font-weight:600">
+            <input type="radio" name="t-ranglijst-keuze" value="abs" onchange="wisselRanglijstModus(this.value)" style="accent-color:var(--green)"> Stableford
+          </label>
+        </div>
+      </div>
       <div id="t-ranglijst"></div>
     </div>
 
