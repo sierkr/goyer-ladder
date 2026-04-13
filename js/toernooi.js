@@ -493,9 +493,12 @@ async function startToernooi() {
   const scores = {};
   geselecteerd.forEach(s => { scores[s.id] = Array(holes.length).fill(null); });
 
+  const modus = document.querySelector('input[name="t-modus"]:checked')?.value || 'matchplay';
+
   const nieuweToernooi = {
     status: 'actief',
     naam, datum, baan: baanNaam, holes,
+    modus,
     ptWin, ptTie, ptLoss, hcpPct,
     ladderId: ladderId || null,
     rankingLadderIds,
@@ -825,6 +828,12 @@ function renderToernooiActief() {
       <div class="card-collapse ${uitslag ? 'ingeklapt' : ''}">
         <div id="t-scorecard-wrap" style="overflow-x:auto"></div>
       </div>
+    </div>
+
+    <div style="padding:0 0 12px">
+      <button onclick="kopieerLiveLink()" class="btn btn-ghost btn-block" style="font-size:13px">
+        🔗 Live meekijklink kopiëren
+      </button>
     </div>
 
     ${isBeheerder ? `
@@ -1168,17 +1177,103 @@ function berekenTPunten() {
   return { punten, won, tied, lost, matrix };
 }
 
+function toernooiModusWissel(modus) {
+  const matchplay = document.getElementById('t-matchplay-instellingen');
+  const strokeplay = document.getElementById('t-strokeplay-instellingen');
+  if (matchplay) matchplay.style.display = modus === 'matchplay' ? '' : 'none';
+  if (strokeplay) strokeplay.style.display = modus !== 'matchplay' ? '' : 'none';
+}
+window.toernooiModusWissel = toernooiModusWissel;
+
+function kopieerLiveLink() {
+  if (!actieveToernooiId) { toast('Geen actief toernooi'); return; }
+  const base = window.location.href.split('/').slice(0, -1).join('/');
+  const url = `${base}/toernooi-live.html?t=${actieveToernooiId}`;
+  navigator.clipboard.writeText(url).then(() => {
+    toast('Link gekopieerd! Deel deze in WhatsApp om mee te laten kijken ✓');
+  }).catch(() => {
+    prompt('Kopieer deze link:', url);
+  });
+}
+window.kopieerLiveLink = kopieerLiveLink;
+
+// ── Strokeplay ranglijst berekening ────────────────────────
+function berekenStrokeplayRanglijst() {
+  const t = toernooiData;
+  return t.spelers.map(s => {
+    const scores = t.scores[s.id] || t.scores[String(s.id)] || [];
+    const ingevuld = scores.filter(v => v !== null && v !== undefined);
+    const brutto = ingevuld.reduce((a, b) => a + Number(b), 0);
+
+    if (t.modus === 'brutto') {
+      return { s, score: ingevuld.length ? brutto : null, label: brutto || '—', holes: ingevuld.length };
+    }
+
+    if (t.modus === 'netto') {
+      const netto = ingevuld.length ? brutto - Math.round(s.hcp) : null;
+      return { s, score: netto, label: netto !== null ? netto : '—', holes: ingevuld.length, brutto };
+    }
+
+    if (t.modus === 'abs') {
+      // Stableford netto — slagen op basis van SI en hcp
+      let punten = 0;
+      const hcp = Math.round(s.hcp);
+      t.holes.forEach((hole, i) => {
+        const val = scores[i];
+        if (val === null || val === undefined) return;
+        // Slagen op deze hole
+        const slagen = (hole.si <= Math.min(hcp, t.holes.length) ? 1 : 0) +
+                       (hole.si <= Math.max(0, hcp - t.holes.length) ? 1 : 0);
+        const netto = Number(val) - slagen;
+        const diff = hole.par - netto;
+        punten += Math.max(0, diff + 2); // eagle=4, birdie=3, par=2, bogey=1, dubbel+=0
+      });
+      return { s, score: -punten, label: punten, holes: ingevuld.length, brutto }; // negatief voor sortering (hoog=goed)
+    }
+    return { s, score: null, label: '—', holes: 0 };
+  });
+}
+
 function renderTRanglijst() {
   const el = document.getElementById('t-ranglijst');
-  if (!el) return; // Ranglijst niet zichtbaar tijdens spelen
+  if (!el) return;
   const t = toernooiData;
-  const { punten, won, tied, lost } = berekenTPunten();
 
-  // Sorteer op punten desc
+  if (t.modus && t.modus !== 'matchplay') {
+    // ── Strokeplay ranglijst ──
+    const resultaten = berekenStrokeplayRanglijst()
+      .filter(r => r.holes > 0)
+      .sort((a, b) => {
+        if (a.score === null) return 1;
+        if (b.score === null) return -1;
+        return a.score - b.score; // laag is goed (of voor ABS: negatief = hoog)
+      });
+
+    const isAbs = t.modus === 'abs';
+    const isNetto = t.modus === 'netto';
+
+    el.innerHTML = resultaten.length === 0
+      ? '<div class="empty"><p>Nog geen scores ingevoerd.</p></div>'
+      : resultaten.map((r, rank) => `
+        <div class="ladder-item">
+          <div class="rank-badge ${rank < 3 ? 'top3' : ''}">${rank+1}</div>
+          <div class="player-name">${r.s.naam}${r.s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}</div>
+          <div style="font-size:12px;color:var(--light);text-align:right;line-height:1.6">
+            ${isNetto ? `<span style="font-size:10px">brutto ${r.brutto}</span><br>` : ''}
+            <strong style="color:var(--dark);font-size:14px">${isAbs ? r.label + ' pt' : r.label}</strong><br>
+            <span style="font-size:10px">${r.holes}/${t.holes.length} holes</span>
+            ${r.s.gast ? '<br><span style="font-size:10px;color:var(--light)">telt niet mee</span>' : ''}
+          </div>
+        </div>`).join('');
+    return;
+  }
+
+  // ── Matchplay ranglijst ──
+  const { punten, won, tied, lost } = berekenTPunten();
   const volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]}))
     .sort((a,b) => b.pt - a.pt || b.w - a.w);
 
-  document.getElementById('t-ranglijst').innerHTML = volgorde.map((entry, rank) => `
+  el.innerHTML = volgorde.map((entry, rank) => `
     <div class="ladder-item">
       <div class="rank-badge ${rank < 3 ? 'top3' : ''}">${rank+1}</div>
       <div class="player-name">${entry.s.naam}${entry.s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}</div>
@@ -1192,6 +1287,12 @@ function renderTRanglijst() {
 }
 
 function renderTMatrix() {
+  // Verberg matrix bij strokeplay
+  const matrixEl = document.getElementById('t-matrix');
+  if (toernooiData?.modus && toernooiData.modus !== 'matchplay') {
+    if (matrixEl) matrixEl.innerHTML = '';
+    return;
+  }
   // Bewaar focus en cursor positie voor matrix render
   const actief = document.activeElement;
   const tabIdx = actief?.getAttribute?.('tabindex');

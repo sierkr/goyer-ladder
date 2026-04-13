@@ -1,5 +1,5 @@
 // Goyer Golf MP Ladder — Service Worker
-const CACHE_VERSION = 'v48';
+const CACHE_VERSION = 'v49';
 const CACHE_NAME = 'goyer-mp-' + CACHE_VERSION;
 
 const STATIC_ASSETS = [
@@ -20,6 +20,7 @@ const STATIC_ASSETS = [
   './js/beheer.js',
   './js/knockout.js',
   './handleiding-partij-ronde.html',
+  './toernooi-live.html',
   './icon-512.png',
   './manifest.json'
 ];

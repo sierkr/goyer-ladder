@@ -1289,23 +1289,47 @@
           <div id="t-ranking-ladders" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div>
         </div>
         <div class="divider"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
-          <div class="form-group" style="margin:0">
-            <label>Winst</label>
-            <input type="number" id="t-pt-win" value="2" style="text-align:center">
-          </div>
-          <div class="form-group" style="margin:0">
-            <label>Gelijk</label>
-            <input type="number" id="t-pt-tie" value="0" style="text-align:center">
-          </div>
-          <div class="form-group" style="margin:0">
-            <label>Verlies</label>
-            <input type="number" id="t-pt-loss" value="-2" style="text-align:center">
+        <div class="form-group">
+          <label>Speelwijze</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
+            <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px" id="modus-lbl-matchplay">
+              <input type="radio" name="t-modus" value="matchplay" checked onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Matchplay
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px" id="modus-lbl-brutto">
+              <input type="radio" name="t-modus" value="brutto" onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Strokeplay Brutto
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px" id="modus-lbl-netto">
+              <input type="radio" name="t-modus" value="netto" onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Strokeplay Netto
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px" id="modus-lbl-abs">
+              <input type="radio" name="t-modus" value="abs" onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Stableford (ABS)
+            </label>
           </div>
         </div>
-        <div class="form-group">
-          <label>HCP verrekening %</label>
-          <input type="number" id="t-hcp-pct" value="75" min="0" max="100" style="width:90px">
+        <div id="t-matchplay-instellingen">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;margin-top:12px">
+            <div class="form-group" style="margin:0">
+              <label>Winst</label>
+              <input type="number" id="t-pt-win" value="2" style="text-align:center">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label>Gelijk</label>
+              <input type="number" id="t-pt-tie" value="0" style="text-align:center">
+            </div>
+            <div class="form-group" style="margin:0">
+              <label>Verlies</label>
+              <input type="number" id="t-pt-loss" value="-2" style="text-align:center">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>HCP verrekening %</label>
+            <input type="number" id="t-hcp-pct" value="75" min="0" max="100" style="width:90px">
+          </div>
+        </div>
+        <div id="t-strokeplay-instellingen" style="display:none">
+          <div class="note" style="margin-top:12px;font-size:12px">
+            Bij <strong>Brutto</strong> telt de ruwe score. Bij <strong>Netto</strong> wordt de playing handicap afgetrokken van het totaal. Bij <strong>Stableford</strong> worden punten per hole berekend (netto): eagle=4, birdie=3, par=2, bogey=1, dubbel bogey+=0.
+          </div>
         </div>
         <div class="divider"></div>
         <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px">Deelnemers selecteren</label>
