@@ -233,7 +233,7 @@ function koDrop(event, doelIdx) {
   event.preventDefault();
   if (_koDragIdx === null || _koDragIdx === doelIdx) return;
   const n = _koIndelingVolgorde;
-  if (!n[_koDragIdx]) return;
+  if (_koDragIdx >= n.length || doelIdx >= n.length) return;
   [n[_koDragIdx], n[doelIdx]] = [n[doelIdx], n[_koDragIdx]];
   store._koDragIdx = null;
   renderKnockoutIndelingModal();
@@ -309,10 +309,12 @@ function koTouchEnd(event) {
   const rij = elOnder?.closest('[data-idx]');
   if (rij) {
     const doelIdx = parseInt(rij.dataset.idx);
-    if (doelIdx !== _koDragIdx) {
+    if (doelIdx !== _koDragIdx && _koDragIdx !== null) {
       const n = _koIndelingVolgorde;
-      [n[_koDragIdx], n[doelIdx]] = [n[doelIdx], n[_koDragIdx]];
-      renderKnockoutIndelingModal();
+      if (_koDragIdx < n.length && doelIdx < n.length) {
+        [n[_koDragIdx], n[doelIdx]] = [n[doelIdx], n[_koDragIdx]];
+        renderKnockoutIndelingModal();
+      }
     }
   }
   store._koDragIdx = null;
@@ -367,26 +369,31 @@ function verwerkKnockoutVoortgang(rondes, aantalSpelers) {
     const ronde = rondes[ri];
     const volgendeRi = ri + 1;
 
-    // Alle winnaars — lege string = nog niet gespeeld, echte naam = winnaar
     const alleWinnaars = ronde.map(p => p.winnaar);
     const nogTeSpelen = alleWinnaars.filter(w => !w).length;
-    if (nogTeSpelen > 0) break; // Nog niet alle partijen gespeeld
 
     if (volgendeRi >= totaalRondes) break; // Finale klaar
 
-    const winnaars = alleWinnaars; // alle winnaars inclusief byes
-
-    // Maak volgende ronde als die nog niet bestaat
-    if (!rondes[volgendeRi]) {
-      const volgendeRonde = [];
-      for (let i = 0; i < winnaars.length; i += 2) {
-        const partij = { a: winnaars[i] || '', b: winnaars[i+1] || '', winnaar: '' };
-        if (!partij.b) partij.winnaar = partij.a;
-        if (!partij.a) partij.winnaar = partij.b;
-        volgendeRonde.push(partij);
+    if (nogTeSpelen > 0) {
+      // Sommige partijen nog niet gespeeld — verwijder volgende rondes
+      // zodat ze opnieuw gegenereerd worden als alles klaar is
+      if (rondes[volgendeRi]) {
+        rondes.splice(volgendeRi);
       }
-      rondes[volgendeRi] = volgendeRonde;
+      break;
     }
+
+    const winnaars = alleWinnaars;
+
+    // Maak of overschrijf de volgende ronde op basis van huidige winnaars
+    const volgendeRonde = [];
+    for (let i = 0; i < winnaars.length; i += 2) {
+      const partij = { a: winnaars[i] || '', b: winnaars[i+1] || '', winnaar: '' };
+      if (!partij.b) partij.winnaar = partij.a;
+      if (!partij.a) partij.winnaar = partij.b;
+      volgendeRonde.push(partij);
+    }
+    rondes[volgendeRi] = volgendeRonde;
   }
 
   return rondes;
