@@ -1180,8 +1180,10 @@ function berekenTPunten() {
 function toernooiModusWissel(modus) {
   const matchplay = document.getElementById('t-matchplay-instellingen');
   const strokeplay = document.getElementById('t-strokeplay-instellingen');
+  const rankingWrap = document.getElementById('t-ranking-ladders-wrap');
   if (matchplay) matchplay.style.display = modus === 'matchplay' ? '' : 'none';
   if (strokeplay) strokeplay.style.display = modus !== 'matchplay' ? '' : 'none';
+  if (rankingWrap) rankingWrap.style.display = modus === 'matchplay' ? '' : 'none';
 }
 window.toernooiModusWissel = toernooiModusWissel;
 

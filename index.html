@@ -1281,31 +1281,31 @@
           </div>
         </div>
         <div class="form-group">
+          <label>Speelwijze</label>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+            <label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:12px;font-weight:600">
+              <input type="radio" name="t-modus" value="matchplay" checked onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Matchplay
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:12px;font-weight:600">
+              <input type="radio" name="t-modus" value="brutto" onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Brutto
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:12px;font-weight:600">
+              <input type="radio" name="t-modus" value="netto" onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Netto
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;padding:4px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:12px;font-weight:600">
+              <input type="radio" name="t-modus" value="abs" onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Stableford
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
           <label>Spelers ladder(s)</label>
           <div id="t-spelers-ladders" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div>
         </div>
-        <div class="form-group">
+        <div class="form-group" id="t-ranking-ladders-wrap">
           <label>Ranking ladder(s)</label>
           <div id="t-ranking-ladders" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div>
         </div>
         <div class="divider"></div>
-        <div class="form-group">
-          <label>Speelwijze</label>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px">
-            <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px" id="modus-lbl-matchplay">
-              <input type="radio" name="t-modus" value="matchplay" checked onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Matchplay
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px" id="modus-lbl-brutto">
-              <input type="radio" name="t-modus" value="brutto" onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Strokeplay Brutto
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px" id="modus-lbl-netto">
-              <input type="radio" name="t-modus" value="netto" onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Strokeplay Netto
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px" id="modus-lbl-abs">
-              <input type="radio" name="t-modus" value="abs" onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green)"> Stableford (ABS)
-            </label>
-          </div>
-        </div>
         <div id="t-matchplay-instellingen">
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;margin-top:12px">
             <div class="form-group" style="margin:0">
