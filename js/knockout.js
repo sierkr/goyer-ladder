@@ -180,7 +180,7 @@ function renderKnockoutIndelingModal() {
     const isEerste = idx % 2 === 0;
     const isBye = !naam;
     html += `
-      <div draggable="${!isBye}"
+      <div draggable="true"
         ondragstart="koDragStart(event,${idx})"
         ondragover="koDragOver(event)"
         ondrop="koDrop(event,${idx})"
@@ -193,14 +193,25 @@ function renderKnockoutIndelingModal() {
         <div style="flex:1;background:${isBye ? '#f0ede4' : 'var(--green-pale)'};border-radius:8px;padding:8px 12px;font-size:13px;font-weight:${isBye ? '400' : '600'};color:${isBye ? 'var(--light)' : 'inherit'}">
           ${isBye ? 'BYE' : naam}
         </div>
-        ${!isBye ? `
         <div style="padding:8px;cursor:grab;touch-action:none;flex-shrink:0;font-size:18px;color:var(--light)"
-          ontouchstart="koTouchStart(event,${idx})">⠿</div>` : '<div style="width:32px"></div>'}
+          ontouchstart="koTouchStart(event,${idx})">⠿</div>
       </div>
       ${idx % 2 === 1 ? '<div style="height:6px"></div>' : ''}`;
   });
 
   lijst.innerHTML = html;
+
+  // Stel scrollhoogte correct in op basis van beschikbare ruimte
+  requestAnimationFrame(() => {
+    const modal = lijst.closest('.modal');
+    if (!modal) return;
+    const modalRect = modal.getBoundingClientRect();
+    const lijstTop = lijst.getBoundingClientRect().top;
+    const actions = modal.querySelector('.modal-actions');
+    const actionsH = actions ? actions.offsetHeight + 16 : 80;
+    const maxH = modalRect.bottom - lijstTop - actionsH - 16;
+    lijst.style.maxHeight = Math.max(200, maxH) + 'px';
+  });
 }
 
 
