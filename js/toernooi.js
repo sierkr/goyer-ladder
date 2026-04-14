@@ -1212,33 +1212,88 @@ function berekenStrokeplayRanglijst() {
   const t = toernooiData;
   return t.spelers.map(s => {
     const scores = t.scores?.[s.id] || t.scores?.[String(s.id)] || [];
-    const ingevuld = scores.filter(v => v !== null && v !== undefined);
-    const holes = ingevuld.length;
-    const brutto = ingevuld.length ? ingevuld.reduce((a, b) => a + Number(b), 0) : null;
-
-    // Netto = brutto - playing handicap
-    const netto = brutto !== null ? brutto - Math.round(s.hcp) : null;
-
-    // Stableford (ABS) netto
-    let stableford = 0;
     const hcp = Math.round(s.hcp);
+    const aantalHoles = t.holes.length;
+
+    // Bereken per hole: brutto, slagen op basis van SI, netto, stableford
+    let bruttoTotaal = 0;
+    let nettoSlagen = 0; // totaal slagen ontvangen op gespeelde holes
+    let stableford = 0;
+    let holesGespeeld = 0;
+    const holeScores = []; // voor countback
+
     t.holes.forEach((hole, i) => {
       const val = scores[i];
-      if (val === null || val === undefined) return;
-      const slagen = (hole.si <= Math.min(hcp, t.holes.length) ? 1 : 0) +
-                     (hole.si <= Math.max(0, hcp - t.holes.length) ? 1 : 0);
-      const nettoVal = Number(val) - slagen;
+      if (val === null || val === undefined) {
+        holeScores.push(null);
+        return;
+      }
+      holesGespeeld++;
+      const v = Number(val);
+      bruttoTotaal += v;
+
+      // Slagen op deze hole op basis van SI en 18-holes hcp
+      const slag = (hole.si <= Math.min(hcp, aantalHoles) ? 1 : 0) +
+                   (hole.si <= Math.max(0, hcp - aantalHoles) ? 1 : 0);
+      nettoSlagen += slag;
+
+      const nettoVal = v - slag;
       const diff = hole.par - nettoVal;
       stableford += Math.max(0, diff + 2);
+      holeScores.push({ brutto: v, netto: nettoVal, stableford: Math.max(0, diff + 2) });
     });
 
+    const brutto = holesGespeeld > 0 ? bruttoTotaal : null;
+    const netto = holesGespeeld > 0 ? bruttoTotaal - nettoSlagen : null;
+
     return {
-      s, holes,
+      s, holes: holesGespeeld,
       brutto,
       netto,
-      stableford: holes > 0 ? stableford : null,
+      stableford: holesGespeeld > 0 ? stableford : null,
+      holeScores, // voor countback
     };
   });
+}
+
+// Countback: vergelijk scores op laatste helft, derde, kwart van gespeelde holes
+function countback(a, b, sorteerOp) {
+  const n = Math.max(
+    (a.holeScores || []).filter(h => h !== null).length,
+    (b.holeScores || []).filter(h => h !== null).length
+  );
+  if (n === 0) return 0;
+
+  // Segmenten: laatste helft, laatste derde, laatste kwart, laatste 1
+  const segmenten = [
+    Math.ceil(n / 2),
+    Math.ceil(n / 3),
+    Math.ceil(n / 4),
+    1
+  ].filter((v, i, arr) => arr.indexOf(v) === i); // uniek
+
+  const getScore = (speler, aantalVanachter) => {
+    const gevuld = (speler.holeScores || []).filter(h => h !== null);
+    const segment = gevuld.slice(-aantalVanachter);
+    if (sorteerOp === 'stableford') {
+      return segment.reduce((sum, h) => sum + h.stableford, 0);
+    } else if (sorteerOp === 'netto') {
+      return segment.reduce((sum, h) => sum + h.netto, 0);
+    } else {
+      return segment.reduce((sum, h) => sum + h.brutto, 0);
+    }
+  };
+
+  for (const seg of segmenten) {
+    const scoreA = getScore(a, seg);
+    const scoreB = getScore(b, seg);
+    if (sorteerOp === 'stableford') {
+      if (scoreA !== scoreB) return scoreB - scoreA; // hoog is goed
+    } else {
+      if (scoreA !== scoreB) return scoreA - scoreB; // laag is goed
+    }
+  }
+  return 0; // echt gelijk
 }
 
 function renderTRanglijst() {
@@ -1259,13 +1314,27 @@ function renderTRanglijst() {
       .sort((a, b) => {
         const valA = sorteerOp === 'stableford' ? -(a.stableford ?? -999) : (a[sorteerOp] ?? 999);
         const valB = sorteerOp === 'stableford' ? -(b.stableford ?? -999) : (b[sorteerOp] ?? 999);
-        return valA - valB;
+        if (valA !== valB) return valA - valB;
+        // Gelijke stand — countback
+        return countback(a, b, sorteerOp);
       });
+
+    // Markeer spelers met gelijke score (countback bepaalt volgorde)
+    const cbSpelers = new Set();
+    for (let i = 0; i < resultaten.length - 1; i++) {
+      const a = resultaten[i], b = resultaten[i+1];
+      const va = sorteerOp === 'stableford' ? a.stableford : a[sorteerOp];
+      const vb = sorteerOp === 'stableford' ? b.stableford : b[sorteerOp];
+      if (va === vb) { cbSpelers.add(i); cbSpelers.add(i+1); }
+    }
 
     // Sync sort indicator
     document.querySelectorAll('.t-sort-pijl').forEach(el => el.textContent = '↕');
     const actief = document.querySelector(`.t-sort-pijl[data-col="${sorteerOp}"]`);
     if (actief) actief.textContent = sorteerOp === 'stableford' ? '↓' : '↑';
+
+    // Sorteerlabel
+    const sorteerLabel = { brutto: 'Brutto (laag wint)', netto: 'Netto (laag wint)', stableford: 'Stableford (hoog wint)' }[sorteerOp];
 
     if (resultaten.length === 0) {
       el.innerHTML = '<div class="empty"><p>Nog geen scores ingevoerd.</p></div>';
@@ -1276,7 +1345,11 @@ function renderTRanglijst() {
     const tdStyle = 'padding:7px 6px;text-align:center;font-size:13px;font-family:"DM Mono",monospace;border-bottom:1px solid var(--border)';
     const tdNaamStyle = 'padding:7px 10px;font-size:13px;font-weight:600;border-bottom:1px solid var(--border)';
 
-    let html = '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%"><thead><tr>';
+    let html = `<div style="font-size:11px;color:var(--light);padding:6px 10px;border-bottom:1px solid var(--border)">
+      Gesorteerd op: <strong style="color:var(--green)">${sorteerLabel}</strong>
+      ${cbSpelers.size > 0 ? ' · <span title="Gelijke stand — volgorde bepaald door countback (laatste holes)">CB = countback</span>' : ''}
+    </div>`;
+    html += '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%"><thead><tr>';
     html += `<th style="${thStyle};text-align:left;width:24px">#</th>`;
     html += `<th style="${thStyle};text-align:left">Naam</th>`;
     html += `<th style="${thStyle}" title="Gespeelde holes">Holes</th>`;
@@ -1291,9 +1364,10 @@ function renderTRanglijst() {
       const actBrutto = sorteerOp === 'brutto' ? 'font-weight:700;color:var(--green)' : '';
       const actNetto = sorteerOp === 'netto' ? 'font-weight:700;color:var(--green)' : '';
       const actStableford = sorteerOp === 'stableford' ? 'font-weight:700;color:var(--green)' : '';
+      const cbBadge = cbSpelers.has(rank) ? ' <span style="font-size:9px;background:#fff3cd;color:#7a6000;border-radius:4px;padding:1px 4px;font-weight:700">CB</span>' : '';
       html += `<tr style="${trStyle}">
         <td style="${tdStyle};font-weight:700;color:${rank < 3 ? 'var(--gold)' : 'var(--light)'}">${rank+1}</td>
-        <td style="${tdNaamStyle}">${r.s.naam}${isGast ? ' <em style="font-size:10px;color:var(--light)">(gast)</em>' : ''}</td>
+        <td style="${tdNaamStyle}">${r.s.naam}${isGast ? ' <em style="font-size:10px;color:var(--light)">(gast)</em>' : ''}${cbBadge}</td>
         <td style="${tdStyle};color:var(--light);font-size:11px">${r.holes}/${t.holes.length}</td>
         <td style="${tdStyle};${actBrutto}">${r.brutto ?? '—'}</td>
         <td style="${tdStyle};${actNetto}">${r.netto ?? '—'}</td>
