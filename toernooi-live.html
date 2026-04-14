@@ -264,6 +264,7 @@ function renderRanglijst() {
       .sort((a, b) => (a.brutto ?? 999) - (b.brutto ?? 999));
 
     html += '<div class="card-header"><h2>Ranglijst</h2><span class="badge badge-green">Strokeplay</span></div>';
+    html += '<div style="font-size:11px;color:var(--light);padding:6px 10px;border-bottom:1px solid var(--border)">Gesorteerd op: <strong style="color:var(--green)">Brutto (laag wint)</strong></div>';
 
     if (resultaten.length === 0) {
       html += '<div class="empty">Nog geen scores ingevoerd.</div>';
