@@ -1210,38 +1210,34 @@ window.kopieerLiveLink = kopieerLiveLink;
 // ── Strokeplay ranglijst berekening ────────────────────────
 function berekenStrokeplayRanglijst() {
   const t = toernooiData;
-  const modus = t._berekenModus || t.modus || 'brutto';
   return t.spelers.map(s => {
-    const scores = t.scores[s.id] || t.scores[String(s.id)] || [];
+    const scores = t.scores?.[s.id] || t.scores?.[String(s.id)] || [];
     const ingevuld = scores.filter(v => v !== null && v !== undefined);
-    const brutto = ingevuld.reduce((a, b) => a + Number(b), 0);
+    const holes = ingevuld.length;
+    const brutto = ingevuld.length ? ingevuld.reduce((a, b) => a + Number(b), 0) : null;
 
-    if (modus === 'brutto') {
-      return { s, score: ingevuld.length ? brutto : null, label: brutto || '—', holes: ingevuld.length };
-    }
+    // Netto = brutto - playing handicap
+    const netto = brutto !== null ? brutto - Math.round(s.hcp) : null;
 
-    if (modus === 'netto') {
-      const netto = ingevuld.length ? brutto - Math.round(s.hcp) : null;
-      return { s, score: netto, label: netto !== null ? netto : '—', holes: ingevuld.length, brutto };
-    }
+    // Stableford (ABS) netto
+    let stableford = 0;
+    const hcp = Math.round(s.hcp);
+    t.holes.forEach((hole, i) => {
+      const val = scores[i];
+      if (val === null || val === undefined) return;
+      const slagen = (hole.si <= Math.min(hcp, t.holes.length) ? 1 : 0) +
+                     (hole.si <= Math.max(0, hcp - t.holes.length) ? 1 : 0);
+      const nettoVal = Number(val) - slagen;
+      const diff = hole.par - nettoVal;
+      stableford += Math.max(0, diff + 2);
+    });
 
-    if (modus === 'abs') {
-      // Stableford netto — slagen op basis van SI en hcp
-      let punten = 0;
-      const hcp = Math.round(s.hcp);
-      t.holes.forEach((hole, i) => {
-        const val = scores[i];
-        if (val === null || val === undefined) return;
-        // Slagen op deze hole
-        const slagen = (hole.si <= Math.min(hcp, t.holes.length) ? 1 : 0) +
-                       (hole.si <= Math.max(0, hcp - t.holes.length) ? 1 : 0);
-        const netto = Number(val) - slagen;
-        const diff = hole.par - netto;
-        punten += Math.max(0, diff + 2); // eagle=4, birdie=3, par=2, bogey=1, dubbel+=0
-      });
-      return { s, score: -punten, label: punten, holes: ingevuld.length, brutto }; // negatief voor sortering (hoog=goed)
-    }
-    return { s, score: null, label: '—', holes: 0 };
+    return {
+      s, holes,
+      brutto,
+      netto,
+      stableford: holes > 0 ? stableford : null,
+    };
   });
 }
 
@@ -1255,38 +1251,58 @@ function renderTRanglijst() {
   if (modusBar) modusBar.style.display = t.modus === 'strokeplay' ? '' : 'none';
 
   if (t.modus === 'strokeplay') {
-    // ── Strokeplay ranglijst ──
-    const gekozenModus = t._ranglijstModus || 'brutto';
-    const isAbs = gekozenModus === 'abs';
-    const isNetto = gekozenModus === 'netto';
-    t._berekenModus = gekozenModus;
+    // ── Strokeplay tabel ranglijst ──
+    const sorteerOp = t._ranglijstModus || 'brutto';
 
     const resultaten = berekenStrokeplayRanglijst()
       .filter(r => r.holes > 0)
       .sort((a, b) => {
-        if (a.score === null) return 1;
-        if (b.score === null) return -1;
-        return a.score - b.score;
+        const valA = sorteerOp === 'stableford' ? -(a.stableford ?? -999) : (a[sorteerOp] ?? 999);
+        const valB = sorteerOp === 'stableford' ? -(b.stableford ?? -999) : (b[sorteerOp] ?? 999);
+        return valA - valB;
       });
 
-    t._berekenModus = null; // herstel
-    // Sync radio button
-    const radio = document.querySelector(`input[name="t-ranglijst-keuze"][value="${gekozenModus}"]`);
-    if (radio) radio.checked = true;
+    // Sync sort indicator
+    document.querySelectorAll('.t-sort-pijl').forEach(el => el.textContent = '↕');
+    const actief = document.querySelector(`.t-sort-pijl[data-col="${sorteerOp}"]`);
+    if (actief) actief.textContent = sorteerOp === 'stableford' ? '↓' : '↑';
 
-    el.innerHTML = resultaten.length === 0
-      ? '<div class="empty"><p>Nog geen scores ingevoerd.</p></div>'
-      : resultaten.map((r, rank) => `
-        <div class="ladder-item">
-          <div class="rank-badge ${rank < 3 ? 'top3' : ''}">${rank+1}</div>
-          <div class="player-name">${r.s.naam}${r.s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}</div>
-          <div style="font-size:12px;color:var(--light);text-align:right;line-height:1.6">
-            ${isNetto ? `<span style="font-size:10px">brutto ${r.brutto}</span><br>` : ''}
-            <strong style="color:var(--dark);font-size:14px">${isAbs ? r.label + ' pt' : r.label}</strong><br>
-            <span style="font-size:10px">${r.holes}/${t.holes.length} holes</span>
-            ${r.s.gast ? '<br><span style="font-size:10px;color:var(--light)">telt niet mee</span>' : ''}
-          </div>
-        </div>`).join('');
+    if (resultaten.length === 0) {
+      el.innerHTML = '<div class="empty"><p>Nog geen scores ingevoerd.</p></div>';
+      return;
+    }
+
+    const thStyle = 'padding:8px 6px;background:var(--green);color:white;text-align:center;font-size:11px;cursor:pointer;white-space:nowrap;user-select:none';
+    const tdStyle = 'padding:7px 6px;text-align:center;font-size:13px;font-family:"DM Mono",monospace;border-bottom:1px solid var(--border)';
+    const tdNaamStyle = 'padding:7px 10px;font-size:13px;font-weight:600;border-bottom:1px solid var(--border)';
+
+    let html = '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%"><thead><tr>';
+    html += `<th style="${thStyle};text-align:left;width:24px">#</th>`;
+    html += `<th style="${thStyle};text-align:left">Naam</th>`;
+    html += `<th style="${thStyle}" title="Gespeelde holes">Holes</th>`;
+    html += `<th style="${thStyle}" onclick="wisselRanglijstModus('brutto')">Brutto<br><span class="t-sort-pijl" data-col="brutto">↕</span></th>`;
+    html += `<th style="${thStyle}" onclick="wisselRanglijstModus('netto')">Netto<br><span class="t-sort-pijl" data-col="netto">↕</span></th>`;
+    html += `<th style="${thStyle}" onclick="wisselRanglijstModus('stableford')">Stableford<br><span class="t-sort-pijl" data-col="stableford">↕</span></th>`;
+    html += '</tr></thead><tbody>';
+
+    resultaten.forEach((r, rank) => {
+      const isGast = r.s.gast;
+      const trStyle = rank % 2 === 0 ? '' : 'background:#fafaf8';
+      const actBrutto = sorteerOp === 'brutto' ? 'font-weight:700;color:var(--green)' : '';
+      const actNetto = sorteerOp === 'netto' ? 'font-weight:700;color:var(--green)' : '';
+      const actStableford = sorteerOp === 'stableford' ? 'font-weight:700;color:var(--green)' : '';
+      html += `<tr style="${trStyle}">
+        <td style="${tdStyle};font-weight:700;color:${rank < 3 ? 'var(--gold)' : 'var(--light)'}">${rank+1}</td>
+        <td style="${tdNaamStyle}">${r.s.naam}${isGast ? ' <em style="font-size:10px;color:var(--light)">(gast)</em>' : ''}</td>
+        <td style="${tdStyle};color:var(--light);font-size:11px">${r.holes}/${t.holes.length}</td>
+        <td style="${tdStyle};${actBrutto}">${r.brutto ?? '—'}</td>
+        <td style="${tdStyle};${actNetto}">${r.netto ?? '—'}</td>
+        <td style="${tdStyle};${actStableford}">${r.stableford !== null ? r.stableford + ' pt' : '—'}</td>
+      </tr>`;
+    });
+
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
     return;
   }
 
