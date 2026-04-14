@@ -226,30 +226,30 @@ function renderScores() {
 }
 
 function berekenStrokeplayRanglijst(t) {
+  const aantalHoles = t.holes.length;
   return t.spelers.map(s => {
     const scores = t.scores?.[s.id] || t.scores?.[String(s.id)] || [];
-    const ingevuld = scores.filter(v => v != null);
-    const brutto = ingevuld.reduce((a, b) => a + Number(b), 0);
-    if (t.modus === 'brutto') return { s, score: ingevuld.length ? brutto : null, label: brutto || '—', holes: ingevuld.length };
-    if (t.modus === 'netto') {
-      const netto = ingevuld.length ? brutto - Math.round(s.hcp) : null;
-      return { s, score: netto, label: netto !== null ? netto : '—', holes: ingevuld.length, brutto };
-    }
-    if (t.modus === 'abs') {
-      let punten = 0;
-      const hcp = Math.round(s.hcp);
-      t.holes.forEach((hole, i) => {
-        const val = scores[i];
-        if (val == null) return;
-        const slagen = (hole.si <= Math.min(hcp, t.holes.length) ? 1 : 0) +
-                       (hole.si <= Math.max(0, hcp - t.holes.length) ? 1 : 0);
-        const netto = Number(val) - slagen;
-        const diff = hole.par - netto;
-        punten += Math.max(0, diff + 2);
-      });
-      return { s, score: -punten, label: punten, holes: ingevuld.length, brutto };
-    }
-    return { s, score: null, label: '—', holes: 0 };
+    const hcp = Math.round(s.hcp);
+    let bruttoTotaal = 0, nettoSlagen = 0, stableford = 0, holesGespeeld = 0;
+    t.holes.forEach((hole, i) => {
+      const val = scores[i];
+      if (val == null) return;
+      holesGespeeld++;
+      const v = Number(val);
+      bruttoTotaal += v;
+      const slag = (hole.si <= Math.min(hcp, aantalHoles) ? 1 : 0) +
+                   (hole.si <= Math.max(0, hcp - aantalHoles) ? 1 : 0);
+      nettoSlagen += slag;
+      const diff = hole.par - (v - slag);
+      stableford += Math.max(0, diff + 2);
+    });
+    return {
+      s,
+      holes: holesGespeeld,
+      brutto: holesGespeeld > 0 ? bruttoTotaal : null,
+      netto: holesGespeeld > 0 ? bruttoTotaal - nettoSlagen : null,
+      stableford: holesGespeeld > 0 ? stableford : null,
+    };
   });
 }
 
@@ -257,29 +257,39 @@ function renderRanglijst() {
   const t = toernooiData;
   let html = '<div class="card">';
 
-  if (t.modus && t.modus !== 'matchplay') {
-    const isAbs = t.modus === 'abs';
-    const isNetto = t.modus === 'netto';
+  if (t.modus === 'strokeplay') {
+    // Strokeplay — tabel met alle kolommen
     const resultaten = berekenStrokeplayRanglijst(t)
       .filter(r => r.holes > 0)
-      .sort((a, b) => (a.score ?? 999) - (b.score ?? 999));
+      .sort((a, b) => (a.brutto ?? 999) - (b.brutto ?? 999));
+
+    html += '<div class="card-header"><h2>Ranglijst</h2><span class="badge badge-green">Strokeplay</span></div>';
 
     if (resultaten.length === 0) {
       html += '<div class="empty">Nog geen scores ingevoerd.</div>';
     } else {
-      const modusLabel = { brutto: 'Strokeplay Brutto', netto: 'Strokeplay Netto', abs: 'Stableford' }[t.modus];
-      html += `<div class="card-header"><h2>Ranglijst</h2><span class="badge badge-green">${modusLabel}</span></div>`;
+      const thS = 'padding:6px 4px;background:var(--green);color:white;text-align:center;font-size:11px;white-space:nowrap';
+      const tdS = 'padding:6px 4px;text-align:center;font-size:12px;font-family:monospace;border-bottom:1px solid var(--border)';
+      const tdN = 'padding:6px 8px;font-size:13px;font-weight:600;border-bottom:1px solid var(--border);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      html += '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%"><thead><tr>';
+      html += `<th style="${thS};text-align:left;width:20px">#</th>`;
+      html += `<th style="${thS};text-align:left">Naam</th>`;
+      html += `<th style="${thS}">Holes</th>`;
+      html += `<th style="${thS}">Brutto</th>`;
+      html += `<th style="${thS}">Netto</th>`;
+      html += `<th style="${thS}">Stableford</th>`;
+      html += '</tr></thead><tbody>';
       resultaten.forEach((r, rank) => {
-        html += `<div class="ladder-item">
-          <div class="rank-badge ${rank < 3 ? 'top3' : ''}">${rank+1}</div>
-          <div class="player-name">${r.s.naam}${r.s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}</div>
-          <div style="text-align:right;line-height:1.6">
-            ${isNetto ? `<span style="font-size:11px;color:var(--light)">brutto ${r.brutto}</span><br>` : ''}
-            <strong style="font-size:15px">${isAbs ? r.label + ' pt' : r.label}</strong><br>
-            <span style="font-size:10px;color:var(--light)">${r.holes}/${t.holes.length} holes</span>
-          </div>
-        </div>`;
+        html += `<tr style="${rank % 2 ? 'background:#fafaf8' : ''}">
+          <td style="${tdS};font-weight:700;color:${rank < 3 ? 'var(--gold)' : 'var(--light)'}">${rank+1}</td>
+          <td style="${tdN}">${r.s.naam}</td>
+          <td style="${tdS};color:var(--light);font-size:11px">${r.holes}/${t.holes.length}</td>
+          <td style="${tdS}">${r.brutto ?? '—'}</td>
+          <td style="${tdS}">${r.netto ?? '—'}</td>
+          <td style="${tdS}">${r.stableford !== null ? r.stableford + ' pt' : '—'}</td>
+        </tr>`;
       });
+      html += '</tbody></table></div>';
     }
   } else {
     // Matchplay — toon tussenstand per matchup

@@ -117,7 +117,7 @@ async function herlaadToernooien() {
                 if (btn) btn.style.display = '';
                 renderTMatrix();
               }
-              if (nieuweData.uitslagZichtbaar) renderTRanglijst();
+              if (nieuweData.uitslagZichtbaar || nieuweData.modus === 'strokeplay') renderTRanglijst();
             } else {
               // Voor spelers: update data maar render scorekaart niet opnieuw (toetsenbord blijft open)
               const oudeMatrixIngeklapt = toernooiData?.matrixIngeklapt;
@@ -530,7 +530,7 @@ async function startToernooi() {
     if (actieveToernooiId === snap.id) {
       store.toernooiData = nieuweData;
       const detail = document.getElementById('toernooi-detail');
-      if (detail) { renderTScorecard(); renderTMatrix(); if (nieuweData.uitslagZichtbaar) renderTRanglijst(); }
+      if (detail) { renderTScorecard(); renderTMatrix(); if (nieuweData.uitslagZichtbaar || nieuweData.modus === 'strokeplay') renderTRanglijst(); }
     }
   });
   _toernooiListeners.push(unsub);
@@ -798,22 +798,24 @@ function renderToernooiActief() {
       </div>
     </div>
 
-    ${uitslag ? `
+    ${uitslag || t.modus === 'strokeplay' ? `
     <div class="card">
       <div class="card-header"><h2>Ranglijst</h2></div>
       <div id="t-ranglijst"></div>
     </div>
     ` : ''}
 
+    ${t.modus !== 'strokeplay' ? `
     <div class="card">
       <div class="card-header ${isBeheerder ? 'inklapbaar' : ''} ${t.matrixIngeklapt && !uitslag ? 'ingeklapt' : ''}"
-        ${isBeheerder ? `onclick="toggleToernooiMatrix()"` : ''}>
+        ${isBeheerder ? 'onclick="toggleToernooiMatrix()"' : ''}>
         <h2>Onderlinge stand</h2>
       </div>
       <div class="card-collapse ${t.matrixIngeklapt && !uitslag ? 'ingeklapt' : ''}" id="t-matrix-collapse">
         <div id="t-matrix" style="overflow-x:auto;padding:8px"></div>
       </div>
     </div>
+    ` : ''}
 
     <div class="card">
       <div class="card-header inklapbaar ${uitslag ? 'ingeklapt' : ''}" onclick="toggleAdminKaart(this)">
@@ -857,7 +859,7 @@ function renderToernooiActief() {
   `;
 
   renderTScorecard();
-  if (uitslag) renderTRanglijst();
+  if (uitslag || t.modus === 'strokeplay') renderTRanglijst();
   renderTMatrix();
 
   // Koppel uitslag knop
@@ -983,7 +985,7 @@ function refreshToernooiScorekaart() {
   if (btn) btn.style.display = 'none';
   renderTScorecard();
   renderTMatrix();
-  if (toernooiData?.uitslagZichtbaar) renderTRanglijst();
+  if (toernooiData?.uitslagZichtbaar || toernooiData?.modus === 'strokeplay') renderTRanglijst();
   // Check uitslag knop na refresh
   const alles = alleScoresIngevuld(toernooiData);
   const uitslagBtn = document.getElementById('t-uitslag-btn');
@@ -1341,9 +1343,9 @@ function renderTRanglijst() {
       return;
     }
 
-    const thStyle = 'padding:8px 6px;background:var(--green);color:white;text-align:center;font-size:11px;cursor:pointer;white-space:nowrap;user-select:none';
-    const tdStyle = 'padding:7px 6px;text-align:center;font-size:13px;font-family:"DM Mono",monospace;border-bottom:1px solid var(--border)';
-    const tdNaamStyle = 'padding:7px 10px;font-size:13px;font-weight:600;border-bottom:1px solid var(--border)';
+    const thStyle = 'padding:6px 4px;background:var(--green);color:white;text-align:center;font-size:11px;cursor:pointer;white-space:nowrap;user-select:none';
+    const tdStyle = 'padding:6px 4px;text-align:center;font-size:12px;font-family:"DM Mono",monospace;border-bottom:1px solid var(--border)';
+    const tdNaamStyle = 'padding:6px 8px;font-size:13px;font-weight:600;border-bottom:1px solid var(--border);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
 
     let html = `<div style="font-size:11px;color:var(--light);padding:6px 10px;border-bottom:1px solid var(--border)">
       Gesorteerd op: <strong style="color:var(--green)">${sorteerLabel}</strong>
