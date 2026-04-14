@@ -259,12 +259,19 @@ function renderRanglijst() {
 
   if (t.modus === 'strokeplay') {
     // Strokeplay — tabel met alle kolommen
+    const sorteerOp = t._ranglijstModus || 'brutto';
+    const sorteerLabel = { brutto: 'Brutto (laag wint)', netto: 'Netto (laag wint)', stableford: 'Stableford (hoog wint)' }[sorteerOp] || 'Brutto (laag wint)';
+
     const resultaten = berekenStrokeplayRanglijst(t)
       .filter(r => r.holes > 0)
-      .sort((a, b) => (a.brutto ?? 999) - (b.brutto ?? 999));
+      .sort((a, b) => {
+        const va = sorteerOp === 'stableford' ? -(a.stableford ?? -999) : (a[sorteerOp] ?? 999);
+        const vb = sorteerOp === 'stableford' ? -(b.stableford ?? -999) : (b[sorteerOp] ?? 999);
+        return va - vb;
+      });
 
     html += '<div class="card-header"><h2>Ranglijst</h2><span class="badge badge-green">Strokeplay</span></div>';
-    html += '<div style="font-size:11px;color:var(--light);padding:6px 10px;border-bottom:1px solid var(--border)">Gesorteerd op: <strong style="color:var(--green)">Brutto (laag wint)</strong></div>';
+    html += `<div style="font-size:11px;color:var(--light);padding:6px 10px;border-bottom:1px solid var(--border)">Gesorteerd op: <strong style="color:var(--green)">${sorteerLabel}</strong></div>`;
 
     if (resultaten.length === 0) {
       html += '<div class="empty">Nog geen scores ingevoerd.</div>';
@@ -276,9 +283,10 @@ function renderRanglijst() {
       html += `<th style="${thS};text-align:left;width:20px">#</th>`;
       html += `<th style="${thS};text-align:left">Naam</th>`;
       html += `<th style="${thS}">Holes</th>`;
-      html += `<th style="${thS}">Brutto</th>`;
-      html += `<th style="${thS}">Netto</th>`;
-      html += `<th style="${thS}">Stableford</th>`;
+      const actS = (col) => sorteerOp === col ? ';background:#1e4d38' : '';
+      html += `<th style="${thS}${actS('brutto')}">Brutto${sorteerOp === 'brutto' ? ' ↑' : ''}</th>`;
+      html += `<th style="${thS}${actS('netto')}">Netto${sorteerOp === 'netto' ? ' ↑' : ''}</th>`;
+      html += `<th style="${thS}${actS('stableford')}">Stableford${sorteerOp === 'stableford' ? ' ↓' : ''}</th>`;
       html += '</tr></thead><tbody>';
       resultaten.forEach((r, rank) => {
         html += `<tr style="${rank % 2 ? 'background:#fafaf8' : ''}">

@@ -1188,10 +1188,16 @@ function toernooiModusWissel(modus) {
   if (rankingWrap) rankingWrap.style.display = modus === 'matchplay' ? '' : 'none';
 }
 
-function wisselRanglijstModus(modus) {
+async function wisselRanglijstModus(modus) {
   if (toernooiData) {
     toernooiData._ranglijstModus = modus;
     renderTRanglijst();
+    // Sla op in Firestore zodat live meekijkers hetzelfde zien
+    try {
+      if (actieveToernooiId) {
+        await setDoc(doc(db, 'toernooien', actieveToernooiId), { ...toernooiData });
+      }
+    } catch(e) { console.error('wisselRanglijstModus opslaan mislukt:', e); }
   }
 }
 window.wisselRanglijstModus = wisselRanglijstModus;
