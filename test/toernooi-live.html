@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Toernooi · Goyer Golf</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+  :root {
+    --green: #2d6a4f; --green-mid: #40916c; --green-pale: #d8f3dc;
+    --gold: #b7950b; --gold-pale: #fef9e7;
+    --border: #e8e4da; --bg: #f9f7f2; --light: #888; --mid: #555;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: #1a1a1a; }
+
+  header {
+    background: var(--green); color: white;
+    padding: 16px 20px; display: flex; align-items: center;
+    justify-content: space-between; position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: 17px; font-weight: 700; }
+  header .meta { font-size: 12px; opacity: 0.7; margin-top: 2px; }
+  .refresh-btn {
+    background: rgba(255,255,255,0.15); border: none; color: white;
+    padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
+    font-family: 'DM Sans', sans-serif; font-weight: 600;
+  }
+  .refresh-btn:active { background: rgba(255,255,255,0.25); }
+
+  main { max-width: 680px; margin: 0 auto; padding: 16px; }
+
+  .card { background: white; border-radius: 14px; border: 1px solid var(--border); margin-bottom: 16px; overflow: hidden; }
+  .card-header { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .card-header h2 { font-size: 15px; font-weight: 700; color: var(--green); }
+
+  .ladder-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+  .ladder-item:last-child { border-bottom: none; }
+  .rank-badge { width: 28px; height: 28px; border-radius: 50%; background: var(--border); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+  .rank-badge.top3 { background: var(--gold-pale); color: var(--gold); }
+  .player-name { flex: 1; font-weight: 600; font-size: 14px; }
+
+  .flight-header { padding: 10px 16px; background: var(--green-pale); font-size: 12px; font-weight: 700; color: var(--green); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  table { border-collapse: collapse; font-size: 12px; width: 100%; }
+  th { background: var(--green); color: white; padding: 6px 8px; text-align: center; }
+  th:first-child { text-align: left; }
+  td { padding: 5px 8px; border-bottom: 1px solid var(--border); text-align: center; }
+  td:first-child { text-align: left; font-weight: 600; }
+  .score-eagle { background: #d4edda; }
+  .score-birdie { background: #d8f3dc; }
+  .score-bogey { background: #fff3cd; }
+  .score-double { background: #f8d7da; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge-green { background: var(--green-pale); color: var(--green); }
+  .badge-gold { background: var(--gold-pale); color: var(--gold); }
+
+  .empty { padding: 32px 16px; text-align: center; color: var(--light); }
+  .loading { padding: 60px 16px; text-align: center; color: var(--light); font-size: 14px; }
+  .tijd { font-size: 11px; color: var(--light); text-align: center; padding: 8px; }
+  .fout { padding: 20px; text-align: center; color: #c0392b; background: #fde8e8; border-radius: 10px; margin: 16px; font-size: 14px; }
+
+  .tab-bar { display: flex; gap: 8px; padding: 12px 16px 0; background: white; border-bottom: 1px solid var(--border); overflow-x: auto; }
+  .tab-btn { padding: 8px 14px; border: 1.5px solid #000; border-radius: 6px; background: white; font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; text-transform: uppercase; }
+  .tab-btn.actief { background: var(--green); border-color: var(--green); color: white; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1 id="toernooi-naam">⛳ Live Toernooi</h1>
+    <div class="meta" id="toernooi-meta"></div>
+  </div>
+  <button class="refresh-btn" onclick="laadData()">🔄 Vernieuwen</button>
+</header>
+
+<div id="tab-bar" class="tab-bar" style="display:none">
+  <button class="tab-btn actief" onclick="toonTab('scores')">Scores</button>
+  <button class="tab-btn" onclick="toonTab('ranglijst')" id="tab-ranglijst">Ranglijst</button>
+</div>
+
+<main>
+  <div id="inhoud"><div class="loading">⏳ Laden…</div></div>
+  <div class="tijd" id="laatste-update"></div>
+</main>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, getDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
+  authDomain: "goyer-golf-mp-ladder.firebaseapp.com",
+  projectId: "goyer-golf-mp-ladder",
+  storageBucket: "goyer-golf-mp-ladder.firebasestorage.app",
+  messagingSenderId: "124116031878",
+  appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+let toernooiId = null;
+let toernooiData = null;
+let actiefTab = 'scores';
+
+// Haal toernooi ID op uit URL
+const params = new URLSearchParams(window.location.search);
+toernooiId = params.get('t');
+
+window.toonTab = function(tab) {
+  actiefTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('actief'));
+  event.currentTarget.classList.add('actief');
+  renderInhoud();
+};
+
+window.laadData = async function() {
+  const btn = document.querySelector('.refresh-btn');
+  if (btn) { btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; }
+  try {
+    await laadToernooi();
+  } finally {
+    if (btn) { btn.style.opacity = ''; btn.style.pointerEvents = ''; }
+  }
+};
+
+async function laadToernooi() {
+  try {
+    if (!toernooiId) {
+      // Zoek actief toernooi
+      const q = query(collection(db, 'toernooien'), where('status', '==', 'actief'));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        document.getElementById('inhoud').innerHTML = '<div class="fout">Geen actief toernooi gevonden.</div>';
+        return;
+      }
+      toernooiId = snap.docs[0].id;
+      toernooiData = snap.docs[0].data();
+    } else {
+      const snap = await getDoc(doc(db, 'toernooien', toernooiId));
+      if (!snap.exists()) {
+        document.getElementById('inhoud').innerHTML = '<div class="fout">Toernooi niet gevonden.</div>';
+        return;
+      }
+      toernooiData = snap.data();
+    }
+
+    if (toernooiData.status !== 'actief' && toernooiData.status !== 'afgelopen') {
+      document.getElementById('inhoud').innerHTML = '<div class="fout">Dit toernooi is niet actief.</div>';
+      return;
+    }
+
+    document.getElementById('toernooi-naam').textContent = '⛳ ' + toernooiData.naam;
+    document.getElementById('toernooi-meta').textContent =
+      toernooiData.baan + ' · ' + new Date(toernooiData.datum).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' });
+    document.getElementById('tab-bar').style.display = 'flex';
+    document.getElementById('laatste-update').textContent =
+      'Bijgewerkt: ' + new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    renderInhoud();
+  } catch(e) {
+    console.error('Laden mislukt:', e);
+    document.getElementById('inhoud').innerHTML = '<div class="fout">Laden mislukt. Controleer je verbinding.</div>';
+  }
+}
+
+function renderInhoud() {
+  if (actiefTab === 'scores') renderScores();
+  else renderRanglijst();
+}
+
+function renderScores() {
+  const t = toernooiData;
+  const flights = t.flights || [{ naam: 'Flight', spelerIds: t.spelers.map(s => s.id) }];
+  let html = '';
+
+  flights.forEach(flight => {
+    const flightSpelers = t.spelers.filter(s => (flight.spelerIds || []).map(String).includes(String(s.id)));
+    if (flightSpelers.length === 0) return;
+
+    html += `<div class="card">
+      <div class="flight-header">✈️ ${flight.naam}${flight.starttijd ? ' · ' + flight.starttijd : ''}${flight.starthole && flight.starthole > 1 ? ' · start hole ' + flight.starthole : ''}</div>
+      <div style="overflow-x:auto"><table>
+        <thead><tr>
+          <th>Hole</th>
+          ${flightSpelers.map(s => `<th>${s.naam}</th>`).join('')}
+        </tr></thead>
+        <tbody>`;
+
+    t.holes.forEach((hole, i) => {
+      html += `<tr>
+        <td style="white-space:nowrap">
+          <span style="font-weight:700">${i+1}</span>
+          <span style="font-size:10px;color:var(--light);margin-left:3px">p${hole.par}</span>
+        </td>`;
+      flightSpelers.forEach(s => {
+        const scores = t.scores?.[s.id] || t.scores?.[String(s.id)] || [];
+        const val = scores[i];
+        let cls = '';
+        if (val != null) {
+          if (val <= hole.par - 2) cls = 'score-eagle';
+          else if (val === hole.par - 1) cls = 'score-birdie';
+          else if (val === hole.par + 1) cls = 'score-bogey';
+          else if (val >= hole.par + 2) cls = 'score-double';
+        }
+        html += `<td class="${cls}">${val != null ? val : '—'}</td>`;
+      });
+      html += '</tr>';
+    });
+
+    // Totaalrij
+    html += '<tr style="background:var(--green-pale);font-weight:700"><td>Totaal</td>';
+    flightSpelers.forEach(s => {
+      const scores = t.scores?.[s.id] || t.scores?.[String(s.id)] || [];
+      const filled = scores.filter(v => v != null);
+      const tot = filled.length ? filled.reduce((a,b) => a+Number(b), 0) : null;
+      html += `<td>${tot !== null ? tot : '—'}</td>`;
+    });
+    html += '</tr></tbody></table></div></div>';
+  });
+
+  document.getElementById('inhoud').innerHTML = html || '<div class="empty">Geen scores.</div>';
+}
+
+function berekenStrokeplayRanglijst(t) {
+  const aantalHoles = t.holes.length;
+  return t.spelers.map(s => {
+    const scores = t.scores?.[s.id] || t.scores?.[String(s.id)] || [];
+    const hcp = Math.round(s.hcp);
+    let bruttoTotaal = 0, nettoSlagen = 0, stableford = 0, holesGespeeld = 0;
+    t.holes.forEach((hole, i) => {
+      const val = scores[i];
+      if (val == null) return;
+      holesGespeeld++;
+      const v = Number(val);
+      bruttoTotaal += v;
+      const slag = (hole.si <= Math.min(hcp, aantalHoles) ? 1 : 0) +
+                   (hole.si <= Math.max(0, hcp - aantalHoles) ? 1 : 0);
+      nettoSlagen += slag;
+      const diff = hole.par - (v - slag);
+      stableford += Math.max(0, diff + 2);
+    });
+    return {
+      s,
+      holes: holesGespeeld,
+      brutto: holesGespeeld > 0 ? bruttoTotaal : null,
+      netto: holesGespeeld > 0 ? bruttoTotaal - nettoSlagen : null,
+      stableford: holesGespeeld > 0 ? stableford : null,
+    };
+  });
+}
+
+function renderRanglijst() {
+  const t = toernooiData;
+  let html = '<div class="card">';
+
+  if (t.modus === 'strokeplay') {
+    // Strokeplay — tabel met alle kolommen
+    const sorteerOp = t._ranglijstModus || 'brutto';
+    const sorteerLabel = { brutto: 'Brutto (laag wint)', netto: 'Netto (laag wint)', stableford: 'Stableford (hoog wint)' }[sorteerOp] || 'Brutto (laag wint)';
+
+    const resultaten = berekenStrokeplayRanglijst(t)
+      .filter(r => r.holes > 0)
+      .sort((a, b) => {
+        const va = sorteerOp === 'stableford' ? -(a.stableford ?? -999) : (a[sorteerOp] ?? 999);
+        const vb = sorteerOp === 'stableford' ? -(b.stableford ?? -999) : (b[sorteerOp] ?? 999);
+        return va - vb;
+      });
+
+    html += '<div class="card-header"><h2>Ranglijst</h2><span class="badge badge-green">Strokeplay</span></div>';
+    html += `<div style="font-size:11px;color:var(--light);padding:6px 10px;border-bottom:1px solid var(--border)">Gesorteerd op: <strong style="color:var(--green)">${sorteerLabel}</strong></div>`;
+
+    if (resultaten.length === 0) {
+      html += '<div class="empty">Nog geen scores ingevoerd.</div>';
+    } else {
+      const thS = 'padding:6px 4px;background:var(--green);color:white;text-align:center;font-size:11px;white-space:nowrap';
+      const tdS = 'padding:6px 4px;text-align:center;font-size:12px;font-family:monospace;border-bottom:1px solid var(--border)';
+      const tdN = 'padding:6px 8px;font-size:13px;font-weight:600;border-bottom:1px solid var(--border);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      html += '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%"><thead><tr>';
+      html += `<th style="${thS};text-align:left;width:20px">#</th>`;
+      html += `<th style="${thS};text-align:left">Naam</th>`;
+      html += `<th style="${thS}">Holes</th>`;
+      const actS = (col) => sorteerOp === col ? ';background:#1e4d38' : '';
+      html += `<th style="${thS}${actS('brutto')}">Brutto${sorteerOp === 'brutto' ? ' ↑' : ''}</th>`;
+      html += `<th style="${thS}${actS('netto')}">Netto${sorteerOp === 'netto' ? ' ↑' : ''}</th>`;
+      html += `<th style="${thS}${actS('stableford')}">Stableford${sorteerOp === 'stableford' ? ' ↓' : ''}</th>`;
+      html += '</tr></thead><tbody>';
+      resultaten.forEach((r, rank) => {
+        html += `<tr style="${rank % 2 ? 'background:#fafaf8' : ''}">
+          <td style="${tdS};font-weight:700;color:${rank < 3 ? 'var(--gold)' : 'var(--light)'}">${rank+1}</td>
+          <td style="${tdN}">${r.s.naam}</td>
+          <td style="${tdS};color:var(--light);font-size:11px">${r.holes}/${t.holes.length}</td>
+          <td style="${tdS}">${r.brutto ?? '—'}</td>
+          <td style="${tdS}">${r.netto ?? '—'}</td>
+          <td style="${tdS}">${r.stableford !== null ? r.stableford + ' pt' : '—'}</td>
+        </tr>`;
+      });
+      html += '</tbody></table></div>';
+    }
+  } else {
+    // Matchplay — toon tussenstand per matchup
+    html += '<div class="card-header"><h2>Matchplay tussenstand</h2></div>';
+    const spelers = t.spelers;
+    const n = spelers.length;
+    let aantalMatchups = 0;
+
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const sA = spelers[i], sB = spelers[j];
+        const scoresA = t.scores?.[sA.id] || t.scores?.[String(sA.id)] || [];
+        const scoresB = t.scores?.[sB.id] || t.scores?.[String(sB.id)] || [];
+        let standA = 0, gespeeld = 0;
+        t.holes.forEach((hole, hi) => {
+          const vA = scoresA[hi], vB = scoresB[hi];
+          if (vA == null || vB == null) return;
+          gespeeld++;
+          if (Number(vA) < Number(vB)) standA++;
+          else if (Number(vB) < Number(vA)) standA--;
+        });
+        const resterend = t.holes.length - gespeeld;
+        let status = '';
+        if (gespeeld === 0) status = 'Niet begonnen';
+        else if (standA === 0) status = 'TIED';
+        else if (Math.abs(standA) > resterend) status = `${standA > 0 ? sA.naam : sB.naam} wint ${Math.abs(standA)}&${resterend}`;
+        else status = `${standA > 0 ? sA.naam.split(' ')[0] : sB.naam.split(' ')[0]} ${Math.abs(standA)} UP`;
+
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border)">
+          <span style="font-size:13px">${sA.naam} vs ${sB.naam}</span>
+          <span class="badge badge-green">${status}</span>
+        </div>`;
+        aantalMatchups++;
+      }
+    }
+    if (aantalMatchups === 0) html += '<div class="empty">Geen matchups.</div>';
+  }
+
+  html += '</div>';
+  document.getElementById('inhoud').innerHTML = html;
+}
+
+// Start
+laadToernooi();
+</script>
+</body>
+</html>
