@@ -143,13 +143,7 @@ function vervolgIngelogd() {
   // Versienummer alleen voor beheerder
   const versieBadge = document.getElementById('versie-badge');
   if (versieBadge) versieBadge.style.display = isBeheerderRol() ? '' : 'none';
-  // Stel window._isBeheerder in zodat SW update banner werkt
-  window._isBeheerder = isBeheerderRol();
-  // Toon update banner als SW update al klaarstond voor inloggen
-  if (isBeheerderRol() && window._swUpdateBeschikbaar) {
-    const banner = document.getElementById('update-banner');
-    if (banner) banner.style.display = 'flex';
-  }
+
 
   renderLadder();
   registreerNotificatieToken();
