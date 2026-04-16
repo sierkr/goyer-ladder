@@ -193,81 +193,121 @@ async function verwijderLadder(ladderId) {
 
 
 async function openLadderSpelersModal(ladderId) {
-
   try {
-  const ladder = alleLadders.find(l => l.id === ladderId);
-  if (!ladder) return;
-  store._ladderSpelersId = ladderId;
-  document.getElementById('ladder-spelers-titel').textContent = `Spelers in "${ladder.naam}"`;
+    const ladder = alleLadders.find(l => l.id === ladderId);
+    if (!ladder) return;
+    store._ladderSpelersId = ladderId;
+    document.getElementById('ladder-spelers-titel').textContent = `Spelers in "${ladder.naam}"`;
 
-  // Gebruik master spelerslijst zodat ook niet-ingedeelde spelers zichtbaar zijn
-  const alleSpelers = [...alleSpelersData].sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
+    // Laad actuele ladder data en spelers/ collectie
+    const [ladderResult, users] = await Promise.all([
+      getLadderData(ladderId, true),
+      getUsers()
+    ]);
+    const ladderDataVers = ladderResult.data || {};
 
-  // Gebruik cache voor meest actuele spelerIds
-  const { exists: ladderExists, data: ladderDataVers } = await getLadderData(ladderId);
-  const versSpelers = ladderDataVers?.spelers || [];
-  const huidigeIds = new Set(versSpelers.map(s => Number(s.id)));
+    // Huidige leden — check op uid (primary) EN numeric id (fallback)
+    const huidigeUids    = new Set(ladderDataVers.spelerIds?.filter(id => typeof id === 'string' && id.length > 10) || []);
+    const huidigeNumIds  = new Set((ladderDataVers.spelers || []).map(s => Number(s.id)));
 
-  document.getElementById('ladder-spelers-lijst').innerHTML = alleSpelers.length === 0
-    ? '<p style="font-size:13px;color:var(--light);padding:12px 0">Geen spelers gevonden. Voeg eerst spelers toe via Spelers beheren.</p>'
-    : alleSpelers.map(s => `
-    <label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer">
-      <input type="checkbox" value="${s.id}" ${huidigeIds.has(Number(s.id)) ? 'checked' : ''}
-        style="width:18px;height:18px;accent-color:var(--green);cursor:pointer">
-      <span style="flex:1">${s.naam}</span>
-      <span style="font-size:12px;color:var(--light)">hcp ${s.hcp}</span>
-    </label>
-  `).join('');
+    // Toon alle bekende spelers — uit spelers/ collectie (uid-based)
+    const gesorteerd = [...users].sort((a, b) =>
+      (a.naam || '').localeCompare(b.naam || '', 'nl')
+    );
 
-  document.getElementById('modal-ladder-spelers').classList.add('open');
+    document.getElementById('ladder-spelers-lijst').innerHTML = gesorteerd.length === 0
+      ? '<p style="font-size:13px;color:var(--light);padding:12px 0">Geen spelers gevonden. Voeg eerst spelers toe via Spelers beheren.</p>'
+      : gesorteerd.map(u => {
+          const inLadder = huidigeUids.has(u.uid) ||
+            (u.naam && (ladderDataVers.spelers || []).some(s => s.naam?.toLowerCase() === u.naam.toLowerCase()));
+          const hcp = u.hcp != null ? u.hcp : '—';
+          return `<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer">
+            <input type="checkbox" value="${u.uid}" ${inLadder ? 'checked' : ''}
+              data-naam="${(u.naam || '').replace(/"/g, '&quot;')}"
+              data-hcp="${u.hcp ?? 0}"
+              style="width:18px;height:18px;accent-color:var(--green);cursor:pointer">
+            <span style="flex:1">${u.naam || u.email}</span>
+            <span style="font-size:12px;color:var(--light)">hcp ${hcp}</span>
+          </label>`;
+        }).join('');
+
+    document.getElementById('modal-ladder-spelers').classList.add('open');
   } catch(e) { console.error('openLadderSpelersModal mislukt:', e); }
 }
 
 async function slaLadderSpelersOp() {
-
   try {
-  const ladderId = _ladderSpelersId;
-  if (!ladderId) return;
-  const checkboxes = document.querySelectorAll('#ladder-spelers-lijst input[type=checkbox]');
-  const geselecteerdeIds = [...checkboxes].filter(c => c.checked).map(c => parseInt(c.value));
+    const ladderId = _ladderSpelersId;
+    if (!ladderId) return;
 
-  const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
-  const ladderData = snapExists ? snapData : { ...JSON.parse(JSON.stringify(DEFAULT_STATE)), naam: alleLadders.find(l=>l.id===ladderId)?.naam };
+    const checkboxes = document.querySelectorAll('#ladder-spelers-lijst input[type=checkbox]');
+    // Geselecteerde UIDs (strings) uit de checkboxes
+    const geselecteerdeUids = [...checkboxes]
+      .filter(c => c.checked)
+      .map(c => c.value);  // uid strings
 
-  const huidigeSpelers = ladderData.spelers || [];
-  const nieuweSpelers = [];
+    const { exists: snapExists, data: snapData } = await getLadderData(ladderId, true);
+    const ladderData = snapExists ? snapData
+      : { ...JSON.parse(JSON.stringify(DEFAULT_STATE)), naam: alleLadders.find(l => l.id === ladderId)?.naam };
 
-  geselecteerdeIds.forEach(id => {
-    const bestaand = huidigeSpelers.find(s => Number(s.id) === id);
-    if (bestaand) {
-      nieuweSpelers.push(bestaand);
-    } else {
-      let gevonden = null;
-      for (const l of alleLadders) {
-        gevonden = (l.spelers || []).find(s => Number(s.id) === id);
-        if (gevonden) break;
+    const huidigeSpelers = ladderData.spelers || [];
+
+    // Bouw spelers[] opnieuw op — backward compat voor partij/ronde modules
+    // Match uid → bestaande speler via naam of maak nieuw entry
+    const nieuweSpelers = [];
+    for (const cb of [...checkboxes].filter(c => c.checked)) {
+      const uid  = cb.value;
+      const naam = cb.dataset.naam || '';
+      const hcp  = parseFloat(cb.dataset.hcp) || 0;
+
+      // Zoek bestaand entry op naam
+      const bestaand = huidigeSpelers.find(s => s.naam?.toLowerCase() === naam.toLowerCase());
+      if (bestaand) {
+        nieuweSpelers.push({ ...bestaand });
+      } else {
+        // Zoek numeric id in alleSpelersData voor backward compat
+        const masterSpeler = alleSpelersData.find(s => s.naam?.toLowerCase() === naam.toLowerCase());
+        const numericId = masterSpeler?.id || getNextId() + nieuweSpelers.length;
+        nieuweSpelers.push({
+          id: numericId, naam, hcp,
+          rank: nieuweSpelers.length + 1, partijen: 0, gewonnen: 0
+        });
       }
-      if (!gevonden) gevonden = alleSpelersData.find(s => Number(s.id) === id);
-      nieuweSpelers.push({
-        id, naam: gevonden?.naam || 'Onbekend', hcp: gevonden?.hcp || 0,
-        rank: nieuweSpelers.length + 1, partijen: 0, gewonnen: 0
-      });
+
+      // Schrijf ook standen/{uid} als die nog niet bestaat
+      try {
+        const standenRef = doc(db, 'ladders', ladderId, 'standen', uid);
+        const standenSnap = await getDoc(standenRef);
+        if (!standenSnap.exists()) {
+          const nieuweRank = nieuweSpelers.length;
+          await setDoc(standenRef, { rank: nieuweRank, partijen: 0, gewonnen: 0 });
+        }
+      } catch(e) { console.warn('standen write mislukt voor', uid, e.code); }
     }
-  });
 
-  nieuweSpelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
+    nieuweSpelers.sort((a, b) => a.rank - b.rank).forEach((s, i) => s.rank = i + 1);
 
-  const updatedData = { ...ladderData, spelers: nieuweSpelers, spelerIds: geselecteerdeIds };
-
+    // Sla op: spelerIds als UIDs (primary), spelers[] als numeric (backward compat)
+    const updatedData = { ...ladderData, spelers: nieuweSpelers, spelerIds: geselecteerdeUids };
     await setDoc(doc(db, 'ladders', ladderId), updatedData);
 
-  const idx = alleLadders.findIndex(l => l.id === ladderId);
-  if (idx >= 0) { alleLadders[idx].spelerIds = geselecteerdeIds; alleLadders[idx].spelers = nieuweSpelers; }
-  if (ladderId === activeLadderId) { state.spelers = nieuweSpelers; state.spelerIds = geselecteerdeIds; }
+    const idx = alleLadders.findIndex(l => l.id === ladderId);
+    if (idx >= 0) {
+      alleLadders[idx].spelerIds = geselecteerdeUids;
+      alleLadders[idx].spelers   = nieuweSpelers;
+      if (alleLadders[idx].data) {
+        alleLadders[idx].data.spelerIds = geselecteerdeUids;
+        alleLadders[idx].data.spelers   = nieuweSpelers;
+      }
+    }
+    if (ladderId === activeLadderId) {
+      state.spelers   = nieuweSpelers;
+      state.spelerIds = geselecteerdeUids;
+    }
 
-  closeModal('modal-ladder-spelers');
-  renderAdminLadders();
-  toast('Spelers bijgewerkt ✓');
+    closeModal('modal-ladder-spelers');
+    renderAdminLadders();
+    toast('Spelers bijgewerkt ✓');
   } catch(e) { console.error('slaLadderSpelersOp mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
