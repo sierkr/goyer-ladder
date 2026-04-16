@@ -994,10 +994,6 @@
   </div>
 </div>
 
-<div id="update-banner" style="display:none;background:var(--green);color:white;padding:10px 16px;display:none;align-items:center;justify-content:space-between;gap:12px;font-size:13px;font-weight:600">
-  <span>🔄 Nieuwe versie beschikbaar</span>
-  <button onclick="window.location.reload()" style="background:white;color:var(--green);border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer">Nu bijwerken</button>
-</div>
 
 <header>
   <div>
@@ -1618,31 +1614,7 @@
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js')
-        .then(reg => {
-          reg.addEventListener('updatefound', () => {
-            const newWorker = reg.installing;
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // Sla update op als vlag — toon banner zodra beheerder inlogt
-                window._swUpdateBeschikbaar = true;
-                if (window._isBeheerder) {
-                  const banner = document.getElementById('update-banner');
-                  if (banner) banner.style.display = 'flex';
-                }
-              }
-            });
-          });
-        })
         .catch(err => console.warn('SW registratie mislukt:', err));
-
-      // Luister ook naar controller change
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        window._swUpdateBeschikbaar = true;
-        if (window._isBeheerder) {
-          const banner = document.getElementById('update-banner');
-          if (banner) banner.style.display = 'flex';
-        }
-      });
     });
   }
 </script>
