@@ -87,13 +87,19 @@ function setIngelogdVanafProfiel(firebaseUser, profiel) {
 
 function updateSiteTitel() {
   if (!huidigeBruiker) return;
+  const uid            = huidigeBruiker.uid;
+  const spelerId       = huidigeBruiker.spelerId;
+  const gebruikersnaam = (huidigeBruiker.gebruikersnaam || '').toLowerCase();
   const mijnLadders = isCoordinatorRol()
     ? alleLadders
-    : alleLadders.filter(l => (l.spelers || []).some(s =>
-        huidigeBruiker.spelerId
-          ? String(s.id) === String(huidigeBruiker.spelerId)
-          : s.naam?.toLowerCase() === (huidigeBruiker.gebruikersnaam || '').toLowerCase()
-      ));
+    : alleLadders.filter(l => {
+        if (uid && (l.spelerIds || []).includes(uid)) return true;
+        return (l.spelers || []).some(s =>
+          spelerId
+            ? String(s.id) === String(spelerId)
+            : s.naam?.toLowerCase() === gebruikersnaam
+        );
+      });
   const h1Second = document.getElementById('h1-second');
   if (h1Second) {
     const alleenHeerendag = mijnLadders.length === 1 &&
@@ -118,13 +124,15 @@ function vervolgIngelogd() {
     document.getElementById('nav-archief-btn').style.display  = '';
     document.getElementById('nav-toernooi-btn').style.display = '';
   } else {
+    const uid            = huidigeBruiker?.uid;
     const spelerId       = huidigeBruiker?.spelerId;
     const gebruikersnaam = (huidigeBruiker.gebruikersnaam || '').toLowerCase();
     const mijnToernooien = alleToernooien.filter(t =>
       (t.spelers || []).some(s =>
-        spelerId
+        (uid && s.uid === uid) ||
+        (spelerId
           ? String(s.id) === String(spelerId)
-          : s.naam?.toLowerCase() === gebruikersnaam
+          : s.naam?.toLowerCase() === gebruikersnaam)
       )
     );
     if (mijnToernooien.length > 0) {
