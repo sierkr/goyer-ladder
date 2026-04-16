@@ -1471,15 +1471,16 @@ function openToernooiAfsluiten() {
   const t = toernooiData;
   const isStrokeplay = t.modus === 'strokeplay';
 
-  let volgorde;
+  // Strokeplay: geen samenvatting nodig — direct afsluiten na bevestiging
   if (isStrokeplay) {
-    const gekozenModus = t._ranglijstModus || 'brutto';
-    t._berekenModus = gekozenModus;
-    volgorde = berekenStrokeplayRanglijst()
-      .filter(r => r.holes > 0)
-      .sort((a, b) => (a.score ?? 999) - (b.score ?? 999));
-    t._berekenModus = null;
-  } else {
+    if (confirm('Strokeplay toernooi afsluiten? De ladderstand wordt niet aangepast.')) {
+      bevestigToernooiAfsluiten();
+    }
+    return;
+  }
+
+  let volgorde;
+  {
     const { punten, won, tied, lost } = berekenTPunten();
     volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]}))
       .sort((a,b) => b.pt - a.pt || b.w - a.w);
@@ -1527,14 +1528,13 @@ async function bevestigToernooiAfsluiten() {
 
   // Strokeplay — geen ladderaanpassing, direct afsluiten
   if (t.modus === 'strokeplay') {
-    t.status = 'afgelopen';
+    t.status = 'afgerond';
     const idx = alleToernooien.findIndex(x => x.id === actieveToernooiId);
-    if (idx >= 0) alleToernooien[idx].status = 'afgelopen';
-    const { setDoc: sd, doc: dc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    if (idx >= 0) alleToernooien[idx].status = 'afgerond';
     await setDoc(doc(db, 'toernooien', actieveToernooiId), t);
-    closeModal('modal-toernooi-afsluiten');
-    store.toernooiData = null;
-    store.actieveToernooiId = null;
+    store.alleToernooien = alleToernooien.filter(x => x.id !== actieveToernooiId);
+    store.toernooiData = store.alleToernooien.length > 0 ? store.alleToernooien[0] : null;
+    store.actieveToernooiId = store.toernooiData?.id || null;
     renderToernooi();
     toast('Toernooi afgesloten ✓');
     return;

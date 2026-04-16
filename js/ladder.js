@@ -19,13 +19,18 @@ async function renderLadder() {
   if (!wrap) return;
 
   // Bepaal welke ladders de gebruiker ziet
+  // Primary: uid in spelerIds[] (fase 1 migratie)
+  // Fallback: spelerId of naam in spelers[] (backward compat)
   const mijnLadders = isCoordinatorRol()
     ? alleLadders
     : alleLadders.filter(l => {
-        const spelerData = (l.spelers || []);
-        const spelerId = huidigeBruiker?.spelerId;
+        const uid          = huidigeBruiker?.uid;
+        const spelerId     = huidigeBruiker?.spelerId;
         const gebruikersnaam = (huidigeBruiker?.gebruikersnaam || '').toLowerCase();
-        return spelerData.some(s =>
+        // Primary: uid-based check
+        if (uid && (l.spelerIds || []).includes(uid)) return true;
+        // Fallback: numeric spelerId of naam
+        return (l.spelers || []).some(s =>
           spelerId
             ? String(s.id) === String(spelerId)
             : s.naam.toLowerCase() === gebruikersnaam
@@ -126,11 +131,14 @@ function renderLadderRij(s, ladderId) {
     deltaHtml = `<span style="font-size:11px;color:var(--light)">—</span>`;
   }
 
+  const uid      = huidigeBruiker?.uid;
   const spelerId = huidigeBruiker?.spelerId;
+  // isZelf: uid primary (naam-match op spelers/{uid}.naam), spelerId/naam als fallback
   const isZelf = huidigeBruiker && (
-    spelerId
+    (uid && s.naam.toLowerCase() === huidigeBruiker.gebruikersnaam.toLowerCase()) ||
+    (spelerId
       ? String(s.id) === String(spelerId)
-      : s.naam.toLowerCase() === huidigeBruiker.gebruikersnaam.toLowerCase()
+      : s.naam.toLowerCase() === huidigeBruiker.gebruikersnaam.toLowerCase())
   );
   const openUitdaging = uitdagingenData?.find(u =>
     u.status === 'open' && (

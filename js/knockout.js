@@ -386,11 +386,21 @@ function verwerkKnockoutVoortgang(rondes, aantalSpelers) {
     const winnaars = alleWinnaars;
 
     // Maak of overschrijf de volgende ronde op basis van huidige winnaars
+    // Bewaar bestaande winnaars/resultaten als de deelnemers niet veranderd zijn
     const volgendeRonde = [];
+    const bestaandeVolgendeRonde = rondes[volgendeRi] || [];
     for (let i = 0; i < winnaars.length; i += 2) {
-      const partij = { a: winnaars[i] || '', b: winnaars[i+1] || '', winnaar: '' };
-      if (!partij.b) partij.winnaar = partij.a;
-      if (!partij.a) partij.winnaar = partij.b;
+      const a = winnaars[i] || '';
+      const b = winnaars[i+1] || '';
+      const bestaand = bestaandeVolgendeRonde[i / 2];
+      const spelersOngewijzigd = bestaand && bestaand.a === a && bestaand.b === b;
+      const partij = {
+        a, b,
+        winnaar:   spelersOngewijzigd ? (bestaand.winnaar   || '') : '',
+        resultaat: spelersOngewijzigd ? (bestaand.resultaat || '') : ''
+      };
+      if (!partij.b) partij.winnaar = partij.a; // bye
+      if (!partij.a) partij.winnaar = partij.b; // bye
       volgendeRonde.push(partij);
     }
     rondes[volgendeRi] = volgendeRonde;

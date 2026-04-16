@@ -676,7 +676,7 @@ async function verwijderActievePartij() {
 
   try {
   if (!confirm('Partij verwijderen? Dit kan niet ongedaan worden.')) return;
-  state.actievePartijen = (state.actievePartijen || []).filter(ap => ap.partijId !== _beheerPartijId);
+  state.actievePartijen = (state.actievePartijen || []).filter(ap => ap.partijId !== store._beheerPartijId);
   await slaState();
   closeModal('modal-beheer-partij');
   renderUitslagen();
