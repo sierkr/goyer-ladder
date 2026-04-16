@@ -597,31 +597,38 @@ async function registreerSpeler() {
     const newRank = maxRank + 1;
     const newId   = getNextId();
 
-    // Stap 4: standen/{uid} aanmaken
-    await setDoc(doc(db, 'ladders', targetLadderId, 'standen', uid),
-      { rank: newRank, partijen: 0, gewonnen: 0 });
+    // Stap 4-7: ladder toewijzen — vereist actieve invite of coordinator rechten
+    // Bij mislukken (permissions) toch doorgaan: account + spelers/{uid} zijn aangemaakt
+    try {
+      // Stap 4: standen/{uid} aanmaken
+      await setDoc(doc(db, 'ladders', targetLadderId, 'standen', uid),
+        { rank: newRank, partijen: 0, gewonnen: 0 });
 
-    // Stap 5: spelerIds bijwerken
-    if (!ladderData.spelerIds.includes(uid)) {
-      ladderData.spelerIds = [...ladderData.spelerIds, uid];
-    }
+      // Stap 5: spelerIds bijwerken
+      if (!ladderData.spelerIds.includes(uid)) {
+        ladderData.spelerIds = [...ladderData.spelerIds, uid];
+      }
 
-    // Stap 6: dual-write naar ladders.spelers[] (backward compat)
-    const bestaatAl = ladderData.spelers.some(s =>
-      s.naam?.toLowerCase() === naam.toLowerCase() || s.email === email
-    );
-    if (!bestaatAl) {
-      ladderData.spelers.push({ id: newId, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
-      ladderData.nextId = newId + 1;
-    }
-    await setDoc(doc(db, 'ladders', targetLadderId), ladderData);
+      // Stap 6: dual-write naar ladders.spelers[] (backward compat)
+      const bestaatAl = ladderData.spelers.some(s =>
+        s.naam?.toLowerCase() === naam.toLowerCase() || s.email === email
+      );
+      if (!bestaatAl) {
+        ladderData.spelers.push({ id: newId, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
+        ladderData.nextId = newId + 1;
+      }
+      await setDoc(doc(db, 'ladders', targetLadderId), ladderData);
 
-    // Stap 7: legacy master spelerslijst bijwerken
-    const spelersSnap2 = await getDoc(SPELERS_DOC);
-    const masterLijst  = spelersSnap2.exists() ? (spelersSnap2.data().lijst || []) : [];
-    if (!masterLijst.some(s => s.naam?.toLowerCase() === naam.toLowerCase())) {
-      masterLijst.push({ id: newId, naam, hcp });
-      await setDoc(SPELERS_DOC, { lijst: masterLijst });
+      // Stap 7: legacy master spelerslijst bijwerken
+      const spelersSnap2 = await getDoc(SPELERS_DOC);
+      const masterLijst  = spelersSnap2.exists() ? (spelersSnap2.data().lijst || []) : [];
+      if (!masterLijst.some(s => s.naam?.toLowerCase() === naam.toLowerCase())) {
+        masterLijst.push({ id: newId, naam, hcp });
+        await setDoc(SPELERS_DOC, { lijst: masterLijst });
+      }
+    } catch(ladderErr) {
+      // Ladder-schrijven mislukt (bijv. invite verlopen) — account is wel aangemaakt
+      console.warn('Ladder toewijzing mislukt, account is aangemaakt:', ladderErr.code);
     }
 
     const ladderNaam = ladderData.naam || alleLadders.find(l => l.id === targetLadderId)?.naam || targetLadderId;
