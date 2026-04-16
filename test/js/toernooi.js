@@ -21,11 +21,12 @@ function renderToernooi() {
   const isBeheerder = isCoordinatorRol();
   const gebruikersnaam = (huidigeBruiker?.gebruikersnaam || '').toLowerCase();
   const voornaam = gebruikersnaam.split(' ')[0];
-  // Zoek ook op basis van speler ID in master lijst
-  const mijnSpelerIds = new Set(
-    alleSpelersData.filter(s => s.naam.toLowerCase() === gebruikersnaam ||
+  // Zoek op spelerId (primary), dan op naam uit alleSpelersData
+  const mijnSpelerIds = new Set([
+    ...(huidigeBruiker?.spelerId ? [String(huidigeBruiker.spelerId)] : []),
+    ...alleSpelersData.filter(s => s.naam.toLowerCase() === gebruikersnaam ||
       s.naam.toLowerCase().startsWith(voornaam)).map(s => String(s.id))
-  );
+  ]);
 
   const mijnToernooien = isBeheerder
     ? alleToernooien
@@ -769,12 +770,14 @@ function renderToernooiActief() {
   const flights = t.flights || [];
   const mijnSpelerId = huidigeBruiker?.spelerId ? String(huidigeBruiker.spelerId) : null;
   const gebruikersnaam = huidigeBruiker?.gebruikersnaam?.toLowerCase() || '';
-  const mijnSpelerIdsInToernooi = new Set(
-    alleSpelersData.filter(s =>
+  // Primary: spelerId; secondary: naam
+  const mijnSpelerIdsInToernooi = new Set([
+    ...(mijnSpelerId ? [mijnSpelerId] : []),
+    ...alleSpelersData.filter(s =>
       mijnSpelerId ? String(s.id) === mijnSpelerId :
       s.naam.toLowerCase() === gebruikersnaam
     ).map(s => String(s.id))
-  );
+  ]);
   const mijnFlight = flights.find(f =>
     (f.spelerIds || []).some(sid => {
       const sp = t.spelers.find(s => String(s.id) === String(sid));
@@ -876,10 +879,11 @@ function renderTScorecard() {
   // Bepaal welke flights te tonen
   let teTonenFlights = [];
   const voornaam = gebruikersnaam.split(' ')[0];
-  const mijnIds = new Set(
-    alleSpelersData.filter(s => s.naam.toLowerCase() === gebruikersnaam ||
+  const mijnIds = new Set([
+    ...(huidigeBruiker?.spelerId ? [String(huidigeBruiker.spelerId)] : []),
+    ...alleSpelersData.filter(s => s.naam.toLowerCase() === gebruikersnaam ||
       s.naam.toLowerCase().startsWith(voornaam)).map(s => String(s.id))
-  );
+  ]);
 
   if (isBeheerder || flights.length === 0) {
     teTonenFlights = flights.length > 0

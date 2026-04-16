@@ -27,15 +27,17 @@ function initPartijForm() {
   const gebruikersnaam = huidigeBruiker?.gebruikersnaam?.toLowerCase() || '';
   const spelerId = huidigeBruiker?.spelerId;
 
+  const uid = huidigeBruiker?.uid;
   const mijnLadders = isBeheerder
     ? alleLadders
-    : alleLadders.filter(l =>
-        (l.spelers || []).some(s =>
+    : alleLadders.filter(l => {
+        if (uid && (l.spelerIds || []).includes(uid)) return true;
+        return (l.spelers || []).some(s =>
           spelerId
             ? String(s.id) === String(spelerId)
             : s.naam.toLowerCase() === gebruikersnaam
-        )
-      );
+        );
+      });
 
   ladderSel.innerHTML = mijnLadders.map(l =>
     `<option value="${l.id}" ${l.id === activeLadderId ? 'selected' : ''}>${l.naam}</option>`
@@ -74,9 +76,11 @@ function initPartijForm() {
 
   // Auto-selecteer ingelogde speler in slot 1
   if (huidigeBruiker) {
-    const spelerId = huidigeBruiker.spelerId;
+    const spelerId       = huidigeBruiker.spelerId;
+    const uid            = huidigeBruiker.uid;
     const gebruikersnaam = huidigeBruiker.gebruikersnaam?.toLowerCase().trim() || '';
-    const ladderSpelers = getPartijLadderSpelers();
+    const ladderSpelers  = getPartijLadderSpelers();
+    // Primary: spelerId; secondary: naam (naam is nu betrouwbaar via spelers/{uid})
     const gekoppeld = spelerId
       ? ladderSpelers.find(s => String(s.id) === String(spelerId))
       : ladderSpelers.find(s => s.naam.toLowerCase().trim() === gebruikersnaam);
@@ -141,13 +145,12 @@ function herlaadPartijSpelers() {
   addPlayerSlot();
   // Pre-select eigen naam in slot 1
   if (huidigeBruiker) {
-    const spelers = getPartijLadderSpelers();
+    const spelers        = getPartijLadderSpelers();
+    const spelerId       = huidigeBruiker.spelerId;
     const gebruikersnaam = huidigeBruiker.gebruikersnaam?.toLowerCase() || '';
-
-    // Zoek op spelerId, dan exacte naam
-    const zelf = spelers.find(s => huidigeBruiker.spelerId && String(s.id) === String(huidigeBruiker.spelerId))
+    // Primary: spelerId; secondary: naam
+    const zelf = (spelerId && spelers.find(s => String(s.id) === String(spelerId)))
       || spelers.find(s => s.naam.toLowerCase() === gebruikersnaam);
-
     if (zelf) {
       if (!huidigeBruiker.spelerId) store.huidigeBruiker = { ...huidigeBruiker, spelerId: zelf.id };
       selecteerPartijSpeler(1, zelf.id, zelf.naam, zelf.hcp);
@@ -380,12 +383,14 @@ async function verwijderAangepasteBaan() {
 // Geeft de actieve partij terug waar de ingelogde speler in zit
 function mijnPartij() {
   if (!huidigeBruiker?.gebruikersnaam) return null;
-  const gebruiker = huidigeBruiker.gebruikersnaam.toLowerCase();
+  const gebruiker  = huidigeBruiker.gebruikersnaam.toLowerCase();
+  const spelerId   = huidigeBruiker.spelerId;
 
-  const spelerId = huidigeBruiker.spelerId;
   const zoekInPartijen = (partijen) => (partijen || []).find(p =>
     p.spelers.some(s => {
+      // Primary: spelerId (numeric backward compat)
       if (spelerId) return String(s.id) === String(spelerId);
+      // Secondary: naam (betrouwbaar via spelers/{uid})
       return s.naam.toLowerCase() === gebruiker;
     })
   ) || null;
