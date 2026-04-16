@@ -440,14 +440,8 @@ async function initFirestore() {
     if (ap === 'admin') renderAdmin();
   }));
 
-  // ── Live listener: spelers/ collectie (nieuw v2.6) ─────────
-  // Houdt _usersCache realtime gesynchroniseerd voor backward-compat modules
-  _vasteListeners.push(onSnapshot(collection(db, 'spelers'), (snap) => {
-    if (!huidigeBruiker) return;
-    store._usersCache = snap.docs.map(d => spelersDocNaarUserFormaat(d.data()));
-    const ap = document.querySelector('.page.active')?.id?.replace('page-', '');
-    if (ap === 'admin') renderAdmin();
-  }));
+  // spelers/ listener wordt gestart in onAuthStateChanged (na login)
+  // zodat er geen permission-denied optreedt voor inloggen
 
   store._firestoreReady = true;
   setTimeout(() => toonLaadOverlay(false), 10000);
@@ -458,6 +452,20 @@ async function initFirestore() {
     if (user) {
       if (huidigeBruiker && huidigeBruiker.uid === user.uid) return;
       await setIngelogd(user);
+      // Start spelers/ listener nu de gebruiker ingelogd is
+      if (!_vasteListeners._spelersListenerActief) {
+        _vasteListeners._spelersListenerActief = true;
+        _vasteListeners.push(onSnapshot(
+          collection(db, 'spelers'),
+          (snap) => {
+            if (!huidigeBruiker) return;
+            store._usersCache = snap.docs.map(d => spelersDocNaarUserFormaat(d.data()));
+            const ap = document.querySelector('.page.active')?.id?.replace('page-', '');
+            if (ap === 'admin') renderAdmin();
+          },
+          (err) => { console.warn('spelers/ listener error:', err.code); }
+        ));
+      }
     } else {
       store.huidigeBruiker = null;
       const heeftInvite = new URLSearchParams(location.search).has('invite');
