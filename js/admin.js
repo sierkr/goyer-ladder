@@ -310,7 +310,11 @@ async function openEditPlayer(id) {
   // Laad rol en email uit accounts
   try {
     const users = await getUsers();
-    const account = users.find(u => u.gebruikersnaam?.toLowerCase() === s.naam.toLowerCase());
+    const account = users.find(u =>
+      (s.id && String(u.spelerId) === String(s.id)) ||
+      u.gebruikersnaam?.toLowerCase() === s.naam.toLowerCase() ||
+      u.naam?.toLowerCase() === s.naam.toLowerCase()
+    );
     const rolEl = document.getElementById('edit-player-rol');
     const emailEl = document.getElementById('edit-player-email-info');
     if (account) {
