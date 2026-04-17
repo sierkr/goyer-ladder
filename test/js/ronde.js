@@ -497,14 +497,15 @@ async function bevestigUitslag() {
     const winnaar = winnaarKant === 'A' ? m.spelerA : m.spelerB;
     const verliezer = winnaarKant === 'A' ? m.spelerB : m.spelerA;
 
-    const sw = state.spelers.find(s => s.id === winnaar.id);
-    const sv = state.spelers.find(s => s.id === verliezer.id);
+    // v3.0.0-9c: matchup spelers hebben id=uid (uit view-laag) en naam.
+    // state.spelers heeft legacy numeric id maar wel naam. Match op naam.
+    const sw = state.spelers.find(s => s.naam?.toLowerCase() === winnaar.naam?.toLowerCase());
+    const sv = state.spelers.find(s => s.naam?.toLowerCase() === verliezer.naam?.toLowerCase());
 
     // Gastspelers of spelers niet in ladder — niet verwerken in ladderstand
     const heeftGast = Number(winnaar.id) >= 90000 || Number(verliezer.id) >= 90000 ||
-                      !state.spelers.find(s => s.id === winnaar.id) ||
-                      !state.spelers.find(s => s.id === verliezer.id);
-    if (heeftGast || !sw || !sv) return;
+                      !sw || !sv;
+    if (heeftGast) return;
     const oldWrank = sw.rank;
     const oldVrank = sv.rank;
 
