@@ -7,6 +7,7 @@ import { slaState, getLadderConfig, getLadderData, getNextId, isBeheerderRol, is
 import { stuurUitdaging } from './archief.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { renderKnockoutLadderKaart } from './knockout.js';
+import { getLadderSpelers, isInLadder } from './ladder-view.js';
 
 
 
@@ -24,11 +25,11 @@ async function renderLadder() {
   const mijnLadders = isCoordinatorRol()
     ? alleLadders
     : alleLadders.filter(l => {
-        const uid          = huidigeBruiker?.uid;
-        const spelerId     = huidigeBruiker?.spelerId;
+        const uid            = huidigeBruiker?.uid;
+        const spelerId       = huidigeBruiker?.spelerId;
         const gebruikersnaam = (huidigeBruiker?.gebruikersnaam || '').toLowerCase();
-        // Primary: uid-based check
-        if (uid && (l.spelerIds || []).includes(uid)) return true;
+        // Primary: uid-based check via view-laag
+        if (uid && isInLadder(l.id, uid)) return true;
         // Fallback: numeric spelerId of naam
         return (l.spelers || []).some(s =>
           spelerId
@@ -91,7 +92,9 @@ async function renderLadder() {
       return renderKnockoutLadderKaart(l);
     }
 
-    const spelers = [...(l.data.spelers || [])].sort((a,b) => a.rank - b.rank);
+    // Gebruik view-laag (fase 9a) — haalt spelers uit spelers/{uid} + standen/{uid}
+    // Valt terug op l.data.spelers als standen/ nog leeg is
+    const spelers = getLadderSpelers(l.id);
     const lijstHtml = spelers.length === 0
       ? '<div class="empty"><p>Nog geen spelers.</p></div>'
       : spelers.map(s => renderLadderRij(s, l.id)).join('');
@@ -169,10 +172,7 @@ export { renderLadder, toggleLadderKaart, renderLadderRij };
 async function deelLadderAlsAfbeelding(ladderId) {
   try {
   const ladder = alleLadders.find(l => l.id === ladderId);
-  const data = ladderId === activeLadderId ? state : ladder?.data;
-  if (!data) { toast('Ladder data niet beschikbaar'); return; }
-
-  const spelers = [...(data.spelers || [])].sort((a, b) => a.rank - b.rank);
+  const spelers = getLadderSpelers(ladderId);
   if (spelers.length === 0) { toast('Geen spelers om te delen'); return; }
 
   const naam = ladder?.naam || 'Ladder';

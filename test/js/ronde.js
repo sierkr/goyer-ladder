@@ -2,7 +2,7 @@
 //  ronde.js
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, SPELERS_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
-import { store, state, alleLadders, activeLadderId } from './store.js';
+import { store, state, alleLadders, activeLadderId, _usersCache } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { closeModal } from './admin.js';
 import { kortNaamMap, mijnPartij, renderHcpBlok } from './partij.js';
@@ -12,6 +12,7 @@ import { verwerkKnockoutUitslag } from './knockout.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { autoAdvance } from './auth.js';
 import { renderUitslagen } from './uitslagen.js';
+import { getLadderSpelers } from './ladder-view.js';
 
 
 //  RONDE (live scorekaart)
@@ -592,6 +593,8 @@ async function bevestigUitslag() {
   
 
   await slaState();
+  // Fase 9b: sync naar standen/{uid} subcollectie
+  await syncStandenNaBevestigUitslag(activeLadderId);
   slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam).join(' vs ')}`);
 
   // Update knockout bracket als dit een knockout ladder is
@@ -704,5 +707,45 @@ async function editMatchupSlagen(matchIdx) {
   } catch(e) { console.error('editMatchupSlagen mislukt:', e); toast('Aanpassen mislukt'); }
 }
 window.editMatchupSlagen = editMatchupSlagen;
+
+// ============================================================
+//  FASE 9B: Sync state.spelers ranks/stats naar standen/{uid}
+// ============================================================
+// Na elke bevestigUitslag schrijven we naast ladders.spelers[] ook
+// naar de standen/{uid} subcollectie zodat de view-laag up-to-date is.
+async function syncStandenNaBevestigUitslag(ladderId) {
+  try {
+    const ladderData = alleLadders.find(l => l.id === ladderId)?.data;
+    if (!ladderData) return;
+    const spelerIds = (ladderData.spelerIds || [])
+      .filter(id => typeof id === 'string' && id.length > 10);
+    if (spelerIds.length === 0) return;
+
+    // Koppel elke state.speler aan een uid via naam match
+    // (_usersCache is gesynchroniseerd met spelers/ collectie)
+    const users = store._usersCache || [];
+    const naamNaarUid = {};
+    users.forEach(u => { if (u.naam) naamNaarUid[u.naam.toLowerCase()] = u.uid; });
+
+    const spelersInLadder = state.spelers || [];
+    const writes = [];
+    spelersInLadder.forEach(s => {
+      if (!s.naam) return;
+      const uid = naamNaarUid[s.naam.toLowerCase()];
+      if (!uid || !spelerIds.includes(uid)) return;
+      const payload = {
+        rank:     s.rank     || 0,
+        partijen: s.partijen || 0,
+        gewonnen: s.gewonnen || 0,
+      };
+      if (s.prevRank != null) payload.prevRank = s.prevRank;
+      writes.push(
+        setDoc(doc(db, 'ladders', ladderId, 'standen', uid), payload)
+          .catch(err => console.warn('standen sync mislukt voor', uid, err.code))
+      );
+    });
+    await Promise.all(writes);
+  } catch(e) { console.warn('syncStandenNaBevestigUitslag:', e); }
+}
 
 export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij };

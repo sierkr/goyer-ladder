@@ -5,6 +5,7 @@ import { db, BANEN_DB, LADDERS_COL, SPELERS_DOC, DEFAULT_STATE } from './config.
 import { store, state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
 import { slaState, getLadderData, getNextId, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { objNaarRondes } from './knockout.js';
+import { getLadderSpelers, isInLadder } from './ladder-view.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 //  PARTIJ SETUP
@@ -31,7 +32,7 @@ function initPartijForm() {
   const mijnLadders = isBeheerder
     ? alleLadders
     : alleLadders.filter(l => {
-        if (uid && (l.spelerIds || []).includes(uid)) return true;
+        if (uid && isInLadder(l.id, uid)) return true;
         return (l.spelers || []).some(s =>
           spelerId
             ? String(s.id) === String(spelerId)
@@ -118,19 +119,15 @@ function vulKnockoutTegenstander(spelersNaam) {
 
 function getPartijLadderSpelers() {
   const ladderId = document.getElementById('partij-ladder-select')?.value || activeLadderId;
+  // Primary bron: view-laag (spelers/{uid} + standen/{uid})
+  const viaView = getLadderSpelers(ladderId);
+  if (viaView.length > 0) {
+    return viaView.sort((a, b) => (a.rank || 999) - (b.rank || 999));
+  }
+  // Fallback op oude ladder.spelers[] als view-laag (nog) niet gevuld is
   const ladder = alleLadders.find(l => l.id === ladderId);
   const ladderSpelers = ladder?.spelers || state.spelers || [];
-
-  // Vul aan met spelers uit alleSpelersData die mogelijk ontbreken in de ladder cache
-  const bekende = new Set(ladderSpelers.map(s => String(s.id)));
-  const extra = alleSpelersData.filter(s => {
-    if (bekende.has(String(s.id))) return false;
-    // Controleer of speler in deze ladder zit via spelerIds
-    return (ladder?.spelerIds || []).includes(String(s.id)) ||
-           (ladder?.spelerIds || []).includes(s.id);
-  });
-
-  return [...ladderSpelers, ...extra].sort((a,b) => (a.rank || 999) - (b.rank || 999));
+  return [...ladderSpelers].sort((a, b) => (a.rank || 999) - (b.rank || 999));
 }
 
 function herlaadPartijSpelers() {

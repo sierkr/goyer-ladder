@@ -8,6 +8,7 @@ import { renderHcpBlok } from './partij.js';
 import { renderLadder } from './ladder.js';
 import { slaSnapshotOp } from './beheer.js';
 import { toggleAdminKaart } from './knockout.js';
+import { getLadderSpelers } from './ladder-view.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { closeModal } from './admin.js';
 
@@ -1608,6 +1609,32 @@ async function bevestigToernooiAfsluiten() {
         [...ladderData.spelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
         [...ladderData.spelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
         await setDoc(doc(db, 'ladders', ladderId), ladderData);
+
+        // Fase 9b: sync naar standen/{uid} subcollectie
+        try {
+          const users = store._usersCache || [];
+          const naamNaarUid = {};
+          users.forEach(u => { if (u.naam) naamNaarUid[u.naam.toLowerCase()] = u.uid; });
+          const spelerIdsUid = (ladderData.spelerIds || [])
+            .filter(id => typeof id === 'string' && id.length > 10);
+          const standenWrites = [];
+          (ladderData.spelers || []).forEach(sp => {
+            const uid = naamNaarUid[(sp.naam || '').toLowerCase()];
+            if (!uid || !spelerIdsUid.includes(uid)) return;
+            const payload = {
+              rank:     sp.rank     || 0,
+              partijen: sp.partijen || 0,
+              gewonnen: sp.gewonnen || 0,
+            };
+            if (sp.prevRank != null) payload.prevRank = sp.prevRank;
+            standenWrites.push(
+              setDoc(doc(db, 'ladders', ladderId, 'standen', uid), payload)
+                .catch(err => console.warn('toernooi standen sync mislukt voor', uid, err.code))
+            );
+          });
+          await Promise.all(standenWrites);
+        } catch(e) { console.warn('toernooi standen sync:', e); }
+
         const ladderIdx = alleLadders.findIndex(l => l.id === ladderId);
         if (ladderIdx >= 0) alleLadders[ladderIdx].spelers = ladderData.spelers;
         if (ladderId === activeLadderId) {
