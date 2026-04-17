@@ -379,7 +379,9 @@ async function initFirestore() {
       const idx = store.alleLadders.findIndex(l => l.id === activeLadderId);
       if (idx >= 0) {
         store.alleLadders[idx].spelers         = store.state.spelers        || [];
+        store.alleLadders[idx].spelerIds       = store.state.spelerIds       || [];
         store.alleLadders[idx].actievePartijen = store.state.actievePartijen;
+        store.alleLadders[idx].data            = snap.data();
       }
       const ap = document.querySelector('.page.active')?.id?.replace('page-', '');
       if (ap === 'ladder')   renderLadder();
@@ -397,7 +399,11 @@ async function initFirestore() {
     _vasteListeners.push(onSnapshot(doc(db, 'ladders', ladder.id), (snap) => {
       if (!snap.exists() || !huidigeBruiker) return;
       const idx = alleLadders.findIndex(l => l.id === ladder.id);
-      if (idx >= 0) { alleLadders[idx].spelers = snap.data().spelers || []; alleLadders[idx].data = snap.data(); }
+      if (idx >= 0) {
+        alleLadders[idx].spelers   = snap.data().spelers   || [];
+        alleLadders[idx].spelerIds = snap.data().spelerIds || [];
+        alleLadders[idx].data      = snap.data();
+      }
       const ap = document.querySelector('.page.active')?.id?.replace('page-', '');
       if (ap === 'ladder')  renderLadder();
       if (ap === 'admin')   renderAdmin();

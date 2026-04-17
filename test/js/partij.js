@@ -244,7 +244,10 @@ function zoekPartijSpeler(n, zoek) {
 }
 
 function selecteerPartijSpelerEl(n, el) {
-  const id = parseInt(el.dataset.id);
+  // v3.0.0-9c: id is nu een uid (string) — niet meer parseInt'en.
+  // Gastspelers (numeric >= 90000) worden als string opgeslagen en bij startPartij
+  // terug naar int geparsed.
+  const id = el.dataset.id;
   const naam = el.dataset.naam;
   const hcp = parseFloat(el.dataset.hcp);
   selecteerPartijSpeler(n, id, naam, hcp);
