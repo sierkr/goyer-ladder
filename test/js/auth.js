@@ -7,7 +7,7 @@
 // ============================================================
 import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
-  INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB } from './config.js';
+  INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB, esc, escAttr } from './config.js';
 import { store, DEFAULT_LADDER_CONFIG,
   state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker,
   _usersCache, archiefData, uitdagingenData, toernooiData, alleToernooien,
@@ -479,13 +479,16 @@ async function genereerInviteLink() {
     const ladder   = alleLadders.find(l => l.id === ladderId);
     const token    = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
     const verloopt = Date.now() + 14 * 24 * 60 * 60 * 1000;
+    // v3.0.0-10 fase 10 V-4: expliciete gebruik-limiet. Default 10; kan later via UI aangepast.
+    const maxGebruik = 10;
     await setDoc(doc(db, 'ladder', `invite_${ladderId}`),
-      { token, verloopt, ladderId, ladderNaam: ladder?.naam || ladderId, aangemaakt: Date.now() });
+      { token, verloopt, ladderId, ladderNaam: ladder?.naam || ladderId,
+        aangemaakt: Date.now(), gebruik: 0, maxGebruik });
     const url = `${location.origin}${location.pathname}?invite=${token}&ladder=${ladderId}`;
     document.getElementById('invite-link-text').textContent   = url;
     document.getElementById('invite-link-wrap').style.display = 'block';
     document.getElementById('invite-status').textContent =
-      `Geldig tot ${new Date(verloopt).toLocaleDateString('nl-NL')} · Ladder: ${ladder?.naam || ladderId}`;
+      `Geldig tot ${new Date(verloopt).toLocaleDateString('nl-NL')} · Ladder: ${ladder?.naam || ladderId} · Max ${maxGebruik} registraties`;
     toast('Uitnodigingslink aangemaakt ✓');
   } catch(e) { console.error('genereerInviteLink mislukt:', e); toast('Er is iets misgegaan'); }
 }
@@ -506,14 +509,26 @@ async function checkInviteLink() {
   window._inviteLadderId = ladderId;
 
   let geldig = false;
+  let opgebruikt = false;
   try {
     const snapLadder = await getDoc(doc(db, 'ladder', `invite_${ladderId}`));
     if (snapLadder.exists() && snapLadder.data().token === token && snapLadder.data().verloopt > Date.now()) {
-      geldig = true;
+      const d = snapLadder.data();
+      // v3.0.0-10 fase 10 V-4: check gebruik-teller
+      if (d.maxGebruik != null && (d.gebruik || 0) >= d.maxGebruik) {
+        opgebruikt = true;
+      } else {
+        geldig = true;
+      }
     } else {
       const snapGlobal = await getDoc(INVITE_DOC);
       if (snapGlobal.exists() && snapGlobal.data().token === token && snapGlobal.data().verloopt > Date.now()) {
-        geldig = true;
+        const d = snapGlobal.data();
+        if (d.maxGebruik != null && (d.gebruik || 0) >= d.maxGebruik) {
+          opgebruikt = true;
+        } else {
+          geldig = true;
+        }
       }
     }
   } catch(e) { console.error('Invite check fout:', e); }
@@ -521,7 +536,9 @@ async function checkInviteLink() {
   if (!geldig) {
     document.getElementById('reg-formulier').style.display = 'none';
     const fout = document.getElementById('reg-fout');
-    fout.textContent = 'Deze uitnodigingslink is verlopen of ongeldig. Vraag de beheerder om een nieuwe link.';
+    fout.textContent = opgebruikt
+      ? 'Deze uitnodigingslink heeft het maximum aantal registraties bereikt. Vraag de beheerder om een nieuwe link.'
+      : 'Deze uitnodigingslink is verlopen of ongeldig. Vraag de beheerder om een nieuwe link.';
     fout.style.display = 'block';
   }
 }
@@ -555,6 +572,21 @@ async function registreerSpeler() {
 
   try {
     store._bezigMetRegistratie = true;
+
+    // v3.0.0-10 fase 10 V-4: opnieuw checken of invite niet inmiddels opgebruikt is
+    // (voorkomt dat Auth-account aangemaakt wordt als teller al op max zit)
+    try {
+      const inviteSnap0 = await getDoc(doc(db, 'ladder', `invite_${targetLadderId}`));
+      if (inviteSnap0.exists()) {
+        const d0 = inviteSnap0.data();
+        if (d0.maxGebruik != null && (d0.gebruik || 0) >= d0.maxGebruik) {
+          store._bezigMetRegistratie = false;
+          fout.textContent = 'Deze uitnodigingslink heeft het maximum aantal registraties bereikt. Vraag de beheerder om een nieuwe link.';
+          fout.style.display = 'block';
+          return;
+        }
+      }
+    } catch(e) { /* read mislukt — door met registratie, teller-write verderop vangt op */ }
 
     // Stap 1: Firebase Auth account aanmaken
     const cred = await createUserWithEmailAndPassword(auth, email, pass);
@@ -608,8 +640,8 @@ async function registreerSpeler() {
     store._bezigMetRegistratie = false;
     document.getElementById('reg-formulier').style.display = 'none';
     succes.innerHTML = `
-      <strong style="font-size:18px">Welkom ${voornaam}! 🎉</strong><br><br>
-      Je bent succesvol geregistreerd en staat nu in de <strong>${ladderNaam}</strong> ladder.<br><br>
+      <strong style="font-size:18px">Welkom ${esc(voornaam)}! 🎉</strong><br><br>
+      Je bent succesvol geregistreerd en staat nu in de <strong>${esc(ladderNaam)}</strong> ladder.<br><br>
       <div style="background:#f0f7f4;border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
         <strong>📱 App op je homescreen zetten (aanbevolen)</strong><br><br>
         <strong>iPhone/iPad (Safari):</strong><br>
@@ -653,7 +685,7 @@ async function laadInviteStatus() {
     const sel = document.getElementById('invite-ladder-select');
     if (sel) {
       const huidigeWaarde = sel.value;
-      sel.innerHTML = alleLadders.map(l => `<option value="${l.id}">${l.naam}</option>`).join('');
+      sel.innerHTML = alleLadders.map(l => `<option value="${escAttr(l.id)}">${esc(l.naam)}</option>`).join('');
       if (huidigeWaarde && alleLadders.find(l => l.id === huidigeWaarde)) sel.value = huidigeWaarde;
       sel.onchange = () => laadInviteStatus();
     }
@@ -662,9 +694,14 @@ async function laadInviteStatus() {
     const el       = document.getElementById('invite-status');
     if (!el) return;
     if (snap.exists() && snap.data().verloopt > Date.now()) {
-      const url     = `${location.origin}${location.pathname}?invite=${snap.data().token}&ladder=${ladderId}`;
-      const gebruik = snap.data().gebruik || 0;
-      el.textContent = `Actief — geldig tot ${new Date(snap.data().verloopt).toLocaleDateString('nl-NL')} · ${gebruik} keer gebruikt`;
+      const d       = snap.data();
+      const url     = `${location.origin}${location.pathname}?invite=${d.token}&ladder=${ladderId}`;
+      const gebruik = d.gebruik || 0;
+      const maxStr  = d.maxGebruik != null ? ` van max ${d.maxGebruik}` : '';
+      const opgebruikt = d.maxGebruik != null && gebruik >= d.maxGebruik;
+      el.textContent = opgebruikt
+        ? `Opgebruikt — ${gebruik}${maxStr} registraties gebruikt`
+        : `Actief — geldig tot ${new Date(d.verloopt).toLocaleDateString('nl-NL')} · ${gebruik}${maxStr} keer gebruikt`;
       document.getElementById('invite-link-text').textContent   = url;
       document.getElementById('invite-link-wrap').style.display = 'block';
     } else {

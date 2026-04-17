@@ -1,7 +1,7 @@
 // ============================================================
 //  ladder.js — Ladder rendering, ranking weergave
 // ============================================================
-import { db, LADDERS_COL } from './config.js';
+import { db, LADDERS_COL, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, huidigeBruiker, uitdagingenData, DEFAULT_LADDER_CONFIG } from './store.js';
 import { slaState, getLadderConfig, getLadderData, getNextId, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { stuurUitdaging } from './archief.js';
@@ -92,15 +92,15 @@ async function renderLadder() {
       : spelers.map(s => renderLadderRij(s, l.id)).join('');
 
     return `<div class="card" style="margin-bottom:16px">
-      <div class="card-header inklapbaar" onclick="toggleLadderKaart(this,'${l.id}')">
+      <div class="card-header inklapbaar" onclick="toggleLadderKaart(this,'${escAttr(l.id)}')">
         <div style="display:flex;align-items:center;gap:10px;min-width:0">
-          <button onclick="event.stopPropagation();deelLadderAlsAfbeelding('${l.id}')" style="background:none;border:none;cursor:pointer;font-size:20px;padding:0;flex-shrink:0" title="Deel als afbeelding">📤</button>
-          <h2 style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Ladderstand ${l.naam}</h2>
+          <button onclick="event.stopPropagation();deelLadderAlsAfbeelding('${escAttr(l.id)}')" style="background:none;border:none;cursor:pointer;font-size:20px;padding:0;flex-shrink:0" title="Deel als afbeelding">📤</button>
+          <h2 style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Ladderstand ${esc(l.naam)}</h2>
         </div>
         <span class="badge badge-green">${spelers.length} spelers</span>
       </div>
-      <div class="card-collapse" id="ladder-collapse-${l.id}">
-        <div id="ladder-list-${l.id}">${lijstHtml}</div>
+      <div class="card-collapse" id="ladder-collapse-${escAttr(l.id)}">
+        <div id="ladder-list-${escAttr(l.id)}">${lijstHtml}</div>
       </div>
     </div>`;
   }).join('');
@@ -136,12 +136,12 @@ function renderLadderRij(s, ladderId) {
     )
   );
   const uitdagingBtnHtml = huidigeBruiker && !isZelf
-    ? `<button onclick="stuurUitdaging('${s.id}')" style="background:none;border:1px solid #e0ddd4;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:${openUitdaging ? 'var(--gold)' : 'var(--light)'}" title="${openUitdaging ? 'Uitdaging loopt' : 'Uitdagen'}">⚔️</button>`
+    ? `<button onclick="stuurUitdaging('${escAttr(s.id)}')" style="background:none;border:1px solid #e0ddd4;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:${openUitdaging ? 'var(--gold)' : 'var(--light)'}" title="${openUitdaging ? 'Uitdaging loopt' : 'Uitdagen'}">⚔️</button>`
     : '';
 
   return `<div class="ladder-item" style="${isZelf ? 'background:var(--green-pale);border-left:3px solid var(--green);margin-left:-3px;' : ''}">
     <div class="rank-badge ${s.rank <= 3 ? 'top3' : isZelf ? 'zelf' : ''}">${s.rank}</div>
-    <div class="player-name" style="${isZelf ? 'font-weight:700;color:var(--green);' : ''}">${s.naam}</div>
+    <div class="player-name" style="${isZelf ? 'font-weight:700;color:var(--green);' : ''}">${esc(s.naam)}</div>
     <div style="min-width:30px;text-align:center">${deltaHtml}</div>
     <div class="player-stats" style="text-align:right;min-width:52px">${s.partijen}P ${s.gewonnen}W<br>${winpct}%</div>
     <div style="width:42px;text-align:center;flex-shrink:0">${uitdagingBtnHtml}</div>

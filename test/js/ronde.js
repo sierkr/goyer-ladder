@@ -1,7 +1,7 @@
 // ============================================================
 //  ronde.js
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, _usersCache } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { closeModal } from './admin.js';
@@ -51,9 +51,9 @@ function renderScorecard() {
   let headHtml = '<tr><th class="player-col" style="text-align:left">Hole</th>';
   p.spelers.forEach(s => {
     headHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px">
-      ${naamMap[s.id]}<br>
-      <span onclick="editPartijHcp('${s.id}')" style="font-size:10px;font-weight:400;color:rgba(255,255,255,0.7);cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)" title="Klik om aan te passen">hcp ${Math.round(s.partijHcp)}</span><br>
-      <button onclick="verwijderSpelerUitRonde('${s.id}')" style="background:rgba(255,255,255,0.15);border:none;border-radius:4px;color:rgba(255,255,255,0.8);font-size:10px;cursor:pointer;padding:2px 5px;margin-top:2px">✕ verwijder</button>
+      ${esc(naamMap[s.id])}<br>
+      <span onclick="editPartijHcp('${escAttr(s.id)}')" style="font-size:10px;font-weight:400;color:rgba(255,255,255,0.7);cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)" title="Klik om aan te passen">hcp ${Math.round(s.partijHcp)}</span><br>
+      <button onclick="verwijderSpelerUitRonde('${escAttr(s.id)}')" style="background:rgba(255,255,255,0.15);border:none;border-radius:4px;color:rgba(255,255,255,0.8);font-size:10px;cursor:pointer;padding:2px 5px;margin-top:2px">✕ verwijder</button>
     </th>`;
   });
   headHtml += '</tr>';
@@ -85,14 +85,14 @@ function renderScorecard() {
       if (val === null && firstEmptyId === null) firstEmptyId = inputId;
       const tabIdx = holeIdx * p.spelers.length + si + 1;
       bodyHtml += `<td style="text-align:center"><input
-        id="${inputId}"
+        id="${escAttr(inputId)}"
         type="number"
         inputmode="numeric"
         pattern="[0-9]*"
         min="1" max="12"
         tabindex="${tabIdx}"
         value="${val !== null ? val : ''}"
-        onfocus="this.select();setTimeout(()=>this.scrollIntoView({behavior:'smooth',block:'center'}),300)" oninput="updateScore('${s.id}',${holeIdx},this.value);if(this.value.length>0)autoAdvance(this)"
+        onfocus="this.select();setTimeout(()=>this.scrollIntoView({behavior:'smooth',block:'center'}),300)" oninput="updateScore('${escAttr(s.id)}',${holeIdx},this.value);if(this.value.length>0)autoAdvance(this)"
         style="width:38px;padding:3px;text-align:center;font-size:13px;font-family:'DM Mono',monospace;border:1.5px solid #e0ddd4;border-radius:5px"
       ></td>`;
     });
@@ -225,18 +225,18 @@ function renderMatchOverview() {
     const naamB_style = scoreLeadB ? 'font-weight:700;color:var(--green)' : '';
     const scoreStyle = scoreLeadA ? 'background:var(--green-pale);color:var(--green)' : scoreLeadB ? 'background:var(--green-pale);color:var(--green)' : '';
     const matchIdx = p.matchups.indexOf(m);
-    const hcpInfo = `<span style="font-size:10px;color:var(--light)">${m.hcpSlagen > 0 ? (m.hcpOntvanger === m.spelerA.id ? nA : nB) + ' +' + m.hcpSlagen + ' slag' + (m.hcpSlagen > 1 ? 'en' : '') : 'Gelijke handicap'} <span onclick="editMatchupSlagen(${matchIdx})" style="cursor:pointer;opacity:0.6" title="Slagen aanpassen">✏️</span></span>`;
+    const hcpInfo = `<span style="font-size:10px;color:var(--light)">${m.hcpSlagen > 0 ? esc((m.hcpOntvanger === m.spelerA.id ? nA : nB)) + ' +' + m.hcpSlagen + ' slag' + (m.hcpSlagen > 1 ? 'en' : '') : 'Gelijke handicap'} <span onclick="editMatchupSlagen(${matchIdx})" style="cursor:pointer;opacity:0.6" title="Slagen aanpassen">✏️</span></span>`;
 
     html += `<div class="match-card">
       <div style="flex:1;min-width:0">
-        <div class="match-player" style="${naamA_style};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nA}</div>
+        <div class="match-player" style="${naamA_style};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nA)}</div>
         ${hcpInfo}
       </div>
       <div style="text-align:center;flex:0 0 90px">
-        <div class="match-score" style="${scoreStyle};font-size:13px;padding:4px 6px">${scoreText}</div>
-        <div style="font-size:10px;color:${status === 'beslist' ? 'var(--green)' : 'var(--light)'};margin-top:2px;font-weight:${status === 'beslist' ? '600' : '400'};white-space:nowrap">${statusLabel}</div>
+        <div class="match-score" style="${scoreStyle};font-size:13px;padding:4px 6px">${esc(scoreText)}</div>
+        <div style="font-size:10px;color:${status === 'beslist' ? 'var(--green)' : 'var(--light)'};margin-top:2px;font-weight:${status === 'beslist' ? '600' : '400'};white-space:nowrap">${esc(statusLabel)}</div>
       </div>
-      <div class="match-player right" style="${naamB_style};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right">${nB}</div>
+      <div class="match-player right" style="${naamB_style};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right">${esc(nB)}</div>
     </div>`;
   });
   document.getElementById('match-overview').innerHTML = html || '<div class="empty"><p>Voer scores in om de stand te zien.</p></div>';
@@ -373,7 +373,7 @@ function openUitslagModal() {
     const heeftGast = Number(m.spelerA.id) >= 90000 || Number(m.spelerB.id) >= 90000;
     html += `<div id="matchup-row-${idx}" style="padding:12px 0;border-bottom:1px solid #f0ede4">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <span style="font-weight:600">${m.spelerA.naam} vs ${m.spelerB.naam}</span>
+        <span style="font-weight:600">${esc(m.spelerA.naam)} vs ${esc(m.spelerB.naam)}</span>
         <button onclick="skipMatchup(${idx})" id="skip-${idx}" class="btn btn-sm btn-ghost" style="color:var(--red);border-color:#f5c6cb;font-size:11px;padding:4px 8px" title="Matchup overslaan">✕ overslaan</button>
       </div>
       ${heeftGast ? `<p style="font-size:11px;color:var(--light);font-style:italic;margin-bottom:6px">⚠️ Gastspeler — telt niet mee voor ladderstand</p>` : ''}`;
@@ -383,14 +383,14 @@ function openUitslagModal() {
       html += `<p style="font-size:12px;color:var(--gold);margin-bottom:6px">${label}</p>
         <div style="display:flex;gap:8px">
           <button class="btn btn-sm ${winnaar === 'A' ? 'btn-primary' : 'btn-ghost'}"
-            onclick="setWinnaar(${idx},'A')" id="win-${idx}-A">${nA} wint</button>
+            onclick="setWinnaar(${idx},'A')" id="win-${idx}-A">${esc(nA)} wint</button>
           <button class="btn btn-sm ${winnaar === 'B' ? 'btn-primary' : 'btn-ghost'}"
-            onclick="setWinnaar(${idx},'B')" id="win-${idx}-B">${nB} wint</button>
+            onclick="setWinnaar(${idx},'B')" id="win-${idx}-B">${esc(nB)} wint</button>
         </div>`;
     } else {
       const winnaarNaam = standA > 0 ? m.spelerA.naam : m.spelerB.naam;
       const marge = Math.abs(standA);
-      html += `<span class="badge badge-green">✓ ${winnaarNaam} wint (${gespeeld} holes, ${marge} up)</span>`;
+      html += `<span class="badge badge-green">✓ ${esc(winnaarNaam)} wint (${gespeeld} holes, ${marge} up)</span>`;
     }
     html += `</div>`;
   });

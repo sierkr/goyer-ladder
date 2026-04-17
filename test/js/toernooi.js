@@ -1,7 +1,7 @@
 // ============================================================
 //  toernooi.js
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tSpelersLadderIds, _tRankingLadderIds, _flights, aangepasteBanen } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { renderHcpBlok } from './partij.js';
@@ -48,7 +48,7 @@ function renderToernooi() {
       html += `<div style="display:flex;gap:8px;overflow-x:auto;padding:12px 16px;border-bottom:1px solid var(--border);scrollbar-width:none">`;
       mijnToernooien.forEach(t => {
         const actief = t.id === actieveToernooiId;
-        html += `<button onclick="selecteerToernooi('${t.id}')" style="flex-shrink:0;padding:6px 14px;border-radius:20px;border:1.5px solid ${actief ? 'var(--green)' : 'var(--border)'};background:${actief ? 'var(--green)' : 'white'};color:${actief ? 'white' : 'var(--dark)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">${t.naam}</button>`;
+        html += `<button onclick="selecteerToernooi('${escAttr(t.id)}')" style="flex-shrink:0;padding:6px 14px;border-radius:20px;border:1.5px solid ${actief ? 'var(--green)' : 'var(--border)'};background:${actief ? 'var(--green)' : 'white'};color:${actief ? 'white' : 'var(--dark)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">${esc(t.naam)}</button>`;
       });
       html += '</div>';
     }
@@ -156,10 +156,10 @@ function initToernooiSetup() {
   const baanSel = document.getElementById('t-baan');
   if (baanSel) {
     baanSel.innerHTML = Object.keys(BANEN_DB).filter(n => n !== 'Handmatig invoeren').map(n =>
-      `<option value="${n}">${n}</option>`
+      `<option value="${escAttr(n)}">${esc(n)}</option>`
     ).join('');
     aangepasteBanen.forEach(b => {
-      baanSel.innerHTML += `<option value="${b.naam}">⭐ ${b.naam}</option>`;
+      baanSel.innerHTML += `<option value="${escAttr(b.naam)}">⭐ ${esc(b.naam)}</option>`;
     });
   }
 
@@ -173,8 +173,8 @@ function initToernooiSetup() {
   if (spelersLaddersEl) {
     spelersLaddersEl.innerHTML = alleLadders.map(l => `
       <label style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 12px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;user-select:none;min-width:56px;text-align:center">
-        <span>${l.naam}</span>
-        <input type="checkbox" value="${l.id}" ${_tSpelersLadderIds.has(l.id) ? 'checked' : ''} onchange="toggleTSpelersLadder('${l.id}', this.checked)" style="accent-color:var(--green);width:18px;height:18px">
+        <span>${esc(l.naam)}</span>
+        <input type="checkbox" value="${escAttr(l.id)}" ${_tSpelersLadderIds.has(l.id) ? 'checked' : ''} onchange="toggleTSpelersLadder('${escAttr(l.id)}', this.checked)" style="accent-color:var(--green);width:18px;height:18px">
       </label>
     `).join('');
   }
@@ -184,8 +184,8 @@ function initToernooiSetup() {
   if (rankingLaddersEl) {
     rankingLaddersEl.innerHTML = alleLadders.map(l => `
       <label style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 12px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;user-select:none;min-width:56px;text-align:center">
-        <span>${l.naam}</span>
-        <input type="checkbox" value="${l.id}" ${_tRankingLadderIds.has(l.id) ? 'checked' : ''} onchange="toggleTRankingLadder('${l.id}', this.checked)" style="accent-color:var(--green);width:18px;height:18px">
+        <span>${esc(l.naam)}</span>
+        <input type="checkbox" value="${escAttr(l.id)}" ${_tRankingLadderIds.has(l.id) ? 'checked' : ''} onchange="toggleTRankingLadder('${escAttr(l.id)}', this.checked)" style="accent-color:var(--green);width:18px;height:18px">
       </label>
     `).join('');
   }
@@ -242,10 +242,10 @@ function zoekToernooiSpeler(zoek) {
     lijst.innerHTML = `<div style="padding:10px 14px;font-size:13px;color:var(--light)">Geen spelers gevonden</div>`;
   } else {
     lijst.innerHTML = gefilterd.map(s => `
-      <div onpointerdown="event.preventDefault()" onclick="selecteerToernooiSpeler('${s.id}','${s.naam.replace(/'/g,"\\'")}',${s.hcp})"
+      <div onpointerdown="event.preventDefault()" onclick="selecteerToernooiSpeler('${escAttr(s.id)}','${escAttr(s.naam)}',${s.hcp})"
         style="padding:10px 14px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"
         onmouseenter="this.style.background='var(--green-pale)'" onmouseleave="this.style.background=''">
-        <span>${s.naam}</span>
+        <span>${esc(s.naam)}</span>
         <span style="color:var(--light);font-size:12px">hcp ${Math.round(s.hcp)}</span>
       </div>
     `).join('');
@@ -299,8 +299,8 @@ function renderTGeselecteerdeSpelers() {
   }
   el.innerHTML = _tGeselecteerdeSpelers.map(s => `
     <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:var(--green-pale);color:var(--green);border:1.5px solid var(--green);border-radius:20px;font-size:13px">
-      ${s.naam}${s.gast ? ' <em style="font-size:11px;opacity:0.7">(gast)</em>' : ''}
-      <button onclick="verwijderToernooiSpelerSelectie('${s.id}')" style="background:none;border:none;color:var(--green);cursor:pointer;font-size:14px;padding:0;line-height:1">×</button>
+      ${esc(s.naam)}${s.gast ? ' <em style="font-size:11px;opacity:0.7">(gast)</em>' : ''}
+      <button onclick="verwijderToernooiSpelerSelectie('${escAttr(s.id)}')" style="background:none;border:none;color:var(--green);cursor:pointer;font-size:14px;padding:0;line-height:1">×</button>
     </span>
   `).join('');
 }
@@ -361,14 +361,14 @@ function renderFlightLijst() {
   container.innerHTML = _flights.map((f, fi) => `
     <div style="border:1.5px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden">
       <div style="background:var(--green);padding:8px 12px;display:flex;align-items:center;gap:8px">
-        <input type="text" value="${f.naam}" onchange="wijzigFlightNaam(${fi}, this.value)"
+        <input type="text" value="${esc(f.naam)}" onchange="wijzigFlightNaam(${fi}, this.value)"
           style="background:transparent;border:none;color:white;font-family:'Bebas Neue';font-size:18px;flex:1;outline:none">
         ${_flights.length > 1 ? `<button onclick="verwijderFlight(${fi})" style="background:rgba(255,255,255,0.2);border:none;border-radius:4px;color:white;cursor:pointer;padding:2px 8px;font-size:13px">✕</button>` : ''}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 12px;background:#f9f7f2;border-bottom:1px solid var(--border)">
         <div>
           <label style="font-size:11px;font-weight:600;color:var(--mid);text-transform:uppercase;display:block;margin-bottom:3px">Starttijd</label>
-          <input type="time" value="${f.starttijd || ''}" onchange="wijzigFlightStarttijd(${fi}, this.value)"
+          <input type="time" value="${esc(f.starttijd || '')}" onchange="wijzigFlightStarttijd(${fi}, this.value)"
             style="font-family:'DM Mono',monospace;font-size:13px;border:1.5px solid var(--border);border-radius:5px;padding:3px 6px;width:100%">
         </div>
         <div>
@@ -380,13 +380,13 @@ function renderFlightLijst() {
       <div style="padding:8px">
         ${f.spelers.map((s, si) => `
           <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
-            <span style="flex:1;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.naam}</span>
+            <span style="flex:1;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.naam)}</span>
             <input type="number" value="${Math.round(s.hcp)}" min="-10" max="54"
               onchange="wijzigFlightHcp(${fi}, ${si}, this.value)"
               style="width:48px;padding:3px 6px;text-align:center;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;font-size:13px;flex-shrink:0">
             ${_flights.length > 1 ? `
             <select onchange="verplaatsSpelerFlight(${fi}, ${si}, this.value)" style="font-size:12px;border:1.5px solid var(--border);border-radius:5px;padding:3px 5px;background:white;flex-shrink:0;max-width:80px">
-              ${_flights.map((lf, lfi) => `<option value="${lfi}" ${lfi === fi ? 'selected' : ''}>${lf.naam}</option>`).join('')}
+              ${_flights.map((lf, lfi) => `<option value="${lfi}" ${lfi === fi ? 'selected' : ''}>${esc(lf.naam)}</option>`).join('')}
             </select>` : ''}
           </div>
         `).join('')}
@@ -585,15 +585,15 @@ function openToernooiSpelersBeheer() {
   const verwijderLijst = document.getElementById('toernooi-speler-verwijder-lijst');
   verwijderLijst.innerHTML = t.spelers.map(s => `
     <div style="display:flex;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
-      <span style="flex:1;font-size:14px">${s.naam}${s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}</span>
+      <span style="flex:1;font-size:14px">${esc(s.naam)}${s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}</span>
       <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:12px"
-        onclick="verwijderToernooiSpelerNieuw('${s.id}')">✕</button>
+        onclick="verwijderToernooiSpelerNieuw('${escAttr(s.id)}')">✕</button>
     </div>
   `).join('');
 
   // Vul flight selects
   const flightOpties = (t.flights || [{ naam: 'Flight 1' }]).map((f, i) =>
-    `<option value="${i}">${f.naam}</option>`).join('');
+    `<option value="${i}">${esc(f.naam)}</option>`).join('');
   document.getElementById('toernooi-speler-flight-sel').innerHTML = flightOpties;
   document.getElementById('toernooi-gast-flight-sel').innerHTML = flightOpties;
 
@@ -620,10 +620,10 @@ function zoekToernooiSpelerModal(zoek) {
   lijst.innerHTML = pool.length === 0
     ? '<div style="padding:10px 14px;font-size:13px;color:var(--light)">Geen spelers gevonden</div>'
     : pool.map(s => `
-      <div onclick="selecteerToernooiSpelerModal('${s.id}','${s.naam.replace(/'/g,"\\'")}',${s.hcp})"
+      <div onclick="selecteerToernooiSpelerModal('${escAttr(s.id)}','${escAttr(s.naam)}',${s.hcp})"
         style="padding:10px 14px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"
         onmouseenter="this.style.background='var(--green-pale)'" onmouseleave="this.style.background=''">
-        <span>${s.naam}</span>
+        <span>${esc(s.naam)}</span>
         <span style="color:var(--light);font-size:12px">hcp ${Math.round(s.hcp)}</span>
       </div>`).join('');
   lijst.style.display = 'block';
@@ -772,16 +772,16 @@ function renderToernooiActief() {
   detail.innerHTML = `
     <div class="card">
       <div class="card-header">
-        <h2>${t.naam}</h2>
+        <h2>${esc(t.naam)}</h2>
         <div style="display:flex;align-items:center;gap:8px">
           <span class="badge badge-gold">${uitslag ? 'Uitslag' : 'Bezig'}</span>
           <button class="btn btn-sm btn-ghost" onclick="gaNaarLadderTab()" style="font-size:12px">← Ladder</button>
         </div>
       </div>
       <div class="card-body" style="padding:10px 16px;font-size:13px;color:var(--mid)">
-        ${t.datum} · ${t.baan} · ${t.holes.length} holes · ${t.spelers.length} spelers
+        ${esc(t.datum)} · ${esc(t.baan)} · ${t.holes.length} holes · ${t.spelers.length} spelers
         ${flights.length > 1 ? ` · ${flights.length} flights` : ''}
-        ${!isBeheerder && mijnFlight ? ` · <strong style="color:var(--green)">${mijnFlight.naam}</strong>` : ''}
+        ${!isBeheerder && mijnFlight ? ` · <strong style="color:var(--green)">${esc(mijnFlight.naam)}</strong>` : ''}
       </div>
     </div>
 
@@ -900,7 +900,7 @@ function renderTScorecard() {
       const actief = ti === activeFi;
       html += `<button onclick="selecteerFlightTab(${ti})"
         style="flex-shrink:0;padding:8px 14px;border:none;background:transparent;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:${actief?'700':'500'};color:${actief?'var(--green)':'var(--mid)'};border-bottom:2px solid ${actief?'var(--green)':'transparent'};margin-bottom:-2px;cursor:pointer">
-        ${naam || 'Scores'}
+        ${esc(naam || 'Scores')}
       </button>`;
     });
     html += '</div>';
@@ -918,11 +918,11 @@ function renderTScorecard() {
 
   if (naam) {
     const info = [
-      flightData?.starttijd ? `🕐 ${flightData.starttijd}` : null,
+      flightData?.starttijd ? `🕐 ${esc(flightData.starttijd)}` : null,
       flightData?.starthole ? `Hole ${flightData.starthole}` : null
     ].filter(Boolean).join(' · ');
     html += `<div style="display:flex;align-items:baseline;gap:12px;padding:8px 12px 6px">
-      <span style="font-family:'Bebas Neue';font-size:16px;color:var(--green)">${naam}</span>
+      <span style="font-family:'Bebas Neue';font-size:16px;color:var(--green)">${esc(naam)}</span>
       ${info ? `<span style="font-size:13px;color:var(--mid)">${info}</span>` : ''}
     </div>`;
   }
@@ -931,8 +931,8 @@ function renderTScorecard() {
   spelers.forEach(s => {
     const delen = s.naam.split(' ');
     html += `<th class="player-col" style="max-width:70px">
-      <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px" title="${s.naam}">${delen[0]}</span>
-      <span class="hole-par" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px;${isBeheerder?'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)':''}" ${isBeheerder?`onclick="editToernooiHcp('${s.id}')"`:''}>${delen.slice(1).join(' ') || 'hcp '+Math.round(s.hcp)}</span>
+      <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px" title="${esc(s.naam)}">${esc(delen[0])}</span>
+      <span class="hole-par" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px;${isBeheerder?'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)':''}" ${isBeheerder?`onclick="editToernooiHcp('${escAttr(s.id)}')"`:''}>${esc(delen.slice(1).join(' ') || 'hcp '+Math.round(s.hcp))}</span>
     </th>`;
   });
   html += '</tr></thead><tbody>';
@@ -946,7 +946,7 @@ function renderTScorecard() {
         : tabOffset + spelRij * spelers.length + si + 1;
       html += `<td><input type="number" min="1" max="12" inputmode="numeric" value="${val !== null && val !== undefined ? val : ''}"
         tabindex="${tabIdx}" onfocus="this.select()"
-        oninput="updateTScoreAndAdvance('${s.id}',${holeIdx},${tabIdx},this.value)"
+        oninput="updateTScoreAndAdvance('${escAttr(s.id)}',${holeIdx},${tabIdx},this.value)"
         style="width:42px;padding:4px;text-align:center;font-size:14px;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--dark)"></td>`;
     });
     html += '</tr>';
@@ -1359,7 +1359,7 @@ function renderTRanglijst() {
       const cbBadge = cbSpelers.has(rank) ? ' <span style="font-size:9px;background:#fff3cd;color:#7a6000;border-radius:4px;padding:1px 4px;font-weight:700">CB</span>' : '';
       html += `<tr style="${trStyle}">
         <td style="${tdStyle};font-weight:700;color:${rank < 3 ? 'var(--gold)' : 'var(--light)'}">${rank+1}</td>
-        <td style="${tdNaamStyle}">${r.s.naam}${isGast ? ' <em style="font-size:10px;color:var(--light)">(gast)</em>' : ''}${cbBadge}</td>
+        <td style="${tdNaamStyle}">${esc(r.s.naam)}${isGast ? ' <em style="font-size:10px;color:var(--light)">(gast)</em>' : ''}${cbBadge}</td>
         <td style="${tdStyle};color:var(--light);font-size:11px">${r.holes}/${t.holes.length}</td>
         <td style="${tdStyle};${actBrutto}">${r.brutto ?? '—'}</td>
         <td style="${tdStyle};${actNetto}">${r.netto ?? '—'}</td>
@@ -1380,7 +1380,7 @@ function renderTRanglijst() {
   el.innerHTML = volgorde.map((entry, rank) => `
     <div class="ladder-item">
       <div class="rank-badge ${rank < 3 ? 'top3' : ''}">${rank+1}</div>
-      <div class="player-name">${entry.s.naam}${entry.s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}</div>
+      <div class="player-name">${esc(entry.s.naam)}${entry.s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}</div>
       <div style="font-size:12px;color:var(--light);text-align:right;line-height:1.6">
         ${entry.w}W ${entry.ti}T ${entry.l}L<br>
         <strong style="color:var(--dark)">${entry.pt > 0 ? '+' : ''}${entry.pt} pt</strong>
@@ -1414,13 +1414,13 @@ function renderTMatrix() {
   // Header
   html += `<tr><th style="padding:4px;background:var(--green);color:white"></th>`;
   t.spelers.forEach(s => {
-    html += `<th style="padding:4px 6px;background:var(--green);color:white;text-align:center">${s.naam.split(' ')[0]}</th>`;
+    html += `<th style="padding:4px 6px;background:var(--green);color:white;text-align:center">${esc(s.naam.split(' ')[0])}</th>`;
   });
   html += '</tr>';
 
   // Rijen
   t.spelers.forEach((sA, i) => {
-    html += `<tr><td style="padding:4px 8px;font-weight:600;font-size:12px;white-space:nowrap">${sA.naam.split(' ')[0]}</td>`;
+    html += `<tr><td style="padding:4px 8px;font-weight:600;font-size:12px;white-space:nowrap">${esc(sA.naam.split(' ')[0])}</td>`;
     t.spelers.forEach((sB, j) => {
       if (i === j) {
         html += `<td style="background:#f0ede4;text-align:center;padding:4px">—</td>`;
@@ -1484,7 +1484,7 @@ function openToernooiAfsluiten() {
     html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
       <div>
         <span style="font-family:'Bebas Neue';font-size:18px;color:${rank===0?'var(--gold)':'var(--light)'};margin-right:8px">${rank+1}</span>
-        <strong>${naam}</strong>${gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}
+        <strong>${esc(naam)}</strong>${gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}
       </div>
       ${score}
     </div>`;

@@ -112,3 +112,30 @@ export const DEFAULT_STATE = {
   actievePartijen: [],
   uitslagen: []
 };
+
+// ============================================================
+//  SECURITY HELPERS — v3.0.0-10 fase 10
+// ============================================================
+
+/**
+ * Escape HTML special characters voor veilige injectie in innerHTML.
+ * Gebruik rond ELKE user-input (spelersnamen, email, baan-namen, notities).
+ * Voorbeeld: `<div>${esc(s.naam)}</div>`
+ */
+export function esc(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Escape voor gebruik binnen een JS-string-literal in een inline HTML attribute,
+ * bijv. onclick="foo('${escAttr(naam)}')". Dekt zowel HTML- als JS-escapes.
+ */
+export function escAttr(str) {
+  return esc(String(str ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+}

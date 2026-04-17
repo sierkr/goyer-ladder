@@ -7,7 +7,7 @@
 // ============================================================
 import { db, auth, firebaseConfig, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL,
   SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC,
-  INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
+  INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId,
   huidigeBruiker, uitdagingenData } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers,
@@ -72,14 +72,14 @@ async function renderAdminSpelersEnAccounts() {
       (l.spelers   || []).some(s => s.naam?.toLowerCase() === naam.toLowerCase())
     );
     const ladderBadges = mijnLadders.map(l =>
-      `<span class="badge badge-grey" style="font-size:10px">${l.naam}</span>`
+      `<span class="badge badge-grey" style="font-size:10px">${esc(l.naam)}</span>`
     ).join(' ');
 
     const rolBadge = u.rol && u.rol !== 'speler'
-      ? `<span class="badge" style="font-size:10px;background:var(--green-pale);color:var(--green)">${u.rol}</span>`
+      ? `<span class="badge" style="font-size:10px;background:var(--green-pale);color:var(--green)">${esc(u.rol)}</span>`
       : '';
     const emailTekst = u.email
-      ? `<span style="font-size:11px;color:var(--light)">${u.email}</span>`
+      ? `<span style="font-size:11px;color:var(--light)">${esc(u.email)}</span>`
       : `<span style="font-size:11px;color:#ccc">geen email</span>`;
     const hcpTekst = hcp != null
       ? `hcp ${Math.round(hcp)}`
@@ -88,15 +88,15 @@ async function renderAdminSpelersEnAccounts() {
     // Buttons gebruiken uid (string) als identifier
     return `<div class="admin-row" style="flex-wrap:nowrap;gap:6px;align-items:center">
       <div style="flex:1;min-width:0">
-        <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${naam}</div>
+        <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(naam)}</div>
         <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:2px">
           ${emailTekst} ${rolBadge}
         </div>
         ${mijnLadders.length ? `<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:3px">${ladderBadges}</div>` : ''}
       </div>
       <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace;flex-shrink:0;white-space:nowrap">${hcpTekst}</span>
-      <button class="btn btn-sm btn-ghost" onclick="openEditPlayer('${uid}')">✏️</button>
-      <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removePlayer('${uid}')">✕</button>
+      <button class="btn btn-sm btn-ghost" onclick="openEditPlayer('${escAttr(uid)}')">✏️</button>
+      <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removePlayer('${escAttr(uid)}')">✕</button>
     </div>`;
   });
 
@@ -119,8 +119,8 @@ function renderLadderCheckboxes(containerId) {
   wrap.innerHTML = alleLadders
     .filter(l => (l.data?.type || l.type) !== 'knockout')
     .map(l => `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-      <input type="checkbox" value="${l.id}" style="width:16px;height:16px;cursor:pointer">
-      ${l.naam}
+      <input type="checkbox" value="${escAttr(l.id)}" style="width:16px;height:16px;cursor:pointer">
+      ${esc(l.naam)}
     </label>`).join('');
 }
 
@@ -207,11 +207,11 @@ async function openAddPlayer() {
       lijst.innerHTML = zonderLadder.map(u => `
         <div style="display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:10px">
           <div style="flex:1">
-            <div style="font-weight:500">${u.naam || u.gebruikersnaam}</div>
-            <div style="font-size:11px;color:var(--light)">${u.email}</div>
+            <div style="font-weight:500">${esc(u.naam || u.gebruikersnaam)}</div>
+            <div style="font-size:11px;color:var(--light)">${esc(u.email)}</div>
           </div>
           <button class="btn btn-sm btn-primary"
-            onclick="voegAccountToeAlsSpeler('${u.uid}','${(u.naam||u.gebruikersnaam||'').replace(/'/g,"\\'")}')">
+            onclick="voegAccountToeAlsSpeler('${escAttr(u.uid)}','${escAttr(u.naam||u.gebruikersnaam||'')}')">
             + Toevoegen aan ladder
           </button>
         </div>
@@ -483,12 +483,12 @@ function renderProfiel() {
   document.getElementById('profiel-info').innerHTML = `
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:4px">
       <div style="width:52px;height:52px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue';font-size:24px;color:var(--gold-light)">
-        ${huidigeBruiker.gebruikersnaam[0].toUpperCase()}
+        ${esc((huidigeBruiker.gebruikersnaam || '')[0]?.toUpperCase() || '?')}
       </div>
       <div>
-        <div style="font-weight:600;font-size:17px">${huidigeBruiker.gebruikersnaam}</div>
-        <div style="font-size:13px;color:var(--light)">${huidigeBruiker.email}</div>
-        <span class="badge ${huidigeBruiker.rol === 'beheerder' ? 'badge-gold' : huidigeBruiker.rol === 'coordinator' ? 'badge-green' : 'badge-grey'}" style="margin-top:4px">${huidigeBruiker.rol}</span>
+        <div style="font-weight:600;font-size:17px">${esc(huidigeBruiker.gebruikersnaam)}</div>
+        <div style="font-size:13px;color:var(--light)">${esc(huidigeBruiker.email)}</div>
+        <span class="badge ${huidigeBruiker.rol === 'beheerder' ? 'badge-gold' : huidigeBruiker.rol === 'coordinator' ? 'badge-green' : 'badge-grey'}" style="margin-top:4px">${esc(huidigeBruiker.rol)}</span>
       </div>
     </div>`;
 
@@ -516,7 +516,7 @@ function renderProfiel() {
   ladderStats.forEach(({ ladder, sp, winpct, verloren }) => {
     html += `
     <div style="margin-bottom:16px">
-      <div style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">${ladder.naam}</div>
+      <div style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">${esc(ladder.naam)}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
         <div style="text-align:center;background:var(--green-pale);border-radius:10px;padding:10px">
           <div style="font-family:'Bebas Neue';font-size:28px;color:var(--green)">${sp.rank}</div>
@@ -559,17 +559,17 @@ function renderProfiel() {
     uitdHtml += '<div style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:10px">Uitdagingen</div>';
     openOntvangen.forEach(u => {
       uitdHtml += `<div style="background:#fef3cd;border-radius:10px;padding:12px;margin-bottom:8px">
-        <div style="font-weight:600;margin-bottom:6px">⚔️ ${u.vanNaam} daagt je uit!</div>
+        <div style="font-weight:600;margin-bottom:6px">⚔️ ${esc(u.vanNaam)} daagt je uit!</div>
         <div style="display:flex;gap:8px">
-          <button class="btn btn-sm btn-primary" onclick="reageerUitdaging('${u.id}',true)">✓ Accepteer</button>
-          <button class="btn btn-sm btn-ghost" onclick="reageerUitdaging('${u.id}',false)" style="color:var(--red)">✗ Weiger</button>
+          <button class="btn btn-sm btn-primary" onclick="reageerUitdaging('${escAttr(u.id)}',true)">✓ Accepteer</button>
+          <button class="btn btn-sm btn-ghost" onclick="reageerUitdaging('${escAttr(u.id)}',false)" style="color:var(--red)">✗ Weiger</button>
         </div>
       </div>`;
     });
     openVerstuurd.forEach(u => {
       uitdHtml += `<div style="background:#f0ede4;border-radius:10px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
-        <div style="font-size:13px">⏳ Wacht op <strong>${u.naarNaam}</strong></div>
-        <button onclick="verwijderUitdaging('${u.id}')" style="background:none;border:none;color:var(--light);cursor:pointer;font-size:18px">✕</button>
+        <div style="font-size:13px">⏳ Wacht op <strong>${esc(u.naarNaam)}</strong></div>
+        <button onclick="verwijderUitdaging('${escAttr(u.id)}')" style="background:none;border:none;color:var(--light);cursor:pointer;font-size:18px">✕</button>
       </div>`;
     });
     const afgerond = mijnUitdagingen.filter(u => u.status !== 'open');
@@ -577,7 +577,7 @@ function renderProfiel() {
       const isVan  = u.vanEmail === huidigeBruiker.email;
       const ander  = isVan ? u.naarNaam : u.vanNaam;
       const icoon  = u.status === 'geaccepteerd' ? '✅' : '❌';
-      uitdHtml += `<div style="font-size:12px;color:var(--light);padding:4px 0">${icoon} ${isVan ? 'Uitdaging aan' : 'Uitdaging van'} ${ander} — ${u.status}</div>`;
+      uitdHtml += `<div style="font-size:12px;color:var(--light);padding:4px 0">${icoon} ${isVan ? 'Uitdaging aan' : 'Uitdaging van'} ${esc(ander)} — ${esc(u.status)}</div>`;
     });
     uitdHtml += '</div>';
     document.getElementById('profiel-stats').innerHTML += uitdHtml;
@@ -664,16 +664,16 @@ async function renderAdminUsers() {
       return `
       <div class="admin-row">
         <div style="flex:1">
-          <div class="name">${naam}</div>
-          <div style="font-size:11px;color:var(--light)">${u.email || ''}</div>
+          <div class="name">${esc(naam)}</div>
+          <div style="font-size:11px;color:var(--light)">${esc(u.email || '')}</div>
         </div>
-        <span class="badge ${u.rol === 'beheerder' ? 'badge-gold' : u.rol === 'coordinator' ? 'badge-green' : 'badge-grey'}">${u.rol}</span>
-        <button class="btn btn-sm btn-ghost" onclick="openEditUser('${u.uid}')">✏️</button>
-        <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removeUser('${u.uid}')">✕</button>
+        <span class="badge ${u.rol === 'beheerder' ? 'badge-gold' : u.rol === 'coordinator' ? 'badge-green' : 'badge-grey'}">${esc(u.rol)}</span>
+        <button class="btn btn-sm btn-ghost" onclick="openEditUser('${escAttr(u.uid)}')">✏️</button>
+        <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removeUser('${escAttr(u.uid)}')">✕</button>
       </div>`;
     }).join('');
   } catch(e) {
-    list.innerHTML = '<div style="padding:12px;color:var(--red);font-size:13px">Fout bij laden: ' + e.message + '</div>';
+    list.innerHTML = '<div style="padding:12px;color:var(--red);font-size:13px">Fout bij laden</div>';
   }
 }
 

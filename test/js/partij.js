@@ -1,7 +1,7 @@
 // ============================================================
 //  partij.js — Partij aanmaken, banen, naam helpers
 // ============================================================
-import { db, BANEN_DB, LADDERS_COL, DEFAULT_STATE } from './config.js';
+import { db, BANEN_DB, LADDERS_COL, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
 import { slaState, getLadderData, getNextId, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { objNaarRondes } from './knockout.js';
@@ -32,7 +32,7 @@ function initPartijForm() {
     : alleLadders.filter(l => uid && isInLadder(l.id, uid));
 
   ladderSel.innerHTML = mijnLadders.map(l =>
-    `<option value="${l.id}" ${l.id === activeLadderId ? 'selected' : ''}>${l.naam}</option>`
+    `<option value="${escAttr(l.id)}" ${l.id === activeLadderId ? 'selected' : ''}>${esc(l.naam)}</option>`
   ).join('');
 
   // Verberg selector als er maar één ladder beschikbaar is
@@ -44,14 +44,14 @@ function initPartijForm() {
 
   // Ingebouwde banen
   Object.keys(BANEN_DB).filter(n => n !== 'Handmatig invoeren').forEach(naam => {
-    sel.innerHTML += `<option value="${naam}">${naam}</option>`;
+    sel.innerHTML += `<option value="${escAttr(naam)}">${esc(naam)}</option>`;
   });
 
   // Aangepaste banen
   if (aangepasteBanen.length > 0) {
     sel.innerHTML += `<optgroup label="Opgeslagen banen">`;
     aangepasteBanen.forEach(b => {
-      sel.innerHTML += `<option value="${b.naam}">⭐ ${b.naam}</option>`;
+      sel.innerHTML += `<option value="${escAttr(b.naam)}">⭐ ${esc(b.naam)}</option>`;
     });
     sel.innerHTML += `</optgroup>`;
   }
@@ -151,7 +151,7 @@ function filterPartijSpelers(zoek) {
     sel.innerHTML = '<option value="">— Kies speler —</option>' +
       spelers.filter(s => !reedsSel.includes(String(s.id)))
         .filter(s => !term || s.naam.toLowerCase().includes(term))
-        .map(s => `<option value="${s.id}" ${String(s.id) === huidigeWaarde ? 'selected' : ''}>${s.naam} (hcp ${Math.round(s.hcp)})</option>`)
+        .map(s => `<option value="${escAttr(s.id)}" ${String(s.id) === huidigeWaarde ? 'selected' : ''}>${esc(s.naam)} (hcp ${Math.round(s.hcp)})</option>`)
         .join('');
   });
 }
@@ -222,12 +222,12 @@ function zoekPartijSpeler(n, zoek) {
   } else {
     lijst.innerHTML = gefilterd.map(s => `
       <div class="speler-zoek-item"
-        data-id="${s.id}"
-        data-naam="${s.naam.replace(/"/g,'&quot;')}"
-        data-hcp="${s.hcp}"
+        data-id="${escAttr(s.id)}"
+        data-naam="${esc(s.naam)}"
+        data-hcp="${escAttr(s.hcp)}"
         onpointerdown="event.preventDefault()"
         onclick="selecteerPartijSpelerEl(${n}, this)">
-        ${s.naam} <span style="color:var(--light);font-size:12px">hcp ${Math.round(s.hcp)}</span>
+        ${esc(s.naam)} <span style="color:var(--light);font-size:12px">hcp ${Math.round(s.hcp)}</span>
       </div>
     `).join('');
   }
@@ -583,8 +583,8 @@ function renderHcpBlok(spelers, holes, hcpPct, containerId) {
 
       html += `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:baseline">
-          <span style="font-weight:600;font-size:14px">${naamMap[a.id]} vs ${naamMap[b.id]}</span>
-          <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace">${verschil === 0 ? 'Gelijke handicap' : `${naamMap[mindereHcp.id]} krijgt ${verschil} slag${verschil !== 1 ? 'en' : ''}`}</span>
+          <span style="font-weight:600;font-size:14px">${esc(naamMap[a.id])} vs ${esc(naamMap[b.id])}</span>
+          <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace">${verschil === 0 ? 'Gelijke handicap' : `${esc(naamMap[mindereHcp.id])} krijgt ${verschil} slag${verschil !== 1 ? 'en' : ''}`}</span>
         </div>
       </div>`;
     }
