@@ -206,9 +206,8 @@ async function openLadderSpelersModal(ladderId) {
     ]);
     const ladderDataVers = ladderResult.data || {};
 
-    // Huidige leden — check op uid (primary) EN numeric id (fallback)
-    const huidigeUids    = new Set(ladderDataVers.spelerIds?.filter(id => typeof id === 'string' && id.length > 10) || []);
-    const huidigeNumIds  = new Set((ladderDataVers.spelers || []).map(s => Number(s.id)));
+    // Huidige leden — primary check op uid
+    const huidigeUids = new Set(ladderDataVers.spelerIds?.filter(id => typeof id === 'string' && id.length > 10) || []);
 
     // Toon alle bekende spelers — uit spelers/ collectie (uid-based)
     const gesorteerd = [...users].sort((a, b) =>

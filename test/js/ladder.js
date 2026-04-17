@@ -136,7 +136,7 @@ function renderLadderRij(s, ladderId) {
     )
   );
   const uitdagingBtnHtml = huidigeBruiker && !isZelf
-    ? `<button onclick="stuurUitdaging(${s.id})" style="background:none;border:1px solid #e0ddd4;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:${openUitdaging ? 'var(--gold)' : 'var(--light)'}" title="${openUitdaging ? 'Uitdaging loopt' : 'Uitdagen'}">⚔️</button>`
+    ? `<button onclick="stuurUitdaging('${s.id}')" style="background:none;border:1px solid #e0ddd4;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:${openUitdaging ? 'var(--gold)' : 'var(--light)'}" title="${openUitdaging ? 'Uitdaging loopt' : 'Uitdagen'}">⚔️</button>`
     : '';
 
   return `<div class="ladder-item" style="${isZelf ? 'background:var(--green-pale);border-left:3px solid var(--green);margin-left:-3px;' : ''}">

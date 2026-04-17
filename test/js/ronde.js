@@ -52,8 +52,8 @@ function renderScorecard() {
   p.spelers.forEach(s => {
     headHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px">
       ${naamMap[s.id]}<br>
-      <span onclick="editPartijHcp(${s.id})" style="font-size:10px;font-weight:400;color:rgba(255,255,255,0.7);cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)" title="Klik om aan te passen">hcp ${Math.round(s.partijHcp)}</span><br>
-      <button onclick="verwijderSpelerUitRonde(${s.id})" style="background:rgba(255,255,255,0.15);border:none;border-radius:4px;color:rgba(255,255,255,0.8);font-size:10px;cursor:pointer;padding:2px 5px;margin-top:2px">✕ verwijder</button>
+      <span onclick="editPartijHcp('${s.id}')" style="font-size:10px;font-weight:400;color:rgba(255,255,255,0.7);cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)" title="Klik om aan te passen">hcp ${Math.round(s.partijHcp)}</span><br>
+      <button onclick="verwijderSpelerUitRonde('${s.id}')" style="background:rgba(255,255,255,0.15);border:none;border-radius:4px;color:rgba(255,255,255,0.8);font-size:10px;cursor:pointer;padding:2px 5px;margin-top:2px">✕ verwijder</button>
     </th>`;
   });
   headHtml += '</tr>';
@@ -92,7 +92,7 @@ function renderScorecard() {
         min="1" max="12"
         tabindex="${tabIdx}"
         value="${val !== null ? val : ''}"
-        onfocus="this.select();setTimeout(()=>this.scrollIntoView({behavior:'smooth',block:'center'}),300)" oninput="updateScore(${s.id},${holeIdx},this.value);if(this.value.length>0)autoAdvance(this)"
+        onfocus="this.select();setTimeout(()=>this.scrollIntoView({behavior:'smooth',block:'center'}),300)" oninput="updateScore('${s.id}',${holeIdx},this.value);if(this.value.length>0)autoAdvance(this)"
         style="width:38px;padding:3px;text-align:center;font-size:13px;font-family:'DM Mono',monospace;border:1.5px solid #e0ddd4;border-radius:5px"
       ></td>`;
     });
@@ -370,7 +370,7 @@ function openUitslagModal() {
     const nB = naamMap[m.spelerB.id];
     let winnaar = standA > 0 ? 'A' : standA < 0 ? 'B' : null;
 
-    const heeftGast = m.spelerA.id >= 90000 || m.spelerB.id >= 90000;
+    const heeftGast = Number(m.spelerA.id) >= 90000 || Number(m.spelerB.id) >= 90000;
     html += `<div id="matchup-row-${idx}" style="padding:12px 0;border-bottom:1px solid #f0ede4">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <span style="font-weight:600">${m.spelerA.naam} vs ${m.spelerB.naam}</span>
@@ -501,7 +501,7 @@ async function bevestigUitslag() {
     const sv = state.spelers.find(s => s.id === verliezer.id);
 
     // Gastspelers of spelers niet in ladder — niet verwerken in ladderstand
-    const heeftGast = winnaar.id >= 90000 || verliezer.id >= 90000 ||
+    const heeftGast = Number(winnaar.id) >= 90000 || Number(verliezer.id) >= 90000 ||
                       !state.spelers.find(s => s.id === winnaar.id) ||
                       !state.spelers.find(s => s.id === verliezer.id);
     if (heeftGast || !sw || !sv) return;

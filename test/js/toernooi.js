@@ -242,7 +242,7 @@ function zoekToernooiSpeler(zoek) {
     lijst.innerHTML = `<div style="padding:10px 14px;font-size:13px;color:var(--light)">Geen spelers gevonden</div>`;
   } else {
     lijst.innerHTML = gefilterd.map(s => `
-      <div onpointerdown="event.preventDefault()" onclick="selecteerToernooiSpeler(${s.id},'${s.naam.replace(/'/g,"\\'")}',${s.hcp})"
+      <div onpointerdown="event.preventDefault()" onclick="selecteerToernooiSpeler('${s.id}','${s.naam.replace(/'/g,"\\'")}',${s.hcp})"
         style="padding:10px 14px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"
         onmouseenter="this.style.background='var(--green-pale)'" onmouseleave="this.style.background=''">
         <span>${s.naam}</span>
@@ -620,7 +620,7 @@ function zoekToernooiSpelerModal(zoek) {
   lijst.innerHTML = pool.length === 0
     ? '<div style="padding:10px 14px;font-size:13px;color:var(--light)">Geen spelers gevonden</div>'
     : pool.map(s => `
-      <div onclick="selecteerToernooiSpelerModal(${s.id},'${s.naam.replace(/'/g,"\\'")}',${s.hcp})"
+      <div onclick="selecteerToernooiSpelerModal('${s.id}','${s.naam.replace(/'/g,"\\'")}',${s.hcp})"
         style="padding:10px 14px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"
         onmouseenter="this.style.background='var(--green-pale)'" onmouseleave="this.style.background=''">
         <span>${s.naam}</span>
@@ -946,7 +946,7 @@ function renderTScorecard() {
         : tabOffset + spelRij * spelers.length + si + 1;
       html += `<td><input type="number" min="1" max="12" inputmode="numeric" value="${val !== null && val !== undefined ? val : ''}"
         tabindex="${tabIdx}" onfocus="this.select()"
-        oninput="updateTScoreAndAdvance(${s.id},${holeIdx},${tabIdx},this.value)"
+        oninput="updateTScoreAndAdvance('${s.id}',${holeIdx},${tabIdx},this.value)"
         style="width:42px;padding:4px;text-align:center;font-size:14px;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--dark)"></td>`;
     });
     html += '</tr>';
