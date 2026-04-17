@@ -9,7 +9,7 @@
 //  Shape:   [{ id (numeric legacy), uid, naam, hcp, rank, partijen, gewonnen, prevRank }]
 // ============================================================
 import { db } from './config.js';
-import { store, alleLadders, _usersCache, alleSpelersData, _vasteListeners,
+import { store, alleLadders, _usersCache, _vasteListeners,
   huidigeBruiker } from './store.js';
 import { collection, onSnapshot, doc, getDoc }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -22,22 +22,14 @@ if (!store._standenUnsubs) store._standenUnsubs = {};
 
 // ─── Helpers ─────────────────────────────────────────────────
 
-// Zoek speler-profiel uit _usersCache OF alleSpelersData (fallback).
+// Zoek speler-profiel uit _usersCache op uid.
+// v3.0.0-9c: geen alleSpelersData-fallback en geen naam-fallback meer.
 // Returnt { uid, naam, hcp, email, id } of null
-function zoekSpeler(uidOfNaam) {
-  // 1. Probeer _usersCache (uit spelers/ collectie)
+function zoekSpeler(uid) {
   const users = _usersCache || [];
-  let u = users.find(x => x.uid === uidOfNaam);
+  const u = users.find(x => x.uid === uid);
   if (u) {
-    // Koppel ook numeric id uit alleSpelersData via naam (backward compat)
-    const master = alleSpelersData.find(s => s.naam?.toLowerCase() === (u.naam || '').toLowerCase());
-    return { uid: u.uid, naam: u.naam, hcp: u.hcp, email: u.email, id: master?.id };
-  }
-  // 2. Fallback op naam match (als uidOfNaam eigenlijk een naam is)
-  const byName = users.find(x => x.naam?.toLowerCase() === (uidOfNaam || '').toLowerCase());
-  if (byName) {
-    const master = alleSpelersData.find(s => s.naam?.toLowerCase() === (byName.naam || '').toLowerCase());
-    return { uid: byName.uid, naam: byName.naam, hcp: byName.hcp, email: byName.email, id: master?.id };
+    return { uid: u.uid, naam: u.naam, hcp: u.hcp, email: u.email, id: u.uid };
   }
   return null;
 }

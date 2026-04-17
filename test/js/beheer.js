@@ -1,8 +1,8 @@
 // ============================================================
 //  beheer.js
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, SPELERS_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
-import { store, state, alleLadders, activeLadderId, alleSpelersData, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG } from './store.js';
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
+import { store, state, alleLadders, activeLadderId, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { laadInviteStatus } from './auth.js';
 import { renderLadder } from './ladder.js';
@@ -265,9 +265,9 @@ async function slaLadderSpelersOp() {
       if (bestaand) {
         nieuweSpelers.push({ ...bestaand });
       } else {
-        // Zoek numeric id in alleSpelersData voor backward compat
-        const masterSpeler = alleSpelersData.find(s => s.naam?.toLowerCase() === naam.toLowerCase());
-        const numericId = masterSpeler?.id || getNextId() + nieuweSpelers.length;
+        // v3.0.0-9c: alleen nog getNextId(), geen alleSpelersData-lookup.
+        // Numeric ids verdwijnen in een volgende fase.
+        const numericId = getNextId() + nieuweSpelers.length;
         nieuweSpelers.push({
           id: numericId, naam, hcp,
           rank: nieuweSpelers.length + 1, partijen: 0, gewonnen: 0

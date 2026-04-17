@@ -1,7 +1,7 @@
 // ============================================================
 //  toernooi.js
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, SPELERS_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
 import { store, state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tSpelersLadderIds, _tRankingLadderIds, _flights, aangepasteBanen } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { renderHcpBlok } from './partij.js';
@@ -20,22 +20,12 @@ import { closeModal } from './admin.js';
 // ============================================================
 function renderToernooi() {
   const isBeheerder = isCoordinatorRol();
-  const gebruikersnaam = (huidigeBruiker?.gebruikersnaam || '').toLowerCase();
-  const voornaam = gebruikersnaam.split(' ')[0];
-  // Zoek op spelerId (primary), dan op naam uit alleSpelersData
-  const mijnSpelerIds = new Set([
-    ...(huidigeBruiker?.spelerId ? [String(huidigeBruiker.spelerId)] : []),
-    ...alleSpelersData.filter(s => s.naam.toLowerCase() === gebruikersnaam ||
-      s.naam.toLowerCase().startsWith(voornaam)).map(s => String(s.id))
-  ]);
+  const uid = huidigeBruiker?.uid;
 
   const mijnToernooien = isBeheerder
     ? alleToernooien
     : alleToernooien.filter(t =>
-        (t.spelers || []).some(s =>
-          s.naam.toLowerCase().includes(voornaam) ||
-          mijnSpelerIds.has(String(s.id))
-        )
+        uid && (t.spelers || []).some(s => s.uid === uid)
       );
 
   const wrap = document.getElementById('toernooi-actief-wrap');
@@ -622,6 +612,7 @@ function zoekToernooiSpelerModal(zoek) {
   const t = toernooiData;
   const huidigeIds = new Set(t.spelers.map(s => String(s.id)));
   const term = zoek.toLowerCase().trim();
+  // v3.0.0-9c: alleSpelersData is afgeleide view van _usersCache
   const pool = alleSpelersData.filter(s => !huidigeIds.has(String(s.id)))
     .filter(s => !term || s.naam.toLowerCase().includes(term))
     .sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
@@ -769,20 +760,12 @@ function renderToernooiActief() {
   if (!detail) return;
 
   const flights = t.flights || [];
-  const mijnSpelerId = huidigeBruiker?.spelerId ? String(huidigeBruiker.spelerId) : null;
-  const gebruikersnaam = huidigeBruiker?.gebruikersnaam?.toLowerCase() || '';
-  // Primary: spelerId; secondary: naam
-  const mijnSpelerIdsInToernooi = new Set([
-    ...(mijnSpelerId ? [mijnSpelerId] : []),
-    ...alleSpelersData.filter(s =>
-      mijnSpelerId ? String(s.id) === mijnSpelerId :
-      s.naam.toLowerCase() === gebruikersnaam
-    ).map(s => String(s.id))
-  ]);
+  const mijnUid = huidigeBruiker?.uid || null;
+  // v3.0.0-9c: match alleen op uid
   const mijnFlight = flights.find(f =>
     (f.spelerIds || []).some(sid => {
       const sp = t.spelers.find(s => String(s.id) === String(sid));
-      return sp && (mijnSpelerIdsInToernooi.has(String(sp.id)));
+      return sp && mijnUid && sp.uid === mijnUid;
     })
   );
 
@@ -875,16 +858,12 @@ function renderTScorecard() {
   const t = toernooiData;
   const isBeheerder = isCoordinatorRol();
   const flights = t.flights || [];
-  const gebruikersnaam = huidigeBruiker?.gebruikersnaam?.toLowerCase() || '';
+  // v3.0.0-9c: gebruikersnaam-lookup verwijderd, uid is de enige identifier
 
   // Bepaal welke flights te tonen
   let teTonenFlights = [];
-  const voornaam = gebruikersnaam.split(' ')[0];
-  const mijnIds = new Set([
-    ...(huidigeBruiker?.spelerId ? [String(huidigeBruiker.spelerId)] : []),
-    ...alleSpelersData.filter(s => s.naam.toLowerCase() === gebruikersnaam ||
-      s.naam.toLowerCase().startsWith(voornaam)).map(s => String(s.id))
-  ]);
+  // v3.0.0-9c: match alleen op uid
+  const mijnUid2 = huidigeBruiker?.uid || null;
 
   if (isBeheerder || flights.length === 0) {
     teTonenFlights = flights.length > 0
@@ -894,7 +873,7 @@ function renderTScorecard() {
     const mijnFlight = flights.find(f =>
       (f.spelerIds || []).some(sid => {
         const sp = t.spelers.find(s => String(s.id) === String(sid));
-        return sp && (sp.naam.toLowerCase().includes(voornaam) || mijnIds.has(String(sp.id)));
+        return sp && mijnUid2 && sp.uid === mijnUid2;
       })
     );
     if (mijnFlight) {

@@ -42,7 +42,7 @@ async function saveUsers(lijst) {
   try { await setDoc(USERS_DOC, { lijst }); }
   catch(e) { console.error('saveUsers mislukt:', e); }
 }
-export const SPELERS_DOC = doc(db, 'ladder', 'spelers'); // master spelerslijst
+export const SPELERS_DOC = null; // v3.0.0-9c: legacy ladder/spelers is verwijderd, export behouden als null voor compat
 export const BANEN_DOC = doc(db, 'ladder', 'banen');
 export const ARCHIEF_DOC = doc(db, 'ladder', 'archief');
 export const UITDAGINGEN_DOC = doc(db, 'ladder', 'uitdagingen');

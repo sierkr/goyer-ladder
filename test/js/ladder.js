@@ -25,17 +25,9 @@ async function renderLadder() {
   const mijnLadders = isCoordinatorRol()
     ? alleLadders
     : alleLadders.filter(l => {
-        const uid            = huidigeBruiker?.uid;
-        const spelerId       = huidigeBruiker?.spelerId;
-        const gebruikersnaam = (huidigeBruiker?.gebruikersnaam || '').toLowerCase();
-        // Primary: uid-based check via view-laag
-        if (uid && isInLadder(l.id, uid)) return true;
-        // Fallback: numeric spelerId of naam
-        return (l.spelers || []).some(s =>
-          spelerId
-            ? String(s.id) === String(spelerId)
-            : s.naam.toLowerCase() === gebruikersnaam
-        );
+        const uid = huidigeBruiker?.uid;
+        // v3.0.0-9c: alleen uid-check via view-laag
+        return uid && isInLadder(l.id, uid);
       });
 
   if (mijnLadders.length === 0) {
@@ -134,15 +126,9 @@ function renderLadderRij(s, ladderId) {
     deltaHtml = `<span style="font-size:11px;color:var(--light)">—</span>`;
   }
 
-  const uid      = huidigeBruiker?.uid;
-  const spelerId = huidigeBruiker?.spelerId;
-  // isZelf: uid primary (naam-match op spelers/{uid}.naam), spelerId/naam als fallback
-  const isZelf = huidigeBruiker && (
-    (uid && s.naam.toLowerCase() === huidigeBruiker.gebruikersnaam.toLowerCase()) ||
-    (spelerId
-      ? String(s.id) === String(spelerId)
-      : s.naam.toLowerCase() === huidigeBruiker.gebruikersnaam.toLowerCase())
-  );
+  const uid = huidigeBruiker?.uid;
+  // v3.0.0-9c: isZelf alleen via uid. Entries uit view-laag hebben s.uid.
+  const isZelf = huidigeBruiker && uid && s.uid === uid;
   const openUitdaging = uitdagingenData?.find(u =>
     u.status === 'open' && (
       (u.vanEmail === huidigeBruiker?.email && u.naarNaam?.toLowerCase() === s.naam.toLowerCase()) ||

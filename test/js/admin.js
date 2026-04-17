@@ -6,15 +6,16 @@
 //                       voor fase 4-5 modules
 // ============================================================
 import { db, auth, firebaseConfig, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL,
-  SNAPSHOTS_COL, SPELERS_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC,
+  SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC,
   INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
-import { store, state, alleLadders, activeLadderId, alleSpelersData,
+import { store, state, alleLadders, activeLadderId,
   huidigeBruiker, uitdagingenData } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers,
   getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { openNieuweLadderModal, renderAdminLadders } from './beheer.js';
 import { reageerUitdaging, verwijderUitdaging } from './archief.js';
 import { renderLadder } from './ladder.js';
+import { getLadderSpelers } from './ladder-view.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
   GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, updatePassword,
   EmailAuthProvider, reauthenticateWithCredential, createUserWithEmailAndPassword }
@@ -249,14 +250,8 @@ async function voegAccountToeAlsSpeler(uid, naam) {
     // Numeric id voor backward compat
     const newId = getNextId();
 
-    // Update legacy master lijst
-    const masterIdx = alleSpelersData.findIndex(s => s.naam?.toLowerCase() === naam.toLowerCase());
-    if (masterIdx >= 0) {
-      alleSpelersData[masterIdx].hcp = hcp;
-    } else {
-      alleSpelersData.push({ id: newId, naam, hcp });
-    }
-    await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+    // v3.0.0-9c: legacy master lijst (ladder/spelers) write verwijderd.
+    // spelers/{uid} is de enige bron; alleSpelersData wordt automatisch afgeleid.
 
     // Voeg toe aan geselecteerde ladders
     const geselecteerdeLadders = getGeselecteerdeLadders('new-player-ladders');
@@ -318,8 +313,7 @@ async function saveNewPlayer() {
     // Numeric id + legacy master lijst (backward compat fase 4-5)
     const newId = getNextId();
     const nieuweSpeler = { id: newId, naam, hcp };
-    alleSpelersData.push(nieuweSpeler);
-    await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+    // v3.0.0-9c: legacy ladder/spelers dual-write verwijderd
     await slaState();
 
     // Voeg toe aan geselecteerde ladders
@@ -383,15 +377,8 @@ async function saveEditPlayer() {
     // Schrijf naar spelers/{uid}
     await setDoc(doc(db, 'spelers', uid), { ...snap.data(), naam, hcp, rol });
 
-    // Sync naam/hcp naar legacy master lijst
-    const masterIdx = alleSpelersData.findIndex(s =>
-      s.naam?.toLowerCase() === oudeNaam?.toLowerCase()
-    );
-    if (masterIdx >= 0) {
-      alleSpelersData[masterIdx].naam = naam;
-      alleSpelersData[masterIdx].hcp  = hcp;
-    }
-    await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+    // v3.0.0-9c: sync naar legacy master lijst (ladder/spelers) verwijderd.
+    // spelers/{uid} write hierboven is de enige bron voor naam/hcp/rol.
 
     // Dual-write: sync naam/hcp naar alle ladders (backward compat)
     for (const ladder of alleLadders) {
@@ -441,9 +428,8 @@ async function removePlayer(uid) {
     // 1. Verwijder spelers/{uid}
     await deleteDoc(doc(db, 'spelers', uid));
 
-    // 2. Verwijder uit legacy master lijst
-    store.alleSpelersData = alleSpelersData.filter(s => s.naam?.toLowerCase() !== naam?.toLowerCase());
-    await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+    // v3.0.0-9c: stap 2 (legacy ladder/spelers master lijst) verwijderd.
+    // spelers/ listener werkt alleSpelersData automatisch bij na de deleteDoc hierboven.
 
     // 3. Verwijder uit alle ladders
     for (const ladder of alleLadders) {
@@ -487,14 +473,12 @@ async function removePlayer(uid) {
 function renderProfiel() {
   if (!huidigeBruiker) return;
 
-  const gebruiker = huidigeBruiker.gebruikersnaam.toLowerCase();
-  const speler    = state.spelers?.find(s => {
-    const naam     = s.naam.toLowerCase();
-    const voornaam = naam.split(' ')[0];
-    return naam === gebruiker || voornaam === gebruiker ||
-           naam.replace(/\s/g,'') === gebruiker.replace(/\./g,'').replace(/\s/g,'') ||
-           naam.replace(/\s/g,' ') === gebruiker;
-  });
+  // v3.0.0-9c: uid-gebaseerde speler lookup via view-laag
+  const uid = huidigeBruiker.uid;
+  const speler = uid
+    ? (state.spelers?.find(s => s.uid === uid)
+       || getLadderSpelers(activeLadderId).find(s => s.uid === uid))
+    : null;
 
   document.getElementById('profiel-info').innerHTML = `
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:4px">
@@ -515,9 +499,8 @@ function renderProfiel() {
   }
 
   const ladderStats = alleLadders.map(l => {
-    const sp = (l.spelers || []).find(s =>
-      s.id === speler.id || s.naam?.toLowerCase() === speler.naam.toLowerCase()
-    );
+    // v3.0.0-9c: uid-match via view-laag (valt terug op legacy l.spelers via view)
+    const sp = getLadderSpelers(l.id).find(s => s.uid === uid);
     if (!sp) return null;
     const winpct  = sp.partijen > 0 ? Math.round(sp.gewonnen / sp.partijen * 100) : 0;
     const verloren = (sp.partijen || 0) - (sp.gewonnen || 0);
@@ -627,14 +610,8 @@ async function slaProfielHcpOp() {
       } catch(e) { console.error('hcp update spelers/ mislukt:', e); }
     }
 
-    // Sync legacy master lijst
-    const masterSpeler = alleSpelersData.find(s => matchNaam(s.naam));
-    if (masterSpeler && isCoordinatorRol()) {
-      masterSpeler.hcp = val;
-      await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
-    } else if (masterSpeler) {
-      masterSpeler.hcp = val;
-    }
+    // v3.0.0-9c: sync naar legacy ladder/spelers master lijst verwijderd.
+    // spelers/{uid} write hierboven is de bron; alleSpelersData volgt via listener.
 
     // Sync naar alle ladders
     let gevonden = false;
@@ -778,8 +755,7 @@ async function saveNewUser() {
     if (geselecteerdeLadders.length > 0) {
       const newId        = getNextId();
       const nieuweSpeler = { id: newId, naam, hcp: 0 };
-      alleSpelersData.push(nieuweSpeler);
-      await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+      // v3.0.0-9c: legacy ladder/spelers dual-write verwijderd
       await slaState();
       await voegSpelerToeAanLadders(geselecteerdeLadders, nieuweSpeler, uid);
     }
@@ -800,30 +776,33 @@ async function removeUser(uid) {
     // Verwijder spelers/{uid}
     await deleteDoc(doc(db, 'spelers', uid));
 
-    // Verwijder uit legacy master lijst
-    const masterIdx = alleSpelersData.findIndex(s => s.naam?.toLowerCase() === naam?.toLowerCase());
-    if (masterIdx >= 0) {
-      const spelerId = alleSpelersData[masterIdx].id;
-      store.alleSpelersData = alleSpelersData.filter((_, i) => i !== masterIdx);
-      await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+    // v3.0.0-9c: legacy ladder/spelers master lijst sync verwijderd.
+    // We zoeken de legacy numeric spelerId via de huidige ladder.spelers[] entries
+    // (voor zolang die nog bestaan), zodat we ook de legacy spelers[] arrays
+    // kunnen opschonen naast de nieuwe spelerIds[] uid-lijst.
+    let legacySpelerId = null;
+    for (const ladder of alleLadders) {
+      const match = (ladder.spelers || []).find(s => s.naam?.toLowerCase() === naam?.toLowerCase());
+      if (match) { legacySpelerId = match.id; break; }
+    }
 
-      // Verwijder uit alle ladders
-      for (const ladder of alleLadders) {
-        const ladderSnap = await getDoc(doc(db, 'ladders', ladder.id));
-        if (!ladderSnap.exists()) continue;
-        const data      = ladderSnap.data();
-        const inLadder  = (data.spelers || []).some(s => s.id === spelerId) ||
-                          (data.spelerIds || []).includes(uid);
-        if (!inLadder) continue;
-        data.spelers    = (data.spelers || []).filter(s => s.id !== spelerId);
-        data.spelerIds  = (data.spelerIds || []).filter(id => id !== uid);
-        data.spelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i + 1);
-        await setDoc(doc(db, 'ladders', ladder.id), data);
-        try { await deleteDoc(doc(db, 'ladders', ladder.id, 'standen', uid)); } catch(e) {}
-        ladder.spelers   = data.spelers;
-        ladder.spelerIds = data.spelerIds;
-        if (ladder.id === activeLadderId) state.spelers = data.spelers;
-      }
+    // Verwijder uit alle ladders
+    for (const ladder of alleLadders) {
+      const ladderSnap = await getDoc(doc(db, 'ladders', ladder.id));
+      if (!ladderSnap.exists()) continue;
+      const data      = ladderSnap.data();
+      const inSpelerIds = (data.spelerIds || []).includes(uid);
+      const inSpelers   = legacySpelerId != null &&
+                          (data.spelers || []).some(s => s.id === legacySpelerId);
+      if (!inSpelerIds && !inSpelers) continue;
+      data.spelers    = (data.spelers || []).filter(s => s.id !== legacySpelerId);
+      data.spelerIds  = (data.spelerIds || []).filter(id => id !== uid);
+      data.spelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i + 1);
+      await setDoc(doc(db, 'ladders', ladder.id), data);
+      try { await deleteDoc(doc(db, 'ladders', ladder.id, 'standen', uid)); } catch(e) {}
+      ladder.spelers   = data.spelers;
+      ladder.spelerIds = data.spelerIds;
+      if (ladder.id === activeLadderId) state.spelers = data.spelers;
     }
 
     renderAdmin();

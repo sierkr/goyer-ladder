@@ -5,7 +5,7 @@
 //  Backward compat:     getUsers() / saveUsers() / getNextId()
 //                       blijven beschikbaar voor fase 3-5
 // ============================================================
-import { db, auth, googleProvider, STATE_DOC, USERS_DOC, SPELERS_DOC,
+import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
   INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB } from './config.js';
 import { store, DEFAULT_LADDER_CONFIG,
@@ -69,18 +69,15 @@ async function setIngelogd(firebaseUser) {
 
 // Zet huidigeBruiker op basis van profiel uit spelers/{uid}
 function setIngelogdVanafProfiel(firebaseUser, profiel) {
-  // spelerId voor backward compat met modules die nog op numeric id werken (fase 3-5)
-  const spelersLijst = alleSpelersData.length > 0 ? alleSpelersData : (state.spelers || []);
-  const gekoppeldeSpeler = spelersLijst.find(s =>
-    s.naam?.toLowerCase() === profiel.naam?.toLowerCase()
-  );
-
+  // v3.0.0-9c: spelerId = uid. Geen naam-lookup meer in alleSpelersData.
+  // Legacy code die 'spelerId' verwacht blijft werken omdat alleSpelersData
+  // en de ladder-view nu ook id=uid teruggeven.
   store.huidigeBruiker = {
     uid:            firebaseUser.uid,
     email:          firebaseUser.email,
     gebruikersnaam: profiel.naam || firebaseUser.email.split('@')[0],
     rol:            profiel.rol  || 'speler',
-    spelerId:       gekoppeldeSpeler?.id || null,  // backward compat — verdwijnt in fase 4
+    spelerId:       firebaseUser.uid,
   };
 
   vervolgIngelogd();
@@ -88,19 +85,10 @@ function setIngelogdVanafProfiel(firebaseUser, profiel) {
 
 function updateSiteTitel() {
   if (!huidigeBruiker) return;
-  const uid            = huidigeBruiker.uid;
-  const spelerId       = huidigeBruiker.spelerId;
-  const gebruikersnaam = (huidigeBruiker.gebruikersnaam || '').toLowerCase();
+  const uid = huidigeBruiker.uid;
   const mijnLadders = isCoordinatorRol()
     ? alleLadders
-    : alleLadders.filter(l => {
-        if (uid && (l.spelerIds || []).includes(uid)) return true;
-        return (l.spelers || []).some(s =>
-          spelerId
-            ? String(s.id) === String(spelerId)
-            : s.naam?.toLowerCase() === gebruikersnaam
-        );
-      });
+    : alleLadders.filter(l => uid && (l.spelerIds || []).includes(uid));
   const h1Second = document.getElementById('h1-second');
   if (h1Second) {
     const alleenHeerendag = mijnLadders.length === 1 &&
@@ -125,16 +113,9 @@ function vervolgIngelogd() {
     document.getElementById('nav-archief-btn').style.display  = '';
     document.getElementById('nav-toernooi-btn').style.display = '';
   } else {
-    const uid            = huidigeBruiker?.uid;
-    const spelerId       = huidigeBruiker?.spelerId;
-    const gebruikersnaam = (huidigeBruiker.gebruikersnaam || '').toLowerCase();
+    const uid = huidigeBruiker?.uid;
     const mijnToernooien = alleToernooien.filter(t =>
-      (t.spelers || []).some(s =>
-        (uid && s.uid === uid) ||
-        (spelerId
-          ? String(s.id) === String(spelerId)
-          : s.naam?.toLowerCase() === gebruikersnaam)
-      )
+      (t.spelers || []).some(s => uid && s.uid === uid)
     );
     if (mijnToernooien.length > 0) {
       document.getElementById('nav-toernooi-btn').style.display = '';
@@ -298,19 +279,20 @@ async function initFirestore() {
   }, 3000);
 
   try {
-    const [baanSnap, archiefSnap, uitdSnap, toernooiSnap, spelersSnap, volgordeSnap] =
+    const [baanSnap, archiefSnap, uitdSnap, toernooiSnap, volgordeSnap] =
       await Promise.all([
         getDoc(BANEN_DOC),
         getDoc(ARCHIEF_DOC),
         getDoc(UITDAGINGEN_DOC),
         getDoc(TOERNOOI_DOC),
-        getDoc(SPELERS_DOC),
         getDoc(doc(db, 'ladder', 'ladderVolgorde'))
       ]);
 
     store.archiefData     = archiefSnap.exists()  ? (archiefSnap.data().seizoenen  || []) : [];
     store.uitdagingenData = uitdSnap.exists()      ? (uitdSnap.data().lijst         || []) : [];
-    store.alleSpelersData = spelersSnap.exists()   ? (spelersSnap.data().lijst      || []) : [];
+    // v3.0.0-9c: alleSpelersData wordt niet meer uit ladder/spelers geladen.
+    // Het is nu een afgeleide view van _usersCache (zie store.js) en wordt
+    // gevuld zodra de spelers/ listener start na login.
     const ladderVolgorde  = volgordeSnap.exists()  ? (volgordeSnap.data().volgorde  || []) : [];
 
     const toernooienSnap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
@@ -342,10 +324,7 @@ async function initFirestore() {
         delete bestaandeState.actievePartij;
       }
       if (!bestaandeState.spelers) bestaandeState.spelers = [];
-      if (alleSpelersData.length === 0 && bestaandeState.spelers.length > 0) {
-        store.alleSpelersData = bestaandeState.spelers.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp }));
-        await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
-      }
+      // v3.0.0-9c: migratie naar ladder/spelers verwijderd — _usersCache is bron van waarheid
       const mpRef = doc(db, 'ladders', 'mp');
       await setDoc(mpRef, { ...bestaandeState, naam: 'MP',
         spelerIds: bestaandeState.spelers.map(s => s.id) });
@@ -384,15 +363,8 @@ async function initFirestore() {
       if (!store.state.actievePartijen) store.state.actievePartijen = [];
       store.activeLadderId = actief.id;
 
-      if (store.alleSpelersData.length === 0) {
-        const gezien = new Set();
-        store.alleLadders.forEach(l => {
-          (l.spelers || []).forEach(s => {
-            if (!gezien.has(s.id)) { gezien.add(s.id); store.alleSpelersData.push({ id: s.id, naam: s.naam, hcp: s.hcp }); }
-          });
-        });
-        if (store.alleSpelersData.length > 0) await setDoc(SPELERS_DOC, { lijst: store.alleSpelersData });
-      }
+      // v3.0.0-9c: tweede migratieblok (ladders→alleSpelersData→SPELERS_DOC) verwijderd.
+      // alleSpelersData wordt nu rechtstreeks afgeleid van _usersCache.
     }
   } catch(e) { console.error('Firestore init error:', e); }
 
@@ -434,13 +406,8 @@ async function initFirestore() {
     }));
   });
 
-  // ── Live listener: legacy master spelerslijst ───────────────
-  _vasteListeners.push(onSnapshot(SPELERS_DOC, (snap) => {
-    if (!snap.exists() || !huidigeBruiker) return;
-    store.alleSpelersData = snap.data().lijst || [];
-    const ap = document.querySelector('.page.active')?.id?.replace('page-', '');
-    if (ap === 'admin') renderAdmin();
-  }));
+  // v3.0.0-9c: legacy listener op ladder/spelers verwijderd.
+  // De spelers/ collectie-listener (na login, zie onAuthStateChanged) is nu de enige bron.
 
   // spelers/ listener wordt gestart in onAuthStateChanged (na login)
   // zodat er geen permission-denied optreedt voor inloggen
@@ -623,13 +590,8 @@ async function registreerSpeler() {
       }
       await setDoc(doc(db, 'ladders', targetLadderId), ladderData);
 
-      // Stap 7: legacy master spelerslijst bijwerken
-      const spelersSnap2 = await getDoc(SPELERS_DOC);
-      const masterLijst  = spelersSnap2.exists() ? (spelersSnap2.data().lijst || []) : [];
-      if (!masterLijst.some(s => s.naam?.toLowerCase() === naam.toLowerCase())) {
-        masterLijst.push({ id: newId, naam, hcp });
-        await setDoc(SPELERS_DOC, { lijst: masterLijst });
-      }
+      // v3.0.0-9c: stap 7 (legacy ladder/spelers master lijst bijwerken) verwijderd.
+      // spelers/{uid} werd al in stap 1 geschreven, wat de enige bron is.
     } catch(ladderErr) {
       // Ladder-schrijven mislukt (bijv. invite verlopen) — account is wel aangemaakt
       console.warn('Ladder toewijzing mislukt, account is aangemaakt:', ladderErr.code);

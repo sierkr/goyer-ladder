@@ -1,8 +1,8 @@
 // ============================================================
 //  partij.js — Partij aanmaken, banen, naam helpers
 // ============================================================
-import { db, BANEN_DB, LADDERS_COL, SPELERS_DOC, DEFAULT_STATE } from './config.js';
-import { store, state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
+import { db, BANEN_DB, LADDERS_COL, DEFAULT_STATE } from './config.js';
+import { store, state, alleLadders, activeLadderId, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
 import { slaState, getLadderData, getNextId, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { objNaarRondes } from './knockout.js';
 import { getLadderSpelers, isInLadder } from './ladder-view.js';
@@ -25,20 +25,11 @@ function initPartijForm() {
   // Vul ladder selector — alleen ladders waar de huidige speler in zit
   const ladderSel = document.getElementById('partij-ladder-select');
   const isBeheerder = isCoordinatorRol();
-  const gebruikersnaam = huidigeBruiker?.gebruikersnaam?.toLowerCase() || '';
-  const spelerId = huidigeBruiker?.spelerId;
 
   const uid = huidigeBruiker?.uid;
   const mijnLadders = isBeheerder
     ? alleLadders
-    : alleLadders.filter(l => {
-        if (uid && isInLadder(l.id, uid)) return true;
-        return (l.spelers || []).some(s =>
-          spelerId
-            ? String(s.id) === String(spelerId)
-            : s.naam.toLowerCase() === gebruikersnaam
-        );
-      });
+    : alleLadders.filter(l => uid && isInLadder(l.id, uid));
 
   ladderSel.innerHTML = mijnLadders.map(l =>
     `<option value="${l.id}" ${l.id === activeLadderId ? 'selected' : ''}>${l.naam}</option>`
@@ -77,14 +68,10 @@ function initPartijForm() {
 
   // Auto-selecteer ingelogde speler in slot 1
   if (huidigeBruiker) {
-    const spelerId       = huidigeBruiker.spelerId;
-    const uid            = huidigeBruiker.uid;
-    const gebruikersnaam = huidigeBruiker.gebruikersnaam?.toLowerCase().trim() || '';
-    const ladderSpelers  = getPartijLadderSpelers();
-    // Primary: spelerId; secondary: naam (naam is nu betrouwbaar via spelers/{uid})
-    const gekoppeld = spelerId
-      ? ladderSpelers.find(s => String(s.id) === String(spelerId))
-      : ladderSpelers.find(s => s.naam.toLowerCase().trim() === gebruikersnaam);
+    const uid           = huidigeBruiker.uid;
+    const ladderSpelers = getPartijLadderSpelers();
+    // v3.0.0-9c: alleen uid-match, geen naam-fallback
+    const gekoppeld = uid ? ladderSpelers.find(s => s.uid === uid) : null;
     if (gekoppeld) {
       selecteerPartijSpeler(1, gekoppeld.id, gekoppeld.naam, gekoppeld.hcp);
       vulKnockoutTegenstander(gekoppeld.naam);
@@ -142,14 +129,11 @@ function herlaadPartijSpelers() {
   addPlayerSlot();
   // Pre-select eigen naam in slot 1
   if (huidigeBruiker) {
-    const spelers        = getPartijLadderSpelers();
-    const spelerId       = huidigeBruiker.spelerId;
-    const gebruikersnaam = huidigeBruiker.gebruikersnaam?.toLowerCase() || '';
-    // Primary: spelerId; secondary: naam
-    const zelf = (spelerId && spelers.find(s => String(s.id) === String(spelerId)))
-      || spelers.find(s => s.naam.toLowerCase() === gebruikersnaam);
+    const spelers = getPartijLadderSpelers();
+    const uid     = huidigeBruiker.uid;
+    // v3.0.0-9c: alleen uid-match
+    const zelf = uid ? spelers.find(s => s.uid === uid) : null;
     if (zelf) {
-      if (!huidigeBruiker.spelerId) store.huidigeBruiker = { ...huidigeBruiker, spelerId: zelf.id };
       selecteerPartijSpeler(1, zelf.id, zelf.naam, zelf.hcp);
       vulKnockoutTegenstander(zelf.naam);
     }
@@ -379,17 +363,13 @@ async function verwijderAangepasteBaan() {
 
 // Geeft de actieve partij terug waar de ingelogde speler in zit
 function mijnPartij() {
-  if (!huidigeBruiker?.gebruikersnaam) return null;
-  const gebruiker  = huidigeBruiker.gebruikersnaam.toLowerCase();
-  const spelerId   = huidigeBruiker.spelerId;
+  if (!huidigeBruiker?.uid) return null;
+  const uid = huidigeBruiker.uid;
 
+  // v3.0.0-9c: match alleen op uid. Entries uit de view-laag hebben een uid veld.
+  // Legacy state.spelers[] zonder uid worden niet meer gematched.
   const zoekInPartijen = (partijen) => (partijen || []).find(p =>
-    p.spelers.some(s => {
-      // Primary: spelerId (numeric backward compat)
-      if (spelerId) return String(s.id) === String(spelerId);
-      // Secondary: naam (betrouwbaar via spelers/{uid})
-      return s.naam.toLowerCase() === gebruiker;
-    })
+    p.spelers.some(s => s.uid === uid)
   ) || null;
 
   // Zoek eerst in actieve ladder
@@ -424,7 +404,6 @@ async function startPartij() {
     const spelerId = slot.dataset.spelerId;
     if (!spelerId) continue;
     const speler = partijLadderSpelers.find(s => String(s.id) === String(spelerId))
-      || alleSpelersData.find(s => String(s.id) === String(spelerId))
       || (parseInt(spelerId) >= 90000 ? { id: parseInt(spelerId), naam: document.getElementById('player-' + i)?.value || 'Gast', hcp: parseFloat(hcpEl?.value) || 0, gast: true } : null);
     if (!speler) continue;
     const partijHcp = Math.round(parseFloat(hcpEl?.value));
