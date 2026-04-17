@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Goyer Golf MP Ladder — Migratie standen/ subcollectie</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f5f7fa; color: #1a1a2e; min-height: 100vh; padding: 24px 16px; }
+  .container { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { color: #666; font-size: 13px; margin-bottom: 28px; }
+  .card { background: white; border-radius: 12px; padding: 24px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 20px; }
+  .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #333; }
+  label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: #555; }
+  input[type=email], input[type=password] {
+    width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px;
+    font-size: 14px; margin-bottom: 12px; outline: none; }
+  input:focus { border-color: #2e7d32; }
+  .btn { padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px;
+    font-weight: 600; cursor: pointer; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-primary { background: #2e7d32; color: white; }
+  .btn-primary:hover:not(:disabled) { background: #1b5e20; }
+  .btn-danger { background: #c62828; color: white; }
+  .btn-danger:hover:not(:disabled) { background: #b71c1c; }
+  .btn-secondary { background: #e8f5e9; color: #2e7d32; }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .status { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; display: none; }
+  .status.info  { background: #e3f2fd; color: #1565c0; display: block; }
+  .status.ok    { background: #e8f5e9; color: #2e7d32; display: block; }
+  .status.error { background: #fce4ec; color: #b71c1c; display: block; }
+  .status.warn  { background: #fff8e1; color: #e65100; display: block; }
+  .rapport { font-size: 13px; line-height: 1.7; }
+  .rij { display: flex; justify-content: space-between; padding: 6px 0;
+    border-bottom: 1px solid #f5f5f5; gap: 12px; flex-wrap: wrap; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px;
+    font-size: 11px; font-weight: 600; }
+  .badge-ok    { background: #e8f5e9; color: #2e7d32; }
+  .badge-skip  { background: #f5f5f5; color: #666; }
+  .badge-warn  { background: #fff3e0; color: #e65100; }
+  .samenvatting { background: #f9fbe7; border-radius: 10px; padding: 16px 20px;
+    margin-bottom: 20px; font-size: 14px; }
+  .samenvatting .stat { display: flex; justify-content: space-between; padding: 4px 0; }
+  .samenvatting .stat span:last-child { font-weight: 600; }
+  .progress { background: #eee; border-radius: 4px; height: 8px; margin: 8px 0; overflow: hidden; }
+  .progress-bar { height: 100%; background: #2e7d32; border-radius: 4px; transition: width 0.3s; width: 0; }
+  #stap-analyse, #stap-uitvoer { display: none; }
+  details { margin: 4px 0; }
+  details summary { cursor: pointer; font-size: 13px; color: #555; padding: 4px 0; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🏌️ Goyer Golf MP Ladder</h1>
+  <div class="subtitle">Migratie fase 9a — ladders.spelers[] → ladders/{id}/standen/{uid}</div>
+
+  <!-- STAP 1: LOGIN -->
+  <div class="card" id="stap-login">
+    <h2>Stap 1 — Inloggen als beheerder</h2>
+    <div id="login-status" class="status"></div>
+    <label>E-mailadres</label>
+    <input type="email" id="login-email" placeholder="beheerder@example.com">
+    <label>Wachtwoord</label>
+    <input type="password" id="login-pass" placeholder="••••••••">
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="doeLogin()">Inloggen</button>
+    </div>
+  </div>
+
+  <!-- STAP 2: ANALYSE -->
+  <div class="card" id="stap-analyse">
+    <h2>Stap 2 — Analyse</h2>
+    <p style="font-size:13px;color:#666;margin-bottom:16px">
+      Voor elke ladder: koppel ieder entry uit <code>ladders.spelers[]</code>
+      aan een <code>uid</code> (via naam in <code>spelers/</code>) en plan een
+      schrijving naar <code>ladders/{id}/standen/{uid}</code> met velden
+      <code>rank, partijen, gewonnen, prevRank</code>.
+      <br><br>
+      <strong>Er wordt nog niets geschreven.</strong> Bestaande <code>standen/{uid}</code>
+      documenten worden overgeslagen (niet overschreven) tenzij je "overschrijven" aanvinkt.
+    </p>
+
+    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;margin-bottom:8px">
+      <input type="checkbox" id="chk-overschrijven" style="width:16px;height:16px;cursor:pointer;accent-color:#2e7d32">
+      Bestaande <code>standen/{uid}</code> overschrijven met actuele ladder-stats
+    </label>
+
+    <div id="analyse-status" class="status"></div>
+    <div class="progress"><div class="progress-bar" id="analyse-progress"></div></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btn-analyseer" onclick="startAnalyse()">
+        🔍 Analyseer
+      </button>
+    </div>
+    <div id="rapport-wrap" style="margin-top:24px"></div>
+  </div>
+
+  <!-- STAP 3: UITVOEREN -->
+  <div class="card" id="stap-uitvoer">
+    <h2>Stap 3 — Schrijven</h2>
+    <div id="uitvoer-status" class="status warn">
+      ⚠️ Controleer het rapport hierboven. De oude <code>ladders.spelers[]</code> array
+      blijft intact — deze migratie is puur additief.
+    </div>
+    <div class="progress"><div class="progress-bar" id="schrijf-progress"></div></div>
+    <div id="schrijf-log" style="font-size:12px;color:#555;font-family:monospace;
+      max-height:300px;overflow-y:auto;margin:12px 0;display:none;background:#f9f9f9;
+      padding:10px;border-radius:6px"></div>
+    <div class="btn-row">
+      <button class="btn btn-danger" id="btn-migreer" onclick="startMigratie()" disabled>
+        🚀 Bevestig en schrijf
+      </button>
+      <button class="btn btn-secondary" onclick="window.location.reload()">Annuleren</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
+  authDomain: "goyer-golf-mp-ladder.firebaseapp.com",
+  projectId: "goyer-golf-mp-ladder",
+  storageBucket: "goyer-golf-mp-ladder.firebasestorage.app",
+  messagingSenderId: "124116031878",
+  appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db   = firebase.firestore();
+
+var _plan = null;
+
+function setProgress(id, pct) { document.getElementById(id).style.width = pct + '%'; }
+function setStatus(id, type, msg) {
+  var el = document.getElementById(id);
+  el.className = 'status ' + type;
+  el.innerHTML = msg;
+}
+function logRegel(msg) {
+  var box = document.getElementById('schrijf-log');
+  box.style.display = 'block';
+  box.innerHTML += msg + '<br>';
+  box.scrollTop = box.scrollHeight;
+}
+function normNaam(s) { return (s || '').trim().toLowerCase(); }
+
+// ── LOGIN ──────────────────────────────────────────────────
+function doeLogin() {
+  var email = document.getElementById('login-email').value.trim();
+  var pass  = document.getElementById('login-pass').value;
+  if (!email || !pass) { setStatus('login-status','error','Vul e-mail en wachtwoord in.'); return; }
+  setStatus('login-status','info','Bezig met inloggen…');
+  auth.signInWithEmailAndPassword(email, pass).then(function(cred) {
+    return db.doc('spelers/' + cred.user.uid).get().then(function(snap) {
+      if (!snap.exists) {
+        setStatus('login-status','error','❌ Account niet gevonden in spelers/ collectie.');
+        return;
+      }
+      var data = snap.data();
+      setStatus('login-status','ok',
+        '✓ Ingelogd als <strong>' + (data.naam || email) + '</strong> (' + (data.rol || 'speler') + ')');
+      document.getElementById('stap-login').style.opacity = '0.6';
+      document.getElementById('stap-analyse').style.display = 'block';
+      document.getElementById('stap-uitvoer').style.display = 'block';
+    });
+  }).catch(function(e) {
+    var berichten = {
+      'auth/wrong-password':    'Onjuist wachtwoord',
+      'auth/user-not-found':    'Geen account met dit e-mailadres',
+      'auth/invalid-credential':'E-mail of wachtwoord onjuist',
+    };
+    setStatus('login-status','error','❌ ' + (berichten[e.code] || e.message));
+  });
+}
+
+// ── ANALYSE ────────────────────────────────────────────────
+function startAnalyse() {
+  var btn = document.getElementById('btn-analyseer');
+  btn.disabled = true;
+  btn.textContent = '⏳ Bezig…';
+  document.getElementById('rapport-wrap').innerHTML = '';
+  setStatus('analyse-status','info','Data laden…');
+  setProgress('analyse-progress', 10);
+
+  var overschrijven = document.getElementById('chk-overschrijven').checked;
+
+  Promise.all([
+    db.collection('spelers').get(),
+    db.collection('ladders').get()
+  ]).then(function(results) {
+    var spelersSnap = results[0];
+    var laddersSnap = results[1];
+
+    // Bouw naam → uid map uit spelers/ collectie
+    var naamNaarUid = {};
+    var uidBekend = {};
+    spelersSnap.docs.forEach(function(d) {
+      var data = d.data();
+      naamNaarUid[normNaam(data.naam)] = data.uid || d.id;
+      uidBekend[data.uid || d.id] = data.naam;
+    });
+
+    setProgress('analyse-progress', 40);
+
+    // Per ladder: bouw migratieplan
+    var ladderPlannen = [];
+    var promises = [];
+    laddersSnap.docs.forEach(function(ladderDoc) {
+      var ladderId   = ladderDoc.id;
+      var ladderData = ladderDoc.data();
+      var spelers    = ladderData.spelers || [];
+      if (spelers.length === 0) {
+        ladderPlannen.push({ id: ladderId, naam: ladderData.naam || ladderId,
+          entries: [], skipped: 0, gemigreerd: 0, mismatch: 0 });
+        return;
+      }
+
+      // Laad bestaande standen/ subcollectie om te zien wat al gemigreerd is
+      var p = db.collection('ladders/' + ladderId + '/standen').get().then(function(standenSnap) {
+        var bestaandeStanden = {};
+        standenSnap.docs.forEach(function(d) { bestaandeStanden[d.id] = d.data(); });
+
+        var entries = [];
+        var gemigreerd = 0, skipped = 0, mismatch = 0;
+
+        spelers.forEach(function(s) {
+          // Zoek uid via naam
+          var uid = naamNaarUid[normNaam(s.naam)];
+          if (!uid) {
+            entries.push({ naam: s.naam, status: 'mismatch', reden: 'Geen match in spelers/ op naam' });
+            mismatch++;
+            return;
+          }
+
+          var bestaand = bestaandeStanden[uid];
+          var nieuweData = {
+            rank:     s.rank     || 0,
+            partijen: s.partijen || 0,
+            gewonnen: s.gewonnen || 0
+          };
+          if (s.prevRank != null) nieuweData.prevRank = s.prevRank;
+
+          if (bestaand && !overschrijven) {
+            // Alleen flaggen als er verschillen zijn — dan zie je wat er divergeert
+            var verschil = (
+              (bestaand.rank     || 0) !== nieuweData.rank ||
+              (bestaand.partijen || 0) !== nieuweData.partijen ||
+              (bestaand.gewonnen || 0) !== nieuweData.gewonnen
+            );
+            entries.push({
+              naam: s.naam, uid: uid,
+              status: verschil ? 'skip-verschil' : 'skip-gelijk',
+              bestaand: bestaand, nieuw: nieuweData
+            });
+            skipped++;
+          } else {
+            entries.push({
+              naam: s.naam, uid: uid,
+              status: bestaand ? 'overschrijven' : 'nieuw',
+              nieuw: nieuweData
+            });
+            gemigreerd++;
+          }
+        });
+
+        ladderPlannen.push({
+          id: ladderId,
+          naam: ladderData.naam || ladderId,
+          entries: entries,
+          skipped: skipped,
+          gemigreerd: gemigreerd,
+          mismatch: mismatch
+        });
+      });
+      promises.push(p);
+    });
+
+    Promise.all(promises).then(function() {
+      setProgress('analyse-progress', 100);
+      _plan = { ladderPlannen: ladderPlannen, overschrijven: overschrijven };
+      setStatus('analyse-status','ok','✓ Analyse klaar — controleer het rapport.');
+      renderRapport(_plan);
+      document.getElementById('btn-migreer').disabled = false;
+      btn.textContent = '🔄 Opnieuw analyseren';
+      btn.disabled = false;
+    });
+
+  }).catch(function(e) {
+    setStatus('analyse-status','error','❌ Fout: ' + e.message);
+    btn.textContent = '🔍 Analyseer';
+    btn.disabled = false;
+    console.error(e);
+  });
+}
+
+function renderRapport(plan) {
+  var totaalNieuw = 0, totaalOverschrijf = 0, totaalSkip = 0, totaalMismatch = 0;
+  plan.ladderPlannen.forEach(function(lp) {
+    lp.entries.forEach(function(e) {
+      if (e.status === 'nieuw')         totaalNieuw++;
+      if (e.status === 'overschrijven') totaalOverschrijf++;
+      if (e.status === 'skip-gelijk' || e.status === 'skip-verschil') totaalSkip++;
+      if (e.status === 'mismatch')      totaalMismatch++;
+    });
+  });
+
+  var html = '<div class="rapport">';
+  html += '<div class="samenvatting">'
+    + stat('Ladders gevonden', plan.ladderPlannen.length)
+    + stat('Nieuw: standen/{uid} wordt aangemaakt', totaalNieuw)
+    + stat('Overschrijven (actief)', totaalOverschrijf)
+    + stat('Overgeslagen (bestaat al)', totaalSkip)
+    + stat('Mismatch (geen uid voor naam)', totaalMismatch)
+    + '</div>';
+
+  plan.ladderPlannen.forEach(function(lp) {
+    html += '<details style="margin-bottom:10px" ' + (lp.mismatch > 0 ? 'open' : '') + '>'
+      + '<summary>' + lp.naam
+      + ' <span class="badge badge-ok">' + lp.gemigreerd + ' te schrijven</span>'
+      + (lp.skipped  ? ' <span class="badge badge-skip">' + lp.skipped + ' overgeslagen</span>' : '')
+      + (lp.mismatch ? ' <span class="badge badge-warn">' + lp.mismatch + ' mismatch</span>' : '')
+      + '</summary>'
+      + '<div style="background:#fafafa;padding:10px;border-radius:6px;margin-top:6px">';
+    if (lp.entries.length === 0) {
+      html += '<div style="font-size:12px;color:#888;padding:6px 0">Geen spelers in deze ladder.</div>';
+    } else {
+      lp.entries.forEach(function(e) {
+        if (e.status === 'mismatch') {
+          html += '<div class="rij"><span><strong>' + e.naam + '</strong></span>'
+            + '<span class="badge badge-warn">⚠️ ' + e.reden + '</span></div>';
+        } else if (e.status === 'nieuw') {
+          html += '<div class="rij"><span><strong>' + e.naam + '</strong></span>'
+            + '<span>'
+            + '<span class="badge badge-skip">rank ' + e.nieuw.rank + '</span> '
+            + '<span class="badge badge-skip">' + e.nieuw.partijen + 'P ' + e.nieuw.gewonnen + 'W</span> '
+            + '<span class="badge badge-ok">nieuw</span></span></div>';
+        } else if (e.status === 'overschrijven') {
+          html += '<div class="rij"><span><strong>' + e.naam + '</strong></span>'
+            + '<span>'
+            + '<span class="badge badge-skip">→ rank ' + e.nieuw.rank + '</span> '
+            + '<span class="badge badge-skip">' + e.nieuw.partijen + 'P ' + e.nieuw.gewonnen + 'W</span> '
+            + '<span class="badge badge-warn">overschrijven</span></span></div>';
+        } else if (e.status === 'skip-gelijk') {
+          html += '<div class="rij"><span>' + e.naam + '</span>'
+            + '<span class="badge badge-skip">bestaat al, gelijk</span></div>';
+        } else if (e.status === 'skip-verschil') {
+          html += '<div class="rij"><span><strong>' + e.naam + '</strong></span>'
+            + '<span class="badge badge-warn">bestaat, verschilt '
+            + '(ladder: ' + e.nieuw.rank + '/' + e.nieuw.partijen + 'P/' + e.nieuw.gewonnen + 'W vs '
+            + 'standen: ' + (e.bestaand.rank||0) + '/' + (e.bestaand.partijen||0) + 'P/' + (e.bestaand.gewonnen||0) + 'W)</span></div>';
+        }
+      });
+    }
+    html += '</div></details>';
+  });
+  html += '</div>';
+  document.getElementById('rapport-wrap').innerHTML = html;
+
+  function stat(label, val) {
+    return '<div class="stat"><span>' + label + '</span><span>' + val + '</span></div>';
+  }
+}
+
+// ── UITVOEREN ──────────────────────────────────────────────
+function startMigratie() {
+  if (!_plan) { alert('Voer eerst een analyse uit.'); return; }
+
+  var lp = _plan.ladderPlannen;
+  var totaal = lp.reduce(function(s,l) {
+    return s + l.entries.filter(function(e) {
+      return e.status === 'nieuw' || e.status === 'overschrijven';
+    }).length;
+  }, 0);
+
+  if (totaal === 0) {
+    alert('Er is niets te migreren.');
+    return;
+  }
+
+  if (!confirm('Je staat op het punt ' + totaal + ' standen/{uid} documenten aan te maken/bij te werken. Doorgaan?')) return;
+
+  var btn = document.getElementById('btn-migreer');
+  btn.disabled = true;
+  btn.textContent = '⏳ Bezig…';
+  setStatus('uitvoer-status','info','Bezig met schrijven naar Firestore…');
+
+  var gedaan = 0;
+  function tick() {
+    gedaan++;
+    setProgress('schrijf-progress', Math.min(95, Math.round(gedaan / totaal * 90)));
+  }
+
+  var chain = Promise.resolve();
+  lp.forEach(function(ladderPlan) {
+    chain = chain.then(function() {
+      logRegel(''); logRegel('--- Ladder: ' + ladderPlan.naam + ' ---');
+    });
+    ladderPlan.entries.forEach(function(e) {
+      if (e.status !== 'nieuw' && e.status !== 'overschrijven') return;
+      chain = chain.then(function() {
+        var ref = db.doc('ladders/' + ladderPlan.id + '/standen/' + e.uid);
+        return ref.set(e.nieuw).then(function() {
+          logRegel('  ✓ standen/' + e.uid + ' — ' + e.naam
+            + ' (rank ' + e.nieuw.rank + ', ' + e.nieuw.partijen + 'P ' + e.nieuw.gewonnen + 'W)');
+          tick();
+        }).catch(function(err) {
+          logRegel('  ❌ ' + e.naam + ': ' + err.code);
+          tick();
+        });
+      });
+    });
+  });
+
+  chain.then(function() {
+    setProgress('schrijf-progress', 100);
+    logRegel(''); logRegel('═══════════════════════');
+    logRegel('✅ MIGRATIE KLAAR');
+    logRegel('═══════════════════════');
+    setStatus('uitvoer-status','ok',
+      '✅ Migratie 9a klaar — ' + totaal + ' stand(en) geschreven.<br><br>'
+      + 'De oude <code>ladders.spelers[]</code> is intact. De app werkt ongewijzigd.'
+    );
+    btn.textContent = '✅ Klaar';
+  }).catch(function(e) {
+    setStatus('uitvoer-status','error','❌ Fout: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '🚀 Opnieuw proberen';
+  });
+}
+</script>
+</body>
+</html>
