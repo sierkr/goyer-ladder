@@ -7,7 +7,9 @@
 // ============================================================
 import { db, auth, firebaseConfig, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL,
   SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC,
-  INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB, esc, escAttr } from './config.js';
+  INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB, esc, escAttr,
+  EMAIL_SUFFIX, INITIEEL_WACHTWOORD, DEFAULT_HCP,
+  genereerEmail, loginNaamVan } from './config.js';
 import { store, state, alleLadders, activeLadderId,
   huidigeBruiker, uitdagingenData } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers,
@@ -78,9 +80,15 @@ async function renderAdminSpelersEnAccounts() {
     const rolBadge = u.rol && u.rol !== 'speler'
       ? `<span class="badge" style="font-size:10px;background:var(--green-pale);color:var(--green)">${esc(u.rol)}</span>`
       : '';
-    const emailTekst = u.email
-      ? `<span style="font-size:11px;color:var(--light)">${esc(u.email)}</span>`
-      : `<span style="font-size:11px;color:#ccc">geen email</span>`;
+
+    // v3.0.0-11: toon login + initieel wachtwoord i.p.v. volledig email
+    // Als eersteLogin=true → wachtwoord is nog steeds MP2026
+    // Als eersteLogin=false of undefined → speler heeft eigen wachtwoord
+    const loginTxt = loginNaamVan(u.email || '');
+    const eersteLogin = u.eersteLogin === true;
+    const credRegel = u.email
+      ? `<span style="font-size:11px;color:var(--light);font-family:'DM Mono',monospace">${esc(loginTxt)}${eersteLogin ? ` · ${INITIEEL_WACHTWOORD}` : ''}</span>${eersteLogin ? '' : '<span style="font-size:10px;color:var(--light);margin-left:4px">· wachtwoord gewijzigd</span>'}`
+      : `<span style="font-size:11px;color:#ccc">geen account</span>`;
     const hcpTekst = hcp != null
       ? `hcp ${Math.round(hcp)}`
       : 'hcp —';
@@ -90,13 +98,13 @@ async function renderAdminSpelersEnAccounts() {
       <div style="flex:1;min-width:0">
         <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(naam)}</div>
         <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:2px">
-          ${emailTekst} ${rolBadge}
+          ${credRegel} ${rolBadge}
         </div>
         ${mijnLadders.length ? `<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:3px">${ladderBadges}</div>` : ''}
       </div>
       <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace;flex-shrink:0;white-space:nowrap">${hcpTekst}</span>
-      <button class="btn btn-sm btn-ghost" onclick="openEditPlayer('${escAttr(uid)}')">✏️</button>
-      <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removePlayer('${escAttr(uid)}')">✕</button>
+      <button class="btn btn-sm btn-ghost" onclick="openEditPlayer('${escAttr(uid)}')" title="Bewerken">✏️</button>
+      <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removePlayer('${escAttr(uid)}')" title="Verwijderen">✕</button>
     </div>`;
   });
 
@@ -269,23 +277,25 @@ async function voegAccountToeAlsSpeler(uid, naam) {
 }
 
 // Maak volledig nieuw account + speler aan (beheerder flow)
+// v3.0.0-11: email + wachtwoord worden auto-gegenereerd.
 async function saveNewPlayer() {
   const voornaam   = document.getElementById('new-player-voornaam').value.trim();
   const achternaam = document.getElementById('new-player-achternaam').value.trim();
   const naam       = [voornaam, achternaam].filter(Boolean).join(' ');
-  const hcp        = Math.round(parseFloat(document.getElementById('new-player-hcp').value));
-  const email      = document.getElementById('new-player-account').value.trim().toLowerCase();
-  const pass       = document.getElementById('new-player-pass').value;
+  let hcp          = parseFloat(document.getElementById('new-player-hcp').value);
+  if (isNaN(hcp)) hcp = DEFAULT_HCP;
+  hcp = Math.round(hcp);
 
-  if (!voornaam)                       { toast('Voer een voornaam in'); return; }
-  if (!achternaam)                     { toast('Voer een achternaam in'); return; }
-  if (isNaN(hcp))                      { toast('Voer een handicap in'); return; }
-  if (!email || !email.includes('@'))  { toast('Voer een geldig e-mailadres in'); return; }
-  if (pass.length < 6)                 { toast('Wachtwoord minimaal 6 tekens'); return; }
+  if (!voornaam)   { toast('Voer een voornaam in');   return; }
+  if (!achternaam) { toast('Voer een achternaam in'); return; }
+
+  // v3.0.0-11: auto-genereer email + wachtwoord
+  const email = genereerEmail(voornaam, achternaam);
+  const pass  = INITIEEL_WACHTWOORD;
 
   try {
     const users = await getUsers();
-    if (users.find(u => u.email === email)) { toast('Dit e-mailadres is al in gebruik'); return; }
+    if (users.find(u => u.email === email)) { toast('Deze naam (email) is al in gebruik'); return; }
 
     // Auth account aanmaken via secundaire app (logt beheerder niet uit)
     let uid = null;
@@ -301,19 +311,19 @@ async function saveNewPlayer() {
       try { await deleteApp(tijdApp); } catch(e) {}
     } catch(authErr) {
       if (authErr.code === 'auth/email-already-in-use') {
-        toast('E-mailadres al in gebruik. Verwijder het eerst via Firebase Console → Authentication.');
+        toast('Account bestaat al. Verwijder eerst via Firebase Console → Authentication.');
         return;
       }
       throw authErr;
     }
 
-    // spelers/{uid} aanmaken
-    await setDoc(doc(db, 'spelers', uid), { uid, naam, email, rol: 'speler', hcp });
+    // spelers/{uid} aanmaken — eersteLogin:true zodat speler verplicht profiel invult
+    await setDoc(doc(db, 'spelers', uid),
+      { uid, naam, email, rol: 'speler', hcp, eersteLogin: true });
 
     // Numeric id + legacy master lijst (backward compat fase 4-5)
     const newId = getNextId();
     const nieuweSpeler = { id: newId, naam, hcp };
-    // v3.0.0-9c: legacy ladder/spelers dual-write verwijderd
     await slaState();
 
     // Voeg toe aan geselecteerde ladders
@@ -324,14 +334,57 @@ async function saveNewPlayer() {
 
     closeModal('modal-add-player');
     renderAdmin();
-    const ladderTekst = geselecteerdeLadders.length > 0
-      ? ` en toegevoegd aan ${geselecteerdeLadders.length} ladder(s)`
-      : ' — voeg hem toe aan een ladder via Ladders beheren';
-    toast(`${naam} aangemaakt${ladderTekst} ✓`);
+
+    // v3.0.0-11: toon credentials met copy-knop voor WhatsApp doorgeven
+    const loginTxt = loginNaamVan(email);
+    toonCredentialsModal(naam, loginTxt, pass);
   } catch(e) {
     console.error('saveNewPlayer error:', e);
     toast('Fout bij opslaan: ' + e.message);
   }
+}
+
+/**
+ * v3.0.0-11: Toont modal met credentials + copy-knop.
+ * Gebruikt voor zowel nieuwe-speler als reset-wachtwoord.
+ */
+function toonCredentialsModal(naam, loginTxt, pass) {
+  const bestaand = document.getElementById('modal-credentials');
+  if (bestaand) bestaand.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'modal-credentials';
+  modal.className = 'modal open';
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width:340px">
+      <div class="modal-header">
+        <h3>✓ ${esc(naam)} toegevoegd</h3>
+        <button class="modal-close" onclick="document.getElementById('modal-credentials').remove()">×</button>
+      </div>
+      <div class="modal-body" style="padding:16px">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:12px">
+          Geef deze gegevens door aan de speler (bv. via WhatsApp):
+        </p>
+        <div style="background:#f9f7f2;border:1.5px solid var(--border);border-radius:8px;padding:12px;font-family:'DM Mono',monospace;font-size:13px;margin-bottom:12px">
+          <div><strong>login:</strong> ${esc(loginTxt)}</div>
+          <div><strong>wachtwoord:</strong> ${esc(pass)}</div>
+        </div>
+        <button class="btn btn-primary" onclick="kopieerCredentials('${escAttr(loginTxt)}','${escAttr(pass)}')" style="width:100%">
+          📋 Kopieer naar klembord
+        </button>
+        <p style="font-size:11px;color:var(--light);margin-top:10px;text-align:center">
+          Bij eerste login moet de speler een eigen wachtwoord kiezen en zijn handicap instellen.
+        </p>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function kopieerCredentials(loginTxt, pass) {
+  const tekst = `login: ${loginTxt}\nwachtwoord: ${pass}`;
+  navigator.clipboard.writeText(tekst)
+    .then(() => toast('Gegevens gekopieerd ✓'))
+    .catch(() => toast('Kopiëren mislukt — selecteer handmatig'));
 }
 
 // ============================================================
@@ -857,4 +910,5 @@ export {
   sorteerUsers, renderAdminUsers, openEditUser, saveEditUser,
   openAddUser, saveNewUser, removeUser,
   verschuifRank, resetData, closeModal, koppelSpelerIds,
+  kopieerCredentials,
 };

@@ -114,6 +114,39 @@ export const DEFAULT_STATE = {
 };
 
 // ============================================================
+//  MP LADDER ACCOUNT CONSTANTS — v3.0.0-11
+// ============================================================
+// Alle nieuwe spelers krijgen auto-gegenereerd email en wachtwoord.
+// Bij eerste login worden ze verplicht om hcp en wachtwoord te kiezen.
+export const EMAIL_SUFFIX      = '@MPladder.stb';
+export const INITIEEL_WACHTWOORD = 'MP2026';
+export const DEFAULT_HCP       = 10;
+
+/**
+ * Genereer emailadres uit voornaam + achternaam.
+ * Spaties weg, lowercase, gescheiden door punt.
+ * "Jan" + "de Vries" → "jan.devries@MPladder.stb"
+ * "Jean-Pierre" + "van der Berg" → "jean-pierre.vanderberg@MPladder.stb"
+ */
+export function genereerEmail(voornaam, achternaam) {
+  const clean = (s) => (s || '').toLowerCase().replace(/\s+/g, '');
+  return `${clean(voornaam)}.${clean(achternaam)}${EMAIL_SUFFIX}`;
+}
+
+/**
+ * Extract het 'login'-deel uit een email (voor @), alleen voor @MPladder.stb emails.
+ * Voor weergave in admin-UI: "jan.devries" i.p.v. volledige email.
+ * Bij externe emails (legacy accounts) returnt hij gewoon het volledige adres.
+ */
+export function loginNaamVan(email) {
+  if (!email) return '';
+  if (email.toLowerCase().endsWith(EMAIL_SUFFIX.toLowerCase())) {
+    return email.slice(0, -EMAIL_SUFFIX.length);
+  }
+  return email;
+}
+
+// ============================================================
 //  SECURITY HELPERS — v3.0.0-10 fase 10
 // ============================================================
 

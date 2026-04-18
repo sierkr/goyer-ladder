@@ -1,0 +1,179 @@
+rules_version = '2';
+// Goyer Golf MP Ladder — Firestore security rules v3.0.0-10 (fase 10 V-2)
+// Wijzigingen t.o.v. v2:
+//  - ladder/{doc}: write gesplitst per doc-type. Coordinator-only voor archief,
+//    uitdagingen, ladderVolgorde, banen, state. Elke speler mag eigen uitdaging-entry
+//    toevoegen/verwijderen. Invite-docs mogen alleen door coordinator aangemaakt;
+//    teller mag door iedere ingelogde +1 tijdens registratie.
+//  - uitslagen/{doc}: create open voor ingelogde, update/delete alleen coordinator
+//    (voorkomt dat speler andermans uitslagen overschrijft).
+//  - toernooien/{doc}: read blijft publiek (live meekijken), write alleen coordinator.
+//    Subcollectie live scores blijft open.
+//  - snapshots/{doc}: read alleen coordinator (bevat volledige ladderstanden +
+//    speler-identiteit — niet gedeeld met iedere speler).
+//  - ladders/{id}/standen/{uid}: write door elke ingelogde speler die in de ladder
+//    zit (nodig voor syncStandenNaBevestigUitslag). Delete blijft coordinator.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helpers ─────────────────────────────────────────────
+    function isIngelogd() {
+      return request.auth != null;
+    }
+    // Lees spelers/{uid} robuust — null als doc niet bestaat
+    function getSpelerData(uid) {
+      return exists(/databases/$(database)/documents/spelers/$(uid))
+        ? get(/databases/$(database)/documents/spelers/$(uid)).data
+        : null;
+    }
+    function isBeheerder() {
+      return isIngelogd() &&
+        getSpelerData(request.auth.uid) != null &&
+        getSpelerData(request.auth.uid).rol == 'beheerder';
+    }
+    function isCoordinator() {
+      return isIngelogd() &&
+        getSpelerData(request.auth.uid) != null &&
+        (getSpelerData(request.auth.uid).rol == 'coordinator' ||
+         getSpelerData(request.auth.uid).rol == 'beheerder');
+    }
+    function onlyHcp() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hcp']);
+    }
+    // v3.0.0-11: eerste login flow — speler mag hcp + eersteLogin flag samen zetten.
+    // Alleen toegestaan als eersteLogin op false wordt gezet (nooit terug naar true).
+    function isEersteLoginVoltooien() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hcp', 'eersteLogin'])
+          && request.resource.data.eersteLogin == false;
+    }
+    function heeftGeldigeInvite(ladderId) {
+      return exists(/databases/$(database)/documents/ladder/$('invite_' + ladderId)) &&
+        get(/databases/$(database)/documents/ladder/$('invite_' + ladderId)).data.verloopt > request.time.toMillis() &&
+        (!('maxGebruik' in get(/databases/$(database)/documents/ladder/$('invite_' + ladderId)).data) ||
+         get(/databases/$(database)/documents/ladder/$('invite_' + ladderId)).data.get('gebruik', 0) <
+         get(/databases/$(database)/documents/ladder/$('invite_' + ladderId)).data.maxGebruik);
+    }
+    // Check: ingelogde gebruiker is lid van ladder (via spelerIds[])
+    function isInLadder(ladderId) {
+      return isIngelogd() &&
+        exists(/databases/$(database)/documents/ladders/$(ladderId)) &&
+        get(/databases/$(database)/documents/ladders/$(ladderId)).data
+          .get('spelerIds', []).hasAny([request.auth.uid]);
+    }
+    // Check: update is puur een teller-ophoging op het invite-doc (geen andere wijzigingen)
+    function isInviteTellerUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gebruik'])
+          && request.resource.data.gebruik == resource.data.get('gebruik', 0) + 1;
+    }
+
+    // ─── spelers ──────────────────────────────────────────────
+    // Bron van waarheid voor speler-identiteit
+    match /spelers/{uid} {
+      allow read:   if isIngelogd();
+      // Create: zelf-registratie OF beheerder voegt speler handmatig toe via admin UI
+      allow create: if request.auth.uid == uid || isBeheerder();
+      allow update: if (request.auth.uid == uid && (onlyHcp() || isEersteLoginVoltooien()))
+                     || isBeheerder();
+      allow delete: if isBeheerder();
+    }
+
+    // ─── ladders ──────────────────────────────────────────────
+    // Ladder documenten: coordinator beheert, speler mag zich aanmelden via invite
+    match /ladders/{ladderId} {
+      allow read:  if isIngelogd();
+      allow write: if isCoordinator()
+                   || (isIngelogd() && heeftGeldigeInvite(ladderId));
+
+      // Stand per speler in deze ladder
+      match /standen/{uid} {
+        allow read:   if isIngelogd();
+        // Create: eigen stand mag door speler zelf (nodig bij registratie-flow,
+        // als de speler nog niet in spelerIds[] staat). Coord+in-ladder check
+        // dekt alle andere gevallen (bv. syncStandenNaBevestigUitslag).
+        allow create: if request.auth.uid == uid
+                     || isCoordinator()
+                     || isInLadder(ladderId);
+        // Update: alleen coord of bestaand ladder-lid (standen bijwerken na partij)
+        allow update: if isCoordinator() || isInLadder(ladderId);
+        allow delete: if isCoordinator();
+      }
+    }
+
+    // ─── toernooien ───────────────────────────────────────────
+    // Read publiek voor live meekijken; write alleen coordinator
+    match /toernooien/{doc} {
+      allow read:  if true;
+      allow write: if isCoordinator();
+
+      // Optioneel: live-scores subcollectie voor spelers om eigen scores te schrijven
+      // (nu nog niet in gebruik — structuur voor fase 14)
+      match /live/{uid} {
+        allow read:  if true;
+        allow write: if isIngelogd() && request.auth.uid == uid;
+      }
+    }
+
+    // ─── uitslagen ────────────────────────────────────────────
+    // Scorekaarten van afgelopen partijen (30 dagen bewaard)
+    match /uitslagen/{doc} {
+      allow read:   if isIngelogd();
+      allow create: if isIngelogd();
+      // Update/delete alleen coordinator — voorkomt dat speler andermans uitslag overschrijft
+      allow update, delete: if isCoordinator();
+    }
+
+    // ─── snapshots ────────────────────────────────────────────
+    // Volledige ladderdump voor recovery — bevat speler-identiteit.
+    // Read alleen coord (bevat veel speler-data). Write mag iedere ingelogde speler
+    // (auto-snapshot na partij-bevestiging wordt door de speler getriggerd).
+    match /snapshots/{doc} {
+      allow read:   if isCoordinator();
+      allow create: if isIngelogd();
+      allow update, delete: if isCoordinator();
+    }
+
+    // ─── ladder/{doc} ─────────────────────────────────────────
+    // Meerdere singleton-documents onder /ladder — splitsen per doc-type
+    match /ladder/{doc} {
+      // Read: ingelogde spelers voor alle app-data; invite-docs mogen ongeauthenticeerd
+      // gelezen worden (checkInviteLink doet dit vóór login)
+      allow read: if isIngelogd() || doc.matches('invite_.*');
+
+      // archief: seizoen-historiek — alleen coordinator schrijft
+      allow write: if doc == 'archief' && isCoordinator();
+
+      // uitdagingen: lijst met uitdagingen — iedere ingelogde speler mag wijzigen
+      // (eigen uitdagingen sturen, accepteren, weigeren, verwijderen)
+      allow write: if doc == 'uitdagingen' && isIngelogd();
+
+      // ladderVolgorde: display-volgorde van ladders — alleen coordinator
+      allow write: if doc == 'ladderVolgorde' && isCoordinator();
+
+      // banen: custom banen — iedere ingelogde speler mag toevoegen/verwijderen
+      allow write: if doc == 'banen' && isIngelogd();
+
+      // state: legacy main-state doc — alleen coordinator (wordt uitgefaseerd)
+      allow write: if doc == 'state' && isCoordinator();
+
+      // users: legacy users doc — read-only voor backward compat (wordt uitgefaseerd)
+      allow write: if doc == 'users' && isCoordinator();
+
+      // toernooi: legacy singleton — alleen coordinator
+      allow write: if doc == 'toernooi' && isCoordinator();
+
+      // invite_{ladderId}: genereren alleen coordinator; teller ophogen iedere ingelogde
+      allow create: if doc.matches('invite_.*') && isCoordinator();
+      allow update: if doc.matches('invite_.*') && (
+                       isCoordinator() ||
+                       (isIngelogd() && isInviteTellerUpdate())
+                     );
+      allow delete: if doc.matches('invite_.*') && isCoordinator();
+    }
+
+    // ─── Alle overige paden: dicht ────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
