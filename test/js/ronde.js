@@ -502,10 +502,18 @@ async function bevestigUitslag() {
     const sw = state.spelers.find(s => s.naam?.toLowerCase() === winnaar.naam?.toLowerCase());
     const sv = state.spelers.find(s => s.naam?.toLowerCase() === verliezer.naam?.toLowerCase());
 
+    // v3.0.0-11.5 diagnose: log matchup verwerking
+    console.log('[bevestig] matchup', idx,
+      'winnaar:', winnaar.naam, '→ sw:', sw ? `rank ${sw.rank}` : 'NIET GEVONDEN',
+      '| verliezer:', verliezer.naam, '→ sv:', sv ? `rank ${sv.rank}` : 'NIET GEVONDEN');
+
     // Gastspelers of spelers niet in ladder — niet verwerken in ladderstand
     const heeftGast = Number(winnaar.id) >= 90000 || Number(verliezer.id) >= 90000 ||
                       !sw || !sv;
-    if (heeftGast) return;
+    if (heeftGast) {
+      console.log('[bevestig] matchup', idx, 'GESKIPT (gast of niet-gevonden)');
+      return;
+    }
     const oldWrank = sw.rank;
     const oldVrank = sv.rank;
 
@@ -546,6 +554,10 @@ async function bevestigUitslag() {
     changes.push({ winnaar: sw.naam, verliezer: sv.naam, wOud: oldWrank, wNieuw: newWrank, vOud: oldVrank, vNieuw: newVrank });
     sw.rank = newWrank;
     sv.rank = newVrank;
+
+    // v3.0.0-11.5 diagnose
+    console.log('[bevestig] matchup', idx, 'rank-update:',
+      `${sw.naam} ${oldWrank}→${newWrank}, ${sv.naam} ${oldVrank}→${newVrank}`);
   });
 
   // Ranks zijn al correct toegewezen per matchup — geen extra normalisatie nodig
