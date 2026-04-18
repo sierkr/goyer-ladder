@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>Goyer Ladder — Database opschonen</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --green: #2d5f3f;
+      --green-pale: #e8f0eb;
+      --red: #b71c1c;
+      --red-pale: #fdecea;
+      --gold: #b8860b;
+      --border: #e0ddd4;
+      --dark: #1a2e1f;
+      --mid: #6b6b5f;
+      --light: #a8a89f;
+      --card-bg: #fefdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f5f2ea;
+      color: var(--dark);
+      margin: 0;
+      padding: 24px;
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 24px;
+      color: var(--green);
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: var(--mid);
+      margin-bottom: 24px;
+      font-size: 14px;
+    }
+    .card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      border: 1px solid var(--border);
+    }
+    .card h2 {
+      font-size: 18px;
+      margin: 0 0 12px 0;
+      color: var(--green);
+    }
+    .btn {
+      padding: 10px 18px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-family: inherit;
+      font-weight: 600;
+    }
+    .btn-primary { background: var(--green); color: white; }
+    .btn-danger  { background: var(--red);   color: white; }
+    .btn-ghost   { background: none; border: 1.5px solid var(--border); color: var(--dark); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    input[type="text"], input[type="password"], input[type="email"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      margin-bottom: 12px;
+    }
+    label { display: block; font-size: 12px; color: var(--mid); margin-bottom: 4px; }
+    .ok   { color: var(--green); font-weight: 600; }
+    .warn { color: var(--gold);  font-weight: 600; }
+    .err  { color: var(--red);   font-weight: 600; }
+    .box-keep   { background: var(--green-pale); padding: 10px 14px; border-radius: 8px; margin-bottom: 8px; }
+    .box-remove { background: var(--red-pale);   padding: 10px 14px; border-radius: 8px; margin-bottom: 8px; }
+    .muted { color: var(--light); font-size: 12px; }
+    pre {
+      background: #2b2b27;
+      color: #d4d4d0;
+      padding: 12px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .category {
+      margin-bottom: 14px;
+      padding-bottom: 14px;
+      border-bottom: 1px dashed var(--border);
+    }
+    .category:last-child { border-bottom: none; }
+    .count-badge {
+      display: inline-block;
+      background: var(--green);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+    .count-badge.warn { background: var(--gold); }
+    .count-badge.err  { background: var(--red); }
+    details summary {
+      cursor: pointer;
+      color: var(--mid);
+      font-size: 13px;
+      margin-top: 6px;
+    }
+    details ul { margin: 6px 0 0 20px; padding: 0; font-size: 13px; color: var(--dark); }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>Goyer Ladder — Database opschonen</h1>
+  <p class="subtitle">
+    Bewaar-uids: <strong>sierk.roosma@MPladder.stb</strong> en <strong>piethein.meeter@MPladder.stb</strong> (plus eventuele legacy emails).
+    Alle andere spelers worden verwijderd uit Firestore.
+    Auth-accounts moet je handmatig verwijderen in Firebase Console → Authentication.
+  </p>
+
+  <!-- ─── Stap 1: Login ─────────────────────────────────────── -->
+  <div class="card" id="card-login">
+    <h2>Stap 1: Inloggen als beheerder</h2>
+    <p class="muted" style="margin-bottom:12px">
+      Deze tool werkt alleen als je ingelogd bent met een beheerder-account.
+      Firestore rules blokkeren anders de schrijfacties.
+    </p>
+    <label>Login</label>
+    <input type="text" id="login-input" placeholder="sierk.roosma" autocomplete="username">
+    <label>Wachtwoord</label>
+    <input type="password" id="pass-input" autocomplete="current-password">
+    <button class="btn btn-primary" onclick="doLogin()">Inloggen</button>
+    <div id="login-status" style="margin-top:10px;font-size:13px"></div>
+  </div>
+
+  <!-- ─── Stap 2: Scan ────────────────────────────────────── -->
+  <div class="card" id="card-scan" style="display:none">
+    <h2>Stap 2: Scan database</h2>
+    <p class="muted" style="margin-bottom:12px">
+      Leest alle collecties en toont welke records bewaard blijven en welke verwijderd worden.
+      Niets wordt nog gewijzigd.
+    </p>
+    <button class="btn btn-primary" onclick="runScan()">Scan uitvoeren</button>
+    <div id="scan-result" style="margin-top:16px"></div>
+  </div>
+
+  <!-- ─── Stap 3: Opschonen ──────────────────────────────── -->
+  <div class="card" id="card-clean" style="display:none">
+    <h2>Stap 3: Opruimen</h2>
+    <p class="muted" style="margin-bottom:12px">
+      Dit verwijdert permanent de gemarkeerde records. Firestore writes zijn onomkeerbaar.
+    </p>
+    <button class="btn btn-danger" onclick="runClean()">Opruimen uitvoeren</button>
+    <div id="clean-result" style="margin-top:16px"></div>
+  </div>
+
+  <!-- ─── Log ────────────────────────────────────────────── -->
+  <div class="card" id="card-log" style="display:none">
+    <h2>Log</h2>
+    <pre id="log-output"></pre>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, collection, getDoc, getDocs, setDoc, deleteDoc, query }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
+  authDomain: "goyer-golf-mp-ladder.firebaseapp.com",
+  projectId: "goyer-golf-mp-ladder",
+  storageBucket: "goyer-golf-mp-ladder.firebasestorage.app",
+  messagingSenderId: "124116031878",
+  appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+const auth = getAuth(app);
+
+// ─── Bewaar-criteria ────────────────────────────────────
+// Spelers blijven als hun naam of email hieraan voldoet.
+const BEWAAR_EMAILS = [
+  'sierk.roosma@mpladder.stb',
+  'piethein.meeter@mpladder.stb',
+];
+const BEWAAR_NAMEN = [
+  'sierk roosma',
+  'piethein meeter',
+  'piet hein meeter', // variatie
+  'piet-hein meeter', // variatie
+];
+
+// ─── Logging ────────────────────────────────────────────
+const logEl = document.getElementById('log-output');
+function log(msg) {
+  console.log(msg);
+  logEl.textContent += msg + '\n';
+  document.getElementById('card-log').style.display = '';
+}
+
+// ─── Scan state ─────────────────────────────────────────
+let scanResult = null;
+
+// ─── Login ──────────────────────────────────────────────
+window.doLogin = async function doLogin() {
+  const loginVal = document.getElementById('login-input').value.trim();
+  const pass = document.getElementById('pass-input').value;
+  const status = document.getElementById('login-status');
+  const email = loginVal.includes('@') ? loginVal.toLowerCase() : (loginVal.toLowerCase() + '@MPladder.stb');
+  status.className = '';
+  status.textContent = 'Bezig met inloggen...';
+  try {
+    await signInWithEmailAndPassword(auth, email, pass);
+    // Check beheerder rol
+    const uid = auth.currentUser.uid;
+    const spelerSnap = await getDoc(doc(db, 'spelers', uid));
+    const rol = spelerSnap.exists() ? spelerSnap.data().rol : null;
+    if (rol !== 'beheerder') {
+      status.className = 'err';
+      status.textContent = 'Ingelogd, maar jouw account is geen beheerder. Je rechten zijn onvoldoende voor deze tool.';
+      return;
+    }
+    status.className = 'ok';
+    status.textContent = '✓ Ingelogd als ' + (spelerSnap.data().naam || email) + ' (beheerder)';
+    document.getElementById('card-scan').style.display = '';
+  } catch(e) {
+    status.className = 'err';
+    status.textContent = 'Inloggen mislukt: ' + (e.code || e.message);
+  }
+};
+
+// ─── Bewaar-check ───────────────────────────────────────
+function isBewaar(speler) {
+  if (!speler) return false;
+  const email = (speler.email || '').toLowerCase();
+  const naam = (speler.naam || '').toLowerCase().trim();
+  if (BEWAAR_EMAILS.includes(email)) return true;
+  if (BEWAAR_NAMEN.includes(naam)) return true;
+  return false;
+}
+
+// ─── Scan ───────────────────────────────────────────────
+window.runScan = async function runScan() {
+  log('\n=== SCAN GESTART ===');
+  const result = {
+    spelers: { keep: [], remove: [] },
+    ladders: {}, // ladderId → { spelerIds: {keep, remove}, spelersLegacy: {keep, remove}, standen: {keep, remove}, actievePartijen: count }
+    ladderUsers: null, // ladder/users doc inhoud
+    errors: []
+  };
+
+  // 1) Lees alle spelers/
+  try {
+    const spelersSnap = await getDocs(collection(db, 'spelers'));
+    spelersSnap.forEach(d => {
+      const data = { uid: d.id, ...d.data() };
+      if (isBewaar(data)) result.spelers.keep.push(data);
+      else result.spelers.remove.push(data);
+    });
+    log(`spelers/: ${result.spelers.keep.length} keep, ${result.spelers.remove.length} remove`);
+  } catch(e) {
+    log('FOUT bij lezen spelers/: ' + e.message);
+    result.errors.push('spelers: ' + e.message);
+  }
+
+  // Map van bewaar-uids voor snelle lookup
+  const bewaarUids = new Set(result.spelers.keep.map(s => s.uid));
+
+  // 2) Lees alle ladders
+  try {
+    const laddersSnap = await getDocs(collection(db, 'ladders'));
+    for (const ladderDoc of laddersSnap.docs) {
+      const ladderId = ladderDoc.id;
+      const data = ladderDoc.data();
+      const info = {
+        naam: data.naam || ladderId,
+        spelerIds: { keep: [], remove: [] },
+        spelersLegacy: { keep: [], remove: [] },
+        standen: { keep: [], remove: [] },
+        actievePartijenCount: (data.actievePartijen || []).length,
+      };
+
+      // spelerIds[]
+      (data.spelerIds || []).forEach(uid => {
+        if (bewaarUids.has(uid)) info.spelerIds.keep.push(uid);
+        else info.spelerIds.remove.push(uid);
+      });
+
+      // spelers[] (legacy) — match op naam
+      (data.spelers || []).forEach(s => {
+        if (isBewaar(s)) info.spelersLegacy.keep.push(s);
+        else info.spelersLegacy.remove.push(s);
+      });
+
+      // standen/ subcollection
+      try {
+        const standenSnap = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
+        standenSnap.forEach(d => {
+          const uid = d.id;
+          if (bewaarUids.has(uid)) info.standen.keep.push({ uid, ...d.data() });
+          else info.standen.remove.push({ uid, ...d.data() });
+        });
+      } catch(e) {
+        log('FOUT bij standen/ van ladder ' + ladderId + ': ' + e.message);
+      }
+
+      result.ladders[ladderId] = info;
+      log(`ladders/${ladderId} (${info.naam}): spelerIds keep=${info.spelerIds.keep.length} remove=${info.spelerIds.remove.length}, spelers[] keep=${info.spelersLegacy.keep.length} remove=${info.spelersLegacy.remove.length}, standen keep=${info.standen.keep.length} remove=${info.standen.remove.length}, actieve partijen=${info.actievePartijenCount}`);
+    }
+  } catch(e) {
+    log('FOUT bij lezen ladders/: ' + e.message);
+    result.errors.push('ladders: ' + e.message);
+  }
+
+  // 3) ladder/users legacy doc
+  try {
+    const usersSnap = await getDoc(doc(db, 'ladder', 'users'));
+    if (usersSnap.exists()) {
+      const users = usersSnap.data().users || [];
+      result.ladderUsers = users;
+      log(`ladder/users: ${users.length} legacy entries`);
+    }
+  } catch(e) { log('ladder/users niet leesbaar (ok): ' + e.message); }
+
+  log('=== SCAN KLAAR ===\n');
+
+  scanResult = result;
+  renderScanResult();
+  document.getElementById('card-clean').style.display = '';
+};
+
+function renderScanResult() {
+  const el = document.getElementById('scan-result');
+  let html = '';
+
+  // Spelers
+  html += `<div class="category"><strong>spelers/ collection</strong>`;
+  html += ` <span class="count-badge">${scanResult.spelers.keep.length} bewaren</span>`;
+  if (scanResult.spelers.remove.length > 0) {
+    html += ` <span class="count-badge warn">${scanResult.spelers.remove.length} verwijderen</span>`;
+  }
+  if (scanResult.spelers.keep.length > 0) {
+    html += `<details><summary>Bewaren (${scanResult.spelers.keep.length})</summary><ul>`;
+    scanResult.spelers.keep.forEach(s => {
+      html += `<li class="ok">${escapeHtml(s.naam || s.uid)} · ${escapeHtml(s.email || '?')} · rol=${escapeHtml(s.rol || 'speler')}</li>`;
+    });
+    html += `</ul></details>`;
+  }
+  if (scanResult.spelers.remove.length > 0) {
+    html += `<details open><summary>Verwijderen (${scanResult.spelers.remove.length})</summary><ul>`;
+    scanResult.spelers.remove.forEach(s => {
+      html += `<li class="err">${escapeHtml(s.naam || s.uid)} · ${escapeHtml(s.email || '?')} · uid=${escapeHtml(s.uid)}</li>`;
+    });
+    html += `</ul></details>`;
+  }
+  html += `</div>`;
+
+  // Ladders
+  Object.entries(scanResult.ladders).forEach(([id, info]) => {
+    html += `<div class="category"><strong>ladders/${escapeHtml(id)}</strong> (${escapeHtml(info.naam)})</div>`;
+    html += `<div style="padding-left:12px">`;
+    html += `<div class="muted">spelerIds: <span class="ok">${info.spelerIds.keep.length} bewaren</span>, <span class="err">${info.spelerIds.remove.length} verwijderen</span></div>`;
+    html += `<div class="muted">spelers[] (legacy): <span class="ok">${info.spelersLegacy.keep.length} bewaren</span>, <span class="err">${info.spelersLegacy.remove.length} verwijderen</span></div>`;
+    html += `<div class="muted">standen/: <span class="ok">${info.standen.keep.length} bewaren</span>, <span class="err">${info.standen.remove.length} verwijderen</span></div>`;
+    if (info.actievePartijenCount > 0) {
+      html += `<div class="muted warn">${info.actievePartijenCount} actieve partijen — worden gewist</div>`;
+    }
+    html += `</div>`;
+  });
+
+  // Ladder/users legacy
+  if (scanResult.ladderUsers) {
+    html += `<div class="category"><strong>ladder/users (legacy)</strong>`;
+    html += ` <span class="count-badge warn">${scanResult.ladderUsers.length} entries — worden gewist</span></div>`;
+  }
+
+  if (scanResult.errors.length > 0) {
+    html += `<div class="category err"><strong>Fouten tijdens scan:</strong><ul>`;
+    scanResult.errors.forEach(e => html += `<li>${escapeHtml(e)}</li>`);
+    html += `</ul></div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+// ─── Opruimen ──────────────────────────────────────────
+window.runClean = async function runClean() {
+  if (!scanResult) { alert('Run eerst de scan'); return; }
+  if (!confirm('Weet je zeker dat je wilt opruimen? Dit is onomkeerbaar.')) return;
+  if (!confirm('LAATSTE CHECK: verwijder ' + scanResult.spelers.remove.length + ' spelers en alle bijbehorende standen + ladder-entries?')) return;
+
+  log('\n=== OPRUIMEN GESTART ===');
+  let succes = 0, fouten = 0;
+
+  // 1) Verwijder spelers/{uid}
+  for (const s of scanResult.spelers.remove) {
+    try {
+      await deleteDoc(doc(db, 'spelers', s.uid));
+      log(`✓ spelers/${s.uid} (${s.naam}) verwijderd`);
+      succes++;
+    } catch(e) {
+      log(`✗ spelers/${s.uid}: ${e.message}`);
+      fouten++;
+    }
+  }
+
+  // 2) Voor elke ladder: werk spelerIds[] en spelers[] bij, wis actievePartijen, delete standen
+  for (const [ladderId, info] of Object.entries(scanResult.ladders)) {
+    // 2a) Delete standen
+    for (const st of info.standen.remove) {
+      try {
+        await deleteDoc(doc(db, 'ladders', ladderId, 'standen', st.uid));
+        log(`✓ ladders/${ladderId}/standen/${st.uid} verwijderd`);
+        succes++;
+      } catch(e) {
+        log(`✗ ladders/${ladderId}/standen/${st.uid}: ${e.message}`);
+        fouten++;
+      }
+    }
+
+    // 2b) Update ladder-doc: spelerIds en spelers[] opschonen, actievePartijen wissen, rank hernummeren
+    try {
+      const ladderDoc = await getDoc(doc(db, 'ladders', ladderId));
+      if (!ladderDoc.exists()) continue;
+      const data = ladderDoc.data();
+
+      const nieuweSpelerIds = info.spelerIds.keep;
+      // Hernummer ranks van bewaar-spelers
+      const nieuweSpelers = info.spelersLegacy.keep
+        .sort((a, b) => (a.rank || 999) - (b.rank || 999))
+        .map((s, i) => ({ ...s, rank: i + 1 }));
+
+      const updated = {
+        ...data,
+        spelerIds: nieuweSpelerIds,
+        spelers: nieuweSpelers,
+        actievePartijen: [], // wipe — er lopen geen test-partijen meer
+      };
+      await setDoc(doc(db, 'ladders', ladderId), updated);
+      log(`✓ ladders/${ladderId} bijgewerkt (${nieuweSpelerIds.length} spelerIds, ${nieuweSpelers.length} legacy spelers, 0 actieve partijen)`);
+      succes++;
+    } catch(e) {
+      log(`✗ ladders/${ladderId} update: ${e.message}`);
+      fouten++;
+    }
+
+    // 2c) Update ook standen van bewaar-spelers — hernummer rank mee met legacy array
+    const bewaarIdToRank = {};
+    info.spelersLegacy.keep
+      .sort((a, b) => (a.rank || 999) - (b.rank || 999))
+      .forEach((s, i) => {
+        bewaarIdToRank[s.id] = i + 1;
+      });
+    // Match bewaar-standen aan spelerIds (uid) via spelers-docs voor naam-match
+    // Eenvoudiger: alleen rank in standen herkalken van bewaar-uids
+    for (let i = 0; i < info.standen.keep.length; i++) {
+      const st = info.standen.keep[i];
+      const speler = scanResult.spelers.keep.find(sp => sp.uid === st.uid);
+      if (!speler) continue;
+      // Vind rank in legacy-array op naam
+      const legacyEntry = info.spelersLegacy.keep.find(s =>
+        (s.naam || '').toLowerCase() === (speler.naam || '').toLowerCase()
+      );
+      const nieuweRank = legacyEntry
+        ? info.spelersLegacy.keep.sort((a,b)=>(a.rank||999)-(b.rank||999)).findIndex(s =>
+            (s.naam || '').toLowerCase() === (speler.naam || '').toLowerCase()
+          ) + 1
+        : (i + 1);
+      try {
+        await setDoc(doc(db, 'ladders', ladderId, 'standen', st.uid), {
+          rank: nieuweRank,
+          partijen: 0,
+          gewonnen: 0,
+        });
+        log(`✓ ladders/${ladderId}/standen/${st.uid} reset → rank ${nieuweRank}, partijen 0`);
+        succes++;
+      } catch(e) {
+        log(`✗ ladders/${ladderId}/standen/${st.uid} reset: ${e.message}`);
+        fouten++;
+      }
+    }
+  }
+
+  // 3) ladder/users legacy wissen
+  if (scanResult.ladderUsers) {
+    try {
+      await setDoc(doc(db, 'ladder', 'users'), { users: [] });
+      log('✓ ladder/users gewist');
+      succes++;
+    } catch(e) {
+      log(`✗ ladder/users: ${e.message}`);
+      fouten++;
+    }
+  }
+
+  log('\n=== OPRUIMEN KLAAR ===');
+  log(`${succes} succes, ${fouten} fouten`);
+
+  document.getElementById('clean-result').innerHTML =
+    `<div class="${fouten === 0 ? 'ok' : 'warn'}">
+       ✓ ${succes} acties gelukt${fouten > 0 ? `, ⚠ ${fouten} mislukt (zie log)` : ''}.
+       <br><br>
+       <strong>Nog handmatig te doen:</strong>
+       Ga naar Firebase Console → Authentication → Users en verwijder alle
+       Auth-accounts behalve die van Sierk en PietHein.
+     </div>`;
+};
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+</script>
+</body>
+</html>
