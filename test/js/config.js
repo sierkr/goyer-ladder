@@ -10,6 +10,7 @@ import {
   sendPasswordResetEmail, updatePassword, EmailAuthProvider,
   reauthenticateWithCredential, createUserWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
@@ -24,6 +25,10 @@ export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+
+// v3.0.0-11.2: Cloud Functions in europe-west1 voor reset-wachtwoord
+export const functions = getFunctions(app, 'europe-west1');
+export { httpsCallable };
 // Firestore refs
 export const STATE_DOC = doc(db, 'ladder', 'state'); // legacy — voor migratie
 export const USERS_DOC = doc(db, 'ladder', 'users');

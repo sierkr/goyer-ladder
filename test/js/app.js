@@ -26,7 +26,8 @@ import { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer,
   openEditPlayer, saveEditPlayer, removePlayer, renderProfiel,
   slaProfielHcpOp, renderAdminUsers, openEditUser, saveEditUser,
   openAddUser, saveNewUser, removeUser, verschuifRank, resetData,
-  closeModal, koppelSpelerIds, kopieerCredentials } from './admin.js';
+  closeModal, koppelSpelerIds, kopieerCredentials,
+  vraagResetWachtwoord } from './admin.js';
 import { renderArchief, openArchiefDetail, openNieuwSeizoenModal,
   bevestigNieuwSeizoen, stuurUitdaging, reageerUitdaging,
   verwijderUitdaging, openToernooiDetail, toonUitdagingBadge,
@@ -105,6 +106,7 @@ window.toggleHandmatigToevoegen = toggleHandmatigToevoegen;
 window.voegAccountToeAlsSpeler = voegAccountToeAlsSpeler;
 window.saveNewPlayer = saveNewPlayer;
 window.kopieerCredentials = kopieerCredentials;
+window.vraagResetWachtwoord = vraagResetWachtwoord;
 window.slaEersteLoginOp = slaEersteLoginOp;
 window.openEditPlayer = openEditPlayer;
 window.saveEditPlayer = saveEditPlayer;
@@ -197,7 +199,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v3.0.0-11.1';
+  const VERSION = 'v3.0.0-11.2';
   const badge = document.getElementById('versie-badge');
   if (badge) { badge.textContent = VERSION; badge.style.display = ''; }
   document.querySelectorAll('.login-versie').forEach(el => el.textContent = VERSION);

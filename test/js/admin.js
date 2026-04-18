@@ -9,7 +9,8 @@ import { db, auth, firebaseConfig, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL,
   SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC,
   INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB, esc, escAttr,
   EMAIL_SUFFIX, INITIEEL_WACHTWOORD, DEFAULT_HCP,
-  genereerEmail, loginNaamVan } from './config.js';
+  genereerEmail, loginNaamVan,
+  functions, httpsCallable } from './config.js';
 import { store, state, alleLadders, activeLadderId,
   huidigeBruiker, uitdagingenData } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers,
@@ -93,6 +94,14 @@ async function renderAdminSpelersEnAccounts() {
       ? `hcp ${Math.round(hcp)}`
       : 'hcp —';
 
+    // v3.0.0-11.2: reset-wachtwoord knop, alleen voor beheerder
+    // Toont alleen als speler al eersteLogin heeft voltooid (anders is reset overbodig)
+    const isBeheerder = isBeheerderRol();
+    const heeftEigenWachtwoord = u.eersteLogin === false;
+    const resetBtn = (isBeheerder && heeftEigenWachtwoord)
+      ? `<button class="btn btn-sm btn-ghost" onclick="vraagResetWachtwoord('${escAttr(uid)}','${escAttr(naam)}')" title="Wachtwoord resetten">🔄</button>`
+      : '';
+
     // Buttons gebruiken uid (string) als identifier
     return `<div class="admin-row" style="flex-wrap:nowrap;gap:6px;align-items:center">
       <div style="flex:1;min-width:0">
@@ -103,6 +112,7 @@ async function renderAdminSpelersEnAccounts() {
         ${mijnLadders.length ? `<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:3px">${ladderBadges}</div>` : ''}
       </div>
       <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace;flex-shrink:0;white-space:nowrap">${hcpTekst}</span>
+      ${resetBtn}
       <button class="btn btn-sm btn-ghost" onclick="openEditPlayer('${escAttr(uid)}')" title="Bewerken">✏️</button>
       <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removePlayer('${escAttr(uid)}')" title="Verwijderen">✕</button>
     </div>`;
@@ -384,6 +394,41 @@ function kopieerCredentials(loginTxt, pass) {
   navigator.clipboard.writeText(tekst)
     .then(() => toast('Gegevens gekopieerd ✓'))
     .catch(() => toast('Kopiëren mislukt — selecteer handmatig'));
+}
+
+// ============================================================
+//  WACHTWOORD RESET via Cloud Function — v3.0.0-11.2
+// ============================================================
+async function vraagResetWachtwoord(uid, naam) {
+  const bevestig = confirm(
+    `Wachtwoord van ${naam} resetten naar ${INITIEEL_WACHTWOORD}?\n\n` +
+    `De speler moet bij eerstvolgende inlog een nieuw wachtwoord kiezen en zijn handicap opnieuw instellen.`
+  );
+  if (!bevestig) return;
+
+  try {
+    toast('Bezig met resetten...');
+    const resetFn = httpsCallable(functions, 'resetSpelerWachtwoord');
+    const result = await resetFn({ targetUid: uid });
+    if (result.data?.success) {
+      renderAdmin();
+      // Toon credentials modal zodat beheerder ze kan kopiëren voor de speler
+      const loginTxt = loginNaamVan((await getDoc(doc(db, 'spelers', uid))).data()?.email || '');
+      toonCredentialsModal(naam, loginTxt, INITIEEL_WACHTWOORD);
+    } else {
+      toast('Reset mislukt: onverwachte respons');
+    }
+  } catch(e) {
+    console.error('Reset wachtwoord mislukt:', e);
+    const msg = e.code === 'functions/permission-denied'
+      ? 'Geen rechten — alleen beheerder kan resetten'
+      : e.code === 'functions/unauthenticated'
+      ? 'Niet ingelogd'
+      : e.code === 'functions/not-found'
+      ? 'Cloud Function niet gedeployed — run firebase deploy'
+      : 'Fout: ' + (e.message || e.code);
+    toast(msg);
+  }
 }
 
 // ============================================================
@@ -909,5 +954,5 @@ export {
   sorteerUsers, renderAdminUsers, openEditUser, saveEditUser,
   openAddUser, saveNewUser, removeUser,
   verschuifRank, resetData, closeModal, koppelSpelerIds,
-  kopieerCredentials,
+  kopieerCredentials, vraagResetWachtwoord,
 };
