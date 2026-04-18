@@ -868,14 +868,25 @@
 </div>
 
 <!-- Nieuw seizoen modal -->
-<div class="modal-overlay" id="modal-nieuw-seizoen">
-  <div class="modal">
+<div class="modal-overlay" id="modal-nieuw-seizoen" style="align-items:center">
+  <div class="modal" style="border-radius:16px;max-height:90vh">
     <h3>Nieuw seizoen starten</h3>
-    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">De huidige ladder en uitslagen worden opgeslagen in het archief. Rankings en statistieken worden gereset.</p>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">
+      Per ladder: eindstand wordt gearchiveerd, scorekaarten en snapshots worden verwijderd,
+      ranks hernummerd (1..N), tellers partijen/gewonnen op 0.
+    </p>
     <div class="form-group">
-      <label>Naam huidig seizoen</label>
-      <input type="text" id="seizoen-naam" placeholder="bijv. Seizoen 2024">
+      <label>Naam seizoen</label>
+      <input type="text" id="seizoen-naam" placeholder="bijv. Seizoen 2026">
     </div>
+    <div class="form-group">
+      <label>Welke ladders?</label>
+      <div id="nieuw-seizoen-ladders" style="margin-top:6px"></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px;background:#f9f7f2;border-radius:8px;margin-bottom:12px">
+      <input type="checkbox" id="seizoen-omdraaien" style="accent-color:var(--green);width:18px;height:18px">
+      <span style="font-size:13px;color:var(--mid)">↕️ Volgorde omdraaien: eerste wordt laatste, laatste wordt eerste</span>
+    </label>
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-nieuw-seizoen')">Annuleren</button>
       <button class="btn btn-gold" style="flex:2" onclick="bevestigNieuwSeizoen()">🏆 Archiveren & resetten</button>
