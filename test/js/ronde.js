@@ -498,10 +498,44 @@ async function bevestigUitslag() {
     const winnaar = winnaarKant === 'A' ? m.spelerA : m.spelerB;
     const verliezer = winnaarKant === 'A' ? m.spelerB : m.spelerA;
 
-    // v3.0.0-9c: matchup spelers hebben id=uid (uit view-laag) en naam.
-    // state.spelers heeft legacy numeric id maar wel naam. Match op naam.
-    const sw = state.spelers.find(s => s.naam?.toLowerCase() === winnaar.naam?.toLowerCase());
-    const sv = state.spelers.find(s => s.naam?.toLowerCase() === verliezer.naam?.toLowerCase());
+    // v3.0.0-11.7: robuuste speler-lookup.
+    // Match in volgorde: id (uid of numeric), dan naam (case-insensitive).
+    // Als speler niet in state.spelers[] zit maar wel in ladder (spelerIds[]),
+    // dan auto-heal: voeg hem toe aan state.spelers[] onderaan.
+    function vindInState(matchupSpeler) {
+      if (!matchupSpeler) return null;
+      // Eerst id-match
+      let found = state.spelers.find(s => String(s.id) === String(matchupSpeler.id));
+      if (found) return found;
+      // Dan naam-match
+      found = state.spelers.find(s => s.naam?.toLowerCase() === matchupSpeler.naam?.toLowerCase());
+      if (found) return found;
+      // Niet gevonden — is het een echte ladder-speler (geen gast)?
+      const isGast = Number(matchupSpeler.id) >= 90000;
+      if (isGast) return null;
+      // Check of uid in ladder.spelerIds staat (via view-laag)
+      const ladder = alleLadders.find(l => l.id === activeLadderId);
+      const inLadder = ladder?.spelerIds?.includes(matchupSpeler.id);
+      if (!inLadder) return null;
+      // Auto-heal: voeg toe aan state.spelers onderaan met rank = max + 1
+      const maxRank = state.spelers.length > 0
+        ? Math.max(...state.spelers.map(s => s.rank || 0))
+        : 0;
+      const nieuw = {
+        id: matchupSpeler.id,  // uid als id in legacy array
+        naam: matchupSpeler.naam,
+        hcp: matchupSpeler.hcp ?? 10,
+        rank: maxRank + 1,
+        partijen: 0,
+        gewonnen: 0
+      };
+      state.spelers.push(nieuw);
+      console.log('[bevestig] auto-heal: speler', matchupSpeler.naam, 'toegevoegd aan state.spelers rank', nieuw.rank);
+      return nieuw;
+    }
+
+    const sw = vindInState(winnaar);
+    const sv = vindInState(verliezer);
 
     // v3.0.0-11.5 diagnose: log matchup verwerking
     console.log('[bevestig] matchup', idx,
