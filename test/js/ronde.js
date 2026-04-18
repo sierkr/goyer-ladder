@@ -619,6 +619,7 @@ async function bevestigUitslag() {
   try {
     await addDoc(UITSLAGEN_COL, {
       type: 'partij',
+      ladderId: activeLadderId,  // v3.0.0-11.11: zodat filtering per ladder mogelijk is
       datum: new Date().toISOString(),
       timestamp: Date.now(),
       baan: p.baan,

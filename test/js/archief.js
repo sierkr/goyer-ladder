@@ -2,7 +2,7 @@
 //  archief.js
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB, esc, escAttr } from './config.js';
-import { store, state, huidigeBruiker, archiefData, uitdagingenData } from './store.js';
+import { store, state, huidigeBruiker, archiefData, uitdagingenData, alleLadders, activeLadderId } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { renderAdmin, renderProfiel } from './admin.js';
 import { renderLadder } from './ladder.js';
@@ -12,9 +12,34 @@ import { closeModal } from './admin.js';
 
 //  SEIZOENEN & ARCHIEF
 // ============================================================
+// ============================================================
+//  SEIZOENEN & ARCHIEF — v3.0.0-11.11
+//  Archiveert en reset per ladder (meerdere tegelijk mogelijk).
+//  Verwijdert uitslagen/ en snapshots/ die bij de ladder horen.
+//  Docs zonder ladderId (legacy) worden meegenomen als je alle ladders selecteert.
+// ============================================================
 function openNieuwSeizoenModal() {
   const jaar = new Date().getFullYear();
   document.getElementById('seizoen-naam').value = `Seizoen ${jaar}`;
+
+  // Vul dynamisch de ladder-checkbox-lijst
+  const listEl = document.getElementById('nieuw-seizoen-ladders');
+  if (listEl) {
+    const laddersMetSpelers = alleLadders.filter(l => (l.spelerIds || []).length > 0);
+    if (laddersMetSpelers.length === 0) {
+      listEl.innerHTML = '<p style="font-size:13px;color:var(--light)">Geen ladders met spelers gevonden.</p>';
+    } else {
+      listEl.innerHTML = laddersMetSpelers.map(l => {
+        const aantal = (l.spelerIds || []).length;
+        const id = escAttr(l.id);
+        return `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px 10px;background:#f9f7f2;border-radius:8px;margin-bottom:6px">
+          <input type="checkbox" class="seizoen-ladder-check" data-ladder-id="${id}" checked style="accent-color:var(--green);width:18px;height:18px">
+          <span style="flex:1"><strong>${esc(l.naam)}</strong> <span style="font-size:12px;color:var(--light)">(${aantal} spelers)</span></span>
+        </label>`;
+      }).join('');
+    }
+  }
+
   document.getElementById('modal-nieuw-seizoen').classList.add('open');
 }
 
@@ -22,51 +47,168 @@ async function bevestigNieuwSeizoen() {
   const naam = document.getElementById('seizoen-naam').value.trim();
   if (!naam) { toast('Geef het seizoen een naam'); return; }
 
-  // Archiveer huidig seizoen — inclusief spelers met 0 partijen
-  const alleSpelersInLadder = [...state.spelers].sort((a,b) => a.rank - b.rank);
-  const seizoen = {
-    naam,
-    datum: new Date().toLocaleDateString('nl-NL'),
-    timestamp: Date.now(),
-    eindstand: alleSpelersInLadder.map(s => ({
-      rank: s.rank,
-      naam: s.naam,
-      partijen: s.partijen || 0,
-      gewonnen: s.gewonnen || 0,
-      hcp: Math.round(s.hcp)
-    })),
-    uitslagen: [...state.uitslagen].map(u => ({
-      baan: u.baan || '',
-      datum: u.datum || '',
-      spelers: u.spelers || []
-    }))
-  };
+  // Lees geselecteerde ladders uit checkbox-lijst
+  const checks = document.querySelectorAll('.seizoen-ladder-check:checked');
+  const geselecteerdeIds = Array.from(checks).map(c => c.dataset.ladderId);
+  if (geselecteerdeIds.length === 0) { toast('Selecteer minstens één ladder'); return; }
 
-  
+  if (!confirm(
+    `Seizoen "${naam}" archiveren en resetten voor ${geselecteerdeIds.length} ladder(s)?\n\n` +
+    `- Eindstand wordt gearchiveerd\n` +
+    `- Alle partijen/gewonnen-tellers → 0\n` +
+    `- Alle scorekaarten en snapshots worden verwijderd\n` +
+    `- Ranks worden hernummerd (1..N)\n\n` +
+    `Dit is onomkeerbaar.`
+  )) return;
 
-  archiefData.unshift(seizoen);
+  let fouten = 0;
 
   try {
-    await setDoc(ARCHIEF_DOC, { seizoenen: archiefData });
+    const alleIdsArchiefOK = [];
 
-    // Reset de state — rankings opnieuw op volgorde, statistieken nul
-    const gesorteerd = [...state.spelers].sort((a,b) => a.rank - b.rank);
-    gesorteerd.forEach((s, i) => {
-      s.rank = i + 1;
-      s.partijen = 0;
-      s.gewonnen = 0;
-      s.prevRank = null;
-    });
-    state.uitslagen = [];
-    state.actievePartijen = [];
+    for (const ladderId of geselecteerdeIds) {
+      try {
+        // 1) Lees actuele ladder-data
+        const ladderSnap = await getDoc(doc(db, 'ladders', ladderId));
+        if (!ladderSnap.exists()) { console.warn('ladder niet gevonden:', ladderId); continue; }
+        const data = ladderSnap.data();
+        const ladderNaam = data.naam || ladderId;
 
-    await slaState();
+        // 2) Archiveer eindstand
+        const spelersSorteerd = [...(data.spelers || [])].sort((a, b) => (a.rank || 999) - (b.rank || 999));
+        const seizoen = {
+          naam,
+          ladderId,
+          ladderNaam,
+          datum: new Date().toLocaleDateString('nl-NL'),
+          timestamp: Date.now(),
+          eindstand: spelersSorteerd.map(s => ({
+            rank: s.rank,
+            naam: s.naam,
+            partijen: s.partijen || 0,
+            gewonnen: s.gewonnen || 0,
+            hcp: Math.round(s.hcp || 0)
+          }))
+        };
+        archiefData.unshift(seizoen);
+        await setDoc(ARCHIEF_DOC, { seizoenen: archiefData });
+        alleIdsArchiefOK.push(ladderId);
+
+        // 3) Reset spelers[]: ranks hernummeren naar 1..N, tellers op 0
+        const gereset = spelersSorteerd.map((s, i) => ({
+          ...s,
+          rank: i + 1,
+          partijen: 0,
+          gewonnen: 0,
+        }));
+        // prevRank expliciet verwijderen
+        gereset.forEach(s => { delete s.prevRank; });
+
+        // 4) Update ladder-doc: nieuwe spelers[], wis uitslagen[] + actievePartijen[]
+        await setDoc(doc(db, 'ladders', ladderId), {
+          ...data,
+          spelers: gereset,
+          uitslagen: [],
+          actievePartijen: [],
+        });
+
+        // 5) Reset standen/{uid} subcollection
+        const standenSnap = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
+        const nieuweStandenPromises = [];
+        for (const sDoc of standenSnap.docs) {
+          const uid = sDoc.id;
+          // Vind nieuwe rank via spelerIds[] order of gereset[] naam-match
+          const spelerInLadder = gereset.find((sp, i) => {
+            // Probeer match via spelerIds index (als er een uid-veld in spelers[] zou zitten)
+            return false; // val door naar naam-match hieronder
+          });
+          // Fallback: via speler-doc naam ophalen
+          const spelersDocSnap = await getDoc(doc(db, 'spelers', uid)).catch(() => null);
+          const spelerNaam = spelersDocSnap?.exists() ? spelersDocSnap.data().naam : null;
+          const matchIndex = spelerNaam
+            ? gereset.findIndex(sp => (sp.naam || '').toLowerCase() === spelerNaam.toLowerCase())
+            : -1;
+          const nieuweRank = matchIndex >= 0 ? matchIndex + 1 : 0;
+          nieuweStandenPromises.push(
+            setDoc(doc(db, 'ladders', ladderId, 'standen', uid), {
+              rank: nieuweRank,
+              partijen: 0,
+              gewonnen: 0,
+            })
+          );
+        }
+        await Promise.all(nieuweStandenPromises);
+
+        // 6) Delete uitslagen/ docs voor deze ladder
+        // Filter op ladderId veld (nieuwe docs) — legacy docs zonder ladderId worden later opgeruimd
+        try {
+          const uSnap = await getDocs(query(UITSLAGEN_COL, where('ladderId', '==', ladderId)));
+          await Promise.all(uSnap.docs.map(d => deleteDoc(d.ref)));
+        } catch(e) { console.warn('uitslagen ladderId-filter mislukt:', e.message); }
+
+        // 7) Delete snapshots/ docs voor deze ladder
+        try {
+          const snSnap = await getDocs(query(SNAPSHOTS_COL, where('ladderId', '==', ladderId)));
+          await Promise.all(snSnap.docs.map(d => deleteDoc(d.ref)));
+        } catch(e) { console.warn('snapshots ladderId-filter mislukt:', e.message); }
+
+        // 8) Update lokale alleLadders cache
+        const idx = alleLadders.findIndex(l => l.id === ladderId);
+        if (idx >= 0) {
+          alleLadders[idx].spelers = gereset;
+          alleLadders[idx].actievePartijen = [];
+          if (alleLadders[idx].data) {
+            alleLadders[idx].data.spelers = gereset;
+            alleLadders[idx].data.uitslagen = [];
+            alleLadders[idx].data.actievePartijen = [];
+          }
+        }
+
+        // 9) Als dit de actieve ladder is: reset ook state-variabele
+        if (ladderId === activeLadderId) {
+          state.spelers = gereset;
+          state.uitslagen = [];
+          state.actievePartijen = [];
+        }
+      } catch(e) {
+        console.error('Seizoen reset mislukt voor ladder', ladderId, e);
+        fouten++;
+      }
+    }
+
+    // 10) Eenmalige legacy cleanup: docs zonder ladderId
+    // (bestaande uitslagen van vóór v11.11 — testdata die bij geen specifieke ladder hoort)
+    if (alleIdsArchiefOK.length > 0) {
+      try {
+        const alleUitslagenSnap = await getDocs(UITSLAGEN_COL);
+        const legacyDocs = alleUitslagenSnap.docs.filter(d => !d.data().ladderId);
+        if (legacyDocs.length > 0) {
+          await Promise.all(legacyDocs.map(d => deleteDoc(d.ref)));
+          console.log(`Legacy cleanup: ${legacyDocs.length} uitslagen/ docs zonder ladderId verwijderd`);
+        }
+      } catch(e) { console.warn('Legacy uitslagen cleanup mislukt:', e.message); }
+      try {
+        const alleSnapshotsSnap = await getDocs(SNAPSHOTS_COL);
+        const legacyDocs = alleSnapshotsSnap.docs.filter(d => !d.data().ladderId);
+        if (legacyDocs.length > 0) {
+          await Promise.all(legacyDocs.map(d => deleteDoc(d.ref)));
+          console.log(`Legacy cleanup: ${legacyDocs.length} snapshots/ docs zonder ladderId verwijderd`);
+        }
+      } catch(e) { console.warn('Legacy snapshots cleanup mislukt:', e.message); }
+    }
+
     closeModal('modal-nieuw-seizoen');
     renderAdmin();
-    toast(`${naam} gearchiveerd ✓`);
+    if (typeof renderLadder === 'function') renderLadder();
+    const okCount = alleIdsArchiefOK.length;
+    if (fouten === 0) {
+      toast(`${naam} gearchiveerd voor ${okCount} ladder(s) ✓`);
+    } else {
+      toast(`Klaar met ${fouten} fout(en) — zie console`);
+    }
   } catch(e) {
-    archiefData.shift();
-    toast('Fout bij archiveren');
+    console.error('bevestigNieuwSeizoen mislukt:', e);
+    toast('Fout bij archiveren — zie console');
   }
 }
 

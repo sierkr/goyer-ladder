@@ -868,13 +868,20 @@
 </div>
 
 <!-- Nieuw seizoen modal -->
-<div class="modal-overlay" id="modal-nieuw-seizoen">
-  <div class="modal">
+<div class="modal-overlay" id="modal-nieuw-seizoen" style="align-items:center">
+  <div class="modal" style="border-radius:16px;max-height:90vh">
     <h3>Nieuw seizoen starten</h3>
-    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">De huidige ladder en uitslagen worden opgeslagen in het archief. Rankings en statistieken worden gereset.</p>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">
+      Per ladder: eindstand wordt gearchiveerd, scorekaarten en snapshots worden verwijderd,
+      ranks hernummerd (1..N), tellers partijen/gewonnen op 0.
+    </p>
     <div class="form-group">
-      <label>Naam huidig seizoen</label>
-      <input type="text" id="seizoen-naam" placeholder="bijv. Seizoen 2024">
+      <label>Naam seizoen</label>
+      <input type="text" id="seizoen-naam" placeholder="bijv. Seizoen 2026">
+    </div>
+    <div class="form-group">
+      <label>Welke ladders?</label>
+      <div id="nieuw-seizoen-ladders" style="margin-top:6px"></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-nieuw-seizoen')">Annuleren</button>
