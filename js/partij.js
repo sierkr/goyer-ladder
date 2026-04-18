@@ -69,9 +69,16 @@ function initPartijForm() {
   // Auto-selecteer ingelogde speler in slot 1
   if (huidigeBruiker) {
     const uid           = huidigeBruiker.uid;
+    const naam          = huidigeBruiker.gebruikersnaam;
     const ladderSpelers = getPartijLadderSpelers();
-    // v3.0.0-9c: alleen uid-match, geen naam-fallback
-    const gekoppeld = uid ? ladderSpelers.find(s => s.uid === uid) : null;
+    // v3.0.0-11.5: primair uid-match, fallback naar naam (backward compat met legacy ladders
+    // waar spelerIds[] nog leeg is of entries zonder uid)
+    let gekoppeld = uid ? ladderSpelers.find(s => s.uid === uid) : null;
+    if (!gekoppeld && naam) {
+      gekoppeld = ladderSpelers.find(s => s.naam?.toLowerCase() === naam.toLowerCase());
+    }
+    console.log('[partij] auto-select slot 1:', gekoppeld ? `${gekoppeld.naam} (${gekoppeld.id})` : 'NIET GEVONDEN',
+      '— ingelogd:', naam, uid, '— ladder heeft', ladderSpelers.length, 'spelers');
     if (gekoppeld) {
       selecteerPartijSpeler(1, gekoppeld.id, gekoppeld.naam, gekoppeld.hcp);
       vulKnockoutTegenstander(gekoppeld.naam);
