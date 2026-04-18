@@ -859,6 +859,7 @@ function spelersDocNaarUserFormaat(data) {
     naam:           data.naam           || '',
     rol:            data.rol            || 'speler',
     hcp:            data.hcp            ?? null,
+    eersteLogin:    data.eersteLogin,   // v3.0.0-11.11: nodig voor admin-weergave
     spelerId:       null,   // verdwijnt in fase 3
   };
 }
