@@ -796,4 +796,4 @@ async function syncStandenNaBevestigUitslag(ladderId) {
   } catch(e) { console.warn('syncStandenNaBevestigUitslag:', e); }
 }
 
-export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij };
+export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij, syncStandenNaBevestigUitslag };
