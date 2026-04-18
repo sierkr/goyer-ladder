@@ -361,32 +361,33 @@ function toonCredentialsModal(naam, loginTxt, pass) {
   const bestaand = document.getElementById('modal-credentials');
   if (bestaand) bestaand.remove();
 
-  const modal = document.createElement('div');
-  modal.id = 'modal-credentials';
-  modal.className = 'modal open';
-  modal.innerHTML = `
-    <div class="modal-content" style="max-width:340px">
-      <div class="modal-header">
-        <h3>✓ ${esc(naam)} toegevoegd</h3>
-        <button class="modal-close" onclick="document.getElementById('modal-credentials').remove()">×</button>
+  const overlay = document.createElement('div');
+  overlay.id = 'modal-credentials';
+  overlay.className = 'modal-overlay open';
+  // Deze modal moet centraal staan, niet als bottom-sheet
+  overlay.style.alignItems = 'center';
+  overlay.style.zIndex = '400';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:380px;border-radius:16px;max-height:90vh">
+      <h3>✓ ${esc(naam)}</h3>
+      <p style="font-size:13px;color:var(--mid);margin-bottom:12px">
+        Geef deze gegevens door aan de speler (bv. via WhatsApp):
+      </p>
+      <div style="background:#f9f7f2;border:1.5px solid var(--border);border-radius:8px;padding:12px;font-family:'DM Mono',monospace;font-size:13px;margin-bottom:12px">
+        <div><strong>login:</strong> ${esc(loginTxt)}</div>
+        <div><strong>wachtwoord:</strong> ${esc(pass)}</div>
       </div>
-      <div class="modal-body" style="padding:16px">
-        <p style="font-size:13px;color:var(--mid);margin-bottom:12px">
-          Geef deze gegevens door aan de speler (bv. via WhatsApp):
-        </p>
-        <div style="background:#f9f7f2;border:1.5px solid var(--border);border-radius:8px;padding:12px;font-family:'DM Mono',monospace;font-size:13px;margin-bottom:12px">
-          <div><strong>login:</strong> ${esc(loginTxt)}</div>
-          <div><strong>wachtwoord:</strong> ${esc(pass)}</div>
-        </div>
-        <button class="btn btn-primary" onclick="kopieerCredentials('${escAttr(loginTxt)}','${escAttr(pass)}')" style="width:100%">
-          📋 Kopieer naar klembord
-        </button>
-        <p style="font-size:11px;color:var(--light);margin-top:10px;text-align:center">
-          Bij eerste login moet de speler een eigen wachtwoord kiezen en zijn handicap instellen.
-        </p>
-      </div>
+      <button class="btn btn-primary btn-block" onclick="kopieerCredentials('${escAttr(loginTxt)}','${escAttr(pass)}')">
+        📋 Kopieer naar klembord
+      </button>
+      <p style="font-size:11px;color:var(--light);margin-top:10px;text-align:center">
+        Bij eerste login kiest de speler een eigen wachtwoord en stelt zijn handicap in.
+      </p>
+      <button class="btn btn-ghost btn-block" onclick="document.getElementById('modal-credentials').remove()" style="margin-top:10px">
+        Sluiten
+      </button>
     </div>`;
-  document.body.appendChild(modal);
+  document.body.appendChild(overlay);
 }
 
 function kopieerCredentials(loginTxt, pass) {

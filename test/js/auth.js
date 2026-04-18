@@ -111,39 +111,36 @@ function toonEersteLoginScherm() {
   const bestaand = document.getElementById('modal-eerste-login');
   if (bestaand) bestaand.remove();
 
-  const modal = document.createElement('div');
-  modal.id = 'modal-eerste-login';
-  modal.className = 'modal open';
-  modal.style.zIndex = '9999';
+  const overlay = document.createElement('div');
+  overlay.id = 'modal-eerste-login';
+  overlay.className = 'modal-overlay open';
+  overlay.style.alignItems = 'center';
+  overlay.style.zIndex = '9999';
   // Niet-dismissible: geen close-button, klik buiten werkt niet
-  modal.innerHTML = `
-    <div class="modal-content" style="max-width:360px">
-      <div class="modal-header">
-        <h3>Welkom ${esc(huidigeBruiker.gebruikersnaam.split(' ')[0])}! 👋</h3>
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:380px;border-radius:16px;max-height:90vh">
+      <h3>Welkom ${esc(huidigeBruiker.gebruikersnaam.split(' ')[0])}! 👋</h3>
+      <p style="font-size:13px;color:var(--mid);margin-bottom:16px">
+        Stel je handicap in en kies een eigen wachtwoord om door te gaan.
+      </p>
+      <div class="form-group">
+        <label>Playing handicap (18 holes)</label>
+        <input type="number" id="el-hcp" step="1" min="-10" max="54" value="10" inputmode="numeric" style="width:100%">
       </div>
-      <div class="modal-body" style="padding:16px">
-        <p style="font-size:13px;color:var(--mid);margin-bottom:16px">
-          Stel je handicap in en kies een eigen wachtwoord om door te gaan.
-        </p>
-        <div class="form-group">
-          <label>Playing handicap (18 holes)</label>
-          <input type="number" id="el-hcp" step="1" min="-10" max="54" value="10" inputmode="numeric" style="width:100%">
-        </div>
-        <div class="form-group">
-          <label>Nieuw wachtwoord (minimaal 6 tekens)</label>
-          <input type="password" id="el-pass-1" autocomplete="new-password" style="width:100%" placeholder="Kies een wachtwoord">
-        </div>
-        <div class="form-group">
-          <label>Wachtwoord nogmaals</label>
-          <input type="password" id="el-pass-2" autocomplete="new-password" style="width:100%" placeholder="Herhaal wachtwoord">
-        </div>
-        <div id="el-fout" style="display:none;color:var(--red);font-size:13px;margin-bottom:10px"></div>
-        <button class="btn btn-primary" onclick="slaEersteLoginOp()" style="width:100%;margin-top:8px">
-          Opslaan en verder
-        </button>
+      <div class="form-group">
+        <label>Nieuw wachtwoord (minimaal 6 tekens)</label>
+        <input type="password" id="el-pass-1" autocomplete="new-password" style="width:100%" placeholder="Kies een wachtwoord">
       </div>
+      <div class="form-group">
+        <label>Wachtwoord nogmaals</label>
+        <input type="password" id="el-pass-2" autocomplete="new-password" style="width:100%" placeholder="Herhaal wachtwoord">
+      </div>
+      <div id="el-fout" style="display:none;color:var(--red);font-size:13px;margin-bottom:10px"></div>
+      <button class="btn btn-primary btn-block" onclick="slaEersteLoginOp()" style="margin-top:8px">
+        Opslaan en verder
+      </button>
     </div>`;
-  document.body.appendChild(modal);
+  document.body.appendChild(overlay);
   setTimeout(() => document.getElementById('el-hcp')?.focus(), 100);
 }
 
