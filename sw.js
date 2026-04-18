@@ -1,5 +1,5 @@
 // Goyer Golf MP Ladder — Service Worker
-const CACHE_VERSION = 'v73';
+const CACHE_VERSION = 'v83';
 const CACHE_NAME = 'goyer-mp-' + CACHE_VERSION;
 
 const STATIC_ASSETS = [
@@ -9,6 +9,7 @@ const STATIC_ASSETS = [
   './js/config.js',
   './js/store.js',
   './js/auth.js',
+  './js/ladder-view.js',
   './js/nav.js',
   './js/ladder.js',
   './js/partij.js',

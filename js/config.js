@@ -10,6 +10,7 @@ import {
   sendPasswordResetEmail, updatePassword, EmailAuthProvider,
   reauthenticateWithCredential, createUserWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
@@ -24,6 +25,10 @@ export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+
+// v3.0.0-11.2: Cloud Functions in europe-west1 voor reset-wachtwoord
+export const functions = getFunctions(app, 'europe-west1');
+export { httpsCallable };
 // Firestore refs
 export const STATE_DOC = doc(db, 'ladder', 'state'); // legacy — voor migratie
 export const USERS_DOC = doc(db, 'ladder', 'users');
@@ -42,7 +47,7 @@ async function saveUsers(lijst) {
   try { await setDoc(USERS_DOC, { lijst }); }
   catch(e) { console.error('saveUsers mislukt:', e); }
 }
-export const SPELERS_DOC = doc(db, 'ladder', 'spelers'); // master spelerslijst
+export const SPELERS_DOC = null; // v3.0.0-9c: legacy ladder/spelers is verwijderd, export behouden als null voor compat
 export const BANEN_DOC = doc(db, 'ladder', 'banen');
 export const ARCHIEF_DOC = doc(db, 'ladder', 'archief');
 export const UITDAGINGEN_DOC = doc(db, 'ladder', 'uitdagingen');
@@ -112,3 +117,63 @@ export const DEFAULT_STATE = {
   actievePartijen: [],
   uitslagen: []
 };
+
+// ============================================================
+//  MP LADDER ACCOUNT CONSTANTS — v3.0.0-11
+// ============================================================
+// Alle nieuwe spelers krijgen auto-gegenereerd email en wachtwoord.
+// Bij eerste login worden ze verplicht om hcp en wachtwoord te kiezen.
+export const EMAIL_SUFFIX      = '@MPladder.stb';
+export const INITIEEL_WACHTWOORD = 'MP2026';
+export const DEFAULT_HCP       = 10;
+
+/**
+ * Genereer emailadres uit voornaam + achternaam.
+ * Spaties weg, lowercase, gescheiden door punt.
+ * "Jan" + "de Vries" → "jan.devries@MPladder.stb"
+ * "Jean-Pierre" + "van der Berg" → "jean-pierre.vanderberg@MPladder.stb"
+ */
+export function genereerEmail(voornaam, achternaam) {
+  const clean = (s) => (s || '').toLowerCase().replace(/\s+/g, '');
+  return `${clean(voornaam)}.${clean(achternaam)}${EMAIL_SUFFIX}`;
+}
+
+/**
+ * Extract het 'login'-deel uit een email (voor @), alleen voor @MPladder.stb emails.
+ * Voor weergave in admin-UI: "jan.devries" i.p.v. volledige email.
+ * Bij externe emails (legacy accounts) returnt hij gewoon het volledige adres.
+ */
+export function loginNaamVan(email) {
+  if (!email) return '';
+  if (email.toLowerCase().endsWith(EMAIL_SUFFIX.toLowerCase())) {
+    return email.slice(0, -EMAIL_SUFFIX.length);
+  }
+  return email;
+}
+
+// ============================================================
+//  SECURITY HELPERS — v3.0.0-10 fase 10
+// ============================================================
+
+/**
+ * Escape HTML special characters voor veilige injectie in innerHTML.
+ * Gebruik rond ELKE user-input (spelersnamen, email, baan-namen, notities).
+ * Voorbeeld: `<div>${esc(s.naam)}</div>`
+ */
+export function esc(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Escape voor gebruik binnen een JS-string-literal in een inline HTML attribute,
+ * bijv. onclick="foo('${escAttr(naam)}')". Dekt zowel HTML- als JS-escapes.
+ */
+export function escAttr(str) {
+  return esc(String(str ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+}

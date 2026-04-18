@@ -1,7 +1,7 @@
 // ============================================================
 //  uitslagen.js
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, SPELERS_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, _beheerPartijId, _beheerWinnaars } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { mijnPartij } from './partij.js';
@@ -44,13 +44,13 @@ function toonScorekaartModal(data) {
   const spelers = data.spelers || [];
   const holes = data.holes || [];
 
-  let html = `<p style="font-size:13px;color:var(--light);margin-bottom:12px">${data.baan} · ${new Date(data.datum).toLocaleDateString('nl-NL')}</p>`;
+  let html = `<p style="font-size:13px;color:var(--light);margin-bottom:12px">${esc(data.baan)} · ${new Date(data.datum).toLocaleDateString('nl-NL')}</p>`;
   html += '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px;width:100%">';
 
   // Header
   html += '<tr><th style="background:var(--green);color:white;padding:6px;text-align:left">Hole</th>';
   spelers.forEach(s => {
-    html += `<th style="background:var(--green);color:white;padding:6px;text-align:center">${s.naam}<br><span style="font-size:10px;font-weight:400">hcp ${Math.round(s.hcp)}</span></th>`;
+    html += `<th style="background:var(--green);color:white;padding:6px;text-align:center">${esc(s.naam)}<br><span style="font-size:10px;font-weight:400">hcp ${Math.round(s.hcp)}</span></th>`;
   });
   html += '</tr>';
 
@@ -80,8 +80,8 @@ function toonScorekaartModal(data) {
     html += `<div style="margin-top:16px"><p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:8px">Matchplay uitslag</p>`;
     data.matchups.forEach(m => {
       html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
-        <span>${m.a} vs ${m.b}</span>
-        <span class="badge badge-green">⛳ ${m.winnaar}</span>
+        <span>${esc(m.a)} vs ${esc(m.b)}</span>
+        <span class="badge badge-green">⛳ ${esc(m.winnaar)}</span>
       </div>`;
     });
     html += '</div>';
@@ -105,7 +105,7 @@ function renderUitslagen() {
   } else {
     actiefList.innerHTML = actief.map(p => {
       const aangemaakt = new Date(p.timestamp).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
-      const namen = p.spelers.map(s => s.naam).join(', ');
+      const namen = p.spelers.map(s => esc(s.naam)).join(', ');
       // Hoeveel holes ingevuld?
       const ingevuld = p.spelers.length > 0
         ? p.scores[p.spelers[0].id]?.filter(v => v !== null).length || 0
@@ -113,15 +113,15 @@ function renderUitslagen() {
       return `
         <div style="padding:14px 16px;border-bottom:1px solid #f0ede4">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-            <span style="font-weight:600">${p.baan}</span>
+            <span style="font-weight:600">${esc(p.baan)}</span>
             <span style="font-size:11px;color:var(--light)">gestart ${aangemaakt}</span>
           </div>
           <div style="font-size:13px;color:var(--mid);margin-bottom:8px">${namen}</div>
           <div style="display:flex;align-items:center;justify-content:space-between">
             <span class="badge badge-gold">hole ${ingevuld}/${p.holes.length}</span>
             <div style="display:flex;gap:8px">
-              <button class="btn btn-sm btn-ghost" onclick="openLiveScoreBord('${p.partijId}')">📊 Live</button>
-              ${isBeheerder ? `<button class="btn btn-sm btn-ghost" onclick="openBeheerPartij('${p.partijId}')">⚙️ Beheren</button>` : ''}
+              <button class="btn btn-sm btn-ghost" onclick="openLiveScoreBord('${escAttr(p.partijId)}')">📊 Live</button>
+              ${isBeheerder ? `<button class="btn btn-sm btn-ghost" onclick="openBeheerPartij('${escAttr(p.partijId)}')">⚙️ Beheren</button>` : ''}
             </div>
           </div>
         </div>`;
@@ -141,14 +141,14 @@ function renderUitslagen() {
     return `
     <div style="padding:14px 16px;border-bottom:1px solid #f0ede4">
       <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-        <span style="font-weight:600">${u.baan}</span>
-        <span style="font-size:12px;color:var(--light)">${u.datum}</span>
+        <span style="font-weight:600">${esc(u.baan)}</span>
+        <span style="font-size:12px;color:var(--light)">${esc(u.datum)}</span>
       </div>
-      <div style="font-size:12px;color:var(--mid);margin-bottom:8px">${u.spelers.join(' · ')}</div>
+      <div style="font-size:12px;color:var(--mid);margin-bottom:8px">${u.spelers.map(n => esc(n)).join(' · ')}</div>
       ${u.matchups.map(m => `
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:4px">
-          <span>${m.a} vs ${m.b}</span>
-          <span class="badge badge-green">⛳ ${m.winnaar}</span>
+          <span>${esc(m.a)} vs ${esc(m.b)}</span>
+          <span class="badge badge-green">⛳ ${esc(m.winnaar)}</span>
         </div>`).join('')}
       ${heeftScorekaart && !ouderDan30Dagen ? `<button class="btn btn-sm btn-ghost" onclick="openScorekaartDetail(${JSON.stringify(u).replace(/"/g,'&quot;')})" style="margin-top:8px">📋 Scorekaart</button>` : ''}
     </div>`;
@@ -181,11 +181,11 @@ function openBeheerPartij(partijId) {
     const voorlopig = standA > 0 ? `${nA} leidt (${standA} UP)` : standA < 0 ? `${nB} leidt (${Math.abs(standA)} UP)` : 'Gelijk';
 
     html += `<div style="padding:12px 0;border-bottom:1px solid #f0ede4">
-      <div style="font-weight:600;margin-bottom:4px">${m.spelerA.naam} vs ${m.spelerB.naam}</div>
-      <div style="font-size:11px;color:var(--light);margin-bottom:8px">${voorlopig}</div>
+      <div style="font-weight:600;margin-bottom:4px">${esc(m.spelerA.naam)} vs ${esc(m.spelerB.naam)}</div>
+      <div style="font-size:11px;color:var(--light);margin-bottom:8px">${esc(voorlopig)}</div>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-sm btn-ghost" id="bwin-${idx}-A" onclick="setBeheerWinnaar(${idx},'A')">${nA} wint</button>
-        <button class="btn btn-sm btn-ghost" id="bwin-${idx}-B" onclick="setBeheerWinnaar(${idx},'B')">${nB} wint</button>
+        <button class="btn btn-sm btn-ghost" id="bwin-${idx}-A" onclick="setBeheerWinnaar(${idx},'A')">${esc(nA)} wint</button>
+        <button class="btn btn-sm btn-ghost" id="bwin-${idx}-B" onclick="setBeheerWinnaar(${idx},'B')">${esc(nB)} wint</button>
         <button class="btn btn-sm btn-ghost" id="bwin-${idx}-N" onclick="setBeheerWinnaar(${idx},null)" style="color:var(--light)">Geen</button>
       </div>
     </div>`;
@@ -413,16 +413,20 @@ function renderLiveScoreBord() {
       scoreText = standA > 0 ? `${nA} ${standA} UP` : `${nB} ${Math.abs(standA)} UP`;
       kleur = 'var(--green)';
     }
+    const scoreTextEsc = gespeeld === 0 ? esc(scoreText)
+                        : standA === 0 ? esc(scoreText)
+                        : beslist ? `${esc(standA > 0 ? nA : nB)} wint ${Math.abs(standA)}&${resterend}`
+                        : (standA > 0 ? `${esc(nA)} ${standA} UP` : `${esc(nB)} ${Math.abs(standA)} UP`);
     const hcpTekst = m.hcpSlagen > 0
-      ? `<span style="font-size:11px;color:var(--light)">${m.hcpOntvanger === m.spelerA.id ? nA : nB} +${m.hcpSlagen}</span>`
+      ? `<span style="font-size:11px;color:var(--light)">${esc(m.hcpOntvanger === m.spelerA.id ? nA : nB)} +${m.hcpSlagen}</span>`
       : '';
     matchHtml += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
       <div>
-        <span style="font-weight:600;font-size:14px">${nA} vs ${nB}</span><br>
+        <span style="font-weight:600;font-size:14px">${esc(nA)} vs ${esc(nB)}</span><br>
         ${hcpTekst}
       </div>
       <div style="text-align:right">
-        <span style="font-weight:700;color:${kleur};font-size:13px">${scoreText}</span><br>
+        <span style="font-weight:700;color:${kleur};font-size:13px">${scoreTextEsc}</span><br>
         <span style="font-size:11px;color:var(--light)">${gespeeld}/${p.holes.length} holes</span>
       </div>
     </div>`;
@@ -435,7 +439,7 @@ function renderLiveScoreBord() {
   let tabelHtml = '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px;width:100%">';
   tabelHtml += '<tr><th style="background:var(--green);color:white;padding:6px 8px;text-align:left">Hole</th>';
   p.spelers.forEach(s => {
-    tabelHtml += `<th style="background:var(--green);color:white;padding:6px 8px;text-align:center">${naamMap[s.id]}</th>`;
+    tabelHtml += `<th style="background:var(--green);color:white;padding:6px 8px;text-align:center">${esc(naamMap[s.id])}</th>`;
   });
   tabelHtml += '</tr>';
   p.holes.forEach((h, i) => {

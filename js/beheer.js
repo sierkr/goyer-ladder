@@ -1,8 +1,8 @@
 // ============================================================
 //  beheer.js
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, SPELERS_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
-import { store, state, alleLadders, activeLadderId, alleSpelersData, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG } from './store.js';
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB, esc, escAttr } from './config.js';
+import { store, state, alleLadders, activeLadderId, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { laadInviteStatus } from './auth.js';
 import { renderLadder } from './ladder.js';
@@ -34,7 +34,7 @@ function renderStandAanpassenLijst() {
   lijst.innerHTML = _standAanpassenSpelers.map((s, idx) => `
     <div class="admin-row" style="padding:8px 0">
       <span style="font-family:'Bebas Neue';font-size:20px;color:var(--light);min-width:28px">${idx + 1}</span>
-      <span style="flex:1;font-weight:500">${s.naam}</span>
+      <span style="flex:1;font-weight:500">${esc(s.naam)}</span>
       <span style="font-size:12px;color:var(--light);margin-right:8px">hcp ${Math.round(s.hcp)}</span>
       <div style="display:flex;flex-direction:column;gap:2px">
         <button onclick="verschuifStand(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}
@@ -206,9 +206,8 @@ async function openLadderSpelersModal(ladderId) {
     ]);
     const ladderDataVers = ladderResult.data || {};
 
-    // Huidige leden — check op uid (primary) EN numeric id (fallback)
-    const huidigeUids    = new Set(ladderDataVers.spelerIds?.filter(id => typeof id === 'string' && id.length > 10) || []);
-    const huidigeNumIds  = new Set((ladderDataVers.spelers || []).map(s => Number(s.id)));
+    // Huidige leden — primary check op uid
+    const huidigeUids = new Set(ladderDataVers.spelerIds?.filter(id => typeof id === 'string' && id.length > 10) || []);
 
     // Toon alle bekende spelers — uit spelers/ collectie (uid-based)
     const gesorteerd = [...users].sort((a, b) =>
@@ -222,11 +221,11 @@ async function openLadderSpelersModal(ladderId) {
             (u.naam && (ladderDataVers.spelers || []).some(s => s.naam?.toLowerCase() === u.naam.toLowerCase()));
           const hcp = u.hcp != null ? u.hcp : '—';
           return `<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer">
-            <input type="checkbox" value="${u.uid}" ${inLadder ? 'checked' : ''}
-              data-naam="${(u.naam || '').replace(/"/g, '&quot;')}"
-              data-hcp="${u.hcp ?? 0}"
+            <input type="checkbox" value="${escAttr(u.uid)}" ${inLadder ? 'checked' : ''}
+              data-naam="${esc(u.naam || '')}"
+              data-hcp="${escAttr(u.hcp ?? 0)}"
               style="width:18px;height:18px;accent-color:var(--green);cursor:pointer">
-            <span style="flex:1">${u.naam || u.email}</span>
+            <span style="flex:1">${esc(u.naam || u.email)}</span>
             <span style="font-size:12px;color:var(--light)">hcp ${hcp}</span>
           </label>`;
         }).join('');
@@ -265,9 +264,9 @@ async function slaLadderSpelersOp() {
       if (bestaand) {
         nieuweSpelers.push({ ...bestaand });
       } else {
-        // Zoek numeric id in alleSpelersData voor backward compat
-        const masterSpeler = alleSpelersData.find(s => s.naam?.toLowerCase() === naam.toLowerCase());
-        const numericId = masterSpeler?.id || getNextId() + nieuweSpelers.length;
+        // v3.0.0-9c: alleen nog getNextId(), geen alleSpelersData-lookup.
+        // Numeric ids verdwijnen in een volgende fase.
+        const numericId = getNextId() + nieuweSpelers.length;
         nieuweSpelers.push({
           id: numericId, naam, hcp,
           rank: nieuweSpelers.length + 1, partijen: 0, gewonnen: 0
@@ -329,14 +328,14 @@ async function renderAdminLadders() {
           style="background:${idx===alleLadders.length-1?'#f0ede4':'#fde8e8'};border:none;border-radius:4px;width:22px;height:22px;cursor:${idx===alleLadders.length-1?'default':'pointer'};font-size:11px;color:${idx===alleLadders.length-1?'var(--light)':'var(--red)'}">↓</button>
       </div>` : ''}
       <div style="flex:1">
-        <div style="font-weight:600">${l.naam}</div>
+        <div style="font-weight:600">${esc(l.naam)}</div>
         <div style="font-size:11px;color:var(--light)">${(l.spelers||[]).length} spelers${(l.data?.type || l.type) === 'knockout' ? ' · knock-out' : ''}</div>
       </div>
-      <button class="btn btn-sm btn-ghost" onclick="openLadderSpelersModal('${l.id}')">👥 Spelers</button>
-      <button class="btn btn-sm btn-ghost" onclick="openStandAanpassen('${l.id}')">↕ Stand</button>
+      <button class="btn btn-sm btn-ghost" onclick="openLadderSpelersModal('${escAttr(l.id)}')">👥 Spelers</button>
+      <button class="btn btn-sm btn-ghost" onclick="openStandAanpassen('${escAttr(l.id)}')">↕ Stand</button>
       ${isBeheerder ? `
-        <button class="btn btn-sm btn-ghost" onclick="openLadderInstellingen('${l.id}')">⚙️</button>
-        ${l.id !== 'mp' ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="verwijderLadder('${l.id}')">✕</button>` : '<div style="width:38px"></div>'}
+        <button class="btn btn-sm btn-ghost" onclick="openLadderInstellingen('${escAttr(l.id)}')">⚙️</button>
+        ${l.id !== 'mp' ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="verwijderLadder('${escAttr(l.id)}')">✕</button>` : '<div style="width:38px"></div>'}
       ` : ''}
     </div>
   `).join('');
@@ -384,10 +383,10 @@ async function laadSnapshots() {
       const data = d.data();
       return `<div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);gap:10px">
         <div style="flex:1">
-          <div style="font-weight:500;font-size:13px">${data.label}</div>
-          <div style="font-size:11px;color:var(--light)">${data.datum}${data.ladderNaam ? ' · ' + data.ladderNaam : ''}</div>
+          <div style="font-weight:500;font-size:13px">${esc(data.label)}</div>
+          <div style="font-size:11px;color:var(--light)">${esc(data.datum)}${data.ladderNaam ? ' · ' + esc(data.ladderNaam) : ''}</div>
         </div>
-        <button class="btn btn-sm btn-ghost" onclick="herstelSnapshot('${d.id}')">↩ Herstel</button>
+        <button class="btn btn-sm btn-ghost" onclick="herstelSnapshot('${escAttr(d.id)}')">↩ Herstel</button>
       </div>`;
     }).join('');
   } catch(e) {

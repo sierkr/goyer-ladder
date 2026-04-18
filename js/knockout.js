@@ -1,7 +1,7 @@
 // ============================================================
 //  knockout.js
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, SPELERS_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, _koLadderId, _koIndelingVolgorde, _koDragIdx, _koTouchClone, _koTouchStartY } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { initFirestore } from './auth.js';
@@ -54,12 +54,12 @@ function renderKnockoutLadderKaart(l) {
     </div>` : '';
 
   return `<div class="card" style="margin-bottom:16px">
-    <div class="card-header inklapbaar" onclick="toggleLadderKaart(this,'${l.id}')">
-      <h2>${l.naam} <span style="font-size:12px;color:var(--light);font-family:'DM Sans'">knock-out</span></h2>
+    <div class="card-header inklapbaar" onclick="toggleLadderKaart(this,'${escAttr(l.id)}')">
+      <h2>${esc(l.naam)} <span style="font-size:12px;color:var(--light);font-family:'DM Sans'">knock-out</span></h2>
       <span class="badge badge-gold">${badgeTekst}</span>
     </div>
-    <div class="card-collapse" id="ladder-collapse-${l.id}">
-      <div id="ladder-list-${l.id}">${inhoud}</div>
+    <div class="card-collapse" id="ladder-collapse-${escAttr(l.id)}">
+      <div id="ladder-list-${escAttr(l.id)}">${inhoud}</div>
       ${beheerderKnoppen}
     </div>
   </div>`;
@@ -82,7 +82,7 @@ function renderKnockoutBracket(data, ladderId) {
   const finaleRonde = rondes[rondes.length - 1];
   if (finaleRonde?.length === 1 && finaleRonde[0].winnaar && finaleRonde[0].winnaar !== '' && rondes.length === totaalRondes) {
     html += `<div style="text-align:center;padding:16px;background:var(--green-pale);border-radius:10px;margin-bottom:16px">
-      <div style="font-family:'Bebas Neue';font-size:24px;color:var(--gold)">🏆 ${finaleRonde[0].winnaar}</div>
+      <div style="font-family:'Bebas Neue';font-size:24px;color:var(--gold)">🏆 ${esc(finaleRonde[0].winnaar)}</div>
       <div style="font-size:12px;color:var(--mid)">Winnaar knock-out ladder</div>
     </div>`;
   }
@@ -109,19 +109,19 @@ function renderKnockoutBracket(data, ladderId) {
       // Beheerder knoppen om winnaar aan te wijzen
       const beheerderBtns = isBeheerder && !isBye && !winnaar ? `
         <div style="display:flex;flex-direction:column;gap:3px">
-          <button onclick="slaKnockoutWinnaarOp('${ladderId}',${riOrig},${pi},'${partij.a}')" class="btn btn-sm btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--green)">✓ ${nA.split(' ')[0]}</button>
-          <button onclick="slaKnockoutWinnaarOp('${ladderId}',${riOrig},${pi},'${partij.b}')" class="btn btn-sm btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--green)">✓ ${nB.split(' ')[0]}</button>
+          <button onclick="slaKnockoutWinnaarOp('${escAttr(ladderId)}',${riOrig},${pi},'${escAttr(partij.a)}')" class="btn btn-sm btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--green)">✓ ${esc(nA.split(' ')[0])}</button>
+          <button onclick="slaKnockoutWinnaarOp('${escAttr(ladderId)}',${riOrig},${pi},'${escAttr(partij.b)}')" class="btn btn-sm btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--green)">✓ ${esc(nB.split(' ')[0])}</button>
         </div>` :
-        isBeheerder && winnaar && !isBye ? `<button onclick="slaKnockoutWinnaarOp('${ladderId}',${riOrig},${pi},'')" class="btn btn-sm btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--light)">↩</button>` : '';
+        isBeheerder && winnaar && !isBye ? `<button onclick="slaKnockoutWinnaarOp('${escAttr(ladderId)}',${riOrig},${pi},'')" class="btn btn-sm btn-ghost" style="font-size:10px;padding:2px 6px;color:var(--light)">↩</button>` : '';
 
       html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
         <div style="flex:1;font-size:13px">
-          <div style="${stijlA}">${nA}</div>
+          <div style="${stijlA}">${esc(nA)}</div>
           <div style="color:var(--light);font-size:10px;margin:2px 0">vs</div>
-          <div style="${stijlB}">${isBye ? '<em style="color:var(--light)">BYE</em>' : nB}</div>
+          <div style="${stijlB}">${isBye ? '<em style="color:var(--light)">BYE</em>' : esc(nB)}</div>
         </div>
-        ${isBye ? `<span class="badge badge-green" style="font-size:10px">✓ ${winnaar} →</span>` :
-          winnaar ? `<span class="badge badge-green" style="font-size:10px">✓ ${winnaar}${partij.resultaat ? ` (${partij.resultaat})` : ''}</span>` :
+        ${isBye ? `<span class="badge badge-green" style="font-size:10px">✓ ${esc(winnaar)} →</span>` :
+          winnaar ? `<span class="badge badge-green" style="font-size:10px">✓ ${esc(winnaar)}${partij.resultaat ? ` (${esc(partij.resultaat)})` : ''}</span>` :
           `<span style="font-size:11px;color:var(--light)">Nog te spelen</span>`}
         ${beheerderBtns}
       </div>`;

@@ -7,7 +7,29 @@ import { DEFAULT_STATE } from './config.js';
 export let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
 export let alleLadders = [];
 export let activeLadderId = null;
+
+// alleSpelersData is in v3.0.0-9c een AFGELEIDE view van _usersCache.
+// Legacy-code die {id, naam, hcp} verwacht werkt door, maar id = uid (string).
+// Directe writes zijn no-ops — het veld wordt automatisch gesynchroniseerd
+// telkens _usersCache verandert.
 export let alleSpelersData = [];
+
+function _syncAlleSpelersDataFromUsers() {
+  alleSpelersData.length = 0;  // mutate in place zodat import-bindings geldig blijven
+  if (Array.isArray(_usersCache)) {
+    for (const u of _usersCache) {
+      if (!u || !u.uid) continue;
+      alleSpelersData.push({
+        id:    u.uid,           // uid als id (string) — vervangt numeric id
+        uid:   u.uid,
+        naam:  u.naam  || '',
+        hcp:   u.hcp   ?? 0,
+        email: u.email || '',
+        rol:   u.rol   || 'speler',
+      });
+    }
+  }
+}
 
 // ─── Auth ────────────────────────────────────────────────────
 export let huidigeBruiker = null;
@@ -71,11 +93,18 @@ export const store = {
   get alleLadders() { return alleLadders; },
   set activeLadderId(v) { activeLadderId = v; },
   get activeLadderId() { return activeLadderId; },
-  set alleSpelersData(v) { alleSpelersData = v; },
+  set alleSpelersData(v) {
+    // No-op in v3.0.0-9c — alleSpelersData is afgeleid van _usersCache.
+    // Oude code die direct assigned werkt nog, maar de write heeft geen effect.
+    // (Blijft stil om console-spam te vermijden; kan later helemaal weg.)
+  },
   get alleSpelersData() { return alleSpelersData; },
   set huidigeBruiker(v) { huidigeBruiker = v; },
   get huidigeBruiker() { return huidigeBruiker; },
-  set _usersCache(v) { _usersCache = v; },
+  set _usersCache(v) {
+    _usersCache = v;
+    _syncAlleSpelersDataFromUsers();
+  },
   get _usersCache() { return _usersCache; },
   set _bezigMetRegistratie(v) { _bezigMetRegistratie = v; },
   get _bezigMetRegistratie() { return _bezigMetRegistratie; },

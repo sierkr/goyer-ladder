@@ -5,9 +5,11 @@
 //  Backward compat:     getUsers() / saveUsers() / getNextId()
 //                       blijven beschikbaar voor fase 3-5
 // ============================================================
-import { db, auth, googleProvider, STATE_DOC, USERS_DOC, SPELERS_DOC,
+import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
-  INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB } from './config.js';
+  INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB, esc, escAttr,
+  EMAIL_SUFFIX, INITIEEL_WACHTWOORD, DEFAULT_HCP,
+  genereerEmail, loginNaamVan } from './config.js';
 import { store, DEFAULT_LADDER_CONFIG,
   state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker,
   _usersCache, archiefData, uitdagingenData, toernooiData, alleToernooien,
@@ -19,6 +21,7 @@ import { closeModal, renderAdmin, renderProfiel } from './admin.js';
 import { renderRonde } from './ronde.js';
 import { renderToernooi } from './toernooi.js';
 import { renderUitslagen } from './uitslagen.js';
+import { startAlleStandenListeners, stopAlleStandenListeners } from './ladder-view.js';
 
 import * as S from './store.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
@@ -68,18 +71,16 @@ async function setIngelogd(firebaseUser) {
 
 // Zet huidigeBruiker op basis van profiel uit spelers/{uid}
 function setIngelogdVanafProfiel(firebaseUser, profiel) {
-  // spelerId voor backward compat met modules die nog op numeric id werken (fase 3-5)
-  const spelersLijst = alleSpelersData.length > 0 ? alleSpelersData : (state.spelers || []);
-  const gekoppeldeSpeler = spelersLijst.find(s =>
-    s.naam?.toLowerCase() === profiel.naam?.toLowerCase()
-  );
-
+  // v3.0.0-9c: spelerId = uid. Geen naam-lookup meer in alleSpelersData.
+  // Legacy code die 'spelerId' verwacht blijft werken omdat alleSpelersData
+  // en de ladder-view nu ook id=uid teruggeven.
   store.huidigeBruiker = {
     uid:            firebaseUser.uid,
     email:          firebaseUser.email,
     gebruikersnaam: profiel.naam || firebaseUser.email.split('@')[0],
     rol:            profiel.rol  || 'speler',
-    spelerId:       gekoppeldeSpeler?.id || null,  // backward compat — verdwijnt in fase 4
+    spelerId:       firebaseUser.uid,
+    eersteLogin:    profiel.eersteLogin === true, // v3.0.0-11
   };
 
   vervolgIngelogd();
@@ -87,19 +88,10 @@ function setIngelogdVanafProfiel(firebaseUser, profiel) {
 
 function updateSiteTitel() {
   if (!huidigeBruiker) return;
-  const uid            = huidigeBruiker.uid;
-  const spelerId       = huidigeBruiker.spelerId;
-  const gebruikersnaam = (huidigeBruiker.gebruikersnaam || '').toLowerCase();
+  const uid = huidigeBruiker.uid;
   const mijnLadders = isCoordinatorRol()
     ? alleLadders
-    : alleLadders.filter(l => {
-        if (uid && (l.spelerIds || []).includes(uid)) return true;
-        return (l.spelers || []).some(s =>
-          spelerId
-            ? String(s.id) === String(spelerId)
-            : s.naam?.toLowerCase() === gebruikersnaam
-        );
-      });
+    : alleLadders.filter(l => uid && (l.spelerIds || []).includes(uid));
   const h1Second = document.getElementById('h1-second');
   if (h1Second) {
     const alleenHeerendag = mijnLadders.length === 1 &&
@@ -107,6 +99,118 @@ function updateSiteTitel() {
     h1Second.textContent = alleenHeerendag
       ? ` ${mijnLadders[0].naam} Ladder`
       : ' MP Ladder';
+  }
+}
+
+// ============================================================
+//  EERSTE-LOGIN FLOW — v3.0.0-11
+//  Bij eerste login moet speler handicap en wachtwoord kiezen
+//  voordat hij de app kan gebruiken. Modal is niet dismissible.
+// ============================================================
+function toonEersteLoginScherm() {
+  const bestaand = document.getElementById('modal-eerste-login');
+  if (bestaand) bestaand.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'modal-eerste-login';
+  modal.className = 'modal open';
+  modal.style.zIndex = '9999';
+  // Niet-dismissible: geen close-button, klik buiten werkt niet
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width:360px">
+      <div class="modal-header">
+        <h3>Welkom ${esc(huidigeBruiker.gebruikersnaam.split(' ')[0])}! 👋</h3>
+      </div>
+      <div class="modal-body" style="padding:16px">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:16px">
+          Stel je handicap in en kies een eigen wachtwoord om door te gaan.
+        </p>
+        <div class="form-group">
+          <label>Playing handicap (18 holes)</label>
+          <input type="number" id="el-hcp" step="1" min="-10" max="54" value="10" inputmode="numeric" style="width:100%">
+        </div>
+        <div class="form-group">
+          <label>Nieuw wachtwoord (minimaal 6 tekens)</label>
+          <input type="password" id="el-pass-1" autocomplete="new-password" style="width:100%" placeholder="Kies een wachtwoord">
+        </div>
+        <div class="form-group">
+          <label>Wachtwoord nogmaals</label>
+          <input type="password" id="el-pass-2" autocomplete="new-password" style="width:100%" placeholder="Herhaal wachtwoord">
+        </div>
+        <div id="el-fout" style="display:none;color:var(--red);font-size:13px;margin-bottom:10px"></div>
+        <button class="btn btn-primary" onclick="slaEersteLoginOp()" style="width:100%;margin-top:8px">
+          Opslaan en verder
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  setTimeout(() => document.getElementById('el-hcp')?.focus(), 100);
+}
+
+async function slaEersteLoginOp() {
+  const hcpEl   = document.getElementById('el-hcp');
+  const pass1El = document.getElementById('el-pass-1');
+  const pass2El = document.getElementById('el-pass-2');
+  const foutEl  = document.getElementById('el-fout');
+  foutEl.style.display = 'none';
+
+  const hcp   = parseFloat(hcpEl.value);
+  const pass1 = pass1El.value;
+  const pass2 = pass2El.value;
+
+  if (isNaN(hcp))            { foutEl.textContent = 'Voer een geldige handicap in'; foutEl.style.display = 'block'; return; }
+  if (pass1.length < 6)       { foutEl.textContent = 'Wachtwoord moet minimaal 6 tekens zijn'; foutEl.style.display = 'block'; return; }
+  if (pass1 !== pass2)        { foutEl.textContent = 'De wachtwoorden komen niet overeen'; foutEl.style.display = 'block'; return; }
+  if (pass1 === INITIEEL_WACHTWOORD) { foutEl.textContent = 'Kies een ander wachtwoord dan het initiële'; foutEl.style.display = 'block'; return; }
+
+  try {
+    const hcpInt = Math.round(hcp);
+    // Stap 1: wachtwoord wijzigen in Firebase Auth
+    await updatePassword(auth.currentUser, pass1);
+
+    // Stap 2: spelers/{uid} bijwerken — hcp + eersteLogin:false
+    const snap = await getDoc(doc(db, 'spelers', huidigeBruiker.uid));
+    const data = snap.exists() ? snap.data() : {};
+    await setDoc(doc(db, 'spelers', huidigeBruiker.uid),
+      { ...data, hcp: hcpInt, eersteLogin: false });
+
+    // Stap 3: sync hcp naar alle ladders waar speler in zit
+    // v3.0.0-11: gewone speler heeft geen write-rechten op ladder-doc (alleen coord
+    // of via geldige invite). Wordt daarom best-effort: bij permission-denied loopt
+    // het door — de hcp in spelers/{uid} is de bron van waarheid, en de ladder.spelers[]
+    // hcp wordt straks in elke partij-bevestig gesynct.
+    for (const ladder of alleLadders) {
+      if (!(ladder.spelerIds || []).includes(huidigeBruiker.uid)) continue;
+      try {
+        const ladderSnap = await getDoc(doc(db, 'ladders', ladder.id));
+        if (!ladderSnap.exists()) continue;
+        const ladderData = ladderSnap.data();
+        const spelers = (ladderData.spelers || []).map(s =>
+          s.naam?.toLowerCase() === huidigeBruiker.gebruikersnaam.toLowerCase()
+            ? { ...s, hcp: hcpInt } : s
+        );
+        await setDoc(doc(db, 'ladders', ladder.id), { ...ladderData, spelers });
+      } catch(e) {
+        // Verwacht bij gewone spelers — geen write-rechten op ladder-doc.
+        // Niet blokkerend: hcp staat al in spelers/{uid}.
+        console.warn('hcp sync naar ladder', ladder.id, 'mislukt:', e.code);
+      }
+    }
+
+    // Stap 4: lokale state bijwerken en modal sluiten
+    store.huidigeBruiker.eersteLogin = false;
+    document.getElementById('modal-eerste-login')?.remove();
+    toast('Profiel compleet ✓');
+  } catch(e) {
+    console.error('slaEersteLoginOp mislukt:', e);
+    if (e.code === 'auth/requires-recent-login') {
+      foutEl.textContent = 'Log opnieuw in en probeer het nog eens';
+    } else if (e.code === 'auth/weak-password') {
+      foutEl.textContent = 'Wachtwoord is te zwak — kies een sterker wachtwoord';
+    } else {
+      foutEl.textContent = 'Er is iets misgegaan: ' + (e.message || e.code);
+    }
+    foutEl.style.display = 'block';
   }
 }
 
@@ -124,16 +228,9 @@ function vervolgIngelogd() {
     document.getElementById('nav-archief-btn').style.display  = '';
     document.getElementById('nav-toernooi-btn').style.display = '';
   } else {
-    const uid            = huidigeBruiker?.uid;
-    const spelerId       = huidigeBruiker?.spelerId;
-    const gebruikersnaam = (huidigeBruiker.gebruikersnaam || '').toLowerCase();
+    const uid = huidigeBruiker?.uid;
     const mijnToernooien = alleToernooien.filter(t =>
-      (t.spelers || []).some(s =>
-        (uid && s.uid === uid) ||
-        (spelerId
-          ? String(s.id) === String(spelerId)
-          : s.naam?.toLowerCase() === gebruikersnaam)
-      )
+      (t.spelers || []).some(s => uid && s.uid === uid)
     );
     if (mijnToernooien.length > 0) {
       document.getElementById('nav-toernooi-btn').style.display = '';
@@ -151,6 +248,11 @@ function vervolgIngelogd() {
   laadUitdagingen();
   updateSiteTitel();
 
+  // v3.0.0-11: als eerste login, dwing speler naar verplicht profiel-scherm
+  if (huidigeBruiker.eersteLogin) {
+    toonEersteLoginScherm();
+  }
+
   setTimeout(() => {
     const wrap = document.getElementById('ladder-kaarten');
     if (wrap && wrap.querySelector('.empty-icon')) renderLadder();
@@ -165,19 +267,23 @@ function toonLoginFout(msg) {
 }
 
 async function loginSubmit() {
-  const email      = document.getElementById('login-email').value.trim();
+  const invoer    = document.getElementById('login-email').value.trim();
   const wachtwoord = document.getElementById('login-pass').value;
   document.getElementById('login-fout').style.display = 'none';
-  if (!email || !wachtwoord) { toonLoginFout('Vul e-mail en wachtwoord in'); return; }
+  if (!invoer || !wachtwoord) { toonLoginFout('Vul login en wachtwoord in'); return; }
+
+  // v3.0.0-11: als invoer geen '@' bevat, behandel als login-naam en voeg suffix toe.
+  // Anders behandel als volledig emailadres (backward compat voor legacy accounts).
+  const email = invoer.includes('@') ? invoer.toLowerCase() : (invoer.toLowerCase() + EMAIL_SUFFIX);
   try {
     await signInWithEmailAndPassword(auth, email, wachtwoord);
   } catch(e) {
     const berichten = {
-      'auth/user-not-found':    'Geen account gevonden met dit e-mailadres',
+      'auth/user-not-found':    'Geen account gevonden',
       'auth/wrong-password':    'Onjuist wachtwoord',
-      'auth/invalid-email':     'Ongeldig e-mailadres',
+      'auth/invalid-email':     'Ongeldige login',
       'auth/too-many-requests': 'Te veel pogingen, probeer later opnieuw',
-      'auth/invalid-credential':'E-mail of wachtwoord onjuist',
+      'auth/invalid-credential':'Login of wachtwoord onjuist',
     };
     toonLoginFout(berichten[e.code] || 'Inloggen mislukt, probeer opnieuw');
   }
@@ -199,6 +305,7 @@ function uitloggen() {
   store._vasteListeners = [];
   _toernooiListeners.forEach(unsub => unsub());
   store._toernooiListeners = [];
+  stopAlleStandenListeners();
   signOut(auth);
   store.huidigeBruiker = null;
   store._usersCache    = null;
@@ -215,21 +322,18 @@ function uitloggen() {
 }
 
 function openWachtwoordVergeten() {
-  const email = document.getElementById('login-email').value || '';
-  document.getElementById('reset-email').value = email;
-  document.getElementById('reset-wrap').style.display = 'block';
+  // v3.0.0-11: geen reset-email meer, speler moet contact opnemen met beheerder.
+  alert('Wachtwoord vergeten? Neem contact op met de beheerder.\n\nDe beheerder kan je wachtwoord resetten naar ' + INITIEEL_WACHTWOORD + ', waarna je bij eerstvolgende inlog een nieuw wachtwoord kiest.');
 }
 function sluitResetWrap() {
-  document.getElementById('reset-wrap').style.display = 'none';
+  // v3.0.0-11: placeholder — reset-UI wordt niet meer gebruikt
+  const wrap = document.getElementById('reset-wrap');
+  if (wrap) wrap.style.display = 'none';
 }
 async function stuurResetEmail() {
-  const email = document.getElementById('reset-email').value.trim();
-  if (!email) { toast('Voer een e-mailadres in'); return; }
-  try {
-    await sendPasswordResetEmail(auth, email);
-    sluitResetWrap();
-    toast('Reset-link verstuurd! Check je e-mail ✓');
-  } catch(e) { toast('Kon e-mail niet versturen — controleer het adres'); }
+  // v3.0.0-11: reset-email flow is uitgeschakeld. Functie blijft bestaan voor
+  // backward compat met window.* bindings in app.js.
+  alert('Reset-email is uitgeschakeld. Neem contact op met de beheerder.');
 }
 function openWachtwoordWijzigen() {
   document.getElementById('huidig-wachtwoord').value   = '';
@@ -296,19 +400,20 @@ async function initFirestore() {
   }, 3000);
 
   try {
-    const [baanSnap, archiefSnap, uitdSnap, toernooiSnap, spelersSnap, volgordeSnap] =
+    const [baanSnap, archiefSnap, uitdSnap, toernooiSnap, volgordeSnap] =
       await Promise.all([
         getDoc(BANEN_DOC),
         getDoc(ARCHIEF_DOC),
         getDoc(UITDAGINGEN_DOC),
         getDoc(TOERNOOI_DOC),
-        getDoc(SPELERS_DOC),
         getDoc(doc(db, 'ladder', 'ladderVolgorde'))
       ]);
 
     store.archiefData     = archiefSnap.exists()  ? (archiefSnap.data().seizoenen  || []) : [];
     store.uitdagingenData = uitdSnap.exists()      ? (uitdSnap.data().lijst         || []) : [];
-    store.alleSpelersData = spelersSnap.exists()   ? (spelersSnap.data().lijst      || []) : [];
+    // v3.0.0-9c: alleSpelersData wordt niet meer uit ladder/spelers geladen.
+    // Het is nu een afgeleide view van _usersCache (zie store.js) en wordt
+    // gevuld zodra de spelers/ listener start na login.
     const ladderVolgorde  = volgordeSnap.exists()  ? (volgordeSnap.data().volgorde  || []) : [];
 
     const toernooienSnap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
@@ -340,10 +445,7 @@ async function initFirestore() {
         delete bestaandeState.actievePartij;
       }
       if (!bestaandeState.spelers) bestaandeState.spelers = [];
-      if (alleSpelersData.length === 0 && bestaandeState.spelers.length > 0) {
-        store.alleSpelersData = bestaandeState.spelers.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp }));
-        await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
-      }
+      // v3.0.0-9c: migratie naar ladder/spelers verwijderd — _usersCache is bron van waarheid
       const mpRef = doc(db, 'ladders', 'mp');
       await setDoc(mpRef, { ...bestaandeState, naam: 'MP',
         spelerIds: bestaandeState.spelers.map(s => s.id) });
@@ -382,15 +484,8 @@ async function initFirestore() {
       if (!store.state.actievePartijen) store.state.actievePartijen = [];
       store.activeLadderId = actief.id;
 
-      if (store.alleSpelersData.length === 0) {
-        const gezien = new Set();
-        store.alleLadders.forEach(l => {
-          (l.spelers || []).forEach(s => {
-            if (!gezien.has(s.id)) { gezien.add(s.id); store.alleSpelersData.push({ id: s.id, naam: s.naam, hcp: s.hcp }); }
-          });
-        });
-        if (store.alleSpelersData.length > 0) await setDoc(SPELERS_DOC, { lijst: store.alleSpelersData });
-      }
+      // v3.0.0-9c: tweede migratieblok (ladders→alleSpelersData→SPELERS_DOC) verwijderd.
+      // alleSpelersData wordt nu rechtstreeks afgeleid van _usersCache.
     }
   } catch(e) { console.error('Firestore init error:', e); }
 
@@ -405,7 +500,9 @@ async function initFirestore() {
       const idx = store.alleLadders.findIndex(l => l.id === activeLadderId);
       if (idx >= 0) {
         store.alleLadders[idx].spelers         = store.state.spelers        || [];
+        store.alleLadders[idx].spelerIds       = store.state.spelerIds       || [];
         store.alleLadders[idx].actievePartijen = store.state.actievePartijen;
+        store.alleLadders[idx].data            = snap.data();
       }
       const ap = document.querySelector('.page.active')?.id?.replace('page-', '');
       if (ap === 'ladder')   renderLadder();
@@ -423,7 +520,11 @@ async function initFirestore() {
     _vasteListeners.push(onSnapshot(doc(db, 'ladders', ladder.id), (snap) => {
       if (!snap.exists() || !huidigeBruiker) return;
       const idx = alleLadders.findIndex(l => l.id === ladder.id);
-      if (idx >= 0) { alleLadders[idx].spelers = snap.data().spelers || []; alleLadders[idx].data = snap.data(); }
+      if (idx >= 0) {
+        alleLadders[idx].spelers   = snap.data().spelers   || [];
+        alleLadders[idx].spelerIds = snap.data().spelerIds || [];
+        alleLadders[idx].data      = snap.data();
+      }
       const ap = document.querySelector('.page.active')?.id?.replace('page-', '');
       if (ap === 'ladder')  renderLadder();
       if (ap === 'admin')   renderAdmin();
@@ -432,13 +533,8 @@ async function initFirestore() {
     }));
   });
 
-  // ── Live listener: legacy master spelerslijst ───────────────
-  _vasteListeners.push(onSnapshot(SPELERS_DOC, (snap) => {
-    if (!snap.exists() || !huidigeBruiker) return;
-    store.alleSpelersData = snap.data().lijst || [];
-    const ap = document.querySelector('.page.active')?.id?.replace('page-', '');
-    if (ap === 'admin') renderAdmin();
-  }));
+  // v3.0.0-9c: legacy listener op ladder/spelers verwijderd.
+  // De spelers/ collectie-listener (na login, zie onAuthStateChanged) is nu de enige bron.
 
   // spelers/ listener wordt gestart in onAuthStateChanged (na login)
   // zodat er geen permission-denied optreedt voor inloggen
@@ -466,6 +562,8 @@ async function initFirestore() {
           (err) => { console.warn('spelers/ listener error:', err.code); }
         ));
       }
+      // Start standen/ listeners voor alle ladders (fase 9a view-laag)
+      startAlleStandenListeners();
     } else {
       store.huidigeBruiker = null;
       const heeftInvite = new URLSearchParams(location.search).has('invite');
@@ -502,13 +600,16 @@ async function genereerInviteLink() {
     const ladder   = alleLadders.find(l => l.id === ladderId);
     const token    = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
     const verloopt = Date.now() + 14 * 24 * 60 * 60 * 1000;
+    // v3.0.0-10 fase 10 V-4: expliciete gebruik-limiet. Default 10; kan later via UI aangepast.
+    const maxGebruik = 10;
     await setDoc(doc(db, 'ladder', `invite_${ladderId}`),
-      { token, verloopt, ladderId, ladderNaam: ladder?.naam || ladderId, aangemaakt: Date.now() });
+      { token, verloopt, ladderId, ladderNaam: ladder?.naam || ladderId,
+        aangemaakt: Date.now(), gebruik: 0, maxGebruik });
     const url = `${location.origin}${location.pathname}?invite=${token}&ladder=${ladderId}`;
     document.getElementById('invite-link-text').textContent   = url;
     document.getElementById('invite-link-wrap').style.display = 'block';
     document.getElementById('invite-status').textContent =
-      `Geldig tot ${new Date(verloopt).toLocaleDateString('nl-NL')} · Ladder: ${ladder?.naam || ladderId}`;
+      `Geldig tot ${new Date(verloopt).toLocaleDateString('nl-NL')} · Ladder: ${ladder?.naam || ladderId} · Max ${maxGebruik} registraties`;
     toast('Uitnodigingslink aangemaakt ✓');
   } catch(e) { console.error('genereerInviteLink mislukt:', e); toast('Er is iets misgegaan'); }
 }
@@ -529,14 +630,26 @@ async function checkInviteLink() {
   window._inviteLadderId = ladderId;
 
   let geldig = false;
+  let opgebruikt = false;
   try {
     const snapLadder = await getDoc(doc(db, 'ladder', `invite_${ladderId}`));
     if (snapLadder.exists() && snapLadder.data().token === token && snapLadder.data().verloopt > Date.now()) {
-      geldig = true;
+      const d = snapLadder.data();
+      // v3.0.0-10 fase 10 V-4: check gebruik-teller
+      if (d.maxGebruik != null && (d.gebruik || 0) >= d.maxGebruik) {
+        opgebruikt = true;
+      } else {
+        geldig = true;
+      }
     } else {
       const snapGlobal = await getDoc(INVITE_DOC);
       if (snapGlobal.exists() && snapGlobal.data().token === token && snapGlobal.data().verloopt > Date.now()) {
-        geldig = true;
+        const d = snapGlobal.data();
+        if (d.maxGebruik != null && (d.gebruik || 0) >= d.maxGebruik) {
+          opgebruikt = true;
+        } else {
+          geldig = true;
+        }
       }
     }
   } catch(e) { console.error('Invite check fout:', e); }
@@ -544,47 +657,63 @@ async function checkInviteLink() {
   if (!geldig) {
     document.getElementById('reg-formulier').style.display = 'none';
     const fout = document.getElementById('reg-fout');
-    fout.textContent = 'Deze uitnodigingslink is verlopen of ongeldig. Vraag de beheerder om een nieuwe link.';
+    fout.textContent = opgebruikt
+      ? 'Deze uitnodigingslink heeft het maximum aantal registraties bereikt. Vraag de beheerder om een nieuwe link.'
+      : 'Deze uitnodigingslink is verlopen of ongeldig. Vraag de beheerder om een nieuwe link.';
     fout.style.display = 'block';
   }
 }
 
-// Registreer nieuwe speler — schrijft naar spelers/{uid} + standen/{uid}
-// Dual-write naar ladders.spelers[] voor backward compat (verdwijnt in fase 4)
+// Registreer nieuwe speler — v3.0.0-11: uniforme flow met admin-create.
+// Auto-genereert email uit voornaam+achternaam, gebruikt INITIEEL_WACHTWOORD.
+// Speler wordt bij eerste inlog gedwongen eigen wachtwoord + handicap te kiezen.
 async function registreerSpeler() {
   const voornaam   = document.getElementById('reg-voornaam').value.trim();
   const achternaam = document.getElementById('reg-achternaam').value.trim();
-  const email      = document.getElementById('reg-email').value.trim().toLowerCase();
-  const pass       = document.getElementById('reg-pass').value;
-  const hcp        = parseInt(document.getElementById('reg-hcp').value);
   const fout       = document.getElementById('reg-fout');
   const succes     = document.getElementById('reg-succes');
 
   fout.style.display   = 'none';
   succes.style.display = 'none';
 
-  if (!voornaam)   { fout.textContent = 'Vul je voornaam in';                     fout.style.display = 'block'; return; }
-  if (!achternaam) { fout.textContent = 'Vul je achternaam in';                   fout.style.display = 'block'; return; }
-  if (!email || !email.includes('@')) { fout.textContent = 'Vul een geldig e-mailadres in'; fout.style.display = 'block'; return; }
-  if (pass.length < 6) { fout.textContent = 'Wachtwoord moet minimaal 6 tekens zijn'; fout.style.display = 'block'; return; }
-  if (isNaN(hcp))  { fout.textContent = 'Vul je playing handicap in';              fout.style.display = 'block'; return; }
+  if (!voornaam)   { fout.textContent = 'Vul je voornaam in';   fout.style.display = 'block'; return; }
+  if (!achternaam) { fout.textContent = 'Vul je achternaam in'; fout.style.display = 'block'; return; }
   if (!document.getElementById('reg-akkoord')?.checked) {
     fout.textContent = 'Ga akkoord met de voorwaarden om verder te gaan';
     fout.style.display = 'block'; return;
   }
 
-  const naam           = `${voornaam} ${achternaam}`;
+  // v3.0.0-11: auto-genereer email + wachtwoord, default hcp
+  const email = genereerEmail(voornaam, achternaam);
+  const pass  = INITIEEL_WACHTWOORD;
+  const hcp   = DEFAULT_HCP;
+  const naam  = `${voornaam} ${achternaam}`;
   const targetLadderId = window._inviteLadderId || 'mp';
 
   try {
     store._bezigMetRegistratie = true;
 
+    // v3.0.0-10 fase 10 V-4: opnieuw checken of invite niet inmiddels opgebruikt is
+    try {
+      const inviteSnap0 = await getDoc(doc(db, 'ladder', `invite_${targetLadderId}`));
+      if (inviteSnap0.exists()) {
+        const d0 = inviteSnap0.data();
+        if (d0.maxGebruik != null && (d0.gebruik || 0) >= d0.maxGebruik) {
+          store._bezigMetRegistratie = false;
+          fout.textContent = 'Deze uitnodigingslink heeft het maximum aantal registraties bereikt. Vraag de beheerder om een nieuwe link.';
+          fout.style.display = 'block';
+          return;
+        }
+      }
+    } catch(e) { /* read mislukt — door met registratie, teller-write verderop vangt op */ }
+
     // Stap 1: Firebase Auth account aanmaken
     const cred = await createUserWithEmailAndPassword(auth, email, pass);
     const uid  = cred.user.uid;
 
-    // Stap 2: spelers/{uid} aanmaken
-    await setDoc(doc(db, 'spelers', uid), { uid, naam, email, rol: 'speler', hcp });
+    // Stap 2: spelers/{uid} aanmaken — eersteLogin:true forceert profielflow
+    await setDoc(doc(db, 'spelers', uid),
+      { uid, naam, email, rol: 'speler', hcp, eersteLogin: true });
 
     // Stap 3: Ladder data laden
     const ladderSnap = await getDoc(doc(db, 'ladders', targetLadderId));
@@ -619,13 +748,8 @@ async function registreerSpeler() {
       }
       await setDoc(doc(db, 'ladders', targetLadderId), ladderData);
 
-      // Stap 7: legacy master spelerslijst bijwerken
-      const spelersSnap2 = await getDoc(SPELERS_DOC);
-      const masterLijst  = spelersSnap2.exists() ? (spelersSnap2.data().lijst || []) : [];
-      if (!masterLijst.some(s => s.naam?.toLowerCase() === naam.toLowerCase())) {
-        masterLijst.push({ id: newId, naam, hcp });
-        await setDoc(SPELERS_DOC, { lijst: masterLijst });
-      }
+      // v3.0.0-9c: stap 7 (legacy ladder/spelers master lijst bijwerken) verwijderd.
+      // spelers/{uid} werd al in stap 1 geschreven, wat de enige bron is.
     } catch(ladderErr) {
       // Ladder-schrijven mislukt (bijv. invite verlopen) — account is wel aangemaakt
       console.warn('Ladder toewijzing mislukt, account is aangemaakt:', ladderErr.code);
@@ -635,10 +759,19 @@ async function registreerSpeler() {
 
     store._bezigMetRegistratie = false;
     document.getElementById('reg-formulier').style.display = 'none';
+    const loginTxt = loginNaamVan(email);
     succes.innerHTML = `
-      <strong style="font-size:18px">Welkom ${voornaam}! 🎉</strong><br><br>
-      Je bent succesvol geregistreerd en staat nu in de <strong>${ladderNaam}</strong> ladder.<br><br>
+      <strong style="font-size:18px">Welkom ${esc(voornaam)}! 🎉</strong><br><br>
+      Je account is aangemaakt en je staat in de <strong>${esc(ladderNaam)}</strong> ladder.<br><br>
       <div style="background:#f0f7f4;border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
+        <strong>Je eerste inloggegevens:</strong><br><br>
+        <div style="font-family:'DM Mono',monospace;background:white;padding:8px 10px;border-radius:6px;border:1px solid var(--border);margin-bottom:6px">
+          login: <strong>${esc(loginTxt)}</strong><br>
+          wachtwoord: <strong>${esc(INITIEEL_WACHTWOORD)}</strong>
+        </div>
+        <em style="font-size:12px;color:var(--mid)">Bij eerste inlog kies je een eigen wachtwoord en stel je je handicap in.</em>
+      </div>
+      <div style="background:#f9f7f2;border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
         <strong>📱 App op je homescreen zetten (aanbevolen)</strong><br><br>
         <strong>iPhone/iPad (Safari):</strong><br>
         Tik op het deel-icoon <span style="font-size:15px">⎙</span> onderin → "Zet op beginscherm" → "Voeg toe"<br><br>
@@ -664,11 +797,7 @@ async function registreerSpeler() {
   } catch(e) {
     store._bezigMetRegistratie = false;
     if (e.code === 'auth/email-already-in-use') {
-      fout.innerHTML = `Dit e-mailadres is al geregistreerd.<br><br>
-        <strong>Wachtwoord vergeten?</strong> Ga naar de
-        <a href="${location.origin}${location.pathname}" style="color:var(--green)">inlogpagina</a>
-        en klik op "Wachtwoord vergeten?". Je ontvangt een reset-link per e-mail.
-        <em>Controleer ook je spambox.</em>`;
+      fout.innerHTML = `Er is al een account met deze naam. Neem contact op met de beheerder.`;
     } else {
       fout.textContent = 'Registratie mislukt: ' + e.message;
     }
@@ -681,7 +810,7 @@ async function laadInviteStatus() {
     const sel = document.getElementById('invite-ladder-select');
     if (sel) {
       const huidigeWaarde = sel.value;
-      sel.innerHTML = alleLadders.map(l => `<option value="${l.id}">${l.naam}</option>`).join('');
+      sel.innerHTML = alleLadders.map(l => `<option value="${escAttr(l.id)}">${esc(l.naam)}</option>`).join('');
       if (huidigeWaarde && alleLadders.find(l => l.id === huidigeWaarde)) sel.value = huidigeWaarde;
       sel.onchange = () => laadInviteStatus();
     }
@@ -690,9 +819,14 @@ async function laadInviteStatus() {
     const el       = document.getElementById('invite-status');
     if (!el) return;
     if (snap.exists() && snap.data().verloopt > Date.now()) {
-      const url     = `${location.origin}${location.pathname}?invite=${snap.data().token}&ladder=${ladderId}`;
-      const gebruik = snap.data().gebruik || 0;
-      el.textContent = `Actief — geldig tot ${new Date(snap.data().verloopt).toLocaleDateString('nl-NL')} · ${gebruik} keer gebruikt`;
+      const d       = snap.data();
+      const url     = `${location.origin}${location.pathname}?invite=${d.token}&ladder=${ladderId}`;
+      const gebruik = d.gebruik || 0;
+      const maxStr  = d.maxGebruik != null ? ` van max ${d.maxGebruik}` : '';
+      const opgebruikt = d.maxGebruik != null && gebruik >= d.maxGebruik;
+      el.textContent = opgebruikt
+        ? `Opgebruikt — ${gebruik}${maxStr} registraties gebruikt`
+        : `Actief — geldig tot ${new Date(d.verloopt).toLocaleDateString('nl-NL')} · ${gebruik}${maxStr} keer gebruikt`;
       document.getElementById('invite-link-text').textContent   = url;
       document.getElementById('invite-link-wrap').style.display = 'block';
     } else {
@@ -850,4 +984,5 @@ export {
   registreerSpeler, laadInviteStatus, autoAdvance,
   getNextId, isCoordinatorRol, isBeheerderRol,
   toast, registreerNotificatieToken, laadUitdagingen,
+  slaEersteLoginOp,
 };

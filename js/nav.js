@@ -1,8 +1,8 @@
 // ============================================================
 //  nav.js — Navigatie, showPage, wisselLadder
 // ============================================================
-import { db, auth, SPELERS_DOC } from './config.js';
-import { store, alleSpelersData, activeLadderId } from './store.js';
+import { db, auth } from './config.js';
+import { store, activeLadderId } from './store.js';
 import { herlaadToernooien, renderToernooi } from './toernooi.js';
 import { initPartijForm } from './partij.js';
 import { laadInviteStatus, getLadderData } from './auth.js';
@@ -35,13 +35,11 @@ function showPage(name) {
     }).catch(() => renderUitslagen());
   }
   if (name === 'admin') {
-    // Alleen spelerslijst vers ophalen — ladders worden bijgehouden via listeners
-    getDoc(SPELERS_DOC).then(spelersSnap => {
-      if (spelersSnap.exists()) store.alleSpelersData = spelersSnap.data().lijst || [];
-      renderAdmin();
-      renderAdminLadders();
-      laadInviteStatus();
-    });
+    // v3.0.0-9c: alleSpelersData is afgeleide view van _usersCache en wordt
+    // live bijgehouden door de spelers/ listener. Geen handmatige getDoc meer nodig.
+    renderAdmin();
+    renderAdminLadders();
+    laadInviteStatus();
   }
   if (name === 'toernooi') { herlaadToernooien().then(() => renderToernooi()); }
   if (name === 'profiel') renderProfiel();

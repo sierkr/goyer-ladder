@@ -1,10 +1,11 @@
 // ============================================================
 //  partij.js — Partij aanmaken, banen, naam helpers
 // ============================================================
-import { db, BANEN_DB, LADDERS_COL, SPELERS_DOC, DEFAULT_STATE } from './config.js';
-import { store, state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
+import { db, BANEN_DB, LADDERS_COL, DEFAULT_STATE, esc, escAttr } from './config.js';
+import { store, state, alleLadders, activeLadderId, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
 import { slaState, getLadderData, getNextId, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { objNaarRondes } from './knockout.js';
+import { getLadderSpelers, isInLadder } from './ladder-view.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 //  PARTIJ SETUP
@@ -24,23 +25,14 @@ function initPartijForm() {
   // Vul ladder selector — alleen ladders waar de huidige speler in zit
   const ladderSel = document.getElementById('partij-ladder-select');
   const isBeheerder = isCoordinatorRol();
-  const gebruikersnaam = huidigeBruiker?.gebruikersnaam?.toLowerCase() || '';
-  const spelerId = huidigeBruiker?.spelerId;
 
   const uid = huidigeBruiker?.uid;
   const mijnLadders = isBeheerder
     ? alleLadders
-    : alleLadders.filter(l => {
-        if (uid && (l.spelerIds || []).includes(uid)) return true;
-        return (l.spelers || []).some(s =>
-          spelerId
-            ? String(s.id) === String(spelerId)
-            : s.naam.toLowerCase() === gebruikersnaam
-        );
-      });
+    : alleLadders.filter(l => uid && isInLadder(l.id, uid));
 
   ladderSel.innerHTML = mijnLadders.map(l =>
-    `<option value="${l.id}" ${l.id === activeLadderId ? 'selected' : ''}>${l.naam}</option>`
+    `<option value="${escAttr(l.id)}" ${l.id === activeLadderId ? 'selected' : ''}>${esc(l.naam)}</option>`
   ).join('');
 
   // Verberg selector als er maar één ladder beschikbaar is
@@ -52,14 +44,14 @@ function initPartijForm() {
 
   // Ingebouwde banen
   Object.keys(BANEN_DB).filter(n => n !== 'Handmatig invoeren').forEach(naam => {
-    sel.innerHTML += `<option value="${naam}">${naam}</option>`;
+    sel.innerHTML += `<option value="${escAttr(naam)}">${esc(naam)}</option>`;
   });
 
   // Aangepaste banen
   if (aangepasteBanen.length > 0) {
     sel.innerHTML += `<optgroup label="Opgeslagen banen">`;
     aangepasteBanen.forEach(b => {
-      sel.innerHTML += `<option value="${b.naam}">⭐ ${b.naam}</option>`;
+      sel.innerHTML += `<option value="${escAttr(b.naam)}">⭐ ${esc(b.naam)}</option>`;
     });
     sel.innerHTML += `</optgroup>`;
   }
@@ -76,14 +68,10 @@ function initPartijForm() {
 
   // Auto-selecteer ingelogde speler in slot 1
   if (huidigeBruiker) {
-    const spelerId       = huidigeBruiker.spelerId;
-    const uid            = huidigeBruiker.uid;
-    const gebruikersnaam = huidigeBruiker.gebruikersnaam?.toLowerCase().trim() || '';
-    const ladderSpelers  = getPartijLadderSpelers();
-    // Primary: spelerId; secondary: naam (naam is nu betrouwbaar via spelers/{uid})
-    const gekoppeld = spelerId
-      ? ladderSpelers.find(s => String(s.id) === String(spelerId))
-      : ladderSpelers.find(s => s.naam.toLowerCase().trim() === gebruikersnaam);
+    const uid           = huidigeBruiker.uid;
+    const ladderSpelers = getPartijLadderSpelers();
+    // v3.0.0-9c: alleen uid-match, geen naam-fallback
+    const gekoppeld = uid ? ladderSpelers.find(s => s.uid === uid) : null;
     if (gekoppeld) {
       selecteerPartijSpeler(1, gekoppeld.id, gekoppeld.naam, gekoppeld.hcp);
       vulKnockoutTegenstander(gekoppeld.naam);
@@ -118,19 +106,15 @@ function vulKnockoutTegenstander(spelersNaam) {
 
 function getPartijLadderSpelers() {
   const ladderId = document.getElementById('partij-ladder-select')?.value || activeLadderId;
+  // Primary bron: view-laag (spelers/{uid} + standen/{uid})
+  const viaView = getLadderSpelers(ladderId);
+  if (viaView.length > 0) {
+    return viaView.sort((a, b) => (a.rank || 999) - (b.rank || 999));
+  }
+  // Fallback op oude ladder.spelers[] als view-laag (nog) niet gevuld is
   const ladder = alleLadders.find(l => l.id === ladderId);
   const ladderSpelers = ladder?.spelers || state.spelers || [];
-
-  // Vul aan met spelers uit alleSpelersData die mogelijk ontbreken in de ladder cache
-  const bekende = new Set(ladderSpelers.map(s => String(s.id)));
-  const extra = alleSpelersData.filter(s => {
-    if (bekende.has(String(s.id))) return false;
-    // Controleer of speler in deze ladder zit via spelerIds
-    return (ladder?.spelerIds || []).includes(String(s.id)) ||
-           (ladder?.spelerIds || []).includes(s.id);
-  });
-
-  return [...ladderSpelers, ...extra].sort((a,b) => (a.rank || 999) - (b.rank || 999));
+  return [...ladderSpelers].sort((a, b) => (a.rank || 999) - (b.rank || 999));
 }
 
 function herlaadPartijSpelers() {
@@ -145,14 +129,11 @@ function herlaadPartijSpelers() {
   addPlayerSlot();
   // Pre-select eigen naam in slot 1
   if (huidigeBruiker) {
-    const spelers        = getPartijLadderSpelers();
-    const spelerId       = huidigeBruiker.spelerId;
-    const gebruikersnaam = huidigeBruiker.gebruikersnaam?.toLowerCase() || '';
-    // Primary: spelerId; secondary: naam
-    const zelf = (spelerId && spelers.find(s => String(s.id) === String(spelerId)))
-      || spelers.find(s => s.naam.toLowerCase() === gebruikersnaam);
+    const spelers = getPartijLadderSpelers();
+    const uid     = huidigeBruiker.uid;
+    // v3.0.0-9c: alleen uid-match
+    const zelf = uid ? spelers.find(s => s.uid === uid) : null;
     if (zelf) {
-      if (!huidigeBruiker.spelerId) store.huidigeBruiker = { ...huidigeBruiker, spelerId: zelf.id };
       selecteerPartijSpeler(1, zelf.id, zelf.naam, zelf.hcp);
       vulKnockoutTegenstander(zelf.naam);
     }
@@ -170,7 +151,7 @@ function filterPartijSpelers(zoek) {
     sel.innerHTML = '<option value="">— Kies speler —</option>' +
       spelers.filter(s => !reedsSel.includes(String(s.id)))
         .filter(s => !term || s.naam.toLowerCase().includes(term))
-        .map(s => `<option value="${s.id}" ${String(s.id) === huidigeWaarde ? 'selected' : ''}>${s.naam} (hcp ${Math.round(s.hcp)})</option>`)
+        .map(s => `<option value="${escAttr(s.id)}" ${String(s.id) === huidigeWaarde ? 'selected' : ''}>${esc(s.naam)} (hcp ${Math.round(s.hcp)})</option>`)
         .join('');
   });
 }
@@ -241,12 +222,12 @@ function zoekPartijSpeler(n, zoek) {
   } else {
     lijst.innerHTML = gefilterd.map(s => `
       <div class="speler-zoek-item"
-        data-id="${s.id}"
-        data-naam="${s.naam.replace(/"/g,'&quot;')}"
-        data-hcp="${s.hcp}"
+        data-id="${escAttr(s.id)}"
+        data-naam="${esc(s.naam)}"
+        data-hcp="${escAttr(s.hcp)}"
         onpointerdown="event.preventDefault()"
         onclick="selecteerPartijSpelerEl(${n}, this)">
-        ${s.naam} <span style="color:var(--light);font-size:12px">hcp ${Math.round(s.hcp)}</span>
+        ${esc(s.naam)} <span style="color:var(--light);font-size:12px">hcp ${Math.round(s.hcp)}</span>
       </div>
     `).join('');
   }
@@ -263,7 +244,10 @@ function zoekPartijSpeler(n, zoek) {
 }
 
 function selecteerPartijSpelerEl(n, el) {
-  const id = parseInt(el.dataset.id);
+  // v3.0.0-9c: id is nu een uid (string) — niet meer parseInt'en.
+  // Gastspelers (numeric >= 90000) worden als string opgeslagen en bij startPartij
+  // terug naar int geparsed.
+  const id = el.dataset.id;
   const naam = el.dataset.naam;
   const hcp = parseFloat(el.dataset.hcp);
   selecteerPartijSpeler(n, id, naam, hcp);
@@ -382,17 +366,13 @@ async function verwijderAangepasteBaan() {
 
 // Geeft de actieve partij terug waar de ingelogde speler in zit
 function mijnPartij() {
-  if (!huidigeBruiker?.gebruikersnaam) return null;
-  const gebruiker  = huidigeBruiker.gebruikersnaam.toLowerCase();
-  const spelerId   = huidigeBruiker.spelerId;
+  if (!huidigeBruiker?.uid) return null;
+  const uid = huidigeBruiker.uid;
 
+  // v3.0.0-9c: match alleen op uid. Entries uit de view-laag hebben een uid veld.
+  // Legacy state.spelers[] zonder uid worden niet meer gematched.
   const zoekInPartijen = (partijen) => (partijen || []).find(p =>
-    p.spelers.some(s => {
-      // Primary: spelerId (numeric backward compat)
-      if (spelerId) return String(s.id) === String(spelerId);
-      // Secondary: naam (betrouwbaar via spelers/{uid})
-      return s.naam.toLowerCase() === gebruiker;
-    })
+    p.spelers.some(s => s.uid === uid)
   ) || null;
 
   // Zoek eerst in actieve ladder
@@ -427,7 +407,6 @@ async function startPartij() {
     const spelerId = slot.dataset.spelerId;
     if (!spelerId) continue;
     const speler = partijLadderSpelers.find(s => String(s.id) === String(spelerId))
-      || alleSpelersData.find(s => String(s.id) === String(spelerId))
       || (parseInt(spelerId) >= 90000 ? { id: parseInt(spelerId), naam: document.getElementById('player-' + i)?.value || 'Gast', hcp: parseFloat(hcpEl?.value) || 0, gast: true } : null);
     if (!speler) continue;
     const partijHcp = Math.round(parseFloat(hcpEl?.value));
@@ -604,8 +583,8 @@ function renderHcpBlok(spelers, holes, hcpPct, containerId) {
 
       html += `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:baseline">
-          <span style="font-weight:600;font-size:14px">${naamMap[a.id]} vs ${naamMap[b.id]}</span>
-          <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace">${verschil === 0 ? 'Gelijke handicap' : `${naamMap[mindereHcp.id]} krijgt ${verschil} slag${verschil !== 1 ? 'en' : ''}`}</span>
+          <span style="font-weight:600;font-size:14px">${esc(naamMap[a.id])} vs ${esc(naamMap[b.id])}</span>
+          <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace">${verschil === 0 ? 'Gelijke handicap' : `${esc(naamMap[mindereHcp.id])} krijgt ${verschil} slag${verschil !== 1 ? 'en' : ''}`}</span>
         </div>
       </div>`;
     }

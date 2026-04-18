@@ -6,15 +6,19 @@
 //                       voor fase 4-5 modules
 // ============================================================
 import { db, auth, firebaseConfig, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL,
-  SNAPSHOTS_COL, SPELERS_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC,
-  INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
-import { store, state, alleLadders, activeLadderId, alleSpelersData,
+  SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC,
+  INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB, esc, escAttr,
+  EMAIL_SUFFIX, INITIEEL_WACHTWOORD, DEFAULT_HCP,
+  genereerEmail, loginNaamVan,
+  functions, httpsCallable } from './config.js';
+import { store, state, alleLadders, activeLadderId,
   huidigeBruiker, uitdagingenData } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers,
   getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { openNieuweLadderModal, renderAdminLadders } from './beheer.js';
 import { reageerUitdaging, verwijderUitdaging } from './archief.js';
 import { renderLadder } from './ladder.js';
+import { getLadderSpelers } from './ladder-view.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
   GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, updatePassword,
   EmailAuthProvider, reauthenticateWithCredential, createUserWithEmailAndPassword }
@@ -71,31 +75,46 @@ async function renderAdminSpelersEnAccounts() {
       (l.spelers   || []).some(s => s.naam?.toLowerCase() === naam.toLowerCase())
     );
     const ladderBadges = mijnLadders.map(l =>
-      `<span class="badge badge-grey" style="font-size:10px">${l.naam}</span>`
+      `<span class="badge badge-grey" style="font-size:10px">${esc(l.naam)}</span>`
     ).join(' ');
 
     const rolBadge = u.rol && u.rol !== 'speler'
-      ? `<span class="badge" style="font-size:10px;background:var(--green-pale);color:var(--green)">${u.rol}</span>`
+      ? `<span class="badge" style="font-size:10px;background:var(--green-pale);color:var(--green)">${esc(u.rol)}</span>`
       : '';
-    const emailTekst = u.email
-      ? `<span style="font-size:11px;color:var(--light)">${u.email}</span>`
-      : `<span style="font-size:11px;color:#ccc">geen email</span>`;
+
+    // v3.0.0-11: toon login + initieel wachtwoord i.p.v. volledig email
+    // Als eersteLogin=true → wachtwoord is nog steeds MP2026
+    // Als eersteLogin=false of undefined → speler heeft eigen wachtwoord
+    const loginTxt = loginNaamVan(u.email || '');
+    const eersteLogin = u.eersteLogin === true;
+    const credRegel = u.email
+      ? `<span style="font-size:11px;color:var(--light);font-family:'DM Mono',monospace">${esc(loginTxt)}${eersteLogin ? ` · ${INITIEEL_WACHTWOORD}` : ''}</span>${eersteLogin ? '' : '<span style="font-size:10px;color:var(--light);margin-left:4px">· wachtwoord gewijzigd</span>'}`
+      : `<span style="font-size:11px;color:#ccc">geen account</span>`;
     const hcpTekst = hcp != null
       ? `hcp ${Math.round(hcp)}`
       : 'hcp —';
 
+    // v3.0.0-11.2: reset-wachtwoord knop, alleen voor beheerder
+    // Toont alleen als speler al eersteLogin heeft voltooid (anders is reset overbodig)
+    const isBeheerder = isBeheerderRol();
+    const heeftEigenWachtwoord = u.eersteLogin === false;
+    const resetBtn = (isBeheerder && heeftEigenWachtwoord)
+      ? `<button class="btn btn-sm btn-ghost" onclick="vraagResetWachtwoord('${escAttr(uid)}','${escAttr(naam)}')" title="Wachtwoord resetten">🔄</button>`
+      : '';
+
     // Buttons gebruiken uid (string) als identifier
     return `<div class="admin-row" style="flex-wrap:nowrap;gap:6px;align-items:center">
       <div style="flex:1;min-width:0">
-        <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${naam}</div>
+        <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(naam)}</div>
         <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-top:2px">
-          ${emailTekst} ${rolBadge}
+          ${credRegel} ${rolBadge}
         </div>
         ${mijnLadders.length ? `<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:3px">${ladderBadges}</div>` : ''}
       </div>
       <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace;flex-shrink:0;white-space:nowrap">${hcpTekst}</span>
-      <button class="btn btn-sm btn-ghost" onclick="openEditPlayer('${uid}')">✏️</button>
-      <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removePlayer('${uid}')">✕</button>
+      ${resetBtn}
+      <button class="btn btn-sm btn-ghost" onclick="openEditPlayer('${escAttr(uid)}')" title="Bewerken">✏️</button>
+      <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removePlayer('${escAttr(uid)}')" title="Verwijderen">✕</button>
     </div>`;
   });
 
@@ -118,8 +137,8 @@ function renderLadderCheckboxes(containerId) {
   wrap.innerHTML = alleLadders
     .filter(l => (l.data?.type || l.type) !== 'knockout')
     .map(l => `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-      <input type="checkbox" value="${l.id}" style="width:16px;height:16px;cursor:pointer">
-      ${l.naam}
+      <input type="checkbox" value="${escAttr(l.id)}" style="width:16px;height:16px;cursor:pointer">
+      ${esc(l.naam)}
     </label>`).join('');
 }
 
@@ -180,11 +199,10 @@ async function voegSpelerToeAanLadders(ladderIds, speler, uid = null) {
 // ============================================================
 
 async function openAddPlayer() {
-  document.getElementById('new-player-voornaam').value  = '';
+  document.getElementById('new-player-voornaam').value   = '';
   document.getElementById('new-player-achternaam').value = '';
-  document.getElementById('new-player-hcp').value       = '';
-  document.getElementById('new-player-account').value   = '';
-  document.getElementById('new-player-pass').value      = '';
+  // v3.0.0-11: hcp default 10, email + wachtwoord velden bestaan niet meer
+  document.getElementById('new-player-hcp').value        = '10';
   document.getElementById('add-player-handmatig').style.display      = 'none';
   document.getElementById('add-player-accounts-wrap').style.display  = 'block';
   document.getElementById('add-player-save-btn').style.display       = 'none';
@@ -206,11 +224,11 @@ async function openAddPlayer() {
       lijst.innerHTML = zonderLadder.map(u => `
         <div style="display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:10px">
           <div style="flex:1">
-            <div style="font-weight:500">${u.naam || u.gebruikersnaam}</div>
-            <div style="font-size:11px;color:var(--light)">${u.email}</div>
+            <div style="font-weight:500">${esc(u.naam || u.gebruikersnaam)}</div>
+            <div style="font-size:11px;color:var(--light)">${esc(u.email)}</div>
           </div>
           <button class="btn btn-sm btn-primary"
-            onclick="voegAccountToeAlsSpeler('${u.uid}','${(u.naam||u.gebruikersnaam||'').replace(/'/g,"\\'")}')">
+            onclick="voegAccountToeAlsSpeler('${escAttr(u.uid)}','${escAttr(u.naam||u.gebruikersnaam||'')}')">
             + Toevoegen aan ladder
           </button>
         </div>
@@ -249,14 +267,8 @@ async function voegAccountToeAlsSpeler(uid, naam) {
     // Numeric id voor backward compat
     const newId = getNextId();
 
-    // Update legacy master lijst
-    const masterIdx = alleSpelersData.findIndex(s => s.naam?.toLowerCase() === naam.toLowerCase());
-    if (masterIdx >= 0) {
-      alleSpelersData[masterIdx].hcp = hcp;
-    } else {
-      alleSpelersData.push({ id: newId, naam, hcp });
-    }
-    await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+    // v3.0.0-9c: legacy master lijst (ladder/spelers) write verwijderd.
+    // spelers/{uid} is de enige bron; alleSpelersData wordt automatisch afgeleid.
 
     // Voeg toe aan geselecteerde ladders
     const geselecteerdeLadders = getGeselecteerdeLadders('new-player-ladders');
@@ -274,23 +286,25 @@ async function voegAccountToeAlsSpeler(uid, naam) {
 }
 
 // Maak volledig nieuw account + speler aan (beheerder flow)
+// v3.0.0-11: email + wachtwoord worden auto-gegenereerd.
 async function saveNewPlayer() {
   const voornaam   = document.getElementById('new-player-voornaam').value.trim();
   const achternaam = document.getElementById('new-player-achternaam').value.trim();
   const naam       = [voornaam, achternaam].filter(Boolean).join(' ');
-  const hcp        = Math.round(parseFloat(document.getElementById('new-player-hcp').value));
-  const email      = document.getElementById('new-player-account').value.trim().toLowerCase();
-  const pass       = document.getElementById('new-player-pass').value;
+  let hcp          = parseFloat(document.getElementById('new-player-hcp').value);
+  if (isNaN(hcp)) hcp = DEFAULT_HCP;
+  hcp = Math.round(hcp);
 
-  if (!voornaam)                       { toast('Voer een voornaam in'); return; }
-  if (!achternaam)                     { toast('Voer een achternaam in'); return; }
-  if (isNaN(hcp))                      { toast('Voer een handicap in'); return; }
-  if (!email || !email.includes('@'))  { toast('Voer een geldig e-mailadres in'); return; }
-  if (pass.length < 6)                 { toast('Wachtwoord minimaal 6 tekens'); return; }
+  if (!voornaam)   { toast('Voer een voornaam in');   return; }
+  if (!achternaam) { toast('Voer een achternaam in'); return; }
+
+  // v3.0.0-11: auto-genereer email + wachtwoord
+  const email = genereerEmail(voornaam, achternaam);
+  const pass  = INITIEEL_WACHTWOORD;
 
   try {
     const users = await getUsers();
-    if (users.find(u => u.email === email)) { toast('Dit e-mailadres is al in gebruik'); return; }
+    if (users.find(u => u.email === email)) { toast('Deze naam (email) is al in gebruik'); return; }
 
     // Auth account aanmaken via secundaire app (logt beheerder niet uit)
     let uid = null;
@@ -306,20 +320,19 @@ async function saveNewPlayer() {
       try { await deleteApp(tijdApp); } catch(e) {}
     } catch(authErr) {
       if (authErr.code === 'auth/email-already-in-use') {
-        toast('E-mailadres al in gebruik. Verwijder het eerst via Firebase Console → Authentication.');
+        toast('Account bestaat al. Verwijder eerst via Firebase Console → Authentication.');
         return;
       }
       throw authErr;
     }
 
-    // spelers/{uid} aanmaken
-    await setDoc(doc(db, 'spelers', uid), { uid, naam, email, rol: 'speler', hcp });
+    // spelers/{uid} aanmaken — eersteLogin:true zodat speler verplicht profiel invult
+    await setDoc(doc(db, 'spelers', uid),
+      { uid, naam, email, rol: 'speler', hcp, eersteLogin: true });
 
     // Numeric id + legacy master lijst (backward compat fase 4-5)
     const newId = getNextId();
     const nieuweSpeler = { id: newId, naam, hcp };
-    alleSpelersData.push(nieuweSpeler);
-    await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
     await slaState();
 
     // Voeg toe aan geselecteerde ladders
@@ -330,13 +343,91 @@ async function saveNewPlayer() {
 
     closeModal('modal-add-player');
     renderAdmin();
-    const ladderTekst = geselecteerdeLadders.length > 0
-      ? ` en toegevoegd aan ${geselecteerdeLadders.length} ladder(s)`
-      : ' — voeg hem toe aan een ladder via Ladders beheren';
-    toast(`${naam} aangemaakt${ladderTekst} ✓`);
+
+    // v3.0.0-11: toon credentials met copy-knop voor WhatsApp doorgeven
+    const loginTxt = loginNaamVan(email);
+    toonCredentialsModal(naam, loginTxt, pass);
   } catch(e) {
     console.error('saveNewPlayer error:', e);
     toast('Fout bij opslaan: ' + e.message);
+  }
+}
+
+/**
+ * v3.0.0-11: Toont modal met credentials + copy-knop.
+ * Gebruikt voor zowel nieuwe-speler als reset-wachtwoord.
+ */
+function toonCredentialsModal(naam, loginTxt, pass) {
+  const bestaand = document.getElementById('modal-credentials');
+  if (bestaand) bestaand.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'modal-credentials';
+  modal.className = 'modal open';
+  modal.innerHTML = `
+    <div class="modal-content" style="max-width:340px">
+      <div class="modal-header">
+        <h3>✓ ${esc(naam)} toegevoegd</h3>
+        <button class="modal-close" onclick="document.getElementById('modal-credentials').remove()">×</button>
+      </div>
+      <div class="modal-body" style="padding:16px">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:12px">
+          Geef deze gegevens door aan de speler (bv. via WhatsApp):
+        </p>
+        <div style="background:#f9f7f2;border:1.5px solid var(--border);border-radius:8px;padding:12px;font-family:'DM Mono',monospace;font-size:13px;margin-bottom:12px">
+          <div><strong>login:</strong> ${esc(loginTxt)}</div>
+          <div><strong>wachtwoord:</strong> ${esc(pass)}</div>
+        </div>
+        <button class="btn btn-primary" onclick="kopieerCredentials('${escAttr(loginTxt)}','${escAttr(pass)}')" style="width:100%">
+          📋 Kopieer naar klembord
+        </button>
+        <p style="font-size:11px;color:var(--light);margin-top:10px;text-align:center">
+          Bij eerste login moet de speler een eigen wachtwoord kiezen en zijn handicap instellen.
+        </p>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function kopieerCredentials(loginTxt, pass) {
+  const tekst = `login: ${loginTxt}\nwachtwoord: ${pass}`;
+  navigator.clipboard.writeText(tekst)
+    .then(() => toast('Gegevens gekopieerd ✓'))
+    .catch(() => toast('Kopiëren mislukt — selecteer handmatig'));
+}
+
+// ============================================================
+//  WACHTWOORD RESET via Cloud Function — v3.0.0-11.2
+// ============================================================
+async function vraagResetWachtwoord(uid, naam) {
+  const bevestig = confirm(
+    `Wachtwoord van ${naam} resetten naar ${INITIEEL_WACHTWOORD}?\n\n` +
+    `De speler moet bij eerstvolgende inlog een nieuw wachtwoord kiezen en zijn handicap opnieuw instellen.`
+  );
+  if (!bevestig) return;
+
+  try {
+    toast('Bezig met resetten...');
+    const resetFn = httpsCallable(functions, 'resetSpelerWachtwoord');
+    const result = await resetFn({ targetUid: uid });
+    if (result.data?.success) {
+      renderAdmin();
+      // Toon credentials modal zodat beheerder ze kan kopiëren voor de speler
+      const loginTxt = loginNaamVan((await getDoc(doc(db, 'spelers', uid))).data()?.email || '');
+      toonCredentialsModal(naam, loginTxt, INITIEEL_WACHTWOORD);
+    } else {
+      toast('Reset mislukt: onverwachte respons');
+    }
+  } catch(e) {
+    console.error('Reset wachtwoord mislukt:', e);
+    const msg = e.code === 'functions/permission-denied'
+      ? 'Geen rechten — alleen beheerder kan resetten'
+      : e.code === 'functions/unauthenticated'
+      ? 'Niet ingelogd'
+      : e.code === 'functions/not-found'
+      ? 'Cloud Function niet gedeployed — run firebase deploy'
+      : 'Fout: ' + (e.message || e.code);
+    toast(msg);
   }
 }
 
@@ -383,15 +474,8 @@ async function saveEditPlayer() {
     // Schrijf naar spelers/{uid}
     await setDoc(doc(db, 'spelers', uid), { ...snap.data(), naam, hcp, rol });
 
-    // Sync naam/hcp naar legacy master lijst
-    const masterIdx = alleSpelersData.findIndex(s =>
-      s.naam?.toLowerCase() === oudeNaam?.toLowerCase()
-    );
-    if (masterIdx >= 0) {
-      alleSpelersData[masterIdx].naam = naam;
-      alleSpelersData[masterIdx].hcp  = hcp;
-    }
-    await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+    // v3.0.0-9c: sync naar legacy master lijst (ladder/spelers) verwijderd.
+    // spelers/{uid} write hierboven is de enige bron voor naam/hcp/rol.
 
     // Dual-write: sync naam/hcp naar alle ladders (backward compat)
     for (const ladder of alleLadders) {
@@ -441,9 +525,8 @@ async function removePlayer(uid) {
     // 1. Verwijder spelers/{uid}
     await deleteDoc(doc(db, 'spelers', uid));
 
-    // 2. Verwijder uit legacy master lijst
-    store.alleSpelersData = alleSpelersData.filter(s => s.naam?.toLowerCase() !== naam?.toLowerCase());
-    await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+    // v3.0.0-9c: stap 2 (legacy ladder/spelers master lijst) verwijderd.
+    // spelers/ listener werkt alleSpelersData automatisch bij na de deleteDoc hierboven.
 
     // 3. Verwijder uit alle ladders
     for (const ladder of alleLadders) {
@@ -487,24 +570,22 @@ async function removePlayer(uid) {
 function renderProfiel() {
   if (!huidigeBruiker) return;
 
-  const gebruiker = huidigeBruiker.gebruikersnaam.toLowerCase();
-  const speler    = state.spelers?.find(s => {
-    const naam     = s.naam.toLowerCase();
-    const voornaam = naam.split(' ')[0];
-    return naam === gebruiker || voornaam === gebruiker ||
-           naam.replace(/\s/g,'') === gebruiker.replace(/\./g,'').replace(/\s/g,'') ||
-           naam.replace(/\s/g,' ') === gebruiker;
-  });
+  // v3.0.0-9c: uid-gebaseerde speler lookup via view-laag
+  const uid = huidigeBruiker.uid;
+  const speler = uid
+    ? (state.spelers?.find(s => s.uid === uid)
+       || getLadderSpelers(activeLadderId).find(s => s.uid === uid))
+    : null;
 
   document.getElementById('profiel-info').innerHTML = `
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:4px">
       <div style="width:52px;height:52px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue';font-size:24px;color:var(--gold-light)">
-        ${huidigeBruiker.gebruikersnaam[0].toUpperCase()}
+        ${esc((huidigeBruiker.gebruikersnaam || '')[0]?.toUpperCase() || '?')}
       </div>
       <div>
-        <div style="font-weight:600;font-size:17px">${huidigeBruiker.gebruikersnaam}</div>
-        <div style="font-size:13px;color:var(--light)">${huidigeBruiker.email}</div>
-        <span class="badge ${huidigeBruiker.rol === 'beheerder' ? 'badge-gold' : huidigeBruiker.rol === 'coordinator' ? 'badge-green' : 'badge-grey'}" style="margin-top:4px">${huidigeBruiker.rol}</span>
+        <div style="font-weight:600;font-size:17px">${esc(huidigeBruiker.gebruikersnaam)}</div>
+        <div style="font-size:13px;color:var(--light)">${esc(huidigeBruiker.email)}</div>
+        <span class="badge ${huidigeBruiker.rol === 'beheerder' ? 'badge-gold' : huidigeBruiker.rol === 'coordinator' ? 'badge-green' : 'badge-grey'}" style="margin-top:4px">${esc(huidigeBruiker.rol)}</span>
       </div>
     </div>`;
 
@@ -515,9 +596,8 @@ function renderProfiel() {
   }
 
   const ladderStats = alleLadders.map(l => {
-    const sp = (l.spelers || []).find(s =>
-      s.id === speler.id || s.naam?.toLowerCase() === speler.naam.toLowerCase()
-    );
+    // v3.0.0-9c: uid-match via view-laag (valt terug op legacy l.spelers via view)
+    const sp = getLadderSpelers(l.id).find(s => s.uid === uid);
     if (!sp) return null;
     const winpct  = sp.partijen > 0 ? Math.round(sp.gewonnen / sp.partijen * 100) : 0;
     const verloren = (sp.partijen || 0) - (sp.gewonnen || 0);
@@ -533,7 +613,7 @@ function renderProfiel() {
   ladderStats.forEach(({ ladder, sp, winpct, verloren }) => {
     html += `
     <div style="margin-bottom:16px">
-      <div style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">${ladder.naam}</div>
+      <div style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">${esc(ladder.naam)}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
         <div style="text-align:center;background:var(--green-pale);border-radius:10px;padding:10px">
           <div style="font-family:'Bebas Neue';font-size:28px;color:var(--green)">${sp.rank}</div>
@@ -576,17 +656,17 @@ function renderProfiel() {
     uitdHtml += '<div style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:10px">Uitdagingen</div>';
     openOntvangen.forEach(u => {
       uitdHtml += `<div style="background:#fef3cd;border-radius:10px;padding:12px;margin-bottom:8px">
-        <div style="font-weight:600;margin-bottom:6px">⚔️ ${u.vanNaam} daagt je uit!</div>
+        <div style="font-weight:600;margin-bottom:6px">⚔️ ${esc(u.vanNaam)} daagt je uit!</div>
         <div style="display:flex;gap:8px">
-          <button class="btn btn-sm btn-primary" onclick="reageerUitdaging('${u.id}',true)">✓ Accepteer</button>
-          <button class="btn btn-sm btn-ghost" onclick="reageerUitdaging('${u.id}',false)" style="color:var(--red)">✗ Weiger</button>
+          <button class="btn btn-sm btn-primary" onclick="reageerUitdaging('${escAttr(u.id)}',true)">✓ Accepteer</button>
+          <button class="btn btn-sm btn-ghost" onclick="reageerUitdaging('${escAttr(u.id)}',false)" style="color:var(--red)">✗ Weiger</button>
         </div>
       </div>`;
     });
     openVerstuurd.forEach(u => {
       uitdHtml += `<div style="background:#f0ede4;border-radius:10px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
-        <div style="font-size:13px">⏳ Wacht op <strong>${u.naarNaam}</strong></div>
-        <button onclick="verwijderUitdaging('${u.id}')" style="background:none;border:none;color:var(--light);cursor:pointer;font-size:18px">✕</button>
+        <div style="font-size:13px">⏳ Wacht op <strong>${esc(u.naarNaam)}</strong></div>
+        <button onclick="verwijderUitdaging('${escAttr(u.id)}')" style="background:none;border:none;color:var(--light);cursor:pointer;font-size:18px">✕</button>
       </div>`;
     });
     const afgerond = mijnUitdagingen.filter(u => u.status !== 'open');
@@ -594,7 +674,7 @@ function renderProfiel() {
       const isVan  = u.vanEmail === huidigeBruiker.email;
       const ander  = isVan ? u.naarNaam : u.vanNaam;
       const icoon  = u.status === 'geaccepteerd' ? '✅' : '❌';
-      uitdHtml += `<div style="font-size:12px;color:var(--light);padding:4px 0">${icoon} ${isVan ? 'Uitdaging aan' : 'Uitdaging van'} ${ander} — ${u.status}</div>`;
+      uitdHtml += `<div style="font-size:12px;color:var(--light);padding:4px 0">${icoon} ${isVan ? 'Uitdaging aan' : 'Uitdaging van'} ${esc(ander)} — ${esc(u.status)}</div>`;
     });
     uitdHtml += '</div>';
     document.getElementById('profiel-stats').innerHTML += uitdHtml;
@@ -627,14 +707,8 @@ async function slaProfielHcpOp() {
       } catch(e) { console.error('hcp update spelers/ mislukt:', e); }
     }
 
-    // Sync legacy master lijst
-    const masterSpeler = alleSpelersData.find(s => matchNaam(s.naam));
-    if (masterSpeler && isCoordinatorRol()) {
-      masterSpeler.hcp = val;
-      await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
-    } else if (masterSpeler) {
-      masterSpeler.hcp = val;
-    }
+    // v3.0.0-9c: sync naar legacy ladder/spelers master lijst verwijderd.
+    // spelers/{uid} write hierboven is de bron; alleSpelersData volgt via listener.
 
     // Sync naar alle ladders
     let gevonden = false;
@@ -687,16 +761,16 @@ async function renderAdminUsers() {
       return `
       <div class="admin-row">
         <div style="flex:1">
-          <div class="name">${naam}</div>
-          <div style="font-size:11px;color:var(--light)">${u.email || ''}</div>
+          <div class="name">${esc(naam)}</div>
+          <div style="font-size:11px;color:var(--light)">${esc(u.email || '')}</div>
         </div>
-        <span class="badge ${u.rol === 'beheerder' ? 'badge-gold' : u.rol === 'coordinator' ? 'badge-green' : 'badge-grey'}">${u.rol}</span>
-        <button class="btn btn-sm btn-ghost" onclick="openEditUser('${u.uid}')">✏️</button>
-        <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removeUser('${u.uid}')">✕</button>
+        <span class="badge ${u.rol === 'beheerder' ? 'badge-gold' : u.rol === 'coordinator' ? 'badge-green' : 'badge-grey'}">${esc(u.rol)}</span>
+        <button class="btn btn-sm btn-ghost" onclick="openEditUser('${escAttr(u.uid)}')">✏️</button>
+        <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="removeUser('${escAttr(u.uid)}')">✕</button>
       </div>`;
     }).join('');
   } catch(e) {
-    list.innerHTML = '<div style="padding:12px;color:var(--red);font-size:13px">Fout bij laden: ' + e.message + '</div>';
+    list.innerHTML = '<div style="padding:12px;color:var(--red);font-size:13px">Fout bij laden</div>';
   }
 }
 
@@ -778,8 +852,7 @@ async function saveNewUser() {
     if (geselecteerdeLadders.length > 0) {
       const newId        = getNextId();
       const nieuweSpeler = { id: newId, naam, hcp: 0 };
-      alleSpelersData.push(nieuweSpeler);
-      await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+      // v3.0.0-9c: legacy ladder/spelers dual-write verwijderd
       await slaState();
       await voegSpelerToeAanLadders(geselecteerdeLadders, nieuweSpeler, uid);
     }
@@ -800,30 +873,33 @@ async function removeUser(uid) {
     // Verwijder spelers/{uid}
     await deleteDoc(doc(db, 'spelers', uid));
 
-    // Verwijder uit legacy master lijst
-    const masterIdx = alleSpelersData.findIndex(s => s.naam?.toLowerCase() === naam?.toLowerCase());
-    if (masterIdx >= 0) {
-      const spelerId = alleSpelersData[masterIdx].id;
-      store.alleSpelersData = alleSpelersData.filter((_, i) => i !== masterIdx);
-      await setDoc(SPELERS_DOC, { lijst: alleSpelersData });
+    // v3.0.0-9c: legacy ladder/spelers master lijst sync verwijderd.
+    // We zoeken de legacy numeric spelerId via de huidige ladder.spelers[] entries
+    // (voor zolang die nog bestaan), zodat we ook de legacy spelers[] arrays
+    // kunnen opschonen naast de nieuwe spelerIds[] uid-lijst.
+    let legacySpelerId = null;
+    for (const ladder of alleLadders) {
+      const match = (ladder.spelers || []).find(s => s.naam?.toLowerCase() === naam?.toLowerCase());
+      if (match) { legacySpelerId = match.id; break; }
+    }
 
-      // Verwijder uit alle ladders
-      for (const ladder of alleLadders) {
-        const ladderSnap = await getDoc(doc(db, 'ladders', ladder.id));
-        if (!ladderSnap.exists()) continue;
-        const data      = ladderSnap.data();
-        const inLadder  = (data.spelers || []).some(s => s.id === spelerId) ||
-                          (data.spelerIds || []).includes(uid);
-        if (!inLadder) continue;
-        data.spelers    = (data.spelers || []).filter(s => s.id !== spelerId);
-        data.spelerIds  = (data.spelerIds || []).filter(id => id !== uid);
-        data.spelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i + 1);
-        await setDoc(doc(db, 'ladders', ladder.id), data);
-        try { await deleteDoc(doc(db, 'ladders', ladder.id, 'standen', uid)); } catch(e) {}
-        ladder.spelers   = data.spelers;
-        ladder.spelerIds = data.spelerIds;
-        if (ladder.id === activeLadderId) state.spelers = data.spelers;
-      }
+    // Verwijder uit alle ladders
+    for (const ladder of alleLadders) {
+      const ladderSnap = await getDoc(doc(db, 'ladders', ladder.id));
+      if (!ladderSnap.exists()) continue;
+      const data      = ladderSnap.data();
+      const inSpelerIds = (data.spelerIds || []).includes(uid);
+      const inSpelers   = legacySpelerId != null &&
+                          (data.spelers || []).some(s => s.id === legacySpelerId);
+      if (!inSpelerIds && !inSpelers) continue;
+      data.spelers    = (data.spelers || []).filter(s => s.id !== legacySpelerId);
+      data.spelerIds  = (data.spelerIds || []).filter(id => id !== uid);
+      data.spelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i + 1);
+      await setDoc(doc(db, 'ladders', ladder.id), data);
+      try { await deleteDoc(doc(db, 'ladders', ladder.id, 'standen', uid)); } catch(e) {}
+      ladder.spelers   = data.spelers;
+      ladder.spelerIds = data.spelerIds;
+      if (ladder.id === activeLadderId) state.spelers = data.spelers;
     }
 
     renderAdmin();
@@ -878,4 +954,5 @@ export {
   sorteerUsers, renderAdminUsers, openEditUser, saveEditUser,
   openAddUser, saveNewUser, removeUser,
   verschuifRank, resetData, closeModal, koppelSpelerIds,
+  kopieerCredentials, vraagResetWachtwoord,
 };

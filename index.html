@@ -588,17 +588,10 @@
         <label>Achternaam</label>
         <input type="text" id="reg-achternaam" placeholder="de Vries" autocomplete="family-name">
       </div>
-      <div class="form-group">
-        <label>E-mailadres</label>
-        <input type="email" id="reg-email" placeholder="jan@email.com" autocomplete="email" inputmode="email">
-      </div>
-      <div class="form-group">
-        <label>Wachtwoord</label>
-        <input type="password" id="reg-pass" placeholder="minimaal 6 tekens" autocomplete="new-password">
-      </div>
-      <div class="form-group">
-        <label>Playing handicap (Goyer)</label>
-        <input type="number" id="reg-hcp" placeholder="bijv. 12" min="-10" max="54" inputmode="numeric">
+      <div style="background:#f0f7f4;border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
+        <strong>Account-gegevens:</strong><br>
+        Je login en wachtwoord worden automatisch aangemaakt op basis van je naam.
+        Bij eerste inloggen kies je een eigen wachtwoord en stel je je handicap in.
       </div>
       <div style="background:#f9f7f2;border-radius:10px;padding:14px;margin:12px 0;font-size:12px;color:var(--mid);line-height:1.6;max-height:220px;overflow-y:auto">
         <strong style="font-size:13px;color:var(--dark);display:block;margin-bottom:8px">Welkom bij de Goyer Golf MP Ladder</strong>
@@ -608,11 +601,11 @@
         <strong>Speldeelname</strong><br>
         Je neemt vrijwillig deel aan de matchplay competitie van Goyer Golf Club. De beheerder kan je account verwijderen als je langere tijd inactief bent.<br><br>
         <strong>Gegevens die worden opgeslagen</strong><br>
-        Je naam en e-mailadres (voor inloggen en identificatie), je handicap (voor eerlijk spel) en je speelresultaten: gespeelde partijen, gewonnen partijen en rankingpositie.<br><br>
+        Je naam (voor inloggen en identificatie), je handicap (voor eerlijk spel) en je speelresultaten: gespeelde partijen, gewonnen partijen en rankingpositie.<br><br>
         <strong>Gebruik van je gegevens</strong><br>
         Je gegevens zijn zichtbaar voor andere deelnemers. Ze worden niet gedeeld met derden en bewaard zolang je deelneemt. Je kunt ze laten verwijderen via de beheerder.<br><br>
         <strong>Technisch</strong><br>
-        De app gebruikt Google Firebase voor opslag en authenticatie. Je e-mailadres wordt bij Google opgeslagen conform hun privacybeleid.
+        De app gebruikt Google Firebase voor opslag en authenticatie.
       </div>
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;padding:10px;background:#f9f7f2;border-radius:8px">
         <input type="checkbox" id="reg-akkoord" style="accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
@@ -640,8 +633,8 @@
     </button>
 
     <div class="form-group">
-      <label>E-mailadres</label>
-      <input type="email" id="login-email" placeholder="naam@email.com" autocomplete="email" inputmode="email">
+      <label>Login</label>
+      <input type="text" id="login-email" placeholder="voornaam.achternaam" autocomplete="username" inputmode="email">
     </div>
     <div class="form-group">
       <label>Wachtwoord</label>
@@ -651,16 +644,6 @@
     <button onclick="openWachtwoordVergeten()" style="background:none;border:none;color:var(--light);font-size:13px;margin-top:12px;width:100%;cursor:pointer;font-family:'DM Sans',sans-serif">
       Wachtwoord vergeten?
     </button>
-    <!-- Wachtwoord reset inline -->
-    <div id="reset-wrap" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid #e0ddd4">
-      <p style="font-size:13px;color:var(--mid);margin-bottom:10px">Voer je e-mailadres in voor een reset-link:</p>
-      <input type="email" id="reset-email" placeholder="naam@email.com" inputmode="email"
-        style="width:100%;padding:10px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:16px;margin-bottom:10px;font-family:'DM Sans',sans-serif">
-      <div style="display:flex;gap:8px">
-        <button onclick="sluitResetWrap()" style="flex:1;padding:10px;background:none;border:1.5px solid #ccc;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif">Annuleren</button>
-        <button onclick="stuurResetEmail()" style="flex:2;padding:10px;background:var(--green);color:white;border:none;border-radius:8px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:600">Verstuur link</button>
-      </div>
-    </div>
     <div class="login-versie" style="text-align:right;margin-top:8px;font-size:10px;color:#ccc;font-family:'DM Mono',monospace">v2.x</div>
   </div>
 </div>
@@ -1572,20 +1555,16 @@
       </div>
       <div class="form-group">
         <label>Playing handicap (18 holes)</label>
-        <input type="number" id="new-player-hcp" step="1" min="-10" max="54" placeholder="bijv. 12" inputmode="numeric">
-      </div>
-      <div class="form-group">
-        <label>E-mailadres</label>
-        <input type="email" id="new-player-account" placeholder="naam@email.com" inputmode="email" autocomplete="off">
-      </div>
-      <div class="form-group">
-        <label>Tijdelijk wachtwoord</label>
-        <input type="password" id="new-player-pass" placeholder="minimaal 6 tekens" autocomplete="new-password">
+        <input type="number" id="new-player-hcp" step="1" min="-10" max="54" value="10" inputmode="numeric">
       </div>
       <div class="form-group">
         <label>Ladder toewijzen</label>
         <div id="new-player-ladders" style="display:flex;flex-direction:column;gap:6px;margin-top:4px"></div>
       </div>
+      <p style="font-size:11px;color:var(--light);margin-top:4px">
+        Login en wachtwoord worden automatisch aangemaakt.
+        De speler kiest bij eerste inloggen een eigen wachtwoord.
+      </p>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-add-player')">Annuleren</button>

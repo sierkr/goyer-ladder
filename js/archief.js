@@ -1,7 +1,7 @@
 // ============================================================
 //  archief.js
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, SPELERS_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB } from './config.js';
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB, esc, escAttr } from './config.js';
 import { store, state, huidigeBruiker, archiefData, uitdagingenData } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { renderAdmin, renderProfiel } from './admin.js';
@@ -92,13 +92,13 @@ async function renderArchief() {
     html += toernooien.map((t, idx) => `
       <div style="padding:12px 16px;border-bottom:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <span style="font-weight:600">🏅 ${t.naam}</span>
-          <span style="font-size:12px;color:var(--light)">${t.datum}</span>
+          <span style="font-weight:600">🏅 ${esc(t.naam)}</span>
+          <span style="font-size:12px;color:var(--light)">${esc(t.datum)}</span>
         </div>
-        <div style="font-size:12px;color:var(--mid);margin-bottom:8px">${t.baan} · ${t.holes} holes · W=${t.ptWin} T=${t.ptTie} L=${t.ptLoss}</div>
+        <div style="font-size:12px;color:var(--mid);margin-bottom:8px">${esc(t.baan)} · ${t.holes} holes · W=${t.ptWin} T=${t.ptTie} L=${t.ptLoss}</div>
         <div style="margin-bottom:8px">
           ${t.ranglijst?.slice(0,3).map((r,i) => `
-            <span style="font-size:13px;margin-right:12px">${i===0?'🥇':i===1?'🥈':'🥉'} ${r.naam} <span style="color:var(--light)">${r.punten>0?'+':''}${r.punten}pt</span></span>
+            <span style="font-size:13px;margin-right:12px">${i===0?'🥇':i===1?'🥈':'🥉'} ${esc(r.naam)} <span style="color:var(--light)">${r.punten>0?'+':''}${r.punten}pt</span></span>
           `).join('')}
         </div>
         <button class="btn btn-sm btn-ghost" onclick="openToernooiDetail(${idx})">Bekijk uitslag →</button>
@@ -114,12 +114,12 @@ async function renderArchief() {
       return `
       <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <span style="font-weight:600;font-size:16px">${s.naam}</span>
-          <span style="font-size:12px;color:var(--light)">${s.datum}</span>
+          <span style="font-weight:600;font-size:16px">${esc(s.naam)}</span>
+          <span style="font-size:12px;color:var(--light)">${esc(s.datum)}</span>
         </div>
         ${winnaar ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <span style="font-family:'Bebas Neue';font-size:18px;color:var(--gold)">🏆</span>
-          <span style="font-weight:600">${winnaar.naam}</span>
+          <span style="font-weight:600">${esc(winnaar.naam)}</span>
         </div>` : ''}
         <div style="display:flex;gap:8px">
           <span class="badge badge-grey">${s.eindstand?.length || 0} spelers</span>
@@ -162,7 +162,7 @@ async function openToernooiDetail(idx) {
     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
     html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
       <span style="font-size:16px;min-width:28px">${medal}</span>
-      <span style="flex:1;font-weight:500">${r.naam}</span>
+      <span style="flex:1;font-weight:500">${esc(r.naam)}</span>
       <span style="font-size:12px;color:var(--light)">${r.won}W ${r.tied}T ${r.lost}L</span>
       <span style="font-family:'DM Mono',monospace;font-weight:700;color:var(--green);min-width:40px;text-align:right">${r.punten>0?'+':''}${r.punten}pt</span>
     </div>`;
@@ -175,11 +175,11 @@ async function openToernooiDetail(idx) {
     html += `<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:11px;width:100%">`;
     html += `<tr><th style="padding:4px;background:var(--green);color:white"></th>`;
     t.spelerNamen.forEach(n => {
-      html += `<th style="padding:4px 6px;background:var(--green);color:white;text-align:center">${n}</th>`;
+      html += `<th style="padding:4px 6px;background:var(--green);color:white;text-align:center">${esc(n)}</th>`;
     });
     html += '</tr>';
     t.spelerNamen.forEach((naam, i) => {
-      html += `<tr><td style="padding:4px 8px;font-weight:600">${naam}</td>`;
+      html += `<tr><td style="padding:4px 8px;font-weight:600">${esc(naam)}</td>`;
       t.spelerNamen.forEach((_, j) => {
         // Ondersteun zowel oud array formaat als nieuw object formaat
         const cel = Array.isArray(t.matrix) ? (t.matrix[i]?.[j] || '-') : (t.matrix[`${i}_${j}`] || '-');
@@ -250,7 +250,7 @@ function openArchiefDetail(idx) {
     const verloren = (sp.partijen || 0) - (sp.gewonnen || 0);
     html += `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f0ede4">
       <span style="font-family:'Bebas Neue';font-size:20px;color:${sp.rank<=3?'var(--gold)':'var(--light)'};min-width:28px">${sp.rank}</span>
-      <span style="flex:1;font-weight:500;font-size:14px">${sp.naam}</span>
+      <span style="flex:1;font-weight:500;font-size:14px">${esc(sp.naam)}</span>
       <span style="font-size:11px;color:var(--mid);font-family:'DM Mono',monospace">${sp.partijen}G ${sp.gewonnen}W ${verloren}V ${winpct}%</span>
       <span style="font-size:11px;color:var(--light)">hcp ${sp.hcp}</span>
     </div>`;
@@ -262,7 +262,7 @@ function openArchiefDetail(idx) {
     inactief.forEach(sp => {
       html += `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #f0ede4">
         <span style="font-family:'Bebas Neue';font-size:20px;color:var(--light);min-width:28px">${sp.rank}</span>
-        <span style="flex:1;font-size:13px;color:var(--light)">${sp.naam}</span>
+        <span style="flex:1;font-size:13px;color:var(--light)">${esc(sp.naam)}</span>
         <span style="font-size:11px;color:#ccc">hcp ${sp.hcp}</span>
       </div>`;
     });

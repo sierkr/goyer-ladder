@@ -1,12 +1,13 @@
 // ============================================================
 //  ladder.js — Ladder rendering, ranking weergave
 // ============================================================
-import { db, LADDERS_COL } from './config.js';
+import { db, LADDERS_COL, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, huidigeBruiker, uitdagingenData, DEFAULT_LADDER_CONFIG } from './store.js';
 import { slaState, getLadderConfig, getLadderData, getNextId, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { stuurUitdaging } from './archief.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { renderKnockoutLadderKaart } from './knockout.js';
+import { getLadderSpelers, isInLadder } from './ladder-view.js';
 
 
 
@@ -24,17 +25,9 @@ async function renderLadder() {
   const mijnLadders = isCoordinatorRol()
     ? alleLadders
     : alleLadders.filter(l => {
-        const uid          = huidigeBruiker?.uid;
-        const spelerId     = huidigeBruiker?.spelerId;
-        const gebruikersnaam = (huidigeBruiker?.gebruikersnaam || '').toLowerCase();
-        // Primary: uid-based check
-        if (uid && (l.spelerIds || []).includes(uid)) return true;
-        // Fallback: numeric spelerId of naam
-        return (l.spelers || []).some(s =>
-          spelerId
-            ? String(s.id) === String(spelerId)
-            : s.naam.toLowerCase() === gebruikersnaam
-        );
+        const uid = huidigeBruiker?.uid;
+        // v3.0.0-9c: alleen uid-check via view-laag
+        return uid && isInLadder(l.id, uid);
       });
 
   if (mijnLadders.length === 0) {
@@ -91,21 +84,23 @@ async function renderLadder() {
       return renderKnockoutLadderKaart(l);
     }
 
-    const spelers = [...(l.data.spelers || [])].sort((a,b) => a.rank - b.rank);
+    // Gebruik view-laag (fase 9a) — haalt spelers uit spelers/{uid} + standen/{uid}
+    // Valt terug op l.data.spelers als standen/ nog leeg is
+    const spelers = getLadderSpelers(l.id);
     const lijstHtml = spelers.length === 0
       ? '<div class="empty"><p>Nog geen spelers.</p></div>'
       : spelers.map(s => renderLadderRij(s, l.id)).join('');
 
     return `<div class="card" style="margin-bottom:16px">
-      <div class="card-header inklapbaar" onclick="toggleLadderKaart(this,'${l.id}')">
+      <div class="card-header inklapbaar" onclick="toggleLadderKaart(this,'${escAttr(l.id)}')">
         <div style="display:flex;align-items:center;gap:10px;min-width:0">
-          <button onclick="event.stopPropagation();deelLadderAlsAfbeelding('${l.id}')" style="background:none;border:none;cursor:pointer;font-size:20px;padding:0;flex-shrink:0" title="Deel als afbeelding">📤</button>
-          <h2 style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Ladderstand ${l.naam}</h2>
+          <button onclick="event.stopPropagation();deelLadderAlsAfbeelding('${escAttr(l.id)}')" style="background:none;border:none;cursor:pointer;font-size:20px;padding:0;flex-shrink:0" title="Deel als afbeelding">📤</button>
+          <h2 style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Ladderstand ${esc(l.naam)}</h2>
         </div>
         <span class="badge badge-green">${spelers.length} spelers</span>
       </div>
-      <div class="card-collapse" id="ladder-collapse-${l.id}">
-        <div id="ladder-list-${l.id}">${lijstHtml}</div>
+      <div class="card-collapse" id="ladder-collapse-${escAttr(l.id)}">
+        <div id="ladder-list-${escAttr(l.id)}">${lijstHtml}</div>
       </div>
     </div>`;
   }).join('');
@@ -131,15 +126,9 @@ function renderLadderRij(s, ladderId) {
     deltaHtml = `<span style="font-size:11px;color:var(--light)">—</span>`;
   }
 
-  const uid      = huidigeBruiker?.uid;
-  const spelerId = huidigeBruiker?.spelerId;
-  // isZelf: uid primary (naam-match op spelers/{uid}.naam), spelerId/naam als fallback
-  const isZelf = huidigeBruiker && (
-    (uid && s.naam.toLowerCase() === huidigeBruiker.gebruikersnaam.toLowerCase()) ||
-    (spelerId
-      ? String(s.id) === String(spelerId)
-      : s.naam.toLowerCase() === huidigeBruiker.gebruikersnaam.toLowerCase())
-  );
+  const uid = huidigeBruiker?.uid;
+  // v3.0.0-9c: isZelf alleen via uid. Entries uit view-laag hebben s.uid.
+  const isZelf = huidigeBruiker && uid && s.uid === uid;
   const openUitdaging = uitdagingenData?.find(u =>
     u.status === 'open' && (
       (u.vanEmail === huidigeBruiker?.email && u.naarNaam?.toLowerCase() === s.naam.toLowerCase()) ||
@@ -147,12 +136,12 @@ function renderLadderRij(s, ladderId) {
     )
   );
   const uitdagingBtnHtml = huidigeBruiker && !isZelf
-    ? `<button onclick="stuurUitdaging(${s.id})" style="background:none;border:1px solid #e0ddd4;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:${openUitdaging ? 'var(--gold)' : 'var(--light)'}" title="${openUitdaging ? 'Uitdaging loopt' : 'Uitdagen'}">⚔️</button>`
+    ? `<button onclick="stuurUitdaging('${escAttr(s.id)}')" style="background:none;border:1px solid #e0ddd4;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:${openUitdaging ? 'var(--gold)' : 'var(--light)'}" title="${openUitdaging ? 'Uitdaging loopt' : 'Uitdagen'}">⚔️</button>`
     : '';
 
   return `<div class="ladder-item" style="${isZelf ? 'background:var(--green-pale);border-left:3px solid var(--green);margin-left:-3px;' : ''}">
     <div class="rank-badge ${s.rank <= 3 ? 'top3' : isZelf ? 'zelf' : ''}">${s.rank}</div>
-    <div class="player-name" style="${isZelf ? 'font-weight:700;color:var(--green);' : ''}">${s.naam}</div>
+    <div class="player-name" style="${isZelf ? 'font-weight:700;color:var(--green);' : ''}">${esc(s.naam)}</div>
     <div style="min-width:30px;text-align:center">${deltaHtml}</div>
     <div class="player-stats" style="text-align:right;min-width:52px">${s.partijen}P ${s.gewonnen}W<br>${winpct}%</div>
     <div style="width:42px;text-align:center;flex-shrink:0">${uitdagingBtnHtml}</div>
@@ -169,10 +158,7 @@ export { renderLadder, toggleLadderKaart, renderLadderRij };
 async function deelLadderAlsAfbeelding(ladderId) {
   try {
   const ladder = alleLadders.find(l => l.id === ladderId);
-  const data = ladderId === activeLadderId ? state : ladder?.data;
-  if (!data) { toast('Ladder data niet beschikbaar'); return; }
-
-  const spelers = [...(data.spelers || [])].sort((a, b) => a.rank - b.rank);
+  const spelers = getLadderSpelers(ladderId);
   if (spelers.length === 0) { toast('Geen spelers om te delen'); return; }
 
   const naam = ladder?.naam || 'Ladder';
