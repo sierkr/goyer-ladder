@@ -189,11 +189,10 @@ async function voegSpelerToeAanLadders(ladderIds, speler, uid = null) {
 // ============================================================
 
 async function openAddPlayer() {
-  document.getElementById('new-player-voornaam').value  = '';
+  document.getElementById('new-player-voornaam').value   = '';
   document.getElementById('new-player-achternaam').value = '';
-  document.getElementById('new-player-hcp').value       = '';
-  document.getElementById('new-player-account').value   = '';
-  document.getElementById('new-player-pass').value      = '';
+  // v3.0.0-11: hcp default 10, email + wachtwoord velden bestaan niet meer
+  document.getElementById('new-player-hcp').value        = '10';
   document.getElementById('add-player-handmatig').style.display      = 'none';
   document.getElementById('add-player-accounts-wrap').style.display  = 'block';
   document.getElementById('add-player-save-btn').style.display       = 'none';

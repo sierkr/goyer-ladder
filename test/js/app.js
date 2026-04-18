@@ -197,7 +197,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v3.0.0-11';
+  const VERSION = 'v3.0.0-11.1';
   const badge = document.getElementById('versie-badge');
   if (badge) { badge.textContent = VERSION; badge.style.display = ''; }
   document.querySelectorAll('.login-versie').forEach(el => el.textContent = VERSION);
