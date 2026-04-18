@@ -198,11 +198,31 @@ window.nieuwKnockoutSeizoen = nieuwKnockoutSeizoen;
 window.toggleAdminKaart = toggleAdminKaart;
 
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
+// v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v3.0.0-11.2';
+  const VERSION = 'v3.0.0-11.3';
+  const IS_TEST = location.pathname.includes('/test/');
+  const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
-  if (badge) { badge.textContent = VERSION; badge.style.display = ''; }
-  document.querySelectorAll('.login-versie').forEach(el => el.textContent = VERSION);
+  if (badge) {
+    badge.textContent = label;
+    badge.style.display = '';
+    if (IS_TEST) {
+      // Maak badge opvallend in test (rood-oranje achtergrond)
+      badge.style.background = '#ff6b35';
+      badge.style.color = 'white';
+      badge.style.padding = '2px 6px';
+      badge.style.borderRadius = '4px';
+      badge.style.fontWeight = '600';
+    }
+  }
+  document.querySelectorAll('.login-versie').forEach(el => {
+    el.textContent = label;
+    if (IS_TEST) {
+      el.style.color = '#ff6b35';
+      el.style.fontWeight = '600';
+    }
+  });
 });
 
 window.openScorekaartDetail = openScorekaartDetail;
