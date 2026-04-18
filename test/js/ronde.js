@@ -458,8 +458,9 @@ function skipMatchup(idx) {
 }
 
 async function bevestigUitslag() {
+  console.log('[bevestig] bevestigUitslag gestart');
   const p = mijnPartij();
-  if (!p) return;
+  if (!p) { console.warn('[bevestig] geen mijnPartij — abort'); return; }
 
   // Zorg dat we in de juiste ladder zitten
   if (p.ladderId && p.ladderId !== activeLadderId) {

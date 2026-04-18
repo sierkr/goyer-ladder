@@ -183,10 +183,10 @@ function openBeheerPartij(partijId) {
     html += `<div style="padding:12px 0;border-bottom:1px solid #f0ede4">
       <div style="font-weight:600;margin-bottom:4px">${esc(m.spelerA.naam)} vs ${esc(m.spelerB.naam)}</div>
       <div style="font-size:11px;color:var(--light);margin-bottom:8px">${esc(voorlopig)}</div>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;align-items:center">
         <button class="btn btn-sm btn-ghost" id="bwin-${idx}-A" onclick="setBeheerWinnaar(${idx},'A')">${esc(nA)} wint</button>
         <button class="btn btn-sm btn-ghost" id="bwin-${idx}-B" onclick="setBeheerWinnaar(${idx},'B')">${esc(nB)} wint</button>
-        <button class="btn btn-sm btn-ghost" id="bwin-${idx}-N" onclick="setBeheerWinnaar(${idx},null)" style="color:var(--light)">Geen</button>
+        <button class="btn btn-sm btn-ghost" id="bwin-${idx}-N" onclick="setBeheerWinnaar(${idx},'SKIP')" style="color:var(--red);border-color:#f5c6cb;font-size:11px;margin-left:auto" title="Matchup overslaan — telt niet mee">✕ overslaan</button>
       </div>
     </div>`;
   });
@@ -197,12 +197,15 @@ function openBeheerPartij(partijId) {
 }
 
 function setBeheerWinnaar(idx, kant) {
+  // v3.0.0-11.5: kant kan 'A', 'B' of 'SKIP' zijn (voor overslaan)
   _beheerWinnaars[idx] = kant;
-  const p = (state.actievePartijen || []).find(ap => ap.partijId === _beheerPartijId);
-  if (!p) return;
   ['A','B','N'].forEach(k => {
     const btn = document.getElementById(`bwin-${idx}-${k}`);
-    if (btn) btn.className = `btn btn-sm ${k === String(kant ?? 'N') ? 'btn-primary' : 'btn-ghost'}`;
+    if (!btn) return;
+    // 'N' knop is SKIP in nieuwe flow
+    const isActief = (k === 'N' && kant === 'SKIP') || k === kant;
+    btn.classList.toggle('btn-primary', isActief);
+    btn.classList.toggle('btn-ghost', !isActief);
   });
 }
 
@@ -211,7 +214,11 @@ async function bevestigBeheerUitslag() {
   try {
   const p = (state.actievePartijen || []).find(ap => ap.partijId === _beheerPartijId);
   if (!p) return;
-  if (_beheerWinnaars.some(w => w === null)) { toast('Wijs voor elke match een winnaar aan'); return; }
+  // v3.0.0-11.5: null = geen keuze gemaakt (blokkeert). 'SKIP' = bewust overgeslagen (ok).
+  if (_beheerWinnaars.some(w => w === null)) {
+    toast('Kies voor elke match een winnaar of sla de match over');
+    return;
+  }
 
   closeModal('modal-beheer-partij');
 
@@ -220,10 +227,20 @@ async function bevestigBeheerUitslag() {
 
   p.matchups.forEach((m, idx) => {
     const kant = _beheerWinnaars[idx];
+    // v3.0.0-11.5: overgeslagen matchups tellen niet mee voor ladder
+    if (kant === 'SKIP') return;
     const winnaar = kant === 'A' ? m.spelerA : m.spelerB;
     const verliezer = kant === 'A' ? m.spelerB : m.spelerA;
-    const sw = state.spelers.find(s => s.id === winnaar.id);
-    const sv = state.spelers.find(s => s.id === verliezer.id);
+    // v3.0.0-11.5: match eerst op id, fallback op naam (voor view-laag uid-ids)
+    const sw = state.spelers.find(s => s.id === winnaar.id)
+             || state.spelers.find(s => s.naam?.toLowerCase() === winnaar.naam?.toLowerCase());
+    const sv = state.spelers.find(s => s.id === verliezer.id)
+             || state.spelers.find(s => s.naam?.toLowerCase() === verliezer.naam?.toLowerCase());
+    if (!sw || !sv) {
+      console.warn('[beheer-uitslag] matchup', idx, 'skipped — speler niet in state',
+        'winnaar:', winnaar.naam, sw?'ok':'NIET', 'verliezer:', verliezer.naam, sv?'ok':'NIET');
+      return;
+    }
     const oldWrank = sw.rank, oldVrank = sv.rank;
     sw.partijen++; sv.partijen++; sw.gewonnen++;
     let newWrank, newVrank;
@@ -261,10 +278,13 @@ async function bevestigBeheerUitslag() {
     datum: new Date().toLocaleDateString('nl-NL'),
     baan: p.baan,
     spelers: p.spelers.map(s => s.naam),
-    matchups: p.matchups.map((m, i) => ({
-      a: m.spelerA.naam, b: m.spelerB.naam,
-      winnaar: _beheerWinnaars[i] === 'A' ? m.spelerA.naam : m.spelerB.naam
-    }))
+    matchups: p.matchups
+      .map((m, i) => ({ m, kant: _beheerWinnaars[i] }))
+      .filter(x => x.kant !== 'SKIP')
+      .map(({ m, kant }) => ({
+        a: m.spelerA.naam, b: m.spelerB.naam,
+        winnaar: kant === 'A' ? m.spelerA.naam : m.spelerB.naam
+      }))
   });
 
   state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== _beheerPartijId);
