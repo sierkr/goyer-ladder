@@ -52,13 +52,16 @@ async function bevestigNieuwSeizoen() {
   const geselecteerdeIds = Array.from(checks).map(c => c.dataset.ladderId);
   if (geselecteerdeIds.length === 0) { toast('Selecteer minstens één ladder'); return; }
 
+  // v3.0.0-11.12: optie om volgorde om te draaien
+  const omdraaien = document.getElementById('seizoen-omdraaien')?.checked === true;
+
   if (!confirm(
     `Seizoen "${naam}" archiveren en resetten voor ${geselecteerdeIds.length} ladder(s)?\n\n` +
     `- Eindstand wordt gearchiveerd\n` +
     `- Alle partijen/gewonnen-tellers → 0\n` +
     `- Alle scorekaarten en snapshots worden verwijderd\n` +
-    `- Ranks worden hernummerd (1..N)\n\n` +
-    `Dit is onomkeerbaar.`
+    (omdraaien ? `- Volgorde omgedraaid: eerste ↔ laatste\n` : `- Ranks hernummerd (1..N)\n`) +
+    `\nDit is onomkeerbaar.`
   )) return;
 
   let fouten = 0;
@@ -74,7 +77,7 @@ async function bevestigNieuwSeizoen() {
         const data = ladderSnap.data();
         const ladderNaam = data.naam || ladderId;
 
-        // 2) Archiveer eindstand
+        // 2) Archiveer eindstand (vóór omdraaien — de archief toont de uitgangssituatie)
         const spelersSorteerd = [...(data.spelers || [])].sort((a, b) => (a.rank || 999) - (b.rank || 999));
         const seizoen = {
           naam,
@@ -94,14 +97,18 @@ async function bevestigNieuwSeizoen() {
         await setDoc(ARCHIEF_DOC, { seizoenen: archiefData });
         alleIdsArchiefOK.push(ladderId);
 
-        // 3) Reset spelers[]: ranks hernummeren naar 1..N, tellers op 0
-        const gereset = spelersSorteerd.map((s, i) => ({
+        // 3) Reset spelers[]: hernummer naar 1..N, eventueel omgedraaid
+        // Als omdraaien=true: rank N wordt 1, rank N-1 wordt 2, etc.
+        const aantal = spelersSorteerd.length;
+        const nieuweVolgorde = omdraaien
+          ? [...spelersSorteerd].reverse()
+          : spelersSorteerd;
+        const gereset = nieuweVolgorde.map((s, i) => ({
           ...s,
           rank: i + 1,
           partijen: 0,
           gewonnen: 0,
         }));
-        // prevRank expliciet verwijderen
         gereset.forEach(s => { delete s.prevRank; });
 
         // 4) Update ladder-doc: nieuwe spelers[], wis uitslagen[] + actievePartijen[]
@@ -250,22 +257,28 @@ async function renderArchief() {
 
   // Seizoenen
   if (archiefData.length > 0) {
+    const isBeh = isBeheerderRol();
     html += `<div style="padding:10px 16px 6px;margin-top:8px"><p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Seizoenen</p></div>`;
     html += archiefData.map((s, idx) => {
       const winnaar = s.eindstand?.[0];
+      const ladderLabel = s.ladderNaam ? ` · ${esc(s.ladderNaam)}` : '';
+      const delBtn = isBeh
+        ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:12px;margin-left:6px" onclick="verwijderArchiefSeizoen(${idx})" title="Seizoen verwijderen uit archief">✕</button>`
+        : '';
       return `
       <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <span style="font-weight:600;font-size:16px">${esc(s.naam)}</span>
+          <span style="font-weight:600;font-size:16px">${esc(s.naam)}${ladderLabel}</span>
           <span style="font-size:12px;color:var(--light)">${esc(s.datum)}</span>
         </div>
         ${winnaar ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
           <span style="font-family:'Bebas Neue';font-size:18px;color:var(--gold)">🏆</span>
           <span style="font-weight:600">${esc(winnaar.naam)}</span>
         </div>` : ''}
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;align-items:center">
           <span class="badge badge-grey">${s.eindstand?.length || 0} spelers</span>
           <button class="btn btn-sm btn-ghost" onclick="openArchiefDetail(${idx})" style="margin-left:auto">Bekijk →</button>
+          ${delBtn}
         </div>
       </div>`;
     }).join('');
@@ -277,6 +290,30 @@ async function renderArchief() {
 
   list.innerHTML = html;
   } catch(e) { console.error('renderArchief mislukt:', e); }
+}
+
+// v3.0.0-11.12: beheerder kan seizoen-entry uit archief verwijderen
+async function verwijderArchiefSeizoen(idx) {
+  if (!isBeheerderRol()) { toast('Alleen beheerder'); return; }
+  const seizoen = archiefData[idx];
+  if (!seizoen) return;
+  const label = `${seizoen.naam}${seizoen.ladderNaam ? ' · ' + seizoen.ladderNaam : ''}`;
+  if (!confirm(`Seizoen "${label}" permanent uit archief verwijderen?`)) return;
+  try {
+    const verwijderd = archiefData.splice(idx, 1)[0];
+    await setDoc(ARCHIEF_DOC, { seizoenen: archiefData });
+    renderArchief();
+    toast('Seizoen verwijderd ✓');
+  } catch(e) {
+    console.error('verwijderArchiefSeizoen mislukt:', e);
+    toast('Fout bij verwijderen');
+    // Re-laad om lokale state te herstellen
+    try {
+      const snap = await getDoc(ARCHIEF_DOC);
+      store.archiefData = snap.exists() ? (snap.data().seizoenen || []) : [];
+      renderArchief();
+    } catch(_) {}
+  }
 }
 
 async function openToernooiDetail(idx) {
@@ -534,4 +571,4 @@ async function verwijderOudeUitslagen() {
   } catch(e) { console.error('Opschonen mislukt:', e); }
 }
 
-export { bevestigNieuwSeizoen, openArchiefDetail, openNieuwSeizoenModal, openToernooiDetail, reageerUitdaging, renderArchief, stuurNotificatie, stuurUitdaging, toonUitdagingBadge, verwijderOudeUitslagen, verwijderUitdaging };
+export { bevestigNieuwSeizoen, openArchiefDetail, openNieuwSeizoenModal, openToernooiDetail, reageerUitdaging, renderArchief, stuurNotificatie, stuurUitdaging, toonUitdagingBadge, verwijderOudeUitslagen, verwijderUitdaging, verwijderArchiefSeizoen };

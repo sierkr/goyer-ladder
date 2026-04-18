@@ -883,6 +883,10 @@
       <label>Welke ladders?</label>
       <div id="nieuw-seizoen-ladders" style="margin-top:6px"></div>
     </div>
+    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px;background:#f9f7f2;border-radius:8px;margin-bottom:12px">
+      <input type="checkbox" id="seizoen-omdraaien" style="accent-color:var(--green);width:18px;height:18px">
+      <span style="font-size:13px;color:var(--mid)">↕️ Volgorde omdraaien: eerste wordt laatste, laatste wordt eerste</span>
+    </label>
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-nieuw-seizoen')">Annuleren</button>
       <button class="btn btn-gold" style="flex:2" onclick="bevestigNieuwSeizoen()">🏆 Archiveren & resetten</button>
