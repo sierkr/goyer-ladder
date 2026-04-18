@@ -761,6 +761,9 @@ window.editMatchupSlagen = editMatchupSlagen;
 // ============================================================
 // Na elke bevestigUitslag schrijven we naast ladders.spelers[] ook
 // naar de standen/{uid} subcollectie zodat de view-laag up-to-date is.
+// v3.0.0-11.9: match via uid (via state.speler.id of via unieke naam-lookup).
+// Bij naam-collisions (twee spelers met zelfde naam) wordt er NIET gesynct om
+// kruisbesmetting tussen rankingen te voorkomen — console.warn logt dit.
 async function syncStandenNaBevestigUitslag(ladderId) {
   try {
     const ladderData = alleLadders.find(l => l.id === ladderId)?.data;
@@ -768,19 +771,43 @@ async function syncStandenNaBevestigUitslag(ladderId) {
     const spelerIds = (ladderData.spelerIds || [])
       .filter(id => typeof id === 'string' && id.length > 10);
     if (spelerIds.length === 0) return;
+    const spelerIdSet = new Set(spelerIds);
 
-    // Koppel elke state.speler aan een uid via naam match
-    // (_usersCache is gesynchroniseerd met spelers/ collectie)
+    // Bouw naam→uid-lijst uit users cache. Detecteer naam-collisions.
     const users = store._usersCache || [];
-    const naamNaarUid = {};
-    users.forEach(u => { if (u.naam) naamNaarUid[u.naam.toLowerCase()] = u.uid; });
+    const naamNaarUids = {}; // naam → [uid1, uid2, ...]
+    users.forEach(u => {
+      if (!u.naam) return;
+      const key = u.naam.toLowerCase().trim();
+      if (!naamNaarUids[key]) naamNaarUids[key] = [];
+      naamNaarUids[key].push(u.uid);
+    });
+
+    // Helper: vind uid voor een state.speler. Bij voorkeur via id (als uid-string),
+    // anders via naam (alleen als naam uniek is).
+    function vindUidVoor(s) {
+      // Stap 1: id is al een uid
+      if (typeof s.id === 'string' && s.id.length > 10) {
+        return s.id;
+      }
+      // Stap 2: naam lookup
+      const key = (s.naam || '').toLowerCase().trim();
+      const kandidaten = naamNaarUids[key];
+      if (!kandidaten || kandidaten.length === 0) return null;
+      if (kandidaten.length > 1) {
+        // Naam-collision: meerdere spelers met zelfde naam. Niet syncen.
+        console.warn(`[sync] naam-collision voor "${s.naam}": ${kandidaten.length} uids — standen niet gesynct`);
+        return null;
+      }
+      return kandidaten[0];
+    }
 
     const spelersInLadder = state.spelers || [];
     const writes = [];
     spelersInLadder.forEach(s => {
       if (!s.naam) return;
-      const uid = naamNaarUid[s.naam.toLowerCase()];
-      if (!uid || !spelerIds.includes(uid)) return;
+      const uid = vindUidVoor(s);
+      if (!uid || !spelerIdSet.has(uid)) return;
       const payload = {
         rank:     s.rank     || 0,
         partijen: s.partijen || 0,
