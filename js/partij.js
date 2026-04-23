@@ -1,7 +1,7 @@
 // ============================================================
 //  partij.js — Partij aanmaken, banen, naam helpers
 // ============================================================
-import { db, BANEN_DB, LADDERS_COL, DEFAULT_STATE, esc, escAttr } from './config.js';
+import { db, BANEN_DB, BANEN_DOC, LADDERS_COL, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
 import { slaState, getLadderData, getNextId, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { objNaarRondes } from './knockout.js';
@@ -239,14 +239,8 @@ function zoekPartijSpeler(n, zoek) {
     `).join('');
   }
 
-  // Positie berekenen relatief aan input voor fixed positioning
-  const wrap = lijst.closest('.speler-zoek-wrap') || lijst.parentElement;
-  const rect = wrap.getBoundingClientRect();
-  lijst.style.position = 'fixed';
-  lijst.style.top = (rect.bottom + 2) + 'px';
-  lijst.style.left = rect.left + 'px';
-  lijst.style.width = rect.width + 'px';
-  lijst.style.maxHeight = Math.min(200, window.innerHeight - rect.bottom - 10) + 'px';
+  // v11.16: geen JS-positioning meer — CSS regelt position:absolute; top:100% op de wrap.
+  // Hiermee blijft de dropdown aan de input gekoppeld ook als iOS keyboard opent.
   lijst.style.display = 'block';
 }
 
@@ -331,6 +325,8 @@ async function slaAangepasteBaanOp() {
   const naam = document.getElementById('baan-naam-nieuw')?.value?.trim();
   if (!naam) { toast('Geef de baan eerst een naam'); return; }
 
+  if (!huidigeBruiker?.uid) { toast('Je bent niet ingelogd'); return; }
+
   // Lees holes
   const holes = [];
   for (let i = 1; i <= 18; i++) {
@@ -344,7 +340,12 @@ async function slaAangepasteBaanOp() {
     toast('Er bestaat al een baan met deze naam'); return;
   }
 
-  const nieuweBaan = { naam, holes, aangemaakt_door: huidigeBruiker.gebruikersnaam };
+  // v11.17: robuuste fallbacks — nooit undefined naar Firestore
+  const nieuweBaan = {
+    naam,
+    holes,
+    aangemaakt_door: huidigeBruiker.gebruikersnaam || huidigeBruiker.email || huidigeBruiker.uid || 'onbekend'
+  };
   aangepasteBanen.push(nieuweBaan);
 
   try {
@@ -354,7 +355,11 @@ async function slaAangepasteBaanOp() {
     initPartijForm();
     document.getElementById('baan-select').value = naam;
     document.getElementById('baan-handmatig').style.display = 'none';
-  } catch(e) { toast('Fout bij opslaan'); aangepasteBanen.pop(); }
+  } catch(e) {
+    console.error('slaAangepasteBaanOp mislukt:', e);
+    aangepasteBanen.pop();
+    toast('Fout bij opslaan: ' + (e.code || e.message || 'onbekend'));
+  }
 }
 
 async function verwijderAangepasteBaan() {
@@ -368,7 +373,10 @@ async function verwijderAangepasteBaan() {
     await setDoc(BANEN_DOC, { lijst: aangepasteBanen });
     toast('Baan verwijderd');
     initPartijForm();
-  } catch(e) { toast('Fout bij verwijderen'); }
+  } catch(e) {
+    console.error('verwijderAangepasteBaan mislukt:', e);
+    toast('Fout bij verwijderen: ' + (e.code || e.message || 'onbekend'));
+  }
 }
 
 // Geeft de actieve partij terug waar de ingelogde speler in zit

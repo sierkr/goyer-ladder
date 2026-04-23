@@ -65,7 +65,8 @@ function toonScorekaartModal(data) {
       const val = data.scores?.[spelerId]?.[i] ?? null;
       if (val) totalen[si] += Number(val);
       const kleur = val && val <= h.par - 2 ? '#d4edda' : val && val === h.par - 1 ? '#d8f3dc' : val && val === h.par + 1 ? '#fff3cd' : val && val >= h.par + 2 ? '#f8d7da' : '';
-      html += `<td style="text-align:center;padding:5px;background:${kleur}">${val || '—'}</td>`;
+      const txtCol = kleur ? '#1a1a1a' : 'var(--dark)';
+      html += `<td style="text-align:center;padding:5px;background:${kleur};color:${txtCol}">${val || '—'}</td>`;
     });
     html += '</tr>';
   });
@@ -111,7 +112,7 @@ function renderUitslagen() {
         ? p.scores[p.spelers[0].id]?.filter(v => v !== null).length || 0
         : 0;
       return `
-        <div style="padding:14px 16px;border-bottom:1px solid #f0ede4">
+        <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
             <span style="font-weight:600">${esc(p.baan)}</span>
             <span style="font-size:11px;color:var(--light)">gestart ${aangemaakt}</span>
@@ -139,7 +140,7 @@ function renderUitslagen() {
     const heeftScorekaart = !!u.scoreTs;
     const ouderDan30Dagen = u.scoreTs && (Date.now() - u.scoreTs > 30 * 24 * 60 * 60 * 1000);
     return `
-    <div style="padding:14px 16px;border-bottom:1px solid #f0ede4">
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
       <div style="display:flex;justify-content:space-between;margin-bottom:6px">
         <span style="font-weight:600">${esc(u.baan)}</span>
         <span style="font-size:12px;color:var(--light)">${esc(u.datum)}</span>
@@ -180,13 +181,13 @@ function openBeheerPartij(partijId) {
     });
     const voorlopig = standA > 0 ? `${nA} leidt (${standA} UP)` : standA < 0 ? `${nB} leidt (${Math.abs(standA)} UP)` : 'Gelijk';
 
-    html += `<div style="padding:12px 0;border-bottom:1px solid #f0ede4">
+    html += `<div style="padding:12px 0;border-bottom:1px solid var(--border)">
       <div style="font-weight:600;margin-bottom:4px">${esc(m.spelerA.naam)} vs ${esc(m.spelerB.naam)}</div>
       <div style="font-size:11px;color:var(--light);margin-bottom:8px">${esc(voorlopig)}</div>
       <div style="display:flex;gap:8px;align-items:center">
         <button class="btn btn-sm btn-ghost" id="bwin-${idx}-A" onclick="setBeheerWinnaar(${idx},'A')">${esc(nA)} wint</button>
         <button class="btn btn-sm btn-ghost" id="bwin-${idx}-B" onclick="setBeheerWinnaar(${idx},'B')">${esc(nB)} wint</button>
-        <button class="btn btn-sm btn-ghost" id="bwin-${idx}-N" onclick="setBeheerWinnaar(${idx},'SKIP')" style="color:var(--red);border-color:#f5c6cb;font-size:11px;margin-left:auto" title="Matchup overslaan — telt niet mee">✕ overslaan</button>
+        <button class="btn btn-sm btn-ghost" id="bwin-${idx}-N" onclick="setBeheerWinnaar(${idx},'SKIP')" style="color:var(--red);border-color:var(--alert-text);font-size:11px;margin-left:auto" title="Matchup overslaan — telt niet mee">✕ overslaan</button>
       </div>
     </div>`;
   });
@@ -472,7 +473,8 @@ function renderLiveScoreBord() {
       const val = p.scores[s.id]?.[i];
       if (val != null) totalen[s.id] += Number(val);
       const kleur = val == null ? '' : val <= h.par - 2 ? '#d4edda' : val === h.par - 1 ? '#d8f3dc' : val === h.par + 1 ? '#fff3cd' : val >= h.par + 2 ? '#f8d7da' : '';
-      tabelHtml += `<td style="text-align:center;padding:5px;background:${kleur}">${val != null ? val : '—'}</td>`;
+      const txtCol = kleur ? '#1a1a1a' : 'var(--dark)';
+      tabelHtml += `<td style="text-align:center;padding:5px;background:${kleur};color:${txtCol}">${val != null ? val : '—'}</td>`;
     });
     tabelHtml += '</tr>';
   });
