@@ -365,7 +365,7 @@ function renderFlightLijst() {
           style="background:transparent;border:none;color:white;font-family:'Bebas Neue';font-size:18px;flex:1;outline:none">
         ${_flights.length > 1 ? `<button onclick="verwijderFlight(${fi})" style="background:rgba(255,255,255,0.2);border:none;border-radius:4px;color:white;cursor:pointer;padding:2px 8px;font-size:13px">✕</button>` : ''}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 12px;background:#f9f7f2;border-bottom:1px solid var(--border)">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px 12px;background:var(--soft-bg);border-bottom:1px solid var(--border)">
         <div>
           <label style="font-size:11px;font-weight:600;color:var(--mid);text-transform:uppercase;display:block;margin-bottom:3px">Starttijd</label>
           <input type="time" value="${esc(f.starttijd || '')}" onchange="wijzigFlightStarttijd(${fi}, this.value)"
@@ -385,7 +385,7 @@ function renderFlightLijst() {
               onchange="wijzigFlightHcp(${fi}, ${si}, this.value)"
               style="width:48px;padding:3px 6px;text-align:center;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;font-size:13px;flex-shrink:0">
             ${_flights.length > 1 ? `
-            <select onchange="verplaatsSpelerFlight(${fi}, ${si}, this.value)" style="font-size:12px;border:1.5px solid var(--border);border-radius:5px;padding:3px 5px;background:white;flex-shrink:0;max-width:80px">
+            <select onchange="verplaatsSpelerFlight(${fi}, ${si}, this.value)" style="font-size:12px;border:1.5px solid var(--border);border-radius:5px;padding:3px 5px;background:var(--card-bg);color:var(--dark);flex-shrink:0;max-width:80px">
               ${_flights.map((lf, lfi) => `<option value="${lfi}" ${lfi === fi ? 'selected' : ''}>${esc(lf.naam)}</option>`).join('')}
             </select>` : ''}
           </div>
@@ -586,7 +586,7 @@ function openToernooiSpelersBeheer() {
   verwijderLijst.innerHTML = t.spelers.map(s => `
     <div style="display:flex;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
       <span style="flex:1;font-size:14px">${esc(s.naam)}${s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}</span>
-      <button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:12px"
+      <button class="btn btn-sm" style="background:var(--alert-bg);color:var(--alert-text);border:none;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:12px"
         onclick="verwijderToernooiSpelerNieuw('${escAttr(s.id)}')">✕</button>
     </div>
   `).join('');
@@ -1352,11 +1352,11 @@ function renderTRanglijst() {
 
     resultaten.forEach((r, rank) => {
       const isGast = r.s.gast;
-      const trStyle = rank % 2 === 0 ? '' : 'background:#fafaf8';
+      const trStyle = rank % 2 === 0 ? '' : 'background:var(--subtle-bg)';
       const actBrutto = sorteerOp === 'brutto' ? 'font-weight:700;color:var(--green)' : '';
       const actNetto = sorteerOp === 'netto' ? 'font-weight:700;color:var(--green)' : '';
       const actStableford = sorteerOp === 'stableford' ? 'font-weight:700;color:var(--green)' : '';
-      const cbBadge = cbSpelers.has(rank) ? ' <span style="font-size:9px;background:#fff3cd;color:#7a6000;border-radius:4px;padding:1px 4px;font-weight:700">CB</span>' : '';
+      const cbBadge = cbSpelers.has(rank) ? ' <span style="font-size:9px;background:var(--warning-bg);color:var(--warning-text);border-radius:4px;padding:1px 4px;font-weight:700">CB</span>' : '';
       html += `<tr style="${trStyle}">
         <td style="${tdStyle};font-weight:700;color:${rank < 3 ? 'var(--gold)' : 'var(--light)'}">${rank+1}</td>
         <td style="${tdNaamStyle}">${esc(r.s.naam)}${isGast ? ' <em style="font-size:10px;color:var(--light)">(gast)</em>' : ''}${cbBadge}</td>
@@ -1423,7 +1423,7 @@ function renderTMatrix() {
     html += `<tr><td style="padding:4px 8px;font-weight:600;font-size:12px;white-space:nowrap">${esc(sA.naam.split(' ')[0])}</td>`;
     t.spelers.forEach((sB, j) => {
       if (i === j) {
-        html += `<td style="background:#f0ede4;text-align:center;padding:4px">—</td>`;
+        html += `<td style="background:var(--border);text-align:center;padding:4px">—</td>`;
       } else {
         const res = matrix[i][j];
         const bg = res ? kleur[res] : 'transparent';

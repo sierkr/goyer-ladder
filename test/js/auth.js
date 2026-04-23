@@ -760,15 +760,15 @@ async function registreerSpeler() {
     succes.innerHTML = `
       <strong style="font-size:18px">Welkom ${esc(voornaam)}! 🎉</strong><br><br>
       Je account is aangemaakt en je staat in de <strong>${esc(ladderNaam)}</strong> ladder.<br><br>
-      <div style="background:#f0f7f4;border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
+      <div style="background:var(--info-bg);color:var(--info-text);border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
         <strong>Je eerste inloggegevens:</strong><br><br>
-        <div style="font-family:'DM Mono',monospace;background:white;padding:8px 10px;border-radius:6px;border:1px solid var(--border);margin-bottom:6px">
+        <div style="font-family:'DM Mono',monospace;background:var(--card-bg);color:var(--dark);padding:8px 10px;border-radius:6px;border:1px solid var(--border);margin-bottom:6px">
           login: <strong>${esc(loginTxt)}</strong><br>
           wachtwoord: <strong>${esc(INITIEEL_WACHTWOORD)}</strong>
         </div>
         <em style="font-size:12px;color:var(--mid)">Bij eerste inlog kies je een eigen wachtwoord en stel je je handicap in.</em>
       </div>
-      <div style="background:#f9f7f2;border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
+      <div style="background:var(--soft-bg);color:var(--mid);border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
         <strong>📱 App op je homescreen zetten (aanbevolen)</strong><br><br>
         <strong>iPhone/iPad (Safari):</strong><br>
         Tik op het deel-icoon <span style="font-size:15px">⎙</span> onderin → "Zet op beginscherm" → "Voeg toe"<br><br>
@@ -776,7 +776,7 @@ async function registreerSpeler() {
         Tik op de drie puntjes ⋮ rechtsboven → "Toevoegen aan startscherm"
       </div>
       <a href="${location.origin}${location.pathname}"
-        style="display:block;text-align:center;background:var(--green);color:white;
+        style="display:block;text-align:center;background:var(--green);color:var(--on-primary);
           padding:12px;border-radius:8px;font-weight:600;text-decoration:none">
         Inloggen →
       </a>`;

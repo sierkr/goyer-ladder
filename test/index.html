@@ -8,11 +8,14 @@
 <meta name="apple-mobile-web-app-title" content="MP Ladder">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#2d6a4f">
+<meta name="color-scheme" content="light dark">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
 <title>Goyer Golf MP Ladder</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+  html { color-scheme: light dark; }
 
   :root {
     --green: #2d6a4f;
@@ -33,6 +36,20 @@
     --border: #f0ede4;
     --input-bg: #ffffff;
     --nav-bg: #ffffff;
+    /* v11.15: semantische variabelen voor alerts/info/warning/soft */
+    --alert-bg: #fde8e8;        /* foutmeldingen, delete-knoppen */
+    --alert-text: #c0392b;      /* tekst op alert-bg */
+    --info-bg: #f0f7f4;         /* info-boxes (registratie info) */
+    --info-text: #1a3d2a;       /* tekst op info-bg */
+    --warning-bg: #fff3cd;      /* waarschuwingen, CB-badges */
+    --warning-text: #856404;    /* tekst op warning-bg */
+    --soft-bg: #f9f7f2;         /* subtle highlights, boxes rond checkboxes */
+    --soft-text: #4a4a4a;       /* tekst op soft-bg (gelijk aan --mid in light) */
+    --subtle-bg: #fafaf7;       /* hover-states, extra subtle */
+    --success-bg: #d4edda;      /* success messages (weinig gebruikt) */
+    --success-text: #155724;    /* tekst op success-bg */
+    --on-primary: #ffffff;      /* tekst op groene/gouden/rode knoppen */
+    --on-dark-surface: #f0f0f0; /* tekst op donker-groene headers (login-scherm) */
   }
 
   @media (prefers-color-scheme: dark) {
@@ -48,6 +65,20 @@
       --nav-bg: #152010;
       --shadow: 0 4px 24px rgba(0,0,0,0.4);
       --green-pale: #1a3d2a;
+      /* v11.15: dark-mode varianten voor semantische variabelen */
+      --alert-bg: #3d1e1e;
+      --alert-text: #f5a6a6;
+      --info-bg: #1a2d24;
+      --info-text: #a8d4bf;
+      --warning-bg: #3d3010;
+      --warning-text: #e9c46a;
+      --soft-bg: #1f2a23;
+      --soft-text: #b0b0b0;
+      --subtle-bg: #1d2a22;
+      --success-bg: #1a3d2a;
+      --success-text: #a8d4bf;
+      --on-primary: #ffffff;
+      --on-dark-surface: #f0f0f0;
     }
     header { background: #1a3d2a; }
     .card { background: var(--card-bg); }
@@ -57,6 +88,15 @@
     .login-box { background: var(--card-bg); }
     #laad-overlay { background: var(--cream); }
     #login-scherm { background: #1a3d2a; }
+    /* v11.15: autofill-kleuren dwingen zodat Safari de tekst niet onzichtbaar maakt */
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus,
+    input:-webkit-autofill:active {
+      -webkit-text-fill-color: var(--dark) !important;
+      -webkit-box-shadow: 0 0 0 1000px var(--input-bg) inset !important;
+      caret-color: var(--dark);
+    }
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -137,17 +177,17 @@
   nav button span.nav-label {
     display: inline-block;
     padding: 4px 8px;
-    border: 1.5px solid #000;
+    border: 1.5px solid var(--dark);
     border-radius: 6px;
-    background: #fff;
-    color: #000;
+    background: var(--card-bg);
+    color: var(--dark);
     transition: all 0.2s;
   }
   nav button span.nav-label::before { content: none !important; }
   nav button.active span.nav-label {
     background: var(--green);
     border-color: var(--green);
-    color: #fff;
+    color: var(--on-primary);
   }
   nav button.active {
     color: var(--green);
@@ -244,7 +284,7 @@
     min-height: 56px;
   }
   .ladder-item:last-child { border-bottom: none; }
-  .ladder-item:active { background: #fafaf7; }
+  .ladder-item:active { background: var(--subtle-bg); }
     font-family: 'Bebas Neue', sans-serif;
     font-size: 20px;
     color: var(--light);
@@ -258,7 +298,7 @@
     font-family: 'DM Mono', monospace;
     font-size: 12px;
     color: var(--light);
-    background: #f0ede4;
+    background: var(--border);
     padding: 2px 7px;
     border-radius: 4px;
   }
@@ -314,9 +354,9 @@
   .hole-si { font-size: 11px; color: var(--gold); font-weight: 600; }
 
   /* RESULT CELL */
-  .res-W { background: #d4edda; color: #155724; font-weight: 700; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
-  .res-L { background: #f8d7da; color: #721c24; font-weight: 700; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
-  .res-T { background: #fff3cd; color: #856404; font-weight: 700; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
+  .res-W { background: var(--success-bg); color: var(--success-text); font-weight: 700; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
+  .res-L { background: var(--alert-bg); color: var(--alert-text); font-weight: 700; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
+  .res-T { background: var(--warning-bg); color: var(--warning-text); font-weight: 700; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
 
   /* MATCH OVERZICHT */
   .match-card {
@@ -338,7 +378,7 @@
     text-align: center;
     padding: 4px 8px;
     border-radius: 6px;
-    background: #f0ede4;
+    background: var(--border);
   }
   .match-score.leading { background: var(--green-pale); color: var(--green); }
 
@@ -347,7 +387,7 @@
     cursor: pointer;
     user-select: none;
   }
-  .card-header.inklapbaar:hover { background: #fafaf7; }
+  .card-header.inklapbaar:hover { background: var(--subtle-bg); }
   .card-header.inklapbaar::after {
     content: '▾';
     font-size: 16px;
@@ -396,8 +436,8 @@
     bottom: 80px;
     left: 50%;
     transform: translateX(-50%) translateY(20px);
-    background: var(--dark);
-    color: white;
+    background: #1a1a1a;
+    color: #ffffff;
     padding: 10px 20px;
     border-radius: 20px;
     font-size: 13px;
@@ -470,7 +510,7 @@
   .admin-row .name { flex: 1; font-weight: 500; }
   .admin-row .hcp { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--light); }
 
-  .divider { height: 1px; background: #f0ede4; margin: 12px 0; }
+  .divider { height: 1px; background: var(--border); margin: 12px 0; }
 
   .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .tag {
@@ -552,8 +592,8 @@
     margin-bottom: 24px;
   }
   .login-fout {
-    background: #fde8e8;
-    color: var(--red);
+    background: var(--alert-bg);
+    color: var(--alert-text);
     border-radius: 8px;
     padding: 10px 12px;
     font-size: 13px;
@@ -576,7 +616,7 @@
     <div class="login-logo" style="margin-bottom:4px">⛳ Goyer Golf MP Ladder</div>
     <div class="login-sub" style="margin-bottom:24px">Registreren</div>
 
-    <div id="reg-fout" style="background:#fde8e8;color:var(--red);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:12px;display:none"></div>
+    <div id="reg-fout" style="background:var(--alert-bg);color:var(--alert-text);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:12px;display:none"></div>
     <div id="reg-succes" style="background:var(--green-pale);color:var(--green);border-radius:8px;padding:14px;font-size:13px;margin-bottom:12px;display:none"></div>
 
     <div id="reg-formulier">
@@ -588,12 +628,12 @@
         <label>Achternaam</label>
         <input type="text" id="reg-achternaam" placeholder="de Vries" autocomplete="family-name">
       </div>
-      <div style="background:#f0f7f4;border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
+      <div style="background:var(--info-bg);color:var(--info-text);border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
         <strong>Account-gegevens:</strong><br>
         Je login en wachtwoord worden automatisch aangemaakt op basis van je naam.
         Bij eerste inloggen kies je een eigen wachtwoord en stel je je handicap in.
       </div>
-      <div style="background:#f9f7f2;border-radius:10px;padding:14px;margin:12px 0;font-size:12px;color:var(--mid);line-height:1.6;max-height:220px;overflow-y:auto">
+      <div style="background:var(--soft-bg);border-radius:10px;padding:14px;margin:12px 0;font-size:12px;color:var(--mid);line-height:1.6;max-height:220px;overflow-y:auto">
         <strong style="font-size:13px;color:var(--dark);display:block;margin-bottom:8px">Welkom bij de Goyer Golf MP Ladder</strong>
         <strong>Over de ladder</strong><br>
         De Goyer-ladder is een gezelligheidsinitiatief en heeft een minimaal competitief karakter. Echter streeft de commissie naar een levendige ladder met aan het eind een acceptabele en niet al te verrassende winnaar.<br><br>
@@ -607,7 +647,7 @@
         <strong>Technisch</strong><br>
         De app gebruikt Google Firebase voor opslag en authenticatie.
       </div>
-      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;padding:10px;background:#f9f7f2;border-radius:8px">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;padding:10px;background:var(--soft-bg);border-radius:8px">
         <input type="checkbox" id="reg-akkoord" style="accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
         <span style="font-size:13px;color:var(--mid)">Ik heb de informatie gelezen en ga akkoord</span>
       </label>
@@ -627,7 +667,7 @@
     <div class="login-fout" id="login-fout"></div>
 
     <!-- Google login (tijdelijk uitgeschakeld) -->
-    <button class="btn btn-block" onclick="loginMetGoogle()" style="display:none;background:white;color:#444;border:1.5px solid #ddd;margin-bottom:12px;gap:10px;font-size:15px">
+    <button class="btn btn-block" onclick="loginMetGoogle()" style="display:none;background:var(--card-bg);color:var(--dark);border:1.5px solid var(--border);margin-bottom:12px;gap:10px;font-size:15px">
       <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.8 2.4 30.2 0 24 0 14.6 0 6.6 5.4 2.6 13.3l7.8 6C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/><path fill="#FBBC05" d="M10.4 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l7.8-6z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.2-7.7 2.2-6.3 0-11.6-3.7-13.6-9.2l-7.8 6C6.6 42.6 14.6 48 24 48z"/></svg>
       Inloggen met Google
     </button>
@@ -665,7 +705,7 @@
       <input type="text" id="toernooi-speler-zoek" placeholder="Zoek speler..." autocomplete="off"
         oninput="zoekToernooiSpelerModal(this.value)" onfocus="zoekToernooiSpelerModal(this.value)"
         onblur="setTimeout(sluitToernooiSpelerModal, 150)">
-      <div id="toernooi-speler-zoek-lijst" style="position:absolute;top:100%;left:0;right:0;background:white;border:1.5px solid var(--green);border-radius:8px;max-height:160px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,0.1);display:none;margin-top:2px"></div>
+      <div id="toernooi-speler-zoek-lijst" style="position:absolute;top:100%;left:0;right:0;background:var(--card-bg);color:var(--dark);border:1.5px solid var(--green);border-radius:8px;max-height:160px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,0.1);display:none;margin-top:2px"></div>
     </div>
     <div class="form-group" style="margin-bottom:8px">
       <label>Flight</label>
@@ -883,7 +923,7 @@
       <label>Welke ladders?</label>
       <div id="nieuw-seizoen-ladders" style="margin-top:6px"></div>
     </div>
-    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px;background:#f9f7f2;border-radius:8px;margin-bottom:12px">
+    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px;background:var(--soft-bg);border-radius:8px;margin-bottom:12px">
       <input type="checkbox" id="seizoen-omdraaien" style="accent-color:var(--green);width:18px;height:18px">
       <span style="font-size:13px;color:var(--mid)">↕️ Volgorde omdraaien: eerste wordt laatste, laatste wordt eerste</span>
     </label>
@@ -1321,7 +1361,7 @@
           <input type="text" id="t-speler-zoek" placeholder="🔍 Zoek en selecteer speler..." autocomplete="off"
             oninput="zoekToernooiSpeler(this.value)" onfocus="zoekToernooiSpeler(this.value)"
             onblur="setTimeout(sluitToernooiSpelerLijst, 150)">
-          <div id="t-speler-zoek-lijst" style="position:absolute;top:100%;left:0;right:0;background:white;border:1.5px solid var(--green);border-radius:8px;max-height:200px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,0.1);display:none;margin-top:2px"></div>
+          <div id="t-speler-zoek-lijst" style="position:absolute;top:100%;left:0;right:0;background:var(--card-bg);color:var(--dark);border:1.5px solid var(--green);border-radius:8px;max-height:200px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,0.1);display:none;margin-top:2px"></div>
         </div>
         <div id="t-geselecteerde-spelers" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
         <button class="btn btn-ghost btn-sm btn-block" onclick="voegGastspelerToe()" style="margin-bottom:12px">+ Gastspeler toevoegen</button>
@@ -1467,7 +1507,7 @@
         <div id="invite-status" style="font-size:13px;color:var(--light);margin-bottom:12px">Geen actieve uitnodiging.</div>
         <button class="btn btn-primary btn-block" onclick="genereerInviteLink()">🔗 Nieuwe uitnodigingslink genereren</button>
         <div id="invite-link-wrap" style="display:none;margin-top:12px">
-          <div style="background:#f5f2ea;border-radius:8px;padding:10px 12px;font-size:12px;font-family:'DM Mono',monospace;word-break:break-all;margin-bottom:8px" id="invite-link-text"></div>
+          <div style="background:var(--soft-bg);border-radius:8px;padding:10px 12px;font-size:12px;font-family:'DM Mono',monospace;word-break:break-all;margin-bottom:8px" id="invite-link-text"></div>
           <button class="btn btn-ghost btn-block btn-sm" onclick="kopieerInviteLink()">📋 Kopieer link</button>
         </div>
       </div>

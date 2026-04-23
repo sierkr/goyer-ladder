@@ -32,7 +32,7 @@ function openNieuwSeizoenModal() {
       listEl.innerHTML = laddersMetSpelers.map(l => {
         const aantal = (l.spelerIds || []).length;
         const id = escAttr(l.id);
-        return `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px 10px;background:#f9f7f2;border-radius:8px;margin-bottom:6px">
+        return `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px 10px;background:var(--soft-bg);border-radius:8px;margin-bottom:6px">
           <input type="checkbox" class="seizoen-ladder-check" data-ladder-id="${id}" checked style="accent-color:var(--green);width:18px;height:18px">
           <span style="flex:1"><strong>${esc(l.naam)}</strong> <span style="font-size:12px;color:var(--light)">(${aantal} spelers)</span></span>
         </label>`;
@@ -263,7 +263,7 @@ async function renderArchief() {
       const winnaar = s.eindstand?.[0];
       const ladderLabel = s.ladderNaam ? ` · ${esc(s.ladderNaam)}` : '';
       const delBtn = isBeh
-        ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:12px;margin-left:6px" onclick="verwijderArchiefSeizoen(${idx})" title="Seizoen verwijderen uit archief">✕</button>`
+        ? `<button class="btn btn-sm" style="background:var(--alert-bg);color:var(--red);border:none;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:12px;margin-left:6px" onclick="verwijderArchiefSeizoen(${idx})" title="Seizoen verwijderen uit archief">✕</button>`
         : '';
       return `
       <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
@@ -362,9 +362,10 @@ async function openToernooiDetail(idx) {
       t.spelerNamen.forEach((_, j) => {
         // Ondersteun zowel oud array formaat als nieuw object formaat
         const cel = Array.isArray(t.matrix) ? (t.matrix[i]?.[j] || '-') : (t.matrix[`${i}_${j}`] || '-');
-        const bg = cel === 'W' ? '#d4edda' : cel === 'L' ? '#f8d7da' : cel === 'T' ? '#fff3cd' : '#f0ede4';
+        const bg = cel === 'W' ? '#d4edda' : cel === 'L' ? '#f8d7da' : cel === 'T' ? '#fff3cd' : 'var(--border)';
         const tx = cel === 'W' ? 'UP' : cel === 'L' ? 'DOWN' : cel === 'T' ? 'TIED' : (cel === 'X' ? '—' : '—');
-        html += `<td style="background:${bg};text-align:center;padding:4px;font-weight:700">${tx}</td>`;
+        const txtCol = (cel === 'W' || cel === 'L' || cel === 'T') ? '#1a1a1a' : 'var(--dark)';
+        html += `<td style="background:${bg};color:${txtCol};text-align:center;padding:4px;font-weight:700">${tx}</td>`;
       });
       html += '</tr>';
     });
@@ -417,7 +418,7 @@ function openArchiefDetail(idx) {
 
   // Gespeelde banen
   if (baanSamenvatting) {
-    html += `<div style="font-size:12px;color:var(--mid);margin-bottom:16px;padding:8px 10px;background:#f9f7f2;border-radius:8px">
+    html += `<div style="font-size:12px;color:var(--mid);margin-bottom:16px;padding:8px 10px;background:var(--soft-bg);border-radius:8px">
       ⛳ ${baanSamenvatting}
     </div>`;
   }
@@ -427,7 +428,7 @@ function openArchiefDetail(idx) {
   actief.forEach(sp => {
     const winpct = sp.partijen > 0 ? Math.round(sp.gewonnen / sp.partijen * 100) : 0;
     const verloren = (sp.partijen || 0) - (sp.gewonnen || 0);
-    html += `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f0ede4">
+    html += `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
       <span style="font-family:'Bebas Neue';font-size:20px;color:${sp.rank<=3?'var(--gold)':'var(--light)'};min-width:28px">${sp.rank}</span>
       <span style="flex:1;font-weight:500;font-size:14px">${esc(sp.naam)}</span>
       <span style="font-size:11px;color:var(--mid);font-family:'DM Mono',monospace">${sp.partijen}G ${sp.gewonnen}W ${verloren}V ${winpct}%</span>
@@ -439,7 +440,7 @@ function openArchiefDetail(idx) {
   if (inactief.length > 0) {
     html += `<div style="font-size:11px;font-weight:700;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 6px">Niet gespeeld</div>`;
     inactief.forEach(sp => {
-      html += `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #f0ede4">
+      html += `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
         <span style="font-family:'Bebas Neue';font-size:20px;color:var(--light);min-width:28px">${sp.rank}</span>
         <span style="flex:1;font-size:13px;color:var(--light)">${esc(sp.naam)}</span>
         <span style="font-size:11px;color:#ccc">hcp ${sp.hcp}</span>
