@@ -408,6 +408,8 @@ async function initFirestore() {
 
     store.archiefData     = archiefSnap.exists()  ? (archiefSnap.data().seizoenen  || []) : [];
     store.uitdagingenData = uitdSnap.exists()      ? (uitdSnap.data().lijst         || []) : [];
+    // v3.0.0-11.17: laad aangepaste banen uit Firestore
+    store.aangepasteBanen = baanSnap.exists()      ? (baanSnap.data().lijst         || []) : [];
     // v3.0.0-9c: alleSpelersData wordt niet meer uit ladder/spelers geladen.
     // Het is nu een afgeleide view van _usersCache (zie store.js) en wordt
     // gevuld zodra de spelers/ listener start na login.

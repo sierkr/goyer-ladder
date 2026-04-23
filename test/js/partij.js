@@ -325,6 +325,8 @@ async function slaAangepasteBaanOp() {
   const naam = document.getElementById('baan-naam-nieuw')?.value?.trim();
   if (!naam) { toast('Geef de baan eerst een naam'); return; }
 
+  if (!huidigeBruiker?.uid) { toast('Je bent niet ingelogd'); return; }
+
   // Lees holes
   const holes = [];
   for (let i = 1; i <= 18; i++) {
@@ -338,7 +340,12 @@ async function slaAangepasteBaanOp() {
     toast('Er bestaat al een baan met deze naam'); return;
   }
 
-  const nieuweBaan = { naam, holes, aangemaakt_door: huidigeBruiker.gebruikersnaam };
+  // v11.17: robuuste fallbacks — nooit undefined naar Firestore
+  const nieuweBaan = {
+    naam,
+    holes,
+    aangemaakt_door: huidigeBruiker.gebruikersnaam || huidigeBruiker.email || huidigeBruiker.uid || 'onbekend'
+  };
   aangepasteBanen.push(nieuweBaan);
 
   try {
@@ -348,7 +355,11 @@ async function slaAangepasteBaanOp() {
     initPartijForm();
     document.getElementById('baan-select').value = naam;
     document.getElementById('baan-handmatig').style.display = 'none';
-  } catch(e) { toast('Fout bij opslaan'); aangepasteBanen.pop(); }
+  } catch(e) {
+    console.error('slaAangepasteBaanOp mislukt:', e);
+    aangepasteBanen.pop();
+    toast('Fout bij opslaan: ' + (e.code || e.message || 'onbekend'));
+  }
 }
 
 async function verwijderAangepasteBaan() {
@@ -362,7 +373,10 @@ async function verwijderAangepasteBaan() {
     await setDoc(BANEN_DOC, { lijst: aangepasteBanen });
     toast('Baan verwijderd');
     initPartijForm();
-  } catch(e) { toast('Fout bij verwijderen'); }
+  } catch(e) {
+    console.error('verwijderAangepasteBaan mislukt:', e);
+    toast('Fout bij verwijderen: ' + (e.code || e.message || 'onbekend'));
+  }
 }
 
 // Geeft de actieve partij terug waar de ingelogde speler in zit
