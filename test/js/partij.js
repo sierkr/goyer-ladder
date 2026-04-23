@@ -239,14 +239,8 @@ function zoekPartijSpeler(n, zoek) {
     `).join('');
   }
 
-  // Positie berekenen relatief aan input voor fixed positioning
-  const wrap = lijst.closest('.speler-zoek-wrap') || lijst.parentElement;
-  const rect = wrap.getBoundingClientRect();
-  lijst.style.position = 'fixed';
-  lijst.style.top = (rect.bottom + 2) + 'px';
-  lijst.style.left = rect.left + 'px';
-  lijst.style.width = rect.width + 'px';
-  lijst.style.maxHeight = Math.min(200, window.innerHeight - rect.bottom - 10) + 'px';
+  // v11.16: geen JS-positioning meer — CSS regelt position:absolute; top:100% op de wrap.
+  // Hiermee blijft de dropdown aan de input gekoppeld ook als iOS keyboard opent.
   lijst.style.display = 'block';
 }
 
