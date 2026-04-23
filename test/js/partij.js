@@ -85,9 +85,7 @@ function initPartijForm() {
     }
   }
 
-  document.getElementById('holes-count').addEventListener('change', function() {
-    document.getElementById('custom-holes-wrap').style.display = this.value === 'custom' ? 'block' : 'none';
-  });
+  // v11.19: starthole + aantal-holes inputs zijn direct zichtbaar, geen selector meer
 }
 
 function vulKnockoutTegenstander(spelersNaam) {
@@ -452,14 +450,9 @@ async function startPartij() {
     holes = banen[baanNaam].holes;
   }
 
-  // Holes range met wrap-around (zoals toernooi module)
-  const holesCount = document.getElementById('holes-count').value;
-  let startH = 0, aantalHoles = 18;
-  if (holesCount === '9') { startH = 0; aantalHoles = 9; }
-  else if (holesCount === 'custom') {
-    startH = (parseInt(document.getElementById('start-hole').value) || 1) - 1;
-    aantalHoles = parseInt(document.getElementById('custom-hole-count').value) || 9;
-  }
+  // v11.19: starthole + aantal-holes direct uit de twee inputs
+  const startH = Math.max(0, Math.min(17, (parseInt(document.getElementById('start-hole').value) || 1) - 1));
+  const aantalHoles = Math.max(1, Math.min(18, parseInt(document.getElementById('aantal-holes').value) || 18));
   // Wrap-around: na hole 18 door naar hole 1
   const activeHoles = Array.from({ length: aantalHoles }, (_, i) => holes[(startH + i) % holes.length]);
 
