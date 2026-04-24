@@ -347,14 +347,20 @@ async function verwijderSpelerUitRonde(spelerId) {
   try {
   const p = mijnPartij();
   if (!p) return;
-  const speler = p.spelers.find(s => s.id === spelerId);
+  // v3.0.0-11.22: String-vergelijking consistent met bevestigToevoegenRonde
+  // (later toegevoegde spelers kunnen een numeric id hebben, knop geeft string)
+  const speler = p.spelers.find(s => String(s.id) === String(spelerId));
   if (!speler) return;
   if (p.spelers.length <= 2) { toast('Minimaal 2 spelers nodig'); return; }
   if (!confirm(`${speler.naam.split(' ')[0]} verwijderen uit de partij?`)) return;
 
-  p.spelers = p.spelers.filter(s => s.id !== spelerId);
-  p.matchups = p.matchups.filter(m => m.spelerA.id !== spelerId && m.spelerB.id !== spelerId);
+  p.spelers = p.spelers.filter(s => String(s.id) !== String(spelerId));
+  p.matchups = p.matchups.filter(m =>
+    String(m.spelerA.id) !== String(spelerId) &&
+    String(m.spelerB.id) !== String(spelerId)
+  );
   delete p.scores[spelerId];
+  delete p.scores[speler.id]; // veiligheid: ruim onder beide mogelijke keys op
 
   await slaState();
   renderRonde();
