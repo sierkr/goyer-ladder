@@ -63,7 +63,6 @@ function renderScorecard() {
   // DOM-volgorde: hole1/speler1, hole1/speler2, hole2/speler1 ...
   // Zodat iOS pijltjes per hole langs alle spelers gaan
   let bodyHtml = '';
-  let firstEmptyId = null;
   const totalen = {};
   p.spelers.forEach(s => { totalen[s.id] = 0; });
 
@@ -82,7 +81,6 @@ function renderScorecard() {
       const val = p.scores[s.id][holeIdx];
       if (val !== null) totalen[s.id] += val;
       const inputId = `score-${s.id}-${holeIdx}`;
-      if (val === null && firstEmptyId === null) firstEmptyId = inputId;
       const tabIdx = holeIdx * p.spelers.length + si + 1;
       bodyHtml += `<td style="text-align:center"><input
         id="${escAttr(inputId)}"
@@ -109,12 +107,6 @@ function renderScorecard() {
   bodyHtml += '</tr>';
 
   document.getElementById('scorecard-body').innerHTML = bodyHtml;
-
-  // Autofocus eerste lege veld
-  if (firstEmptyId) {
-    const el = document.getElementById(firstEmptyId);
-    if (el) el.focus({ preventScroll: true });
-  }
 }
 
 async function updateScore(spelerId, holeIdx, val) {
