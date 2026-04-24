@@ -82,15 +82,33 @@ function renderScorecard() {
       const val = p.scores[s.id][holeIdx];
       if (val !== null) totalen[s.id] += val;
       const inputId = `score-${s.id}-${holeIdx}`;
-      // v11.20: hole is niet-speelbaar voor deze speler als hij leeg is maar
-      // een andere speler wel een score heeft (= speler kwam later in de ronde).
-      const nietSpeelbaar = val === null && p.spelers.some(t =>
-        t.id !== s.id && p.scores[t.id]?.[holeIdx] != null
-      );
+      // v11.21: hole is niet-speelbaar voor deze speler ALLEEN als:
+      //  - deze speler heeft zelf al een latere hole ingevuld (= begon later in de ronde)
+      //  - en deze hole is leeg
+      //  - en een andere speler heeft deze hole wel ingevuld
+      // v11.22: niet-speelbaar is visueel grijs + overgeslagen bij auto-tab,
+      // maar handmatig selecteren blijft mogelijk (dan wordt het veld weer normaal).
+      let nietSpeelbaar = false;
+      if (val === null) {
+        const hogereHoleIngevuld = p.scores[s.id].some((v, idx) => idx > holeIdx && v != null);
+        if (hogereHoleIngevuld) {
+          const andereWelIngevuld = p.spelers.some(t =>
+            t.id !== s.id && p.scores[t.id]?.[holeIdx] != null
+          );
+          if (andereWelIngevuld) nietSpeelbaar = true;
+        }
+      }
       if (val === null && !nietSpeelbaar && firstEmptyId === null) firstEmptyId = inputId;
       const tabIdx = holeIdx * p.spelers.length + si + 1;
-      const extraAttrs = nietSpeelbaar ? 'disabled' : '';
-      const extraStyle = nietSpeelbaar ? 'background:var(--border);opacity:0.4;cursor:not-allowed;' : '';
+      // Niet-speelbare cellen: data-flag zodat autoAdvance ze overslaat + grijze stijl.
+      // GEEN `disabled` — dan zouden ze onaanraakbaar zijn.
+      // Bij focus/tap wordt de grijze stijl via `onfocus` weggehaald.
+      const extraData = nietSpeelbaar ? 'data-niet-speelbaar="1"' : '';
+      const baseStyle = 'width:38px;padding:3px;text-align:center;font-size:13px;font-family:\'DM Mono\',monospace;border:1.5px solid #e0ddd4;border-radius:5px';
+      const grijsStyle = nietSpeelbaar ? ';background:var(--border);opacity:0.4' : '';
+      const onfocusAttr = nietSpeelbaar
+        ? `this.style.background='';this.style.opacity='1';this.removeAttribute('data-niet-speelbaar');this.select();setTimeout(()=>this.scrollIntoView({behavior:'smooth',block:'center'}),300)`
+        : `this.select();setTimeout(()=>this.scrollIntoView({behavior:'smooth',block:'center'}),300)`;
       bodyHtml += `<td style="text-align:center"><input
         id="${escAttr(inputId)}"
         type="number"
@@ -98,10 +116,10 @@ function renderScorecard() {
         pattern="[0-9]*"
         min="1" max="12"
         tabindex="${tabIdx}"
-        ${extraAttrs}
+        ${extraData}
         value="${val !== null ? val : ''}"
-        onfocus="this.select();setTimeout(()=>this.scrollIntoView({behavior:'smooth',block:'center'}),300)" oninput="updateScore('${escAttr(s.id)}',${holeIdx},this.value);if(this.value.length>0)autoAdvance(this)"
-        style="width:38px;padding:3px;text-align:center;font-size:13px;font-family:'DM Mono',monospace;border:1.5px solid #e0ddd4;border-radius:5px;${extraStyle}"
+        onfocus="${onfocusAttr}" oninput="updateScore('${escAttr(s.id)}',${holeIdx},this.value);if(this.value.length>0)autoAdvance(this)"
+        style="${baseStyle}${grijsStyle}"
       ></td>`;
     });
     bodyHtml += '</tr>';

@@ -838,18 +838,18 @@ async function laadInviteStatus() {
 function autoAdvance(input) {
   const tabIdx = parseInt(input.getAttribute('tabindex'));
   if (!tabIdx) {
-    // v11.20: sla disabled inputs over
-    const inputs = Array.from(document.querySelectorAll('input[type=number]:not([disabled])'));
+    // v11.22: sla niet-speelbare inputs over
+    const inputs = Array.from(document.querySelectorAll('input[type=number]:not([data-niet-speelbaar])'));
     const idx    = inputs.indexOf(input);
     if (idx >= 0 && idx < inputs.length - 1) { inputs[idx + 1].focus(); inputs[idx + 1].select(); }
     return;
   }
-  // v11.20: zoek de volgende tabindex met een niet-disabled input, sla disabled over
+  // v11.22: zoek volgende tabindex met invoerbaar veld, sla niet-speelbare over
   let zoekIdx = tabIdx + 1;
   while (zoekIdx < tabIdx + 200) {  // safety limit
     const kandidaat = document.querySelector(`input[tabindex="${zoekIdx}"]`);
-    if (!kandidaat) return;            // geen verdere inputs — cursor laten staan
-    if (!kandidaat.disabled) {
+    if (!kandidaat) return;            // geen verdere inputs
+    if (!kandidaat.hasAttribute('data-niet-speelbaar')) {
       kandidaat.focus();
       kandidaat.select();
       return;
