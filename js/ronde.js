@@ -63,7 +63,6 @@ function renderScorecard() {
   // DOM-volgorde: hole1/speler1, hole1/speler2, hole2/speler1 ...
   // Zodat iOS pijltjes per hole langs alle spelers gaan
   let bodyHtml = '';
-  let firstEmptyId = null;
   const totalen = {};
   p.spelers.forEach(s => { totalen[s.id] = 0; });
 
@@ -82,7 +81,6 @@ function renderScorecard() {
       const val = p.scores[s.id][holeIdx];
       if (val !== null) totalen[s.id] += val;
       const inputId = `score-${s.id}-${holeIdx}`;
-      if (val === null && firstEmptyId === null) firstEmptyId = inputId;
       const tabIdx = holeIdx * p.spelers.length + si + 1;
       bodyHtml += `<td style="text-align:center"><input
         id="${escAttr(inputId)}"
@@ -108,12 +106,20 @@ function renderScorecard() {
   });
   bodyHtml += '</tr>';
 
-  document.getElementById('scorecard-body').innerHTML = bodyHtml;
+  // v3.0.0-11.21: onthoud waar focus stond vóór innerHTML vervanging,
+  // zodat na re-render (bv. door Firestore listener) het toetsenbord open blijft.
+  const focusedId = document.activeElement?.id || null;
+  const scorecardBody = document.getElementById('scorecard-body');
+  const focusIsBinnenScorecard = focusedId && scorecardBody.contains(document.activeElement);
 
-  // Autofocus eerste lege veld
-  if (firstEmptyId) {
-    const el = document.getElementById(firstEmptyId);
-    if (el) el.focus({ preventScroll: true });
+  scorecardBody.innerHTML = bodyHtml;
+
+  // Herstel focus als die binnen de scorecard stond
+  if (focusIsBinnenScorecard && focusedId) {
+    const herstel = document.getElementById(focusedId);
+    if (herstel) {
+      herstel.focus({ preventScroll: true });
+    }
   }
 }
 
