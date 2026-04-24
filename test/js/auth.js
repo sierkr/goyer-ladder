@@ -836,26 +836,33 @@ async function laadInviteStatus() {
 }
 
 function autoAdvance(input) {
-  const tabIdx = parseInt(input.getAttribute('tabindex'));
-  if (!tabIdx) {
-    // v11.22: sla niet-speelbare inputs over
-    const inputs = Array.from(document.querySelectorAll('input[type=number]:not([data-niet-speelbaar])'));
-    const idx    = inputs.indexOf(input);
-    if (idx >= 0 && idx < inputs.length - 1) { inputs[idx + 1].focus(); inputs[idx + 1].select(); }
-    return;
-  }
-  // v11.22: zoek volgende tabindex met invoerbaar veld, sla niet-speelbare over
-  let zoekIdx = tabIdx + 1;
-  while (zoekIdx < tabIdx + 200) {  // safety limit
-    const kandidaat = document.querySelector(`input[tabindex="${zoekIdx}"]`);
-    if (!kandidaat) return;            // geen verdere inputs
-    if (!kandidaat.hasAttribute('data-niet-speelbaar')) {
-      kandidaat.focus();
-      kandidaat.select();
-      return;
-    }
-    zoekIdx++;
-  }
+  // v3.0.0-11.20: spring nooit visueel naar boven/links.
+  // Zoek de eerstvolgende input die OF lager OF op dezelfde regel rechts staat.
+  const huidigeRect = input.getBoundingClientRect();
+  const huidigeTab = parseInt(input.getAttribute('tabindex')) || 0;
+  const alle = Array.from(document.querySelectorAll('input[type=number]'));
+  // Sorteer kandidaten op tabindex (als aanwezig) voor voorspelbare volgorde
+  const kandidaten = alle
+    .filter(el => el !== input)
+    .map(el => {
+      const rect = el.getBoundingClientRect();
+      const tab = parseInt(el.getAttribute('tabindex')) || 0;
+      // Criterium "voorwaarts": visueel lager, OF zelfde regel en rechts
+      const voorwaarts = rect.top > huidigeRect.top + 2
+        || (Math.abs(rect.top - huidigeRect.top) <= 2 && rect.left > huidigeRect.left + 2);
+      return { el, rect, tab, voorwaarts };
+    })
+    .filter(k => k.voorwaarts);
+  if (kandidaten.length === 0) return;
+  // Kies de dichtstbijzijnde: eerst kleinste regel-verschil, dan kleinste horizontale afstand
+  kandidaten.sort((a, b) => {
+    const dy = a.rect.top - b.rect.top;
+    if (Math.abs(dy) > 2) return dy;
+    return a.rect.left - b.rect.left;
+  });
+  const volgend = kandidaten[0].el;
+  volgend.focus();
+  volgend.select();
 }
 
 // ============================================================
