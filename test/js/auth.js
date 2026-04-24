@@ -836,18 +836,15 @@ async function laadInviteStatus() {
 }
 
 function autoAdvance(input) {
-  // v3.0.0-11.21: spring alleen naar een input die LATER in de DOM-order staat.
-  // DOM-order is stabiel — geen last van scroll, keyboard, re-render.
-  // Beperk zoekgebied tot directe siblings (scorecard table) zodat andere
-  // number-inputs elders op de pagina niet meedoen.
-  const tabel = input.closest('table');
-  const root = tabel || document;
-  const alle = Array.from(root.querySelectorAll('input[type=number]'));
-  const huidigeIdx = alle.indexOf(input);
-  if (huidigeIdx < 0 || huidigeIdx >= alle.length - 1) return;
-  const volgend = alle[huidigeIdx + 1];
-  volgend.focus();
-  volgend.select();
+  const tabIdx = parseInt(input.getAttribute('tabindex'));
+  if (!tabIdx) {
+    const inputs = Array.from(document.querySelectorAll('input[type=number]'));
+    const idx    = inputs.indexOf(input);
+    if (idx >= 0 && idx < inputs.length - 1) { inputs[idx + 1].focus(); inputs[idx + 1].select(); }
+    return;
+  }
+  const next = document.querySelector(`input[tabindex="${tabIdx + 1}"]`);
+  if (next) { next.focus(); next.select(); }
 }
 
 // ============================================================
