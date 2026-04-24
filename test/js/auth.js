@@ -836,31 +836,14 @@ async function laadInviteStatus() {
 }
 
 function autoAdvance(input) {
-  // v3.0.0-11.20: spring nooit visueel naar boven/links.
-  // Zoek de eerstvolgende input die OF lager OF op dezelfde regel rechts staat.
-  const huidigeRect = input.getBoundingClientRect();
-  const huidigeTab = parseInt(input.getAttribute('tabindex')) || 0;
+  // v3.0.0-11.21: spring alleen naar een input die LATER in de DOM-order staat.
+  // DOM-order is stabiel — geen last van scroll, keyboard, re-render etc.
+  // Gebruikt geen tabindex (die kan gaten hebben) en geen getBoundingClientRect
+  // (die verandert door scroll/keyboard en geeft onbetrouwbare resultaten).
   const alle = Array.from(document.querySelectorAll('input[type=number]'));
-  // Sorteer kandidaten op tabindex (als aanwezig) voor voorspelbare volgorde
-  const kandidaten = alle
-    .filter(el => el !== input)
-    .map(el => {
-      const rect = el.getBoundingClientRect();
-      const tab = parseInt(el.getAttribute('tabindex')) || 0;
-      // Criterium "voorwaarts": visueel lager, OF zelfde regel en rechts
-      const voorwaarts = rect.top > huidigeRect.top + 2
-        || (Math.abs(rect.top - huidigeRect.top) <= 2 && rect.left > huidigeRect.left + 2);
-      return { el, rect, tab, voorwaarts };
-    })
-    .filter(k => k.voorwaarts);
-  if (kandidaten.length === 0) return;
-  // Kies de dichtstbijzijnde: eerst kleinste regel-verschil, dan kleinste horizontale afstand
-  kandidaten.sort((a, b) => {
-    const dy = a.rect.top - b.rect.top;
-    if (Math.abs(dy) > 2) return dy;
-    return a.rect.left - b.rect.left;
-  });
-  const volgend = kandidaten[0].el;
+  const huidigeIdx = alle.indexOf(input);
+  if (huidigeIdx < 0 || huidigeIdx >= alle.length - 1) return;
+  const volgend = alle[huidigeIdx + 1];
   volgend.focus();
   volgend.select();
 }
