@@ -82,8 +82,15 @@ function renderScorecard() {
       const val = p.scores[s.id][holeIdx];
       if (val !== null) totalen[s.id] += val;
       const inputId = `score-${s.id}-${holeIdx}`;
-      if (val === null && firstEmptyId === null) firstEmptyId = inputId;
+      // v11.20: hole is niet-speelbaar voor deze speler als hij leeg is maar
+      // een andere speler wel een score heeft (= speler kwam later in de ronde).
+      const nietSpeelbaar = val === null && p.spelers.some(t =>
+        t.id !== s.id && p.scores[t.id]?.[holeIdx] != null
+      );
+      if (val === null && !nietSpeelbaar && firstEmptyId === null) firstEmptyId = inputId;
       const tabIdx = holeIdx * p.spelers.length + si + 1;
+      const extraAttrs = nietSpeelbaar ? 'disabled' : '';
+      const extraStyle = nietSpeelbaar ? 'background:var(--border);opacity:0.4;cursor:not-allowed;' : '';
       bodyHtml += `<td style="text-align:center"><input
         id="${escAttr(inputId)}"
         type="number"
@@ -91,9 +98,10 @@ function renderScorecard() {
         pattern="[0-9]*"
         min="1" max="12"
         tabindex="${tabIdx}"
+        ${extraAttrs}
         value="${val !== null ? val : ''}"
         onfocus="this.select();setTimeout(()=>this.scrollIntoView({behavior:'smooth',block:'center'}),300)" oninput="updateScore('${escAttr(s.id)}',${holeIdx},this.value);if(this.value.length>0)autoAdvance(this)"
-        style="width:38px;padding:3px;text-align:center;font-size:13px;font-family:'DM Mono',monospace;border:1.5px solid #e0ddd4;border-radius:5px"
+        style="width:38px;padding:3px;text-align:center;font-size:13px;font-family:'DM Mono',monospace;border:1.5px solid #e0ddd4;border-radius:5px;${extraStyle}"
       ></td>`;
     });
     bodyHtml += '</tr>';
