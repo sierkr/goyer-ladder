@@ -1084,24 +1084,14 @@
         <button class="btn btn-ghost btn-sm" onclick="verwijderAangepasteBaan()" style="color:var(--red);border-color:#f5c6cb">✕ Baan verwijderen</button>
       </div>
       <div class="divider"></div>
-      <div class="form-group">
-        <label>Aantal holes</label>
-        <select id="holes-count">
-          <option value="18">18 holes</option>
-          <option value="9">9 holes</option>
-          <option value="custom">Aangepast...</option>
-        </select>
-      </div>
-      <div id="custom-holes-wrap" style="display:none">
-        <div style="display:flex;gap:12px">
-          <div class="form-group" style="flex:1">
-            <label>Starthole</label>
-            <input type="number" id="start-hole" min="1" max="18" value="1" style="width:100%">
-          </div>
-          <div class="form-group" style="flex:1">
-            <label>Aantal holes</label>
-            <input type="number" id="custom-hole-count" min="1" max="18" value="9" style="width:100%">
-          </div>
+      <div style="display:flex;gap:12px">
+        <div class="form-group" style="flex:1">
+          <label>Starthole</label>
+          <input type="number" id="start-hole" min="1" max="18" value="1" style="width:100%">
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>Aantal holes</label>
+          <input type="number" id="aantal-holes" min="1" max="18" value="18" style="width:100%">
         </div>
       </div>
       <div class="divider"></div>
