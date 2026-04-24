@@ -106,7 +106,21 @@ function renderScorecard() {
   });
   bodyHtml += '</tr>';
 
-  document.getElementById('scorecard-body').innerHTML = bodyHtml;
+  // v3.0.0-11.21: onthoud waar focus stond vóór innerHTML vervanging,
+  // zodat na re-render (bv. door Firestore listener) het toetsenbord open blijft.
+  const focusedId = document.activeElement?.id || null;
+  const scorecardBody = document.getElementById('scorecard-body');
+  const focusIsBinnenScorecard = focusedId && scorecardBody.contains(document.activeElement);
+
+  scorecardBody.innerHTML = bodyHtml;
+
+  // Herstel focus als die binnen de scorecard stond
+  if (focusIsBinnenScorecard && focusedId) {
+    const herstel = document.getElementById(focusedId);
+    if (herstel) {
+      herstel.focus({ preventScroll: true });
+    }
+  }
 }
 
 async function updateScore(spelerId, holeIdx, val) {
