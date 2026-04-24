@@ -837,10 +837,12 @@ async function laadInviteStatus() {
 
 function autoAdvance(input) {
   // v3.0.0-11.21: spring alleen naar een input die LATER in de DOM-order staat.
-  // DOM-order is stabiel — geen last van scroll, keyboard, re-render etc.
-  // Gebruikt geen tabindex (die kan gaten hebben) en geen getBoundingClientRect
-  // (die verandert door scroll/keyboard en geeft onbetrouwbare resultaten).
-  const alle = Array.from(document.querySelectorAll('input[type=number]'));
+  // DOM-order is stabiel — geen last van scroll, keyboard, re-render.
+  // Beperk zoekgebied tot directe siblings (scorecard table) zodat andere
+  // number-inputs elders op de pagina niet meedoen.
+  const tabel = input.closest('table');
+  const root = tabel || document;
+  const alle = Array.from(root.querySelectorAll('input[type=number]'));
   const huidigeIdx = alle.indexOf(input);
   if (huidigeIdx < 0 || huidigeIdx >= alle.length - 1) return;
   const volgend = alle[huidigeIdx + 1];

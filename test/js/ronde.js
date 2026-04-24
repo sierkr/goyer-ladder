@@ -110,11 +110,10 @@ function renderScorecard() {
 
   document.getElementById('scorecard-body').innerHTML = bodyHtml;
 
-  // Autofocus eerste lege veld
-  if (firstEmptyId) {
-    const el = document.getElementById(firstEmptyId);
-    if (el) el.focus({ preventScroll: true });
-  }
+  // v3.0.0-11.22: géén autofocus op eerste lege meer.
+  // Bij elke Firestore-save triggered een re-render; autofocus liet de cursor
+  // dan terugspringen naar de eerste lege cel (bv. overgeslagen holes).
+  // Auto-advance (via oninput) regelt alle voorwaartse navigatie.
 }
 
 async function updateScore(spelerId, holeIdx, val) {
