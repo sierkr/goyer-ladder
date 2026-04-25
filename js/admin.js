@@ -19,6 +19,7 @@ import { openNieuweLadderModal, renderAdminLadders } from './beheer.js';
 import { reageerUitdaging, verwijderUitdaging } from './archief.js';
 import { renderLadder } from './ladder.js';
 import { getLadderSpelers } from './ladder-view.js';
+import { syncStandenNaBevestigUitslag } from './ronde.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
   GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, updatePassword,
   EmailAuthProvider, reauthenticateWithCredential, createUserWithEmailAndPassword }
@@ -923,7 +924,11 @@ async function verschuifRank(id, delta) {
     if (ander) ander.rank = speler.rank;
     speler.rank = nieuwRank;
     await slaState();
+    // v3.0.0-11.25: sync ook de standen/{uid} subcollectie zodat de ladder-tab
+    // (die uit standen leest) de nieuwe rank toont.
+    await syncStandenNaBevestigUitslag(activeLadderId);
     renderAdmin();
+    renderLadder();
   } catch(e) { console.error('verschuifRank mislukt:', e); }
 }
 
