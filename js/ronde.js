@@ -581,7 +581,11 @@ async function bevestigUitslag() {
       } else {
         newVrank = svRank + cfg.laagZak;
       }
-      if (newWrank >= newVrank) newVrank = newWrank + 1;
+      // v3.0.0-11.23: oude regel `if (newWrank >= newVrank) newVrank = newWrank + 1`
+      // verwijderd — die gooide bij grote rank-verschillen de verliezer onterecht
+      // naar de plek van de (gestegen) winnaar (bv. ▼58 plekken na 1 verlies).
+      // In de "lager-gerankte wint" tak geldt altijd newWrank < newVrank, dus
+      // de check is daar ook overbodig.
     } else {
       // Hoger gerankte wint
       newWrank = Math.max(1, swRank - cfg.hoogStijg);

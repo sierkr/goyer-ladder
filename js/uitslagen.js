@@ -256,7 +256,8 @@ async function bevestigBeheerUitslag() {
       } else {
         newVrank = svRank + cfg2.laagZak;
       }
-      if (newWrank >= newVrank) newVrank = newWrank + 1;
+      // v3.0.0-11.23: zelfde fix als ronde.js — oude `if (newWrank >= newVrank)`
+      // check verwijderd want die kapotte daling tot bij de winnaar.
     } else {
       newWrank = Math.max(1, swRank - cfg2.hoogStijg);
       newVrank = svRank + cfg2.hoogZak;
