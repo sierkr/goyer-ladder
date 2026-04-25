@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>Goyer Ladder — Diagnose actieve partijen</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --green: #2d5f3f; --green-pale: #e8f0eb; --red: #b71c1c;
+      --red-pale: #fdecea; --gold: #b8860b; --border: #e0ddd4;
+      --dark: #1a2e1f; --mid: #6b6b5f; --light: #a8a89f;
+      --card-bg: #fefdf8; --warning: #f59f00; --warning-pale: #fff4d6;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #f5f2ea; color: var(--dark); margin: 0; padding: 16px; line-height: 1.5; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    h1 { font-size: 22px; color: var(--green); margin-bottom: 8px; }
+    .subtitle { color: var(--mid); margin-bottom: 20px; font-size: 13px; }
+    .card { background: var(--card-bg); border-radius: 10px; padding: 16px; margin-bottom: 14px; border: 1px solid var(--border); }
+    .card h2 { font-size: 16px; margin: 0 0 10px 0; color: var(--green); }
+    .btn { padding: 9px 16px; border-radius: 7px; border: none; cursor: pointer; font-size: 13px; font-family: inherit; font-weight: 600; }
+    .btn-primary { background: var(--green); color: white; }
+    .btn-danger { background: var(--red); color: white; }
+    .btn-warning { background: var(--warning); color: white; }
+    input { width: 100%; padding: 9px 11px; border: 1.5px solid var(--border); border-radius: 7px; font-size: 13px; margin-bottom: 10px; }
+    label { display: block; font-size: 11px; color: var(--mid); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+    .ok { color: var(--green); font-weight: 600; }
+    .warn { color: var(--warning); font-weight: 600; }
+    .err { color: var(--red); font-weight: 600; }
+    pre { background: #2b2b27; color: #d4d4d0; padding: 11px; border-radius: 7px; overflow-x: auto; font-size: 11px; max-height: 350px; overflow-y: auto; line-height: 1.45; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { background: var(--green-pale); color: var(--green); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    tr.flag td { background: var(--red-pale); }
+    tr.warn-row td { background: var(--warning-pale); }
+    .count { display: inline-block; background: var(--green); color: white; padding: 2px 9px; border-radius: 999px; font-size: 11px; margin-left: 6px; font-weight: 600; }
+    .count.warn { background: var(--warning); }
+    .count.err { background: var(--red); }
+    .count.muted { background: var(--light); }
+    code { font-family: 'DM Mono', ui-monospace, monospace; font-size: 11px; background: #f0ede4; padding: 1px 5px; border-radius: 3px; }
+    .uid { font-family: 'DM Mono', ui-monospace, monospace; font-size: 10px; color: var(--mid); }
+    details { margin-top: 8px; }
+    details summary { cursor: pointer; color: var(--green); font-size: 12px; font-weight: 600; }
+    .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; margin-bottom: 10px; }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .legend-box { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>🔍 Diagnose actieve partijen & uitslagen</h1>
+  <p class="subtitle">
+    Read-only inspectie van <code>ladders/{id}.actievePartijen</code>, <code>uitslagen/</code> en <code>ladders/{id}/standen/{uid}</code>.
+    Toont overtredingen van regels en data-anomalieën. Maakt geen wijzigingen.
+  </p>
+
+  <div class="card" id="card-login">
+    <h2>Stap 1: Inloggen als beheerder</h2>
+    <label>Login</label>
+    <input type="text" id="login-input" placeholder="sierk.roosma" autocomplete="username">
+    <label>Wachtwoord</label>
+    <input type="password" id="pass-input" autocomplete="current-password">
+    <button class="btn btn-primary" onclick="doLogin()">Inloggen</button>
+    <div id="login-status" style="margin-top:8px;font-size:12px"></div>
+  </div>
+
+  <div class="card" id="card-scan" style="display:none">
+    <h2>Stap 2: Scan</h2>
+    <button class="btn btn-primary" onclick="runScan()">🔍 Scan alle data</button>
+    <button class="btn btn-warning" onclick="runScan(true)" style="margin-left:8px">🔍 Scan + ruwe JSON tonen</button>
+  </div>
+
+  <div id="scan-output"></div>
+
+  <div class="card" id="card-cleanup" style="display:none">
+    <h2>Optionele opruiming (read-write)</h2>
+    <p style="font-size:12px;color:var(--mid);margin-bottom:12px">
+      Pas activeren <strong>nadat</strong> je de scan-uitkomst hebt gezien.
+      Schoont <code>actievePartijen[]</code> op door:
+    </p>
+    <ul style="font-size:12px;color:var(--mid);margin:0 0 12px 16px">
+      <li>Lege of corrupte entries weggooien</li>
+      <li>Per speler maximaal 1 actieve partij behouden (de meest recente)</li>
+    </ul>
+    <p style="font-size:12px;color:var(--red);margin-bottom:12px">
+      <strong>⚠ Voer eerst de scan uit en analyseer de uitkomst</strong>. Pas op basis daarvan beslissen.
+      Tellers (partijen/gewonnen) en standen worden NIET aangepast door deze opruiming.
+    </p>
+    <button class="btn btn-danger" onclick="runCleanup(true)" disabled id="cleanup-btn">
+      Schoon actievePartijen op (preview eerst)
+    </button>
+    <div id="cleanup-output" style="margin-top:14px"></div>
+  </div>
+
+  <div class="card" id="card-log" style="display:none">
+    <h2>Console log</h2>
+    <pre id="log-output"></pre>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, collection, getDoc, getDocs, setDoc, query, where }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
+  authDomain: "goyer-golf-mp-ladder.firebaseapp.com",
+  projectId: "goyer-golf-mp-ladder",
+  storageBucket: "goyer-golf-mp-ladder.firebasestorage.app",
+  messagingSenderId: "124116031878",
+  appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+const auth = getAuth(app);
+
+const logEl = document.getElementById('log-output');
+function log(msg) {
+  console.log(msg);
+  logEl.textContent += msg + '\n';
+  document.getElementById('card-log').style.display = '';
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+let scanData = null;
+
+window.doLogin = async function doLogin() {
+  const loginVal = document.getElementById('login-input').value.trim();
+  const pass = document.getElementById('pass-input').value;
+  const status = document.getElementById('login-status');
+  const email = loginVal.includes('@') ? loginVal.toLowerCase() : (loginVal.toLowerCase() + '@MPladder.stb');
+  try {
+    await signInWithEmailAndPassword(auth, email, pass);
+    const uid = auth.currentUser.uid;
+    const spelerSnap = await getDoc(doc(db, 'spelers', uid));
+    const rol = spelerSnap.exists() ? spelerSnap.data().rol : null;
+    if (rol !== 'beheerder') {
+      status.className = 'err';
+      status.textContent = 'Geen beheerder.';
+      return;
+    }
+    status.className = 'ok';
+    status.textContent = '✓ Ingelogd als beheerder';
+    document.getElementById('card-scan').style.display = '';
+  } catch(e) {
+    status.className = 'err';
+    status.textContent = 'Inloggen mislukt: ' + (e.code || e.message);
+  }
+};
+
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function uidShort(uid) {
+  if (!uid) return '—';
+  return uid.length > 12 ? uid.slice(0, 8) + '…' + uid.slice(-3) : uid;
+}
+
+window.runScan = async function runScan(toonRuw = false) {
+  log('\n=== SCAN GESTART ===');
+  document.getElementById('scan-output').innerHTML = '<p>Bezig...</p>';
+
+  // 1. Lees alle ladders
+  const laddersSnap = await getDocs(collection(db, 'ladders'));
+  const ladders = [];
+  laddersSnap.forEach(d => ladders.push({ id: d.id, ...d.data() }));
+  log(`${ladders.length} ladder(s) gevonden`);
+
+  // 2. Lees spelers/ collectie voor naam-lookup
+  const spelersSnap = await getDocs(collection(db, 'spelers'));
+  const spelersById = {};
+  spelersSnap.forEach(d => spelersById[d.id] = d.data());
+  log(`${Object.keys(spelersById).length} spelers/ docs gevonden`);
+
+  // 3. Per ladder: standen subcollectie + analyse
+  scanData = { ladders: [], totalActievePartijen: 0, totalUitslagen: 0 };
+  for (const ladder of ladders) {
+    const ladderInfo = {
+      id: ladder.id,
+      naam: ladder.naam || ladder.id,
+      spelerCount: (ladder.spelerIds || []).length,
+      actievePartijen: ladder.actievePartijen || [],
+      standen: {},
+      problemen: []
+    };
+
+    // Lees standen-subcollectie
+    const standenSnap = await getDocs(collection(db, 'ladders', ladder.id, 'standen'));
+    standenSnap.forEach(d => ladderInfo.standen[d.id] = d.data());
+
+    // Tel actievePartijen per speler
+    const ap = ladderInfo.actievePartijen || [];
+    const perSpeler = {};
+    ap.forEach((partij, partijIdx) => {
+      // Lege/corrupte detectie
+      if (!partij || typeof partij !== 'object') {
+        ladderInfo.problemen.push({
+          type: 'corrupt-partij',
+          msg: `Partij[${partijIdx}] is geen object`,
+          partijIdx
+        });
+        return;
+      }
+      const spelers = partij.spelers || [];
+      if (spelers.length === 0) {
+        ladderInfo.problemen.push({
+          type: 'lege-partij',
+          msg: `Partij[${partijIdx}] heeft 0 spelers`,
+          partijIdx,
+          partij
+        });
+      }
+      // Tel per speler-id (zowel uid als s.id)
+      spelers.forEach(s => {
+        const sid = String(s.id);
+        if (!perSpeler[sid]) perSpeler[sid] = { id: sid, naam: s.naam, partijen: [] };
+        perSpeler[sid].partijen.push({ partijIdx, baan: partij.baan, gestart: partij.starttijd || partij.id });
+      });
+    });
+    ladderInfo.perSpeler = perSpeler;
+
+    // Markeer spelers met >1 actieve partij
+    Object.values(perSpeler).forEach(p => {
+      if (p.partijen.length > 1) {
+        ladderInfo.problemen.push({
+          type: 'multi-actief',
+          msg: `${p.naam} (id ${p.id}) zit in ${p.partijen.length} actieve partijen`,
+          speler: p
+        });
+      }
+    });
+
+    // Tel actievePartijen totaal
+    scanData.totalActievePartijen += ap.length;
+    scanData.ladders.push(ladderInfo);
+  }
+
+  // 4. Lees uitslagen/ collectie
+  const uitSnap = await getDocs(collection(db, 'uitslagen'));
+  const uitslagen = [];
+  uitSnap.forEach(d => uitslagen.push({ id: d.id, ...d.data() }));
+  scanData.totalUitslagen = uitslagen.length;
+  scanData.uitslagen = uitslagen;
+  log(`${uitslagen.length} uitslagen-docs gevonden`);
+
+  // Analyseer uitslagen op anomalieën
+  scanData.uitslagenProblemen = [];
+  uitslagen.forEach((u, idx) => {
+    const spelerIds = u.spelerIds || [];
+    if (spelerIds.length === 0) {
+      scanData.uitslagenProblemen.push({ id: u.id, msg: 'spelerIds leeg', idx });
+      return;
+    }
+    // Check: alle scores ofwel object met spelerId-keys, of array
+    const scores = u.scores || {};
+    const allNull = Object.values(scores).every(arr =>
+      Array.isArray(arr) ? arr.every(v => v === null) : true
+    );
+    if (allNull && Object.keys(scores).length > 0) {
+      scanData.uitslagenProblemen.push({
+        id: u.id, msg: 'alle scores null (geen holes ingevuld)', idx,
+        datum: u.datum, baan: u.baan, spelers: u.spelers
+      });
+    }
+    // Check: ladderId aanwezig?
+    if (!u.ladderId) {
+      scanData.uitslagenProblemen.push({ id: u.id, msg: 'ladderId ontbreekt', idx });
+    }
+  });
+
+  // 5. Render
+  renderScan(toonRuw, spelersById);
+  log('=== SCAN KLAAR ===\n');
+};
+
+function renderScan(toonRuw, spelersById) {
+  const out = document.getElementById('scan-output');
+  let html = '';
+
+  // Samenvatting
+  let totaalProblemen = 0;
+  scanData.ladders.forEach(l => totaalProblemen += l.problemen.length);
+  totaalProblemen += (scanData.uitslagenProblemen || []).length;
+
+  html += `<div class="card">
+    <h2>Samenvatting</h2>
+    <p>
+      <span class="count">${scanData.ladders.length} ladders</span>
+      <span class="count">${scanData.totalActievePartijen} actieve partijen totaal</span>
+      <span class="count">${scanData.totalUitslagen} uitslagen-docs</span>
+      <span class="count ${totaalProblemen > 0 ? 'err' : 'ok'}">${totaalProblemen} problemen</span>
+    </p>
+  </div>`;
+
+  // Per ladder
+  scanData.ladders.forEach(l => {
+    html += `<div class="card">
+      <h2>Ladder: ${escHtml(l.naam)} (${escHtml(l.id)})</h2>
+      <div class="legend">
+        <div class="legend-item"><span class="legend-box" style="background:var(--card-bg)"></span> normaal</div>
+        <div class="legend-item"><span class="legend-box" style="background:var(--warning-pale)"></span> ⚠ regel-overtreding</div>
+        <div class="legend-item"><span class="legend-box" style="background:var(--red-pale)"></span> ✗ corrupt</div>
+      </div>
+      <p>
+        <span class="count muted">${l.spelerCount} spelers</span>
+        <span class="count ${l.actievePartijen.length > l.spelerCount / 2 ? 'warn' : 'muted'}">${l.actievePartijen.length} actieve partijen</span>
+        <span class="count ${l.problemen.length > 0 ? 'err' : 'ok'}">${l.problemen.length} problemen</span>
+      </p>`;
+
+    // Spelers met multi-actief
+    const multiActief = Object.values(l.perSpeler).filter(p => p.partijen.length > 1);
+    if (multiActief.length > 0) {
+      html += `<details open><summary>⚠ Spelers met meer dan 1 actieve partij (${multiActief.length})</summary>
+        <table><thead><tr><th>Speler</th><th>Aantal</th><th>Partijen (idx · baan)</th></tr></thead><tbody>`;
+      multiActief.sort((a, b) => b.partijen.length - a.partijen.length).forEach(p => {
+        html += `<tr class="warn-row">
+          <td><strong>${escHtml(p.naam)}</strong> <span class="uid">${uidShort(p.id)}</span></td>
+          <td><span class="count err">${p.partijen.length}</span></td>
+          <td style="font-size:11px">${p.partijen.map(pp => `[${pp.partijIdx}] ${escHtml(pp.baan || '')}`).join('<br>')}</td>
+        </tr>`;
+      });
+      html += '</tbody></table></details>';
+    }
+
+    // Lege of corrupte partijen
+    const corrupt = l.problemen.filter(p => p.type === 'lege-partij' || p.type === 'corrupt-partij');
+    if (corrupt.length > 0) {
+      html += `<details open><summary>✗ Corrupte/lege partijen (${corrupt.length})</summary>
+        <table><thead><tr><th>Type</th><th>Beschrijving</th></tr></thead><tbody>`;
+      corrupt.forEach(p => {
+        html += `<tr class="flag"><td>${escHtml(p.type)}</td><td>${escHtml(p.msg)}</td></tr>`;
+      });
+      html += '</tbody></table></details>';
+    }
+
+    // Volledige lijst actievePartijen
+    html += `<details><summary>Alle ${l.actievePartijen.length} actieve partijen</summary>
+      <table><thead><tr><th>#</th><th>Baan</th><th>Spelers</th><th>Hole</th><th>Aangemaakt</th></tr></thead><tbody>`;
+    l.actievePartijen.forEach((partij, idx) => {
+      const sp = (partij?.spelers || []).map(s => escHtml(s.naam || '?')).join(', ');
+      const ingevuld = partij?.scores
+        ? Object.values(partij.scores).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.filter(v => v != null).length : 0), 0)
+        : 0;
+      const totHoles = (partij?.holes?.length || 0) * (partij?.spelers?.length || 1);
+      html += `<tr><td>${idx}</td><td>${escHtml(partij?.baan || '?')}</td><td>${sp || '<em>leeg</em>'}</td><td>${ingevuld}/${totHoles}</td><td style="font-size:11px">${escHtml(partij?.id || '')}</td></tr>`;
+    });
+    html += '</tbody></table></details>';
+
+    // Standen-tellers (top 10 met hoogste partijen-teller)
+    const standenList = Object.entries(l.standen).map(([uid, st]) => ({
+      uid, naam: spelersById[uid]?.naam || uidShort(uid),
+      rank: st.rank, partijen: st.partijen || 0, gewonnen: st.gewonnen || 0
+    })).sort((a, b) => b.partijen - a.partijen);
+    html += `<details><summary>Top 10 standen-tellers (hoogste partijen-aantal)</summary>
+      <table><thead><tr><th>Rank</th><th>Speler</th><th>Partijen</th><th>Gewonnen</th></tr></thead><tbody>`;
+    standenList.slice(0, 10).forEach(s => {
+      html += `<tr><td>${s.rank}</td><td><strong>${escHtml(s.naam)}</strong> <span class="uid">${uidShort(s.uid)}</span></td><td>${s.partijen}</td><td>${s.gewonnen}</td></tr>`;
+    });
+    html += '</tbody></table></details>';
+
+    if (toonRuw) {
+      html += `<details><summary>Ruwe JSON ladder/${escHtml(l.id)}</summary>
+        <pre>${escHtml(JSON.stringify({ id: l.id, naam: l.naam, spelerCount: l.spelerCount, actievePartijen: l.actievePartijen.slice(0, 5) }, null, 2))}</pre>
+      </details>`;
+    }
+
+    html += '</div>';
+  });
+
+  // Uitslagen-problemen
+  const upr = scanData.uitslagenProblemen || [];
+  if (upr.length > 0) {
+    html += `<div class="card">
+      <h2>Uitslagen-anomalieën <span class="count warn">${upr.length}</span></h2>
+      <table><thead><tr><th>Doc-id</th><th>Probleem</th><th>Datum</th><th>Spelers</th></tr></thead><tbody>`;
+    upr.slice(0, 30).forEach(p => {
+      const sp = (p.spelers || []).map(s => escHtml(s.naam || '?')).join(', ');
+      html += `<tr class="warn-row"><td class="uid">${uidShort(p.id)}</td><td>${escHtml(p.msg)}</td><td>${escHtml(p.datum || '')}</td><td>${sp}</td></tr>`;
+    });
+    if (upr.length > 30) html += `<tr><td colspan="4" style="text-align:center;color:var(--light)">... en nog ${upr.length - 30}</td></tr>`;
+    html += '</tbody></table></div>';
+  }
+
+  out.innerHTML = html;
+
+  // Activate cleanup button if there are problems
+  if (totaalProblemen > 0) {
+    document.getElementById('card-cleanup').style.display = '';
+    document.getElementById('cleanup-btn').disabled = false;
+  }
+}
+
+window.runCleanup = async function runCleanup(preview = true) {
+  if (!scanData) { alert('Run eerst de scan'); return; }
+
+  const out = document.getElementById('cleanup-output');
+  out.innerHTML = '<p>Berekenen...</p>';
+
+  const plan = [];
+
+  for (const l of scanData.ladders) {
+    const oude = l.actievePartijen || [];
+    if (oude.length === 0) continue;
+
+    // Filter 1: weg met lege/corrupte
+    let nieuwe = oude.filter(p => p && typeof p === 'object' && Array.isArray(p.spelers) && p.spelers.length > 0);
+
+    // Filter 2: per speler max 1 partij - houd de laatste (hoogste idx) per speler
+    const houdenIdx = new Set();
+    const perSpeler = {};
+    oude.forEach((p, idx) => {
+      if (!p || !Array.isArray(p.spelers)) return;
+      p.spelers.forEach(s => {
+        const sid = String(s.id);
+        if (!perSpeler[sid] || idx > perSpeler[sid]) perSpeler[sid] = idx;
+      });
+    });
+    Object.values(perSpeler).forEach(idx => houdenIdx.add(idx));
+
+    nieuwe = nieuwe.filter((p, origIdx) => {
+      const idxInOrig = oude.indexOf(p);
+      return houdenIdx.has(idxInOrig);
+    });
+
+    if (nieuwe.length !== oude.length) {
+      plan.push({ ladderId: l.id, voor: oude.length, na: nieuwe.length, nieuwe });
+    }
+  }
+
+  if (plan.length === 0) {
+    out.innerHTML = '<p class="ok">Geen wijzigingen nodig.</p>';
+    return;
+  }
+
+  // Toon plan
+  let html = `<div class="warn" style="margin-bottom:14px">Plan voor opruiming:</div>
+    <table><thead><tr><th>Ladder</th><th>Voor</th><th>Na</th><th>Verwijderd</th></tr></thead><tbody>`;
+  plan.forEach(p => {
+    html += `<tr><td>${escHtml(p.ladderId)}</td><td>${p.voor}</td><td>${p.na}</td><td><span class="count err">${p.voor - p.na}</span></td></tr>`;
+  });
+  html += '</tbody></table>';
+  html += `<div style="margin-top:14px">
+    <button class="btn btn-danger" onclick="confirmCleanup()">✓ Voer opruiming uit</button>
+    <button class="btn btn-primary" onclick="document.getElementById('cleanup-output').innerHTML=''" style="margin-left:8px">Annuleren</button>
+  </div>`;
+
+  out.innerHTML = html;
+  window._cleanupPlan = plan;
+};
+
+window.confirmCleanup = async function confirmCleanup() {
+  if (!window._cleanupPlan) return;
+  const out = document.getElementById('cleanup-output');
+  if (!confirm(`Weet je zeker? ${window._cleanupPlan.length} ladder(s) worden opgeschoond.`)) return;
+  out.innerHTML = '<p>Bezig met schrijven...</p>';
+  let fouten = 0;
+  for (const p of window._cleanupPlan) {
+    try {
+      // Lees huidige doc, vervang alleen actievePartijen
+      const ladderRef = doc(db, 'ladders', p.ladderId);
+      const ladderSnap = await getDoc(ladderRef);
+      const ladderData = ladderSnap.exists() ? ladderSnap.data() : {};
+      await setDoc(ladderRef, { ...ladderData, actievePartijen: p.nieuwe });
+      log(`✓ ${p.ladderId}: ${p.voor} → ${p.na}`);
+    } catch(e) {
+      log(`✗ ${p.ladderId}: ${e.code || e.message}`);
+      fouten++;
+    }
+  }
+  out.innerHTML = `<p class="${fouten === 0 ? 'ok' : 'err'}">
+    ${fouten === 0 ? '✓ Opruiming voltooid. Run scan opnieuw om te verifiëren.' : `⚠ ${fouten} fouten — zie log`}
+  </p>`;
+};
+</script>
+</body>
+</html>
