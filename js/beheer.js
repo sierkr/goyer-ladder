@@ -67,6 +67,32 @@ async function slaStandOp() {
   const idx = alleLadders.findIndex(l => l.id === ladderId);
   if (idx >= 0) alleLadders[idx].spelers = _standAanpassenSpelers;
   if (ladderId === activeLadderId) state.spelers = _standAanpassenSpelers;
+
+  // v3.0.0-11.27: sync ook de standen/{uid} subcollectie zodat de ladder-tab
+  // (die uit standen leest) de nieuwe ranks toont.
+  const writes = [];
+  let geschreven = 0, overgeslagen = 0;
+  for (const s of _standAanpassenSpelers) {
+    // Alleen als id een uid is (string >10 chars)
+    if (typeof s.id !== 'string' || s.id.length <= 10) {
+      overgeslagen++;
+      continue;
+    }
+    const payload = {
+      rank:     s.rank     || 0,
+      partijen: s.partijen || 0,
+      gewonnen: s.gewonnen || 0,
+    };
+    if (s.prevRank != null) payload.prevRank = s.prevRank;
+    writes.push(
+      setDoc(doc(db, 'ladders', ladderId, 'standen', s.id), payload)
+        .then(() => geschreven++)
+        .catch(err => console.warn('[slaStandOp] standen sync mislukt voor', s.naam, err.code))
+    );
+  }
+  await Promise.all(writes);
+  console.log(`[slaStandOp] standen-sync klaar: ${geschreven} geschreven, ${overgeslagen} overgeslagen (geen uid)`);
+
   closeModal('modal-stand-aanpassen');
   renderLadder();
   toast('Stand bijgewerkt ✓');
