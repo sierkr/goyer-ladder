@@ -924,11 +924,34 @@ async function verschuifRank(id, delta) {
     if (ander) ander.rank = speler.rank;
     speler.rank = nieuwRank;
     await slaState();
-    // v3.0.0-11.25: sync ook de standen/{uid} subcollectie zodat de ladder-tab
-    // (die uit standen leest) de nieuwe rank toont.
-    await syncStandenNaBevestigUitslag(activeLadderId);
+
+    // v3.0.0-11.26: schrijf direct alle standen/{uid} docs vanuit state.spelers
+    // (geen omweg via syncStandenNaBevestigUitslag-cache; die kan stale zijn).
+    const writes = [];
+    let geschreven = 0, overgeslagen = 0;
+    for (const s of state.spelers) {
+      // Alleen als id een uid is (string >10 chars)
+      if (typeof s.id !== 'string' || s.id.length <= 10) {
+        overgeslagen++;
+        continue;
+      }
+      const payload = {
+        rank:     s.rank     || 0,
+        partijen: s.partijen || 0,
+        gewonnen: s.gewonnen || 0,
+      };
+      if (s.prevRank != null) payload.prevRank = s.prevRank;
+      writes.push(
+        setDoc(doc(db, 'ladders', activeLadderId, 'standen', s.id), payload)
+          .then(() => geschreven++)
+          .catch(err => console.warn('[verschuifRank] standen sync mislukt voor', s.naam, err.code))
+      );
+    }
+    await Promise.all(writes);
+    console.log(`[verschuifRank] standen-sync klaar: ${geschreven} geschreven, ${overgeslagen} overgeslagen (geen uid)`);
+
     renderAdmin();
-    renderLadder();
+    if (typeof renderLadder === 'function') renderLadder();
   } catch(e) { console.error('verschuifRank mislukt:', e); }
 }
 
