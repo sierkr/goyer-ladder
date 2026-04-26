@@ -432,12 +432,32 @@ async function startPartij() {
 
   if (spelers.length < 2) { toast('Minimaal 2 spelers nodig'); return; }
 
-  // Check: zit een van deze spelers al in een actieve partij in dezelfde ladder?
-  if (!state.actievePartijen) state.actievePartijen = [];
-  const bezet = spelers.find(s =>
-    state.actievePartijen.some(p => p.ladderId === partijLadderId && p.spelers.some(ps => ps.id === s.id))
-  );
-  if (bezet) { toast(`${bezet.naam} speelt al een actieve partij in deze ladder`); return; }
+  // v3.0.0-11.24: zit een van deze spelers al in een actieve partij?
+  // Check ALLE ladders, niet alleen de actieve. String-vergelijking voor id-types.
+  // Gastspelers (id >= 90000) worden overgeslagen — die zijn per partij uniek.
+  const alleActieve = [];
+  for (const l of alleLadders) {
+    (l.actievePartijen || []).forEach(p => alleActieve.push({ ...p, _ladderNaam: l.naam || l.id }));
+  }
+  // Tel ook eventuele extra actieve partijen in de active state
+  (state.actievePartijen || []).forEach(p => {
+    if (!alleActieve.some(a => a.partijId === p.partijId)) {
+      alleActieve.push({ ...p, _ladderNaam: 'huidige ladder' });
+    }
+  });
+  const bezet = spelers.find(s => {
+    if (Number(s.id) >= 90000) return false; // gastspeler
+    return alleActieve.some(p =>
+      (p.spelers || []).some(ps => String(ps.id) === String(s.id))
+    );
+  });
+  if (bezet) {
+    const inWelke = alleActieve.find(p =>
+      (p.spelers || []).some(ps => String(ps.id) === String(bezet.id))
+    );
+    toast(`${bezet.naam} zit al in een actieve partij (${inWelke?._ladderNaam || ''})`);
+    return;
+  }
 
   // Baan holes
   let holes = [];

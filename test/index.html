@@ -4,18 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="MP Ladder">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#2d6a4f">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="light">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
 <title>Goyer Golf MP Ladder</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 
-  html { color-scheme: light dark; }
+  html { color-scheme: light; }
 
   :root {
     --green: #2d6a4f;
@@ -52,52 +52,7 @@
     --on-dark-surface: #f0f0f0; /* tekst op donker-groene headers (login-scherm) */
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --cream: #0f1a14;
-      --dark: #f0f0f0;
-      --mid: #b0b0b0;
-      --light: #666666;
-      --white: #1e2d24;
-      --card-bg: #1a2820;
-      --border: #2a3d30;
-      --input-bg: #1a2820;
-      --nav-bg: #152010;
-      --shadow: 0 4px 24px rgba(0,0,0,0.4);
-      --green-pale: #1a3d2a;
-      /* v11.15: dark-mode varianten voor semantische variabelen */
-      --alert-bg: #3d1e1e;
-      --alert-text: #f5a6a6;
-      --info-bg: #1a2d24;
-      --info-text: #a8d4bf;
-      --warning-bg: #3d3010;
-      --warning-text: #e9c46a;
-      --soft-bg: #1f2a23;
-      --soft-text: #b0b0b0;
-      --subtle-bg: #1d2a22;
-      --success-bg: #1a3d2a;
-      --success-text: #a8d4bf;
-      --on-primary: #ffffff;
-      --on-dark-surface: #f0f0f0;
-    }
-    header { background: #1a3d2a; }
-    .card { background: var(--card-bg); }
-    input, select { background: var(--input-bg); color: var(--dark); border-color: var(--border); }
-    .modal { background: var(--card-bg); }
-    nav { background: var(--nav-bg); border-color: var(--border); }
-    .login-box { background: var(--card-bg); }
-    #laad-overlay { background: var(--cream); }
-    #login-scherm { background: #1a3d2a; }
-    /* v11.15: autofill-kleuren dwingen zodat Safari de tekst niet onzichtbaar maakt */
-    input:-webkit-autofill,
-    input:-webkit-autofill:hover,
-    input:-webkit-autofill:focus,
-    input:-webkit-autofill:active {
-      -webkit-text-fill-color: var(--dark) !important;
-      -webkit-box-shadow: 0 0 0 1000px var(--input-bg) inset !important;
-      caret-color: var(--dark);
-    }
-  }
+  /* v3.0.0-11.29: dark mode block volledig verwijderd. App rendert altijd in light. */
 
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 

@@ -19,6 +19,7 @@ import { openNieuweLadderModal, renderAdminLadders } from './beheer.js';
 import { reageerUitdaging, verwijderUitdaging } from './archief.js';
 import { renderLadder } from './ladder.js';
 import { getLadderSpelers } from './ladder-view.js';
+import { syncStandenNaBevestigUitslag } from './ronde.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
   GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, updatePassword,
   EmailAuthProvider, reauthenticateWithCredential, createUserWithEmailAndPassword }

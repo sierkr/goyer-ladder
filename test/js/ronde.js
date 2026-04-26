@@ -581,7 +581,11 @@ async function bevestigUitslag() {
       } else {
         newVrank = svRank + cfg.laagZak;
       }
-      if (newWrank >= newVrank) newVrank = newWrank + 1;
+      // v3.0.0-11.23: oude regel `if (newWrank >= newVrank) newVrank = newWrank + 1`
+      // verwijderd — die gooide bij grote rank-verschillen de verliezer onterecht
+      // naar de plek van de (gestegen) winnaar (bv. ▼58 plekken na 1 verlies).
+      // In de "lager-gerankte wint" tak geldt altijd newWrank < newVrank, dus
+      // de check is daar ook overbodig.
     } else {
       // Hoger gerankte wint
       newWrank = Math.max(1, swRank - cfg.hoogStijg);
@@ -654,6 +658,8 @@ async function bevestigUitslag() {
   
 
   await slaState();
+  // v3.0.0-11.24: verifieer dat de partij echt weg is (race-conditie protection)
+  await verwijderPartijMetRetry(activeLadderId, p.partijId);
   // Fase 9b: sync naar standen/{uid} subcollectie
   await syncStandenNaBevestigUitslag(activeLadderId);
   slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam).join(' vs ')}`);
@@ -662,6 +668,35 @@ async function bevestigUitslag() {
   await verwerkKnockoutUitslag(p);
 
   showLadderChanges(changes);
+}
+
+// v3.0.0-11.24: helper die garandeert dat een actieve partij uit Firestore is.
+// Lost race-condities op waar slaState() de hele actievePartijen-array overschrijft
+// terwijl andere instances tegelijk wijzigen.
+async function verwijderPartijMetRetry(ladderId, partijId, maxPogingen = 3) {
+  if (!ladderId || !partijId) return;
+  for (let poging = 1; poging <= maxPogingen; poging++) {
+    try {
+      const ladderRef = doc(db, 'ladders', ladderId);
+      const snap = await getDoc(ladderRef);
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const huidige = data.actievePartijen || [];
+      const filtered = huidige.filter(ap => ap.partijId !== partijId);
+      if (filtered.length === huidige.length) {
+        // Partij is al weg, klaar
+        return;
+      }
+      await setDoc(ladderRef, { ...data, actievePartijen: filtered });
+      // Verifieer
+      const checkSnap = await getDoc(ladderRef);
+      const nogSteeds = (checkSnap.data().actievePartijen || []).some(ap => ap.partijId === partijId);
+      if (!nogSteeds) return; // success
+    } catch(e) {
+      console.warn('[verwijderPartijMetRetry] poging', poging, 'faalde:', e.code || e.message);
+    }
+  }
+  console.error('[verwijderPartijMetRetry] kon partij niet verwijderen na', maxPogingen, 'pogingen');
 }
 
 function sluitUitslagEnGaNaarLadder() {
@@ -740,8 +775,12 @@ async function verwijderActievePartij() {
 
   try {
   if (!confirm('Partij verwijderen? Dit kan niet ongedaan worden.')) return;
-  state.actievePartijen = (state.actievePartijen || []).filter(ap => ap.partijId !== store._beheerPartijId);
+  const partijId = store._beheerPartijId;
+  if (!partijId) return;
+  state.actievePartijen = (state.actievePartijen || []).filter(ap => ap.partijId !== partijId);
   await slaState();
+  // v3.0.0-11.24: verifieer dat de partij echt weg is
+  await verwijderPartijMetRetry(activeLadderId, partijId);
   closeModal('modal-beheer-partij');
   renderUitslagen();
   toast('Partij verwijderd');
@@ -836,4 +875,4 @@ async function syncStandenNaBevestigUitslag(ladderId) {
   } catch(e) { console.warn('syncStandenNaBevestigUitslag:', e); }
 }
 
-export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij, syncStandenNaBevestigUitslag };
+export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij, syncStandenNaBevestigUitslag, verwijderPartijMetRetry };

@@ -6,7 +6,7 @@ import { store, state, alleLadders, activeLadderId, _beheerPartijId, _beheerWinn
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { mijnPartij } from './partij.js';
 import { renderLadder } from './ladder.js';
-import { renderRonde, showLadderChanges, syncStandenNaBevestigUitslag } from './ronde.js';
+import { renderRonde, showLadderChanges, syncStandenNaBevestigUitslag, verwijderPartijMetRetry } from './ronde.js';
 import { slaSnapshotOp } from './beheer.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { closeModal } from './admin.js';
@@ -256,7 +256,8 @@ async function bevestigBeheerUitslag() {
       } else {
         newVrank = svRank + cfg2.laagZak;
       }
-      if (newWrank >= newVrank) newVrank = newWrank + 1;
+      // v3.0.0-11.23: zelfde fix als ronde.js — oude `if (newWrank >= newVrank)`
+      // check verwijderd want die kapotte daling tot bij de winnaar.
     } else {
       newWrank = Math.max(1, swRank - cfg2.hoogStijg);
       newVrank = svRank + cfg2.hoogZak;
@@ -291,6 +292,8 @@ async function bevestigBeheerUitslag() {
   state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== _beheerPartijId);
 
   await slaState();
+  // v3.0.0-11.24: verifieer dat de partij echt weg is (race-conditie protection)
+  await verwijderPartijMetRetry(activeLadderId, _beheerPartijId);
   // v3.0.0-11.8: sync naar standen/{uid} subcollectie zodat ladder-view update
   await syncStandenNaBevestigUitslag(activeLadderId);
   slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam.split(' ')[0]).join(' vs ')}`);
