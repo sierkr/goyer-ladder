@@ -494,7 +494,19 @@ async function initFirestore() {
   if (store.activeLadderId) {
     _vasteListeners.push(onSnapshot(doc(db, 'ladders', store.activeLadderId), (snap) => {
       if (!snap.exists() || !huidigeBruiker) return;
-      store.state = snap.data();
+      const nieuweState = snap.data();
+      // v3.0.0-11.31: guard tegen stale snapshot na bevestigUitslag.
+      // Als de snapshot een partijId bevat die lokaal al verwijderd is, negeer de snapshot.
+      // Dit voorkomt dat een vertraagde Firestore-snapshot de net-verwijderde actieve
+      // partij terugzet in de uitslagen-tab "bezig" sectie.
+      const lokaleIds = new Set((store.state.actievePartijen || []).map(p => p.partijId));
+      const snapIds   = (nieuweState.actievePartijen || []).map(p => p.partijId);
+      const heeftStalePartij = snapIds.some(id => !lokaleIds.has(id));
+      if (heeftStalePartij) {
+        console.log('[onSnapshot] stale snapshot genegeerd — bevat partijId niet meer in lokale state');
+        return;
+      }
+      store.state = nieuweState;
       if (!store.state.actievePartijen) store.state.actievePartijen = [];
       const idx = store.alleLadders.findIndex(l => l.id === activeLadderId);
       if (idx >= 0) {
