@@ -14,7 +14,7 @@ import { store, DEFAULT_LADDER_CONFIG,
   state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker,
   _usersCache, archiefData, uitdagingenData, toernooiData, alleToernooien,
   actieveToernooiId, _firestoreReady, _vasteListeners, _toernooiListeners,
-  _bezigMetRegistratie, playerSlotCount } from './store.js';
+  _bezigMetRegistratie, playerSlotCount, _verwijderdePartijIds } from './store.js';
 import { renderLadder } from './ladder.js';
 import { toonUitdagingBadge } from './archief.js';
 import { closeModal, renderAdmin, renderProfiel } from './admin.js';
@@ -495,15 +495,15 @@ async function initFirestore() {
     _vasteListeners.push(onSnapshot(doc(db, 'ladders', store.activeLadderId), (snap) => {
       if (!snap.exists() || !huidigeBruiker) return;
       const nieuweState = snap.data();
-      // v3.0.0-11.31: guard tegen stale snapshot na bevestigUitslag.
-      // Als de snapshot een partijId bevat die lokaal al verwijderd is, negeer de snapshot.
-      // Dit voorkomt dat een vertraagde Firestore-snapshot de net-verwijderde actieve
-      // partij terugzet in de uitslagen-tab "bezig" sectie.
-      const lokaleIds = new Set((store.state.actievePartijen || []).map(p => p.partijId));
-      const snapIds   = (nieuweState.actievePartijen || []).map(p => p.partijId);
-      const heeftStalePartij = snapIds.some(id => !lokaleIds.has(id));
+      // v3.0.0-11.32: guard tegen stale snapshot na bevestigUitslag.
+      // Blokkeer alleen snapshots die een partijId bevatten die lokaal al
+      // VERWIJDERD is. Nieuwe partijIds (net gestart) worden wél doorgelaten —
+      // de oude guard blokkeerde die ten onrechte, waardoor een net-gestarte
+      // partij meteen weer verdween.
+      const heeftStalePartij = (nieuweState.actievePartijen || [])
+        .some(p => _verwijderdePartijIds.has(p.partijId));
       if (heeftStalePartij) {
-        console.log('[onSnapshot] stale snapshot genegeerd — bevat partijId niet meer in lokale state');
+        console.log('[onSnapshot] stale snapshot genegeerd — bevat al-verwijderde partijId');
         return;
       }
       store.state = nieuweState;

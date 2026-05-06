@@ -2,7 +2,7 @@
 //  ronde.js
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB, esc, escAttr } from './config.js';
-import { store, state, alleLadders, activeLadderId, _usersCache } from './store.js';
+import { store, state, alleLadders, activeLadderId, _usersCache, _verwijderdePartijIds } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { closeModal } from './admin.js';
 import { kortNaamMap, mijnPartij, renderHcpBlok } from './partij.js';
@@ -653,6 +653,8 @@ async function bevestigUitslag() {
 
   // Verwijder deze partij uit actievePartijen
   state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== p.partijId);
+  // v3.0.0-11.32: markeer als verwijderd zodat onSnapshot-guard hem herkent
+  _verwijderdePartijIds.add(p.partijId);
 
   // Onthoud welke spelers zojuist gespeeld hebben voor highlight in ladder
   
@@ -688,6 +690,8 @@ async function verwijderPartijMetRetry(ladderId, partijId, maxPogingen = 3) {
         return;
       }
       await setDoc(ladderRef, { ...data, actievePartijen: filtered });
+      // v3.0.0-11.32: markeer als verwijderd zodat onSnapshot-guard hem herkent
+      _verwijderdePartijIds.add(partijId);
       // Verifieer
       const checkSnap = await getDoc(ladderRef);
       const nogSteeds = (checkSnap.data().actievePartijen || []).some(ap => ap.partijId === partijId);

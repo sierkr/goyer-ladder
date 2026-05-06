@@ -82,6 +82,7 @@ export const DEFAULT_LADDER_CONFIG = {
 
 // ─── Aangepaste banen ───────────────────────────────────────
 export let aangepasteBanen = [];
+export let _verwijderdePartijIds = new Set();
 
 // ─── Setters (voor modules die state moeten updaten) ─────────
 // Omdat ES modules geen directe reassignment van geïmporteerde
@@ -162,6 +163,8 @@ export const store = {
   get _toernooiSpelerToevoegen() { return _toernooiSpelerToevoegen; },
   set aangepasteBanen(v) { aangepasteBanen = v; },
   get aangepasteBanen() { return aangepasteBanen; },
+  set _verwijderdePartijIds(v) { _verwijderdePartijIds = v; },
+  get _verwijderdePartijIds() { return _verwijderdePartijIds; },
   set _beheerPartijId(v) { _beheerPartijId = v; },
   get _beheerPartijId() { return _beheerPartijId; },
 };
