@@ -1,7 +1,7 @@
 // ============================================================
 //  partij.js — Partij aanmaken, banen, naam helpers
 // ============================================================
-import { db, BANEN_DB, BANEN_DOC, LADDERS_COL, DEFAULT_STATE, esc, escAttr } from './config.js';
+import { db, BANEN_DOC, LADDERS_COL, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
 import { slaState, getLadderData, getNextId, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { objNaarRondes } from './knockout.js';
@@ -91,10 +91,14 @@ function herstelPartijFormulier() {
   }
 }
 
+// v3.0.0-11.34: alle banen komen uit Firestore (store.aangepasteBanen).
+// Geen hardcoded BANEN_DB meer. alleBANEN() is de centrale lookup-functie
+// voor zowel partij als toernooi.
 function alleBANEN() {
   const result = {};
-  Object.entries(BANEN_DB).filter(([n]) => n !== 'Handmatig invoeren').forEach(([n,v]) => { result[n] = v; });
-  aangepasteBanen.forEach(b => { result[b.naam] = { holes: b.holes, custom: true, aangemaakt_door: b.aangemaakt_door }; });
+  aangepasteBanen.forEach(b => {
+    result[b.naam] = { holes: b.holes, aangemaakt_door: b.aangemaakt_door };
+  });
   result['Handmatig invoeren'] = { holes: null };
   return result;
 }
@@ -123,23 +127,14 @@ function initPartijForm() {
   const sel = document.getElementById('baan-select');
   sel.innerHTML = '<option value="">— Selecteer baan —</option>';
 
-  // Ingebouwde banen
-  Object.keys(BANEN_DB).filter(n => n !== 'Handmatig invoeren').forEach(naam => {
-    sel.innerHTML += `<option value="${escAttr(naam)}">${esc(naam)}</option>`;
+  // v3.0.0-11.34: alle banen komen uit Firestore — één vlakke lijst, geen onderscheid
+  aangepasteBanen.forEach(b => {
+    sel.innerHTML += `<option value="${escAttr(b.naam)}">${esc(b.naam)}</option>`;
   });
-
-  // Aangepaste banen
-  if (aangepasteBanen.length > 0) {
-    sel.innerHTML += `<optgroup label="Opgeslagen banen">`;
-    aangepasteBanen.forEach(b => {
-      sel.innerHTML += `<option value="${escAttr(b.naam)}">⭐ ${esc(b.naam)}</option>`;
-    });
-    sel.innerHTML += `</optgroup>`;
-  }
   sel.innerHTML += `<option value="Handmatig invoeren">+ Handmatig invoeren / nieuwe baan</option>`;
 
-  // Selecteer thuisbaan als default (alleen als geen opgeslagen state)
-  if (!heeftOpgeslagen) sel.value = Object.keys(BANEN_DB)[0];
+  // Selecteer eerste baan als default (alleen als geen opgeslagen state)
+  if (!heeftOpgeslagen && aangepasteBanen.length > 0) sel.value = aangepasteBanen[0].naam;
 
   // Player slots
   store.playerSlotCount = 0;
@@ -374,17 +369,18 @@ function onBaanSelect() {
   const val = document.getElementById('baan-select').value;
   const hw = document.getElementById('baan-handmatig');
   const beheerWrap = document.getElementById('baan-beheer-wrap');
-  const banen = alleBANEN();
   beheerWrap.style.display = 'none';
   if (val === 'Handmatig invoeren') {
     hw.style.display = 'block';
     renderHandmatigHoles();
-  } else if (banen[val]?.custom) {
-    hw.style.display = 'none';
-    const kanBeheren = isCoordinatorRol() || banen[val].aangemaakt_door === huidigeBruiker?.gebruikersnaam;
-    if (kanBeheren) beheerWrap.style.display = 'block';
   } else {
     hw.style.display = 'none';
+    // Elke baan kan beheerd worden door een coordinator of de aanmaker
+    const baan = aangepasteBanen.find(b => b.naam === val);
+    if (baan) {
+      const kanBeheren = isCoordinatorRol() || baan.aangemaakt_door === huidigeBruiker?.gebruikersnaam;
+      if (kanBeheren) beheerWrap.style.display = 'block';
+    }
   }
 }
 

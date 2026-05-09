@@ -60,15 +60,19 @@ export const LADDERS_COL = collection(db, 'ladders');
 
 // Ingelogde gebruiker (alleen in geheugen, niet in Firestore)
 export let huidigeBruiker = null; // { gebruikersnaam, rol }
-export let aangepasteBanen = []; // { naam, aangemaakt_door, holes: [{par, si}] }
 
 // ============================================================
 //  DATA
 // ============================================================
 
-// Banen database (NL selectie, PAR + SI per hole)
-export const BANEN_DB = {
-  "De Goyer (thuisbaan)": {
+// v3.0.0-11.34: BANEN_DB verwijderd — alle banen komen uit Firestore (ladder/banen).
+// BANEN_DB_MIGRATIE wordt eenmalig gebruikt in migratieVasteBanen() in auth.js
+// om de vijf vaste banen naar Firestore te schrijven als ze er nog niet in staan.
+// Na de migratie is deze lijst verder niet meer actief in de app.
+export const BANEN_DB_MIGRATIE = [
+  {
+    naam: "De Goyer",
+    aangemaakt_door: "systeem",
     holes: [
       {par:4,si:16},{par:3,si:10},{par:4,si:6},{par:5,si:2},{par:3,si:18},
       {par:4,si:14},{par:5,si:4},{par:4,si:8},{par:4,si:12},
@@ -76,7 +80,9 @@ export const BANEN_DB = {
       {par:4,si:11},{par:4,si:7},{par:5,si:3},{par:4,si:9}
     ]
   },
-  "Hilversumsche Golf Club": {
+  {
+    naam: "Hilversumsche Golf Club",
+    aangemaakt_door: "systeem",
     holes: [
       {par:4,si:7},{par:4,si:3},{par:3,si:15},{par:5,si:11},{par:4,si:1},
       {par:3,si:17},{par:4,si:5},{par:4,si:9},{par:5,si:13},
@@ -84,7 +90,9 @@ export const BANEN_DB = {
       {par:3,si:18},{par:4,si:6},{par:4,si:10},{par:5,si:14}
     ]
   },
-  "Kennemer Golf & Country Club": {
+  {
+    naam: "Kennemer Golf & Country Club",
+    aangemaakt_door: "systeem",
     holes: [
       {par:4,si:9},{par:4,si:5},{par:3,si:17},{par:5,si:1},{par:4,si:13},
       {par:4,si:3},{par:3,si:15},{par:5,si:7},{par:4,si:11},
@@ -92,7 +100,9 @@ export const BANEN_DB = {
       {par:4,si:4},{par:3,si:16},{par:5,si:8},{par:4,si:12}
     ]
   },
-  "Haagsche Golf & Country Club": {
+  {
+    naam: "Haagsche Golf & Country Club",
+    aangemaakt_door: "systeem",
     holes: [
       {par:5,si:3},{par:4,si:9},{par:3,si:15},{par:4,si:1},{par:4,si:11},
       {par:3,si:17},{par:4,si:7},{par:5,si:5},{par:4,si:13},
@@ -100,16 +110,17 @@ export const BANEN_DB = {
       {par:4,si:8},{par:3,si:18},{par:4,si:6},{par:5,si:14}
     ]
   },
-  "Amsterdamsche Golf Club": {
+  {
+    naam: "Amsterdamsche Golf Club",
+    aangemaakt_door: "systeem",
     holes: [
       {par:4,si:11},{par:3,si:17},{par:4,si:5},{par:5,si:1},{par:4,si:9},
       {par:3,si:15},{par:4,si:7},{par:5,si:3},{par:4,si:13},
       {par:4,si:12},{par:3,si:18},{par:4,si:6},{par:5,si:2},{par:4,si:10},
       {par:3,si:16},{par:4,si:8},{par:5,si:4},{par:4,si:14}
     ]
-  },
-  "Handmatig invoeren": { holes: null }
-};
+  }
+];
 
 export const DEFAULT_STATE = {
   spelers: [],

@@ -1,10 +1,10 @@
 // ============================================================
 //  toernooi.js
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB, esc, escAttr } from './config.js';
-import { store, state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tSpelersLadderIds, _tRankingLadderIds, _flights, aangepasteBanen } from './store.js';
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
+import { store, state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tSpelersLadderIds, _tRankingLadderIds, _flights } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
-import { renderHcpBlok } from './partij.js';
+import { renderHcpBlok, alleBANEN } from './partij.js';
 import { renderLadder } from './ladder.js';
 import { slaSnapshotOp } from './beheer.js';
 import { toggleAdminKaart } from './knockout.js';
@@ -155,12 +155,12 @@ function initToernooiSetup() {
   // Baan select
   const baanSel = document.getElementById('t-baan');
   if (baanSel) {
-    baanSel.innerHTML = Object.keys(BANEN_DB).filter(n => n !== 'Handmatig invoeren').map(n =>
-      `<option value="${escAttr(n)}">${esc(n)}</option>`
-    ).join('');
-    aangepasteBanen.forEach(b => {
-      baanSel.innerHTML += `<option value="${escAttr(b.naam)}">⭐ ${esc(b.naam)}</option>`;
-    });
+    // v3.0.0-11.34: alle banen via alleBANEN() — één bron, geen onderscheid vaste/aangepaste banen
+    const banen = alleBANEN();
+    baanSel.innerHTML = Object.keys(banen)
+      .filter(n => n !== 'Handmatig invoeren')
+      .map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`)
+      .join('');
   }
 
   // Datum vandaag als default
@@ -471,13 +471,11 @@ async function startToernooi() {
   if (geselecteerd.length < 2) { toast('Voeg minimaal 2 spelers toe aan flights'); return; }
   if (_flights.every(f => f.spelers.length === 0)) { toast('Verdeel spelers over flights'); return; }
 
-  // Holes ophalen — ingebouwd of aangepast
+  // v3.0.0-11.34: holes ophalen via alleBANEN() — één bron voor alle banen
   let holes = [];
-  if (BANEN_DB[baanNaam]?.holes) {
-    holes = BANEN_DB[baanNaam].holes.slice(0, holesCount);
-  } else {
-    const aangepast = aangepasteBanen.find(b => b.naam === baanNaam);
-    if (aangepast) holes = aangepast.holes.slice(0, holesCount);
+  const banen = alleBANEN();
+  if (banen[baanNaam]?.holes) {
+    holes = banen[baanNaam].holes.slice(0, holesCount);
   }
   if (!holes.length) { toast('Baan heeft geen holes geconfigureerd'); return; }
 
