@@ -649,13 +649,13 @@ async function startPartij() {
     const snap = await getDoc(doc(db, 'ladders', partijLadderId));
     const ladderData = snap.exists() ? snap.data() : { ...JSON.parse(JSON.stringify(DEFAULT_STATE)) };
     if (!ladderData.actievePartijen) ladderData.actievePartijen = [];
-    ladderData.actievePartijen.push(nieuwePartij);
+    ladderData.actievePartijen.push(JSON.parse(JSON.stringify(nieuwePartij)));
     await setDoc(doc(db, 'ladders', partijLadderId), ladderData);
     // Wissel naar die ladder zodat de ronde zichtbaar is
     store.activeLadderId = partijLadderId;
     store.state = ladderData;
   } else {
-    state.actievePartijen.push(nieuwePartij);
+    state.actievePartijen.push(JSON.parse(JSON.stringify(nieuwePartij)));
     await slaState();
   }
 
