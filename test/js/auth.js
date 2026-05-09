@@ -7,7 +7,7 @@
 // ============================================================
 import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
-  INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB, esc, escAttr,
+  INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB_MIGRATIE, esc, escAttr,
   EMAIL_SUFFIX, INITIEEL_WACHTWOORD, DEFAULT_HCP,
   genereerEmail, loginNaamVan } from './config.js';
 import { store, DEFAULT_LADDER_CONFIG,
@@ -19,7 +19,7 @@ import { renderLadder } from './ladder.js';
 import { toonUitdagingBadge } from './archief.js';
 import { closeModal, renderAdmin, renderProfiel } from './admin.js';
 import { renderRonde } from './ronde.js';
-import { renderToernooi } from './toernooi.js';
+import { renderToernooi, getActiefToernooiMetModus } from './toernooi.js';
 import { renderUitslagen } from './uitslagen.js';
 import { startAlleStandenListeners, stopAlleStandenListeners } from './ladder-view.js';
 
@@ -88,18 +88,25 @@ function setIngelogdVanafProfiel(firebaseUser, profiel) {
 
 function updateSiteTitel() {
   if (!huidigeBruiker) return;
+  const h1Second = document.getElementById('h1-second');
+  if (!h1Second) return;
+
+  // Toernooi-modus heeft prioriteit: toon de toernooinaam
+  const actief = getActiefToernooiMetModus();
+  if (actief) {
+    h1Second.textContent = ` ${actief.naam}`;
+    return;
+  }
+
   const uid = huidigeBruiker.uid;
   const mijnLadders = isCoordinatorRol()
     ? alleLadders
     : alleLadders.filter(l => uid && (l.spelerIds || []).includes(uid));
-  const h1Second = document.getElementById('h1-second');
-  if (h1Second) {
-    const alleenHeerendag = mijnLadders.length === 1 &&
-      mijnLadders[0].naam.toLowerCase().includes('heerendag');
-    h1Second.textContent = alleenHeerendag
-      ? ` ${mijnLadders[0].naam} Ladder`
-      : ' MP Ladder';
-  }
+  const alleenHeerendag = mijnLadders.length === 1 &&
+    mijnLadders[0].naam.toLowerCase().includes('heerendag');
+  h1Second.textContent = alleenHeerendag
+    ? ` ${mijnLadders[0].naam} Ladder`
+    : ' MP Ladder';
 }
 
 // ============================================================
@@ -211,6 +218,48 @@ async function slaEersteLoginOp() {
   }
 }
 
+// ============================================================
+//  TOERNOOI-MODUS NAV
+// ============================================================
+function pasToernooiModusNavToe() {
+  if (!huidigeBruiker) return;
+  if (isBeheerderRol() || isCoordinatorRol()) return; // beheerders altijd volledig zicht
+
+  const actief = getActiefToernooiMetModus();
+  if (!actief) return; // geen actief toernooi-modus toernooi — niets doen
+
+  const uid = huidigeBruiker.uid;
+  const isDeelnemer = (actief.spelers || []).some(s => s.uid === uid);
+  if (!isDeelnemer) return; // speler zit niet in dit toernooi — niets doen
+
+  // Verberg alle tabs behalve Ronde en Uitslag
+  const verbergTabs = ['ladder', 'partij', 'help', 'archief', 'toernooi', 'profiel', 'admin'];
+  verbergTabs.forEach(tab => {
+    // Tabs zonder id: selecteer via onclick attribuut
+    const btn = document.querySelector(`nav button[onclick="showPage('${tab}')"]`);
+    if (btn) btn.style.display = 'none';
+    // Tabs met een id-knop
+    const idBtn = document.getElementById(`nav-${tab}-btn`);
+    if (idBtn) idBtn.style.display = 'none';
+  });
+
+  // Zorg dat Ronde actief is als huidige pagina verborgen wordt
+  const actievePagina = document.querySelector('.page.active');
+  const actieveId = actievePagina?.id?.replace('page-', '');
+  if (actieveId && verbergTabs.includes(actieveId)) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-ronde')?.classList.add('active');
+    document.querySelector('nav button[onclick="showPage(\'ronde\')"]')?.classList.add('active');
+  }
+}
+
+// Luister naar toernooiModusGewijzigd event vanuit toernooi.js
+window.addEventListener('toernooiModusGewijzigd', () => {
+  updateSiteTitel();
+  pasToernooiModusNavToe();
+});
+
 function vervolgIngelogd() {
   document.getElementById('login-scherm').classList.remove('actief');
   document.getElementById('login-fout').style.display = 'none';
@@ -239,6 +288,9 @@ function vervolgIngelogd() {
 
   const versieBadge = document.getElementById('versie-badge');
   if (versieBadge) versieBadge.style.display = isBeheerderRol() ? '' : 'none';
+
+  // Pas toernooi-modus nav toe (verbergt tabs voor deelnemers indien actief)
+  pasToernooiModusNavToe();
 
   renderLadder();
   registreerNotificatieToken();
@@ -380,6 +432,30 @@ async function slaState() {
   } catch(e) { console.error('Firestore save error:', e); }
 }
 
+// ============================================================
+//  MIGRATIE — vaste banen naar Firestore (v3.0.0-11.34)
+// ============================================================
+// Eenmalige migratie: schrijft de vijf hardcoded banen naar ladder/banen
+// als ze er nog niet in staan (check op naam). Na de migratie doet deze
+// functie niets meer. BANEN_DB_MIGRATIE mag daarna ook uit config.js.
+async function migratieVasteBanen(huidigeLijst) {
+  try {
+    const bestaandeNamen = new Set((huidigeLijst || []).map(b => b.naam.toLowerCase()));
+    const teToevoegen = BANEN_DB_MIGRATIE.filter(b => !bestaandeNamen.has(b.naam.toLowerCase()));
+    if (teToevoegen.length === 0) return huidigeLijst; // niets te doen
+
+    // Vaste banen vooraan zetten (vóór eventueel al aanwezige banen)
+    const nieuweLijst = [...teToevoegen, ...huidigeLijst];
+    await setDoc(BANEN_DOC, { lijst: nieuweLijst });
+    console.log(`[migratie] ${teToevoegen.length} vaste baan/banen naar Firestore geschreven:`,
+      teToevoegen.map(b => b.naam).join(', '));
+    return nieuweLijst;
+  } catch(e) {
+    console.warn('[migratie] migratieVasteBanen mislukt (niet fataal):', e.code || e.message);
+    return huidigeLijst; // gebruik wat er al was, app werkt gewoon door
+  }
+}
+
 async function initFirestore() {
   toonLaadOverlay(true);
 
@@ -408,8 +484,12 @@ async function initFirestore() {
 
     store.archiefData     = archiefSnap.exists()  ? (archiefSnap.data().seizoenen  || []) : [];
     store.uitdagingenData = uitdSnap.exists()      ? (uitdSnap.data().lijst         || []) : [];
-    // v3.0.0-11.17: laad aangepaste banen uit Firestore
-    store.aangepasteBanen = baanSnap.exists()      ? (baanSnap.data().lijst         || []) : [];
+    // v3.0.0-11.34: laad alle banen uit Firestore — geen hardcoded BANEN_DB meer.
+    // migratieVasteBanen() schrijft de vijf vaste banen eenmalig naar Firestore
+    // als ze er nog niet in staan, zodat de overgang naadloos verloopt.
+    let baanLijst = baanSnap.exists() ? (baanSnap.data().lijst || []) : [];
+    baanLijst = await migratieVasteBanen(baanLijst);
+    store.aangepasteBanen = baanLijst;
     // v3.0.0-9c: alleSpelersData wordt niet meer uit ladder/spelers geladen.
     // Het is nu een afgeleide view van _usersCache (zie store.js) en wordt
     // gevuld zodra de spelers/ listener start na login.

@@ -7,7 +7,7 @@
 // ============================================================
 import { db, auth, firebaseConfig, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL,
   SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC,
-  INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB, esc, escAttr,
+  INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr,
   EMAIL_SUFFIX, INITIEEL_WACHTWOORD, DEFAULT_HCP,
   genereerEmail, loginNaamVan,
   functions, httpsCallable } from './config.js';

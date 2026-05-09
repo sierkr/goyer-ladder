@@ -1,7 +1,7 @@
 // ============================================================
 //  beheer.js
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, BANEN_DB, esc, escAttr } from './config.js';
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { laadInviteStatus } from './auth.js';
@@ -194,7 +194,14 @@ async function maakNieuweLadder() {
     toast('Een ladder met deze naam bestaat al'); return;
   }
   const id = naam.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
-  const nieuweData = { id: snap.id, ...snap.data() };
+  const nieuweData = {
+    naam,
+    type,
+    spelers: [],
+    spelerIds: [],
+    config: { ...DEFAULT_LADDER_CONFIG },
+    ...JSON.parse(JSON.stringify(DEFAULT_STATE))
+  };
 
     await setDoc(doc(db, 'ladders', id), nieuweData);
   alleLadders.push({ id, naam, spelerIds: [], spelers: [], type });

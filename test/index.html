@@ -775,7 +775,48 @@
     <button class="btn btn-ghost btn-block btn-sm" onclick="voegFlightToe()" style="margin-top:8px">+ Flight toevoegen</button>
     <div class="modal-actions" style="margin-top:16px">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-flight-indeling')">← Terug</button>
-      <button class="btn btn-primary" style="flex:2" onclick="startToernooi()">Toernooi starten →</button>
+      <button class="btn btn-primary" style="flex:2" id="flight-modal-start-btn">Toernooi starten →</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-nieuwe-dag">
+  <div class="modal" style="max-width:420px">
+    <h3>Nieuwe dag toevoegen</h3>
+    <div class="form-group">
+      <label>Datum</label>
+      <input type="date" id="t-dag-datum">
+    </div>
+    <div class="form-group">
+      <label>Baan</label>
+      <select id="t-dag-baan"></select>
+    </div>
+    <div class="form-group">
+      <label>Aantal holes</label>
+      <select id="t-dag-holes">
+        <option value="18">18 holes</option>
+        <option value="9">9 holes</option>
+        <option value="custom">Aangepast...</option>
+      </select>
+    </div>
+    <div class="form-group" id="t-dag-holes-custom-wrap" style="display:none">
+      <label>Aangepast aantal holes</label>
+      <input type="number" id="t-dag-holes-custom" min="1" max="18" placeholder="bijv. 12" style="text-align:center">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="form-group">
+        <label>Starttijd</label>
+        <input type="time" id="t-dag-starttijd" value="09:00">
+      </div>
+      <div class="form-group">
+        <label>Interval (min)</label>
+        <input type="number" id="t-dag-interval" min="0" max="60" value="10" style="text-align:center">
+      </div>
+    </div>
+    <p style="font-size:12px;color:var(--mid);margin:8px 0">De flight indeling voor deze dag stel je in na het toevoegen via de Flights knop in de scorekaart.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-nieuwe-dag')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="voegDagToe()">Dag toevoegen →</button>
     </div>
   </div>
 </div>
@@ -1226,27 +1267,17 @@
           <input type="text" id="t-naam" placeholder="bijv. Clubkampioenschap 2025">
         </div>
         <div class="form-group">
-          <label>Datum</label>
-          <input type="date" id="t-datum">
-        </div>
-        <div class="form-group">
-          <label>Baan</label>
-          <select id="t-baan"></select>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-          <div class="form-group" style="margin:0">
-            <label>Aantal holes</label>
-            <select id="t-holes" onchange="toggleHolesCustom()">
-              <option value="18">18 holes</option>
-              <option value="9">9 holes</option>
-              <option value="custom">Aangepast...</option>
+          <label>Aantal dagen</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="t-aantal-dagen" onchange="renderDagBlokken()" style="width:auto">
+              <option value="1">1 dag</option>
+              <option value="2">2 dagen</option>
+              <option value="3">3 dagen</option>
+              <option value="4">4 dagen</option>
             </select>
           </div>
-          <div class="form-group" style="margin:0;display:none" id="t-holes-custom-wrap">
-            <label>Aangepast</label>
-            <input type="number" id="t-holes-custom" min="1" max="18" placeholder="bijv. 12" style="text-align:center">
-          </div>
         </div>
+        <div id="t-dag-blokken"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
           <div class="form-group" style="margin:0">
             <label>Starttijd</label>
@@ -1352,7 +1383,7 @@
             <input type="radio" name="t-ranglijst-keuze" value="netto" onchange="wisselRanglijstModus(this.value)" style="accent-color:var(--green)"> Netto
           </label>
           <label style="display:flex;align-items:center;gap:5px;padding:3px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:12px;font-weight:600">
-            <input type="radio" name="t-ranglijst-keuze" value="abs" onchange="wisselRanglijstModus(this.value)" style="accent-color:var(--green)"> Stableford
+            <input type="radio" name="t-ranglijst-keuze" value="stableford" onchange="wisselRanglijstModus(this.value)" style="accent-color:var(--green)"> Stableford
           </label>
         </div>
       </div>

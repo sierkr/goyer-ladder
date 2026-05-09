@@ -154,9 +154,35 @@ async function laadToernooi() {
     }
 
     document.getElementById('toernooi-naam').textContent = '⛳ ' + toernooiData.naam;
+
+    // v3.0.0-11.37: meerdaagse structuur — toon actieve dag info
+    const actDag = (toernooiData.dagen || [])[( toernooiData.actiefDagNr || 1) - 1] || null;
+    const aantalDagen = (toernooiData.dagen || []).length;
+    const dagLabel = aantalDagen > 1 ? `Dag ${toernooiData.actiefDagNr || 1} · ` : '';
+    const baanLabel = actDag?.baan || toernooiData.baan || '';
+    const datumLabel = actDag?.datum || toernooiData.datum || '';
     document.getElementById('toernooi-meta').textContent =
-      toernooiData.baan + ' · ' + new Date(toernooiData.datum).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' });
+      dagLabel + baanLabel + (datumLabel ? ' · ' + new Date(datumLabel).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' }) : '');
     document.getElementById('tab-bar').style.display = 'flex';
+
+    // Dag-tabs toevoegen als meerdere dagen
+    const tabBar = document.getElementById('tab-bar');
+    const bestaandeDagTabs = tabBar.querySelectorAll('.dag-tab');
+    bestaandeDagTabs.forEach(t => t.remove());
+    if (aantalDagen > 1) {
+      const dagTabsContainer = document.createElement('div');
+      dagTabsContainer.style.cssText = 'display:flex;gap:4px;padding:8px 12px;background:var(--green-pale);border-bottom:1px solid var(--border);overflow-x:auto';
+      (toernooiData.dagen || []).forEach(d => {
+        const btn = document.createElement('button');
+        btn.className = 'dag-tab';
+        btn.textContent = `Dag ${d.dagNr}${d.afgerond ? ' ✓' : ''}`;
+        btn.style.cssText = `padding:4px 12px;border-radius:16px;border:1.5px solid var(--green);background:${d.dagNr === (toernooiData.actiefDagNr||1) ? 'var(--green)' : 'transparent'};color:${d.dagNr === (toernooiData.actiefDagNr||1) ? 'white' : 'var(--green)'};font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap`;
+        btn.onclick = () => { toernooiData.actiefDagNr = d.dagNr; laadData(); };
+        dagTabsContainer.appendChild(btn);
+      });
+      tabBar.parentNode.insertBefore(dagTabsContainer, tabBar.nextSibling);
+    }
+
     document.getElementById('laatste-update').textContent =
       'Bijgewerkt: ' + new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -174,7 +200,11 @@ function renderInhoud() {
 
 function renderScores() {
   const t = toernooiData;
-  const flights = t.flights || [{ naam: 'Flight', spelerIds: t.spelers.map(s => s.id) }];
+  // v3.0.0-11.37: haal data uit actieve dag
+  const dag = (t.dagen || [])[(t.actiefDagNr || 1) - 1] || null;
+  const holes   = dag?.holes   || t.holes   || [];
+  const flights = dag?.flights || t.flights || [{ naam: 'Flight', spelerIds: t.spelers.map(s => s.id) }];
+  const scores  = dag?.scores  || t.scores  || {};
   let html = '';
 
   flights.forEach(flight => {
@@ -190,15 +220,15 @@ function renderScores() {
         </tr></thead>
         <tbody>`;
 
-    t.holes.forEach((hole, i) => {
+    holes.forEach((hole, i) => {
       html += `<tr>
         <td style="white-space:nowrap">
           <span style="font-weight:700">${i+1}</span>
           <span style="font-size:10px;color:var(--light);margin-left:3px">p${hole.par}</span>
         </td>`;
       flightSpelers.forEach(s => {
-        const scores = t.scores?.[s.id] || t.scores?.[String(s.id)] || [];
-        const val = scores[i];
+        const sScores = scores?.[s.id] || scores?.[String(s.id)] || [];
+        const val = sScores[i];
         let cls = '';
         if (val != null) {
           if (val <= hole.par - 2) cls = 'score-eagle';
@@ -214,8 +244,8 @@ function renderScores() {
     // Totaalrij
     html += '<tr style="background:var(--green-pale);font-weight:700"><td>Totaal</td>';
     flightSpelers.forEach(s => {
-      const scores = t.scores?.[s.id] || t.scores?.[String(s.id)] || [];
-      const filled = scores.filter(v => v != null);
+      const sScores = scores?.[s.id] || scores?.[String(s.id)] || [];
+      const filled = sScores.filter(v => v != null);
       const tot = filled.length ? filled.reduce((a,b) => a+Number(b), 0) : null;
       html += `<td>${tot !== null ? tot : '—'}</td>`;
     });
@@ -225,14 +255,34 @@ function renderScores() {
   document.getElementById('inhoud').innerHTML = html || '<div class="empty">Geen scores.</div>';
 }
 
-function berekenStrokeplayRanglijst(t) {
-  const aantalHoles = t.holes.length;
+// v3.0.0-11.37: berekening per dag, met totaal-optie (dagNr=0)
+function actieveDagLive(t, dagNrOverride) {
+  const dagNr = dagNrOverride !== undefined ? dagNrOverride : (t.actiefDagNr || 1);
+  return (t.dagen || [])[dagNr - 1] || null;
+}
+
+function berekenStrokeplayRanglijst(t, dagNrOverride) {
+  // dagNrOverride=0 → totaal over alle dagen
+  if (dagNrOverride === 0) {
+    return t.spelers.map(s => {
+      let bruttoTot = 0, nettoTot = 0, sfTot = 0, holesTot = 0;
+      (t.dagen || []).forEach(dag => {
+        const r = berekenStrokeplayRanglijst(t, dag.dagNr).find(x => x.s === s);
+        if (r && r.holes > 0) { bruttoTot += r.brutto||0; nettoTot += r.netto||0; sfTot += r.stableford||0; holesTot += r.holes; }
+      });
+      return { s, holes: holesTot, brutto: holesTot>0?bruttoTot:null, netto: holesTot>0?nettoTot:null, stableford: holesTot>0?sfTot:null };
+    });
+  }
+  const dag = actieveDagLive(t, dagNrOverride);
+  const holes  = dag?.holes  || t.holes  || [];
+  const scores = dag?.scores || t.scores || {};
+  const aantalHoles = holes.length;
   return t.spelers.map(s => {
-    const scores = t.scores?.[s.id] || t.scores?.[String(s.id)] || [];
+    const sScores = scores?.[s.id] || scores?.[String(s.id)] || [];
     const hcp = Math.round(s.hcp);
     let bruttoTotaal = 0, nettoSlagen = 0, stableford = 0, holesGespeeld = 0;
-    t.holes.forEach((hole, i) => {
-      const val = scores[i];
+    holes.forEach((hole, i) => {
+      const val = sScores[i];
       if (val == null) return;
       holesGespeeld++;
       const v = Number(val);
@@ -255,14 +305,36 @@ function berekenStrokeplayRanglijst(t) {
 
 function renderRanglijst() {
   const t = toernooiData;
-  let html = '<div class="card">';
+  const aantalDagen = (t.dagen || []).length;
+  const dag = actieveDagLive(t);
+  const holes  = dag?.holes  || t.holes  || [];
+  const scores = dag?.scores || t.scores || {};
+  const dagNr  = t.actiefDagNr || 1;
+
+  // Ranglijst tabs bij meerdere dagen: Dag 1, Dag 2... + Totaal
+  let tabsHtml = '';
+  if (aantalDagen > 1) {
+    tabsHtml = '<div style="display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid var(--border);overflow-x:auto">';
+    (t.dagen || []).forEach(d => {
+      const actief = d.dagNr === dagNr;
+      tabsHtml += `<button onclick="wisselRanglijstDag(${d.dagNr})" style="padding:4px 12px;border-radius:16px;border:1.5px solid var(--green);background:${actief?'var(--green)':'transparent'};color:${actief?'white':'var(--green)'};font-size:12px;cursor:pointer;font-family:inherit">Dag ${d.dagNr}</button>`;
+    });
+    tabsHtml += `<button onclick="wisselRanglijstDag(0)" style="padding:4px 12px;border-radius:16px;border:1.5px solid var(--gold);background:${dagNr===0?'var(--gold)':'transparent'};color:${dagNr===0?'white':'var(--gold)'};font-size:12px;cursor:pointer;font-family:inherit">Totaal</button>`;
+    tabsHtml += '</div>';
+  }
+
+  const rlDagNr = window._liveRlDagNr !== undefined ? window._liveRlDagNr : dagNr;
+  const rlHoles  = rlDagNr === 0 ? holes : (actieveDagLive(t, rlDagNr)?.holes  || holes);
+  const rlScores = rlDagNr === 0 ? scores : (actieveDagLive(t, rlDagNr)?.scores || scores);
+
+  let html = '<div class="card">' + tabsHtml;
 
   if (t.modus === 'strokeplay') {
-    // Strokeplay — tabel met alle kolommen
     const sorteerOp = t._ranglijstModus || 'brutto';
     const sorteerLabel = { brutto: 'Brutto (laag wint)', netto: 'Netto (laag wint)', stableford: 'Stableford (hoog wint)' }[sorteerOp] || 'Brutto (laag wint)';
+    const dagNaam = rlDagNr === 0 ? 'Totaal' : `Dag ${rlDagNr}`;
 
-    const resultaten = berekenStrokeplayRanglijst(t)
+    const resultaten = berekenStrokeplayRanglijst(t, rlDagNr === 0 ? 0 : rlDagNr)
       .filter(r => r.holes > 0)
       .sort((a, b) => {
         const va = sorteerOp === 'stableford' ? -(a.stableford ?? -999) : (a[sorteerOp] ?? 999);
@@ -270,7 +342,11 @@ function renderRanglijst() {
         return va - vb;
       });
 
-    html += '<div class="card-header"><h2>Ranglijst</h2><span class="badge badge-green">Strokeplay</span></div>';
+    const totHoles = rlDagNr === 0
+      ? (t.dagen || []).reduce((s, d) => s + d.holes.length, 0)
+      : rlHoles.length;
+
+    html += `<div class="card-header"><h2>Ranglijst · ${dagNaam}</h2><span class="badge badge-green">Strokeplay</span></div>`;
     html += `<div style="font-size:11px;color:var(--light);padding:6px 10px;border-bottom:1px solid var(--border)">Gesorteerd op: <strong style="color:var(--green)">${sorteerLabel}</strong></div>`;
 
     if (resultaten.length === 0) {
@@ -292,7 +368,7 @@ function renderRanglijst() {
         html += `<tr style="${rank % 2 ? 'background:#fafaf8' : ''}">
           <td style="${tdS};font-weight:700;color:${rank < 3 ? 'var(--gold)' : 'var(--light)'}">${rank+1}</td>
           <td style="${tdN}">${r.s.naam}</td>
-          <td style="${tdS};color:var(--light);font-size:11px">${r.holes}/${t.holes.length}</td>
+          <td style="${tdS};color:var(--light);font-size:11px">${r.holes}/${totHoles}</td>
           <td style="${tdS}">${r.brutto ?? '—'}</td>
           <td style="${tdS}">${r.netto ?? '—'}</td>
           <td style="${tdS}">${r.stableford !== null ? r.stableford + ' pt' : '—'}</td>
@@ -301,8 +377,9 @@ function renderRanglijst() {
       html += '</tbody></table></div>';
     }
   } else {
-    // Matchplay — toon tussenstand per matchup
-    html += '<div class="card-header"><h2>Matchplay tussenstand</h2></div>';
+    // Matchplay tussenstand
+    const dagNaam = rlDagNr === 0 ? 'Totaal' : `Dag ${rlDagNr}`;
+    html += `<div class="card-header"><h2>Matchplay · ${dagNaam}</h2></div>`;
     const spelers = t.spelers;
     const n = spelers.length;
     let aantalMatchups = 0;
@@ -310,17 +387,17 @@ function renderRanglijst() {
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         const sA = spelers[i], sB = spelers[j];
-        const scoresA = t.scores?.[sA.id] || t.scores?.[String(sA.id)] || [];
-        const scoresB = t.scores?.[sB.id] || t.scores?.[String(sB.id)] || [];
+        const scoresA = rlScores?.[sA.id] || rlScores?.[String(sA.id)] || [];
+        const scoresB = rlScores?.[sB.id] || rlScores?.[String(sB.id)] || [];
         let standA = 0, gespeeld = 0;
-        t.holes.forEach((hole, hi) => {
+        rlHoles.forEach((hole, hi) => {
           const vA = scoresA[hi], vB = scoresB[hi];
           if (vA == null || vB == null) return;
           gespeeld++;
           if (Number(vA) < Number(vB)) standA++;
           else if (Number(vB) < Number(vA)) standA--;
         });
-        const resterend = t.holes.length - gespeeld;
+        const resterend = rlHoles.length - gespeeld;
         let status = '';
         if (gespeeld === 0) status = 'Niet begonnen';
         else if (standA === 0) status = 'TIED';
@@ -339,6 +416,11 @@ function renderRanglijst() {
 
   html += '</div>';
   document.getElementById('inhoud').innerHTML = html;
+}
+
+function wisselRanglijstDag(dagNr) {
+  window._liveRlDagNr = dagNr;
+  renderRanglijst();
 }
 
 // Start
