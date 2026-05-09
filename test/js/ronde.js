@@ -162,8 +162,8 @@ function berekenMatchStand(matchup) {
     const sB = p.scores[matchup.spelerB.uid][i];
     if (sA === null || sB === null) { resultatenPerHole.push(null); continue; }
     gespeeld++;
-    const slagA = matchup.hcpOntvanger === matchup.spelerA.id ? getHcpSlagenOpHole(matchup, i) : 0;
-    const slagB = matchup.hcpOntvanger === matchup.spelerB.id ? getHcpSlagenOpHole(matchup, i) : 0;
+    const slagA = matchup.hcpOntvanger === matchup.spelerA.uid ? getHcpSlagenOpHole(matchup, i) : 0;
+    const slagB = matchup.hcpOntvanger === matchup.spelerB.uid ? getHcpSlagenOpHole(matchup, i) : 0;
     const nettoA = sA - slagA;
     const nettoB = sB - slagB;
     if (nettoA < nettoB) { standA++; resultatenPerHole.push('A'); }
@@ -440,8 +440,8 @@ function setWinnaar(idx, kant) {
   if (!p._modalTimestamps) p._modalTimestamps = new Array(p.matchups.length).fill(Infinity);
   p._modalTimestamps[idx] = Date.now();
   const naamMap = kortNaamMap(p.spelers);
-  const nA = naamMap[p.matchups[idx].spelerA.id];
-  const nB = naamMap[p.matchups[idx].spelerB.id];
+  const nA = naamMap[p.matchups[idx].spelerA.uid];
+  const nB = naamMap[p.matchups[idx].spelerB.uid];
   document.getElementById('win-'+idx+'-A').textContent = nA + ' wint';
   document.getElementById('win-'+idx+'-B').textContent = nB + ' wint';
   document.getElementById('win-'+idx+'-A').className = `btn btn-sm ${kant === 'A' ? 'btn-primary' : 'btn-ghost'}`;

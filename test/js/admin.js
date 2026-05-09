@@ -1035,7 +1035,7 @@ function _renderMigTabel() {
     return `<tr style="${rijKleur}" id="uid-mig-rij-${idx}">
       <td style="padding:6px 10px;border-bottom:1px solid var(--border)">
         <strong>${esc(k.speler.naam)}</strong><br>
-        <span style="font-size:10px;color:var(--light);font-family:monospace">id:${k.speler.id} · ${esc(k.ladderNaam)}</span>
+        <span style="font-size:10px;color:var(--light);font-family:monospace">uid:${k.speler.uid?.slice(0,8) ?? '?'}… · ${esc(k.ladderNaam)}</span>
       </td>
       <td style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:center;font-family:monospace">${k.speler.hcp ?? '—'}</td>
       <td style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:center;font-family:monospace">${k.speler.rank ?? '—'}</td>

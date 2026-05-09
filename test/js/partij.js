@@ -748,8 +748,8 @@ function renderHcpBlok(spelers, holes, hcpPct, containerId) {
 
       html += `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:baseline">
-          <span style="font-weight:600;font-size:14px">${esc(naamMap[a.id])} vs ${esc(naamMap[b.id])}</span>
-          <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace">${verschil === 0 ? 'Gelijke handicap' : `${esc(naamMap[mindereHcp.id])} krijgt ${verschil} slag${verschil !== 1 ? 'en' : ''}`}</span>
+          <span style="font-weight:600;font-size:14px">${esc(naamMap[a.uid])} vs ${esc(naamMap[b.uid])}</span>
+          <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace">${verschil === 0 ? 'Gelijke handicap' : `${esc(naamMap[mindereHcp.uid])} krijgt ${verschil} slag${verschil !== 1 ? 'en' : ''}`}</span>
         </div>
       </div>`;
     }
