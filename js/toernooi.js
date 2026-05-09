@@ -914,7 +914,7 @@ function zoekToernooiSpelerModal(zoek) {
   lijst.innerHTML = pool.length === 0
     ? '<div style="padding:10px 14px;font-size:13px;color:var(--light)">Geen spelers gevonden</div>'
     : pool.map(s => `
-      <div onclick="selecteerToernooiSpelerModal('${escAttr(s.id)}','${escAttr(s.naam)}',${s.hcp})"
+      <div onpointerdown="event.preventDefault()" onclick="selecteerToernooiSpelerModal('${escAttr(s.id)}','${escAttr(s.naam)}',${s.hcp})"
         style="padding:10px 14px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;color:var(--dark);background:var(--card-bg)"
         onmouseenter="this.style.background='var(--green-pale)'" onmouseleave="this.style.background='var(--card-bg)'">
         <span>${esc(s.naam)}</span>
