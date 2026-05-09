@@ -4,7 +4,7 @@
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tSpelersLadderIds, _tRankingLadderIds, _flights } from './store.js';
 import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
-import { renderHcpBlok, alleBANEN } from './partij.js';
+import { renderHcpBlok, alleBANEN, renderHandmatigHoles } from './partij.js';
 import { renderLadder } from './ladder.js';
 import { slaSnapshotOp } from './beheer.js';
 import { toggleAdminKaart } from './knockout.js';
@@ -71,6 +71,28 @@ function renderToernooi() {
     }
   }
 }
+
+// v3.0.0-11.35: handler voor baan-selector in toernooi-tab
+function onTBaanSelect() {
+  const val = document.getElementById('t-baan')?.value;
+  const hw  = document.getElementById('t-baan-handmatig');
+  if (!hw) return;
+  if (val === 'Handmatig invoeren') {
+    hw.style.display = 'block';
+    renderHandmatigHoles('toernooi');
+  } else {
+    hw.style.display = 'none';
+  }
+}
+
+// v3.0.0-11.35: luister op baanToegevoegd event vanuit slaAangepasteBaanOp (context=toernooi)
+// Herlaadt de baan-selector en selecteert de nieuwe baan
+window.addEventListener('baanToegevoegd', (e) => {
+  const naam = e.detail?.naam;
+  initToernooiSetup();
+  const baanSel = document.getElementById('t-baan');
+  if (baanSel && naam) baanSel.value = naam;
+});
 
 async function herlaadToernooien() {
   try {
@@ -161,6 +183,12 @@ function initToernooiSetup() {
       .filter(n => n !== 'Handmatig invoeren')
       .map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`)
       .join('');
+    // v3.0.0-11.35: nieuwe baan toevoegen ook vanuit toernooi mogelijk
+    baanSel.innerHTML += `<option value="Handmatig invoeren">+ Nieuwe baan toevoegen</option>`;
+    baanSel.onchange = onTBaanSelect;
+    // Verberg handmatig-wrap bij (her)laden
+    const hw = document.getElementById('t-baan-handmatig');
+    if (hw) hw.style.display = 'none';
   }
 
   // Datum vandaag als default
