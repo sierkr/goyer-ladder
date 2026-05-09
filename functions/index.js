@@ -11,17 +11,18 @@ const admin = require('firebase-admin');
 
 admin.initializeApp();
 
-// v3.0.0-11.60: wachtwoord niet meer hardcoded — wordt geladen uit Firestore (ladder/config).
-// Fallback naar 'MP2026' als het document of veld ontbreekt.
+// v3.0.0-11.63: wachtwoord wordt geladen uit Firestore (ladder/config).
+// Geen fallback — gooit een HttpsError als het document of veld ontbreekt.
 async function getInitieelWachtwoord() {
-  try {
-    const snap = await admin.firestore().doc('ladder/config').get();
-    const w = snap.exists ? snap.data().initieelWachtwoord : null;
-    return (typeof w === 'string' && w.length > 0) ? w : 'MP2026';
-  } catch(e) {
-    console.warn('getInitieelWachtwoord: Firestore read mislukt, fallback gebruikt:', e);
-    return 'MP2026';
+  const snap = await admin.firestore().doc('ladder/config').get();
+  if (!snap.exists) {
+    throw new HttpsError('failed-precondition', 'ladder/config ontbreekt in Firestore — stel initieelWachtwoord in via het beheerscherm');
   }
+  const w = snap.data().initieelWachtwoord;
+  if (typeof w !== 'string' || w.length === 0) {
+    throw new HttpsError('failed-precondition', 'initieelWachtwoord is leeg in ladder/config — stel het in via het beheerscherm');
+  }
+  return w;
 }
 
 /**
@@ -59,19 +60,23 @@ exports.resetSpelerWachtwoord = onCall(
       throw new HttpsError('not-found', 'Speler niet gevonden in database.');
     }
 
+    // Stap 5: wachtwoord ophalen — gooit HttpsError('failed-precondition') als config ontbreekt.
+    // Staat buiten de inner try/catch zodat die specifieke fout ongehinderd omhoog bubbelt.
+    const initieelWachtwoord = await getInitieelWachtwoord();
+
     try {
-      // Stap 5: Auth wachtwoord overschrijven
-      const initieelWachtwoord = await getInitieelWachtwoord();
+      // Stap 6: Auth wachtwoord overschrijven
       await admin.auth().updateUser(targetUid, { password: initieelWachtwoord });
 
-      // Stap 6: eersteLogin:true zodat speler verplicht profielflow krijgt
+      // Stap 7: eersteLogin:true zodat speler verplicht profielflow krijgt
       await admin.firestore().doc(`spelers/${targetUid}`).update({
         eersteLogin: true
       });
 
       return {
         success: true,
-        message: `Wachtwoord van ${target.data().naam} gereset naar ${initieelWachtwoord}`
+        nieuwWachtwoord: initieelWachtwoord,
+        message: `Wachtwoord van ${target.data().naam} gereset`
       };
     } catch (err) {
       console.error('resetSpelerWachtwoord fout:', err);

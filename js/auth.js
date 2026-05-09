@@ -485,7 +485,7 @@ async function initFirestore() {
   }, 3000);
 
   try {
-    // v3.0.0-11.60: laad initieel wachtwoord uit Firestore naast overige docs
+    // v3.0.0-11.62: laad initieel wachtwoord parallel met overige docs
     const [baanSnap, archiefSnap, uitdSnap, toernooiSnap, volgordeSnap] =
       await Promise.all([
         getDoc(BANEN_DOC),
@@ -494,6 +494,8 @@ async function initFirestore() {
         getDoc(TOERNOOI_DOC),
         getDoc(doc(db, 'ladder', 'ladderVolgorde'))
       ]);
+    // Geen fallback — gooit een Error als ladder/config ontbreekt of leeg is.
+    // De fout bubbelt naar initApp() → toonLoginFout() zodat de beheerder actie kan ondernemen.
     await laadInitieelWachtwoord(store);
 
     store.archiefData     = archiefSnap.exists()  ? (archiefSnap.data().seizoenen  || []) : [];

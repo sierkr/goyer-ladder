@@ -80,7 +80,7 @@ async function renderAdminSpelersEnAccounts() {
       : '';
 
     // v3.0.0-11: toon login + initieel wachtwoord i.p.v. volledig email
-    // Als eersteLogin=true → wachtwoord is nog steeds MP2026
+    // Als eersteLogin=true → wachtwoord is nog steeds het initiële wachtwoord
     // Als eersteLogin=false of undefined → speler heeft eigen wachtwoord
     const loginTxt = loginNaamVan(u.email || '');
     const eersteLogin = u.eersteLogin === true;
@@ -387,9 +387,12 @@ async function vraagResetWachtwoord(uid, naam) {
     const result = await resetFn({ targetUid: uid });
     if (result.data?.success) {
       renderAdmin();
-      // Toon credentials modal zodat beheerder ze kan kopiëren voor de speler
+      // Gebruik het wachtwoord dat de Cloud Function daadwerkelijk heeft ingesteld —
+      // niet store.initieelWachtwoord, dat mogelijk verouderd is als een andere beheerder
+      // het wachtwoord in de tussentijd heeft gewijzigd.
+      const gebruiktWachtwoord = result.data.nieuwWachtwoord || store.initieelWachtwoord;
       const loginTxt = loginNaamVan((await getDoc(doc(db, 'spelers', uid))).data()?.email || '');
-      toonCredentialsModal(naam, loginTxt, store.initieelWachtwoord);
+      toonCredentialsModal(naam, loginTxt, gebruiktWachtwoord);
     } else {
       toast('Reset mislukt: onverwachte respons');
     }
@@ -856,7 +859,7 @@ document.querySelectorAll('.modal-overlay').forEach(o => {
 
 
 // ============================================================
-//  INITIEEL WACHTWOORD BEHEER — v3.0.0-11.60
+//  INITIEEL WACHTWOORD BEHEER — v3.0.0-11.63
 // ============================================================
 // Toon/verberg het invoerveld om het initiële wachtwoord te wijzigen.
 function toggleWachtwoordBeheer() {

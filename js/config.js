@@ -136,27 +136,25 @@ export const DEFAULT_STATE = {
 export const EMAIL_SUFFIX = '@MPladder.stb';
 export const DEFAULT_HCP  = 10;
 
-// Fallback — alleen gebruikt als Firestore nog niet geladen is.
-// Wordt overschreven door store.initieelWachtwoord zodra initFirestore klaar is.
-const _WACHTWOORD_FALLBACK = 'MP2026';
-
-// v3.0.0-11.60: ladder/config — bron van waarheid voor het initiële wachtwoord.
+// v3.0.0-11.62: ladder/config — bron van waarheid voor het initiële wachtwoord.
+// Geen fallback — als het document of veld ontbreekt gooit de functie een fout.
 export const CONFIG_DOC = doc(db, 'ladder', 'config');
 
 /**
  * Laad het initiële wachtwoord uit Firestore (ladder/config).
  * Schrijft het resultaat naar store.initieelWachtwoord.
- * Als het document of het veld niet bestaat, wordt de fallback behouden.
+ * Gooit een Error als het document ontbreekt, het veld leeg is, of de read mislukt.
  */
 export async function laadInitieelWachtwoord(storeRef) {
-  try {
-    const snap = await getDoc(CONFIG_DOC);
-    const w = snap.exists() ? snap.data().initieelWachtwoord : null;
-    storeRef.initieelWachtwoord = (typeof w === 'string' && w.length > 0) ? w : _WACHTWOORD_FALLBACK;
-  } catch(e) {
-    console.warn('laadInitieelWachtwoord: Firestore read mislukt, fallback gebruikt:', e.code);
-    if (!storeRef.initieelWachtwoord) storeRef.initieelWachtwoord = _WACHTWOORD_FALLBACK;
+  const snap = await getDoc(CONFIG_DOC);
+  if (!snap.exists()) {
+    throw new Error('ladder/config ontbreekt in Firestore — stel initieelWachtwoord in via het beheerscherm');
   }
+  const w = snap.data().initieelWachtwoord;
+  if (typeof w !== 'string' || w.length === 0) {
+    throw new Error('initieelWachtwoord is leeg in ladder/config — stel het in via het beheerscherm');
+  }
+  storeRef.initieelWachtwoord = w;
 }
 
 /**

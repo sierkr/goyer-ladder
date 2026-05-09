@@ -36,8 +36,9 @@ function _syncAlleSpelersDataFromUsers() {
 
 // ─── Auth ────────────────────────────────────────────────────
 export let huidigeBruiker = null;
-// v3.0.0-11.60: initieel wachtwoord wordt geladen uit Firestore (ladder/config)
-export let initieelWachtwoord = 'MP2026'; // fallback totdat Firestore geladen is
+// v3.0.0-11.62: initieel wachtwoord wordt geladen uit Firestore (ladder/config)
+// Geen hardcoded waarde — null totdat initFirestore() laadInitieelWachtwoord() heeft aangeroepen
+export let initieelWachtwoord = null;
 export let _usersCache = null;
 export let _bezigMetRegistratie = false;
 export let _firestoreReady = false;
