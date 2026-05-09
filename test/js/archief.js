@@ -479,19 +479,21 @@ function toonUitdagingBadge() {
   }
 }
 
-async function stuurUitdaging(naarSpelerId) {
+async function stuurUitdaging(naarUid) {
 
   try {
-  const naarSpeler = state.spelers.find(s => s.id === naarSpelerId);
+  // Speler heeft nu uid als primaire sleutel
+  const naarSpeler = state.spelers.find(s => s.uid === naarUid);
   if (!naarSpeler) return;
 
-  // Zoek e-mail van ontvanger in users lijst
+  // Zoek account direct via uid
   const users = await getUsers();
-  const naarUser = users.find(u => {
-    const naam = (u.gebruikersnaam || '').toLowerCase();
-    const spelernaam = naarSpeler.naam.toLowerCase();
-    return naam === spelernaam || spelernaam.includes(naam) || naam.includes(spelernaam.split(' ')[0]);
-  });
+  const naarUser = users.find(u => u.uid === naarUid)
+    || users.find(u => {
+      const naam = (u.gebruikersnaam || '').toLowerCase();
+      const spelernaam = naarSpeler.naam.toLowerCase();
+      return naam === spelernaam;
+    });
 
   if (!naarUser) { toast('Kan gebruiker niet vinden voor uitdaging'); return; }
 

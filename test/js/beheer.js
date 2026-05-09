@@ -3,7 +3,7 @@
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG } from './store.js';
-import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { laadInviteStatus } from './auth.js';
 import { renderLadder } from './ladder.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -68,36 +68,11 @@ async function slaStandOp() {
   if (idx >= 0) alleLadders[idx].spelers = _standAanpassenSpelers;
   if (ladderId === activeLadderId) state.spelers = _standAanpassenSpelers;
 
-  // v3.0.0-11.28: sync ook standen/{uid} subcollectie. Spelers in
-  // _standAanpassenSpelers hebben mogelijk een numerieke s.id ipv een uid;
-  // val dan terug op naam-lookup via store._usersCache (zelfde als
-  // syncStandenNaBevestigUitslag).
-  const users = store._usersCache || [];
-  const naamNaarUids = {};
-  users.forEach(u => {
-    if (!u.naam) return;
-    const key = u.naam.toLowerCase().trim();
-    if (!naamNaarUids[key]) naamNaarUids[key] = [];
-    naamNaarUids[key].push(u.uid);
-  });
-  function vindUidVoor(s) {
-    if (typeof s.id === 'string' && s.id.length > 10) return s.id;
-    const key = (s.naam || '').toLowerCase().trim();
-    const kandidaten = naamNaarUids[key];
-    if (!kandidaten || kandidaten.length === 0) return null;
-    if (kandidaten.length > 1) {
-      console.warn(`[slaStandOp] naam-collision voor "${s.naam}": ${kandidaten.length} uids — niet gesynct`);
-      return null;
-    }
-    return kandidaten[0];
-  }
-
+  // v3.0.0-11.28: sync ook standen/{uid} subcollectie — uid staat nu direct op speler
   const writes = [];
   let geschreven = 0, overgeslagen = 0;
   for (const s of _standAanpassenSpelers) {
-    if (!s.naam) { overgeslagen++; continue; }
-    const uid = vindUidVoor(s);
-    if (!uid) { overgeslagen++; continue; }
+    if (!s.uid) { overgeslagen++; continue; }
     const payload = {
       rank:     s.rank     || 0,
       partijen: s.partijen || 0,
@@ -105,7 +80,7 @@ async function slaStandOp() {
     };
     if (s.prevRank != null) payload.prevRank = s.prevRank;
     writes.push(
-      setDoc(doc(db, 'ladders', ladderId, 'standen', uid), payload)
+      setDoc(doc(db, 'ladders', ladderId, 'standen', s.uid), payload)
         .then(() => geschreven++)
         .catch(err => console.warn('[slaStandOp] standen sync mislukt voor', s.naam, err.code))
     );
@@ -317,11 +292,8 @@ async function slaLadderSpelersOp() {
       if (bestaand) {
         nieuweSpelers.push({ ...bestaand });
       } else {
-        // v3.0.0-9c: alleen nog getNextId(), geen alleSpelersData-lookup.
-        // Numeric ids verdwijnen in een volgende fase.
-        const numericId = getNextId() + nieuweSpelers.length;
         nieuweSpelers.push({
-          id: numericId, naam, hcp,
+          uid, naam, hcp,
           rank: nieuweSpelers.length + 1, partijen: 0, gewonnen: 0
         });
       }

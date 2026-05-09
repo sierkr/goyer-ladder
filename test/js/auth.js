@@ -236,13 +236,7 @@ function pasToernooiModusNavToe() {
   if (!actief) return; // geen actief toernooi-modus toernooi — niets doen
 
   const uid = huidigeBruiker.uid;
-  // Spelers in toernooi hebben soms geen uid (aangemaakt voor uid-koppeling bestond).
-  // Match op uid OF op numeriek speler-id via alleSpelersData.
-  const mijnSpelerData = alleSpelersData.find(s => s.uid === uid || s.id === uid);
-  const isDeelnemer = (actief.spelers || []).some(s =>
-    (uid && s.uid === uid) ||
-    (mijnSpelerData && String(s.id) === String(mijnSpelerData.id))
-  );
+  const isDeelnemer = (actief.spelers || []).some(s => s.uid === uid);
   if (!isDeelnemer) return; // speler zit niet in dit toernooi — niets doen
 
   // Verberg alle tabs behalve Ronde en Uitslag
@@ -821,17 +815,15 @@ async function registreerSpeler() {
 
     // Stap 3: Ladder data laden
     const ladderSnap = await getDoc(doc(db, 'ladders', targetLadderId));
-    const ladderData = ladderSnap.exists() ? ladderSnap.data() : { spelers: [], nextId: 1 };
+    const ladderData = ladderSnap.exists() ? ladderSnap.data() : { spelers: [] };
     ladderData.spelers   = ladderData.spelers   || [];
     ladderData.spelerIds = ladderData.spelerIds || [];
 
     const maxRank = ladderData.spelers.length > 0
       ? Math.max(...ladderData.spelers.map(s => s.rank || 0)) : 0;
     const newRank = maxRank + 1;
-    const newId   = getNextId();
 
     // Stap 4-7: ladder toewijzen — vereist actieve invite of coordinator rechten
-    // Bij mislukken (permissions) toch doorgaan: account + spelers/{uid} zijn aangemaakt
     try {
       // Stap 4: standen/{uid} aanmaken
       await setDoc(doc(db, 'ladders', targetLadderId, 'standen', uid),
@@ -842,20 +834,13 @@ async function registreerSpeler() {
         ladderData.spelerIds = [...ladderData.spelerIds, uid];
       }
 
-      // Stap 6: dual-write naar ladders.spelers[] (backward compat)
-      const bestaatAl = ladderData.spelers.some(s =>
-        s.naam?.toLowerCase() === naam.toLowerCase() || s.email === email
-      );
+      // Stap 6: schrijf naar ladders.spelers[] met uid als primaire sleutel
+      const bestaatAl = ladderData.spelers.some(s => s.uid === uid);
       if (!bestaatAl) {
-        ladderData.spelers.push({ id: newId, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
-        ladderData.nextId = newId + 1;
+        ladderData.spelers.push({ uid, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
       }
       await setDoc(doc(db, 'ladders', targetLadderId), ladderData);
-
-      // v3.0.0-9c: stap 7 (legacy ladder/spelers master lijst bijwerken) verwijderd.
-      // spelers/{uid} werd al in stap 1 geschreven, wat de enige bron is.
     } catch(ladderErr) {
-      // Ladder-schrijven mislukt (bijv. invite verlopen) — account is wel aangemaakt
       console.warn('Ladder toewijzing mislukt, account is aangemaakt:', ladderErr.code);
     }
 
@@ -1012,15 +997,6 @@ function getLadderConfig() {
   return state.config || alleLadders.find(l => l.id === activeLadderId)?.config || DEFAULT_LADDER_CONFIG;
 }
 
-// getNextId — werkt nog op numeric ladder ids
-// Verdwijnt in fase 3
-function getNextId() {
-  const maxAlleSpelers = alleSpelersData.reduce((m, s) => Math.max(m, Number(s.id) || 0), 0);
-  const maxAlleLadders = alleLadders.reduce((m, l) =>
-    Math.max(m, ...(l.spelers || []).map(s => Number(s.id) || 0)), 0);
-  return Math.max(maxAlleSpelers, maxAlleLadders) + 1;
-}
-
 function isCoordinatorRol() {
   return huidigeBruiker?.rol === 'coordinator' || huidigeBruiker?.rol === 'beheerder';
 }
@@ -1087,7 +1063,7 @@ export {
   updateSiteTitel, toonLoginFout,
   genereerInviteLink, kopieerInviteLink, checkInviteLink,
   registreerSpeler, laadInviteStatus, autoAdvance,
-  getNextId, isCoordinatorRol, isBeheerderRol,
+  isCoordinatorRol, isBeheerderRol,
   toast, registreerNotificatieToken, laadUitdagingen,
   slaEersteLoginOp,
 };
