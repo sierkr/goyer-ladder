@@ -19,7 +19,7 @@ import { renderLadder } from './ladder.js';
 import { toonUitdagingBadge } from './archief.js';
 import { closeModal, renderAdmin, renderProfiel } from './admin.js';
 import { renderRonde } from './ronde.js';
-import { renderToernooi } from './toernooi.js';
+import { renderToernooi, getActiefToernooiMetModus } from './toernooi.js';
 import { renderUitslagen } from './uitslagen.js';
 import { startAlleStandenListeners, stopAlleStandenListeners } from './ladder-view.js';
 
@@ -88,18 +88,32 @@ function setIngelogdVanafProfiel(firebaseUser, profiel) {
 
 function updateSiteTitel() {
   if (!huidigeBruiker) return;
+  const h1First  = document.getElementById('h1-first');
+  const h1Second = document.getElementById('h1-second');
+  if (!h1Second) return;
+
+  // Toernooi-modus heeft prioriteit: verberg prefix, toon alleen toernooinaam
+  const actief = getActiefToernooiMetModus();
+  if (actief) {
+    if (h1First)  h1First.style.display  = 'none';
+    h1Second.textContent = `🏌️ ${actief.naam}`;
+    h1Second.style.paddingLeft = '0';
+    return;
+  }
+
+  // Herstel normale staat
+  if (h1First)  { h1First.style.display = ''; }
+  h1Second.style.paddingLeft = '';
+
   const uid = huidigeBruiker.uid;
   const mijnLadders = isCoordinatorRol()
     ? alleLadders
     : alleLadders.filter(l => uid && (l.spelerIds || []).includes(uid));
-  const h1Second = document.getElementById('h1-second');
-  if (h1Second) {
-    const alleenHeerendag = mijnLadders.length === 1 &&
-      mijnLadders[0].naam.toLowerCase().includes('heerendag');
-    h1Second.textContent = alleenHeerendag
-      ? ` ${mijnLadders[0].naam} Ladder`
-      : ' MP Ladder';
-  }
+  const alleenHeerendag = mijnLadders.length === 1 &&
+    mijnLadders[0].naam.toLowerCase().includes('heerendag');
+  h1Second.textContent = alleenHeerendag
+    ? ` ${mijnLadders[0].naam} Ladder`
+    : ' MP Ladder';
 }
 
 // ============================================================
@@ -211,6 +225,48 @@ async function slaEersteLoginOp() {
   }
 }
 
+// ============================================================
+//  TOERNOOI-MODUS NAV
+// ============================================================
+function pasToernooiModusNavToe() {
+  if (!huidigeBruiker) return;
+  if (isBeheerderRol() || isCoordinatorRol()) return; // beheerders altijd volledig zicht
+
+  const actief = getActiefToernooiMetModus();
+  if (!actief) return; // geen actief toernooi-modus toernooi — niets doen
+
+  const uid = huidigeBruiker.uid;
+  const isDeelnemer = (actief.spelers || []).some(s => s.uid === uid);
+  if (!isDeelnemer) return; // speler zit niet in dit toernooi — niets doen
+
+  // Verberg alle tabs behalve Ronde en Uitslag
+  const verbergTabs = ['ladder', 'partij', 'help', 'archief', 'toernooi', 'profiel', 'admin'];
+  verbergTabs.forEach(tab => {
+    // Tabs zonder id: selecteer via onclick attribuut
+    const btn = document.querySelector(`nav button[onclick="showPage('${tab}')"]`);
+    if (btn) btn.style.display = 'none';
+    // Tabs met een id-knop
+    const idBtn = document.getElementById(`nav-${tab}-btn`);
+    if (idBtn) idBtn.style.display = 'none';
+  });
+
+  // Zorg dat Ronde actief is als huidige pagina verborgen wordt
+  const actievePagina = document.querySelector('.page.active');
+  const actieveId = actievePagina?.id?.replace('page-', '');
+  if (actieveId && verbergTabs.includes(actieveId)) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-ronde')?.classList.add('active');
+    document.querySelector('nav button[onclick="showPage(\'ronde\')"]')?.classList.add('active');
+  }
+}
+
+// Luister naar toernooiModusGewijzigd event vanuit toernooi.js
+window.addEventListener('toernooiModusGewijzigd', () => {
+  updateSiteTitel();
+  pasToernooiModusNavToe();
+});
+
 function vervolgIngelogd() {
   document.getElementById('login-scherm').classList.remove('actief');
   document.getElementById('login-fout').style.display = 'none';
@@ -239,6 +295,9 @@ function vervolgIngelogd() {
 
   const versieBadge = document.getElementById('versie-badge');
   if (versieBadge) versieBadge.style.display = isBeheerderRol() ? '' : 'none';
+
+  // Pas toernooi-modus nav toe (verbergt tabs voor deelnemers indien actief)
+  pasToernooiModusNavToe();
 
   renderLadder();
   registreerNotificatieToken();
@@ -524,14 +583,14 @@ async function initFirestore() {
       if (!snap.exists() || !huidigeBruiker) return;
       const nieuweState = snap.data();
       // v3.0.0-11.32: guard tegen stale snapshot na bevestigUitslag.
-      // Blokkeer alleen snapshots die een partijId bevatten die lokaal al
-      // VERWIJDERD is. Nieuwe partijIds (net gestart) worden wél doorgelaten —
-      // de oude guard blokkeerde die ten onrechte, waardoor een net-gestarte
-      // partij meteen weer verdween.
-      const heeftStalePartij = (nieuweState.actievePartijen || [])
-        .some(p => _verwijderdePartijIds.has(p.partijId));
+      // Blokkeer alleen snapshots waarbij ALLE actieve partijen al lokaal verwijderd zijn.
+      // Als er ook nieuwe partijen in zitten (net gestart door iemand anders) dan
+      // moet de snapshot wél verwerkt worden — anders verdwijnt die nieuwe partij.
+      const actieveInSnap = nieuweState.actievePartijen || [];
+      const heeftStalePartij = actieveInSnap.length > 0 &&
+        actieveInSnap.every(p => _verwijderdePartijIds.has(p.partijId));
       if (heeftStalePartij) {
-        console.log('[onSnapshot] stale snapshot genegeerd — bevat al-verwijderde partijId');
+        console.log('[onSnapshot] stale snapshot genegeerd — alle partijen al verwijderd');
         return;
       }
       store.state = nieuweState;
@@ -756,17 +815,15 @@ async function registreerSpeler() {
 
     // Stap 3: Ladder data laden
     const ladderSnap = await getDoc(doc(db, 'ladders', targetLadderId));
-    const ladderData = ladderSnap.exists() ? ladderSnap.data() : { spelers: [], nextId: 1 };
+    const ladderData = ladderSnap.exists() ? ladderSnap.data() : { spelers: [] };
     ladderData.spelers   = ladderData.spelers   || [];
     ladderData.spelerIds = ladderData.spelerIds || [];
 
     const maxRank = ladderData.spelers.length > 0
       ? Math.max(...ladderData.spelers.map(s => s.rank || 0)) : 0;
     const newRank = maxRank + 1;
-    const newId   = getNextId();
 
     // Stap 4-7: ladder toewijzen — vereist actieve invite of coordinator rechten
-    // Bij mislukken (permissions) toch doorgaan: account + spelers/{uid} zijn aangemaakt
     try {
       // Stap 4: standen/{uid} aanmaken
       await setDoc(doc(db, 'ladders', targetLadderId, 'standen', uid),
@@ -777,20 +834,13 @@ async function registreerSpeler() {
         ladderData.spelerIds = [...ladderData.spelerIds, uid];
       }
 
-      // Stap 6: dual-write naar ladders.spelers[] (backward compat)
-      const bestaatAl = ladderData.spelers.some(s =>
-        s.naam?.toLowerCase() === naam.toLowerCase() || s.email === email
-      );
+      // Stap 6: schrijf naar ladders.spelers[] met uid als primaire sleutel
+      const bestaatAl = ladderData.spelers.some(s => s.uid === uid);
       if (!bestaatAl) {
-        ladderData.spelers.push({ id: newId, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
-        ladderData.nextId = newId + 1;
+        ladderData.spelers.push({ uid, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
       }
       await setDoc(doc(db, 'ladders', targetLadderId), ladderData);
-
-      // v3.0.0-9c: stap 7 (legacy ladder/spelers master lijst bijwerken) verwijderd.
-      // spelers/{uid} werd al in stap 1 geschreven, wat de enige bron is.
     } catch(ladderErr) {
-      // Ladder-schrijven mislukt (bijv. invite verlopen) — account is wel aangemaakt
       console.warn('Ladder toewijzing mislukt, account is aangemaakt:', ladderErr.code);
     }
 
@@ -947,15 +997,6 @@ function getLadderConfig() {
   return state.config || alleLadders.find(l => l.id === activeLadderId)?.config || DEFAULT_LADDER_CONFIG;
 }
 
-// getNextId — werkt nog op numeric ladder ids
-// Verdwijnt in fase 3
-function getNextId() {
-  const maxAlleSpelers = alleSpelersData.reduce((m, s) => Math.max(m, Number(s.id) || 0), 0);
-  const maxAlleLadders = alleLadders.reduce((m, l) =>
-    Math.max(m, ...(l.spelers || []).map(s => Number(s.id) || 0)), 0);
-  return Math.max(maxAlleSpelers, maxAlleLadders) + 1;
-}
-
 function isCoordinatorRol() {
   return huidigeBruiker?.rol === 'coordinator' || huidigeBruiker?.rol === 'beheerder';
 }
@@ -1022,7 +1063,7 @@ export {
   updateSiteTitel, toonLoginFout,
   genereerInviteLink, kopieerInviteLink, checkInviteLink,
   registreerSpeler, laadInviteStatus, autoAdvance,
-  getNextId, isCoordinatorRol, isBeheerderRol,
+  isCoordinatorRol, isBeheerderRol,
   toast, registreerNotificatieToken, laadUitdagingen,
   slaEersteLoginOp,
 };

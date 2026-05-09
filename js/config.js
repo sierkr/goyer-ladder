@@ -124,7 +124,6 @@ export const BANEN_DB_MIGRATIE = [
 
 export const DEFAULT_STATE = {
   spelers: [],
-  nextId: 1,
   actievePartijen: [],
   uitslagen: []
 };

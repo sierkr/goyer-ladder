@@ -3,7 +3,7 @@
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, _koLadderId, _koIndelingVolgorde, _koDragIdx, _koTouchClone, _koTouchStartY } from './store.js';
-import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { initFirestore } from './auth.js';
 import { renderLadder, toggleLadderKaart } from './ladder.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -439,17 +439,17 @@ async function verwerkKnockoutUitslag(partij) {
     let resultaat = '';
     try {
       const holes = partij.holes || [];
-      const scoresA = partij.scores[matchup.spelerA.id] || [];
-      const scoresB = partij.scores[matchup.spelerB.id] || [];
+      const scoresA = partij.scores[matchup.spelerA.uid] || [];
+      const scoresB = partij.scores[matchup.spelerB.uid] || [];
       let standA = 0, gespeeld = 0;
       let beslissingsStand = null, beslissingsGespeeld = null;
       for (let i = 0; i < holes.length; i++) {
         const sA = scoresA[i]; const sB = scoresB[i];
         if (sA == null || sB == null) continue;
         gespeeld++;
-        const slagA = matchup.hcpOntvanger === matchup.spelerA.id
+        const slagA = matchup.hcpOntvanger === matchup.spelerA.uid
           ? ((holes[i].si <= Math.min(matchup.hcpSlagen, holes.length) ? 1 : 0) + (holes[i].si <= Math.max(0, matchup.hcpSlagen - holes.length) ? 1 : 0)) : 0;
-        const slagB = matchup.hcpOntvanger === matchup.spelerB.id
+        const slagB = matchup.hcpOntvanger === matchup.spelerB.uid
           ? ((holes[i].si <= Math.min(matchup.hcpSlagen, holes.length) ? 1 : 0) + (holes[i].si <= Math.max(0, matchup.hcpSlagen - holes.length) ? 1 : 0)) : 0;
         const nettoA = sA - slagA; const nettoB = sB - slagB;
         if (nettoA < nettoB) standA++;

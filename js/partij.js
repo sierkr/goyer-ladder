@@ -3,7 +3,7 @@
 // ============================================================
 import { db, BANEN_DOC, LADDERS_COL, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
-import { slaState, getLadderData, getNextId, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
+import { slaState, getLadderData, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { objNaarRondes } from './knockout.js';
 import { getLadderSpelers, isInLadder } from './ladder-view.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -194,7 +194,7 @@ function vulKnockoutTegenstander(spelersNaam) {
       const tegenstander = mijnPartij.a === spelersNaam ? mijnPartij.b : mijnPartij.a;
       if (tegenstander) {
         const tegenspeler = getPartijLadderSpelers().find(s => s.naam === tegenstander);
-        if (tegenspeler) selecteerPartijSpeler(2, tegenspeler.id, tegenspeler.naam, tegenspeler.hcp);
+        if (tegenspeler) selecteerPartijSpeler(2, tegenspeler.uid, tegenspeler.naam, tegenspeler.hcp);
       }
     }
   }).catch(e => console.error('vulKnockoutTegenstander mislukt:', e));
@@ -245,9 +245,9 @@ function filterPartijSpelers(zoek) {
       .filter(s => s !== sel).map(s => s.value).filter(v => v !== '');
     const spelers = getPartijLadderSpelers();
     sel.innerHTML = '<option value="">— Kies speler —</option>' +
-      spelers.filter(s => !reedsSel.includes(String(s.id)))
+      spelers.filter(s => !reedsSel.includes(String(s.uid)))
         .filter(s => !term || s.naam.toLowerCase().includes(term))
-        .map(s => `<option value="${escAttr(s.id)}" ${String(s.id) === huidigeWaarde ? 'selected' : ''}>${esc(s.naam)} (hcp ${Math.round(s.hcp)})</option>`)
+        .map(s => `<option value="${escAttr(s.uid)}" ${s.uid === huidigeWaarde ? 'selected' : ''}>${esc(s.naam)} (hcp ${Math.round(s.hcp)})</option>`)
         .join('');
   });
 }
@@ -259,7 +259,7 @@ function voegGastSpelerToeAanPartij() {
   const hcpStr = prompt(`Handicap voor ${naam.trim()}:`, '10');
   if (hcpStr === null) return;
   const hcp = parseFloat(hcpStr) || 0;
-  const gastId = 90000 + Math.floor(Math.random() * 9999);
+  const gastId = 'gast_' + Math.random().toString(36).slice(2, 10);
 
   // Zoek eerst een leeg slot op
   let leegSlot = null;
@@ -310,7 +310,7 @@ function zoekPartijSpeler(n, zoek) {
     .map(s => s.dataset.spelerId).filter(v => v);
   const term = zoek.toLowerCase().trim();
   const gefilterd = spelers
-    .filter(s => !reedsSel.includes(String(s.id)))
+    .filter(s => !reedsSel.includes(String(s.uid)))
     .filter(s => !term || s.naam.toLowerCase().includes(term));
 
   if (gefilterd.length === 0) {
@@ -318,7 +318,7 @@ function zoekPartijSpeler(n, zoek) {
   } else {
     lijst.innerHTML = gefilterd.map(s => `
       <div class="speler-zoek-item"
-        data-id="${escAttr(s.id)}"
+        data-id="${escAttr(s.uid)}"
         data-naam="${esc(s.naam)}"
         data-hcp="${escAttr(s.hcp)}"
         onpointerdown="event.preventDefault()"
@@ -540,10 +540,10 @@ async function startPartij() {
     const spelerId = slot.dataset.spelerId;
     if (!spelerId) continue;
 
-    const isGast = parseInt(spelerId) >= 90000;
-    const speler = partijLadderSpelers.find(s => String(s.id) === String(spelerId))
+    const isGast = String(spelerId).startsWith('gast_');
+    const speler = partijLadderSpelers.find(s => s.uid === spelerId)
       || (isGast
-          ? { id: parseInt(spelerId), naam: document.getElementById('player-' + i)?.value || 'Gast', hcp: parseFloat(hcpEl?.value) || 0, gast: true }
+          ? { uid: spelerId, naam: document.getElementById('player-' + i)?.value || 'Gast', hcp: parseFloat(hcpEl?.value) || 0, gast: true }
           : null);
 
     // ── Validatie 5: speler in slot maar niet teruggevonden ──
@@ -555,7 +555,7 @@ async function startPartij() {
 
     const partijHcp = Math.round(parseFloat(hcpEl?.value));
     if (!isNaN(partijHcp) && partijHcp !== speler.hcp) {
-      const sv = partijLadderSpelers.find(s => s.id === speler.id);
+      const sv = partijLadderSpelers.find(s => s.uid === speler.uid);
       if (sv) sv.hcp = partijHcp;
     }
     spelers.push({ ...speler, hcp: isNaN(partijHcp) ? speler.hcp : partijHcp, partijHcp: isNaN(partijHcp) ? speler.hcp : partijHcp });
@@ -583,14 +583,14 @@ async function startPartij() {
     }
   });
   const bezet = spelers.find(s => {
-    if (Number(s.id) >= 90000) return false; // gastspeler
+    if (s.uid?.startsWith('gast_')) return false; // gastspeler
     return alleActieve.some(p =>
-      (p.spelers || []).some(ps => String(ps.id) === String(s.id))
+      (p.spelers || []).some(ps => ps.uid === s.uid)
     );
   });
   if (bezet) {
     const inWelke = alleActieve.find(p =>
-      (p.spelers || []).some(ps => String(ps.id) === String(bezet.id))
+      (p.spelers || []).some(ps => ps.uid === bezet.uid)
     );
     toast(`${bezet.naam} zit al in een actieve partij (${inWelke?._ladderNaam || ''})`);
     return;
@@ -621,9 +621,9 @@ async function startPartij() {
       const hcpDiff = Math.round(Math.abs(a.partijHcp - b.partijHcp) * 0.75);
       const hoger = a.partijHcp > b.partijHcp ? a : b;
       matchups.push({
-        id: `${a.id}-${b.id}`,
+        id: `${a.uid}-${b.uid}`,
         spelerA: a, spelerB: b,
-        hcpOntvanger: hoger.id,
+        hcpOntvanger: hoger.uid,
         hcpSlagen: hcpDiff
       });
     }
@@ -641,7 +641,7 @@ async function startPartij() {
     timestamp: Date.now()
   };
 
-  spelers.forEach(s => { nieuwePartij.scores[s.id] = Array(activeHoles.length).fill(null); });
+  spelers.forEach(s => { nieuwePartij.scores[s.uid] = Array(activeHoles.length).fill(null); });
 
   // Voeg toe aan de juiste ladder
   if (partijLadderId !== activeLadderId) {
@@ -684,7 +684,7 @@ function kortNaam(speler, alleSpelers) {
   const naamZonderVoornaam = [tussenvoegsel, achternaam].filter(Boolean).join(' '); // "van der Veen"
 
   // Geen duplicaten: alleen voornaam
-  const duplicaten = alleSpelers.filter(s => s.id !== speler.id && s.naam.trim().split(/\s+/)[0].toLowerCase() === voornaam.toLowerCase());
+  const duplicaten = alleSpelers.filter(s => s.uid !== speler.uid && s.naam.trim().split(/\s+/)[0].toLowerCase() === voornaam.toLowerCase());
   if (duplicaten.length === 0) return voornaam;
 
   // Bouw vergelijkbare naamZonderVoornaam voor duplicaten
@@ -713,10 +713,10 @@ function kortNaam(speler, alleSpelers) {
   return speler.naam;
 }
 
-// Bouw een map van spelerId → korte unieke naam voor een lijst spelers
+// Bouw een map van uid → korte unieke naam voor een lijst spelers
 function kortNaamMap(spelers) {
   const map = {};
-  spelers.forEach(s => { map[s.id] = kortNaam(s, spelers); });
+  spelers.forEach(s => { map[s.uid] = kortNaam(s, spelers); });
   return map;
 }
 
@@ -748,8 +748,8 @@ function renderHcpBlok(spelers, holes, hcpPct, containerId) {
 
       html += `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:baseline">
-          <span style="font-weight:600;font-size:14px">${esc(naamMap[a.id])} vs ${esc(naamMap[b.id])}</span>
-          <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace">${verschil === 0 ? 'Gelijke handicap' : `${esc(naamMap[mindereHcp.id])} krijgt ${verschil} slag${verschil !== 1 ? 'en' : ''}`}</span>
+          <span style="font-weight:600;font-size:14px">${esc(naamMap[a.uid])} vs ${esc(naamMap[b.uid])}</span>
+          <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace">${verschil === 0 ? 'Gelijke handicap' : `${esc(naamMap[mindereHcp.uid])} krijgt ${verschil} slag${verschil !== 1 ? 'en' : ''}`}</span>
         </div>
       </div>`;
     }
