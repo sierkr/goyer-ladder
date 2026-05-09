@@ -2,8 +2,8 @@
 //  archief.js
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
-import { store, state, huidigeBruiker, archiefData, uitdagingenData, alleLadders, activeLadderId } from './store.js';
-import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+import { store, huidigeBruiker, archiefData, uitdagingenData, alleLadders, activeLadderId } from './store.js';
+import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { renderAdmin, renderProfiel } from './admin.js';
 import { renderLadder } from './ladder.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -156,10 +156,7 @@ async function bevestigNieuwSeizoen() {
         }
 
         // 9) Als dit de actieve ladder is: reset ook state-variabele
-        if (ladderId === activeLadderId) {
-          state.uitslagen = [];
-          state.actievePartijen = [];
-        }
+        // alleLadders[idx] is al bijgewerkt hierboven — geen state singleton meer
       } catch(e) {
         console.error('Seizoen reset mislukt voor ladder', ladderId, e);
         fouten++;

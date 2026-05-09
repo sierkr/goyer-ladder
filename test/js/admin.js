@@ -9,9 +9,9 @@ import { db, auth, firebaseConfig, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL,
   EMAIL_SUFFIX, INITIEEL_WACHTWOORD, DEFAULT_HCP,
   genereerEmail, loginNaamVan,
   functions, httpsCallable } from './config.js';
-import { store, state, alleLadders, activeLadderId,
+import { store, alleLadders, activeLadderId,
   huidigeBruiker, uitdagingenData } from './store.js';
-import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers,
+import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers,
   isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { openNieuweLadderModal, renderAdminLadders } from './beheer.js';
 import { reageerUitdaging, verwijderUitdaging } from './archief.js';
@@ -309,9 +309,6 @@ async function saveNewPlayer() {
     await setDoc(doc(db, 'spelers', uid),
       { uid, naam, email, rol: 'speler', hcp, eersteLogin: true });
 
-    // Numeric id + legacy master lijst (backward compat fase 4-5)
-    await slaState();
-
     // Voeg toe aan geselecteerde ladders
     const geselecteerdeLadders = getGeselecteerdeLadders('new-player-ladders');
     if (geselecteerdeLadders.length > 0) {
@@ -507,9 +504,6 @@ async function removePlayer(uid) {
       try { await deleteDoc(doc(db, 'ladders', ladder.id, 'standen', uid)); } catch(e) {}
 
       ladder.spelerIds = nieuweSpelerIds;
-      if (ladder.id === activeLadderId) {
-        state.actievePartijen = nieuweActievePartijen;
-      }
     }
 
     renderAdmin();
@@ -527,9 +521,9 @@ function renderProfiel() {
 
   // v3.0.0-9c: uid-gebaseerde speler lookup via view-laag
   const uid = huidigeBruiker.uid;
+  // Zoek spelerprofiel via view-laag (standen/{uid})
   const speler = uid
-    ? (state.spelers?.find(s => s.uid === uid)
-       || getLadderSpelers(activeLadderId).find(s => s.uid === uid))
+    ? alleLadders.flatMap(l => getLadderSpelers(l.id)).find(s => s.uid === uid)
     : null;
 
   document.getElementById('profiel-info').innerHTML = `
@@ -783,7 +777,6 @@ async function saveNewUser() {
     // Voeg toe aan ladders als dat gewenst is
     const geselecteerdeLadders = getGeselecteerdeLadders('new-user-ladders');
     if (geselecteerdeLadders.length > 0) {
-      await slaState();
       await voegSpelerToeAanLadders(geselecteerdeLadders, { naam, hcp: 0 }, uid);
     }
 

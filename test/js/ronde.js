@@ -2,17 +2,17 @@
 //  ronde.js
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
-import { store, state, alleLadders, activeLadderId, _usersCache, _verwijderdePartijIds } from './store.js';
-import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+import { store, alleLadders, activeLadderId, _usersCache, _verwijderdePartijIds } from './store.js';
+import { slaActievePartijenOp, slaUitslagenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { closeModal } from './admin.js';
 import { kortNaamMap, mijnPartij, renderHcpBlok } from './partij.js';
+import { getLadderSpelers } from './ladder-view.js';
 import { renderLadder } from './ladder.js';
 import { slaSnapshotOp } from './beheer.js';
 import { verwerkKnockoutUitslag } from './knockout.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { autoAdvance } from './auth.js';
 import { renderUitslagen } from './uitslagen.js';
-import { getLadderSpelers } from './ladder-view.js';
 
 
 //  RONDE (live scorekaart)
@@ -78,8 +78,9 @@ function renderScorecard() {
         </div>
       </td>`;
     p.spelers.forEach((s, si) => {
-      const val = p.scores[s.uid][holeIdx];
-      if (val !== null) totalen[s.uid] += val;
+      const scoreArr = Array.isArray(p.scores?.[s.uid]) ? p.scores[s.uid] : [];
+      const val = scoreArr[holeIdx] ?? null;
+      if (val !== null) totalen[s.uid] = (totalen[s.uid] || 0) + val;
       const inputId = `score-${s.uid}-${holeIdx}`;
       const tabIdx = holeIdx * p.spelers.length + si + 1;
       bodyHtml += `<td style="text-align:center"><input
@@ -101,7 +102,8 @@ function renderScorecard() {
   bodyHtml += '<tr style="border-top:2px solid #e0ddd4">';
   bodyHtml += `<td style="padding:6px 8px;font-size:12px;font-weight:600;color:var(--mid)">Totaal</td>`;
   p.spelers.forEach(s => {
-    const filled = p.scores[s.uid].filter(v => v !== null).length;
+    const scoreArr2 = Array.isArray(p.scores?.[s.uid]) ? p.scores[s.uid] : [];
+    const filled = scoreArr2.filter(v => v !== null).length;
     bodyHtml += `<td style="text-align:center;font-family:'DM Mono',monospace;font-weight:700;font-size:14px">${filled > 0 ? totalen[s.uid] : '—'}</td>`;
   });
   bodyHtml += '</tr>';
@@ -129,7 +131,7 @@ async function updateScore(spelerId, holeIdx, val) {
   const p = mijnPartij();
   if (!p) return;
   p.scores[spelerId][holeIdx] = val === '' ? null : parseInt(val);
-  await slaState();
+  await slaActievePartijenOp(p.ladderId);
   renderMatchOverview();
   } catch(e) { console.error('updateScore mislukt:', e); }
 }
@@ -255,7 +257,8 @@ function openToevoegenModal() {
   const p = mijnPartij();
   if (!p) return;
   const bezig = new Set(p.spelers.map(s => s.uid));
-  const beschikbaar = state.spelers
+  const ladderSpelers = getLadderSpelers(p.ladderId);
+  const beschikbaar = ladderSpelers
     .filter(s => !bezig.has(s.uid))
     .sort((a,b) => a.rank - b.rank);
 
@@ -267,7 +270,7 @@ function openToevoegenModal() {
   document.getElementById('toevoegen-speler-hcp').value = '';
 
   sel.onchange = function() {
-    const s = state.spelers.find(x => x.uid === this.value);
+    const s = ladderSpelers.find(x => x.uid === this.value);
     if (s) document.getElementById('toevoegen-speler-hcp').value = Math.round(s.hcp);
   };
 
@@ -281,15 +284,12 @@ async function bevestigToevoegenRonde() {
   if (!p) return;
   const sel = document.getElementById('toevoegen-speler-select');
   const hcpVal = Math.round(parseFloat(document.getElementById('toevoegen-speler-hcp').value));
-  const speler = state.spelers.find(s => s.uid === sel.value);
+  const ladderSpelersT = getLadderSpelers(p.ladderId);
+  const speler = ladderSpelersT.find(s => s.uid === sel.value);
   if (!speler) { toast('Kies een speler'); return; }
   if (isNaN(hcpVal)) { toast('Voer een handicap in'); return; }
 
-  const nieuweSpeler = { ...speler, hcp: hcpVal, partijHcp: hcpVal };
-
-  // Sla hcp op
-  const sv = state.spelers.find(s => s.uid === speler.uid);
-  if (sv && hcpVal !== sv.hcp) sv.hcp = hcpVal;
+  const nieuweSpeler = { uid: speler.uid, naam: speler.naam, hcp: hcpVal, partijHcp: hcpVal };
 
   // Nieuwe matchups aanmaken met alle huidige spelers
   p.spelers.forEach(bestaande => {
@@ -307,7 +307,7 @@ async function bevestigToevoegenRonde() {
   p.spelers.push(nieuweSpeler);
   p.scores[speler.uid] = Array(p.holes.length).fill(null);
 
-  await slaState();
+  await slaActievePartijenOp(p.ladderId);
   closeModal('modal-toevoegen-ronde');
   renderRonde();
   toast(`${speler.naam.split(' ')[0]} toegevoegd ✓`);
@@ -336,7 +336,7 @@ async function editPartijHcp(spelerId) {
     m.hcpOntvanger = hoger.uid;
     m.hcpSlagen = hcpDiff;
   });
-  await slaState();
+  await slaActievePartijenOp(p.ladderId);
   renderRonde();
   toast(`Handicap ${speler.naam.split(' ')[0]} bijgewerkt ✓`);
   } catch(e) { console.error('editPartijHcp mislukt:', e); }
@@ -362,7 +362,7 @@ async function verwijderSpelerUitRonde(spelerId) {
   delete p.scores[spelerId];
   delete p.scores[speler.uid]; // veiligheid: ruim onder beide mogelijke keys op
 
-  await slaState();
+  await slaActievePartijenOp(p.ladderId);
   renderRonde();
   toast(`${speler.naam.split(' ')[0]} verwijderd uit partij`);
   } catch(e) { console.error('verwijderSpelerUitRonde mislukt:', e); }
@@ -474,15 +474,7 @@ async function bevestigUitslag() {
   const p = mijnPartij();
   if (!p) { console.warn('[bevestig] geen mijnPartij — abort'); return; }
 
-  // Zorg dat we in de juiste ladder zitten
-  if (p.ladderId && p.ladderId !== activeLadderId) {
-    const snap = await getDoc(doc(db, 'ladders', p.ladderId));
-    if (snap.exists()) {
-      store.activeLadderId = p.ladderId;
-      store.state = snap.data();
-      if (!state.actievePartijen) state.actievePartijen = [];
-    }
-  }
+  // p.ladderId is de bron van waarheid — geen ladder-wissel nodig
 
   // Check: niet-overgeslagen matchups zonder winnaar bij gelijkspel
   const probleem = p.matchups.find((m, idx) => {
@@ -494,8 +486,10 @@ async function bevestigUitslag() {
   closeModal('modal-uitslag');
 
   const changes = [];
-  // Sla huidige ranks op als prevRank voor alle spelers
-  state.spelers.forEach(s => { s.prevRank = s.rank; });
+  // Laad actuele ranking uit standen/{uid} via getLadderSpelers — niet uit singleton state
+  // Maak een mutable lokale kopie voor de rank-berekening
+  const rankSpelers = getLadderSpelers(p.ladderId).map(s => ({ ...s }));
+  rankSpelers.forEach(s => { s.prevRank = s.rank; });
 
   // Sorteer matchups op volgorde van afronding (timestamp)
   const timestamps = p._modalTimestamps || p.matchups.map(() => 0);
@@ -510,40 +504,9 @@ async function bevestigUitslag() {
     const winnaar = winnaarKant === 'A' ? m.spelerA : m.spelerB;
     const verliezer = winnaarKant === 'A' ? m.spelerB : m.spelerA;
 
-    // v3.0.0-11.7: robuuste speler-lookup.
-    // Match in volgorde: id (uid of numeric), dan naam (case-insensitive).
-    // Als speler niet in state.spelers[] zit maar wel in ladder (spelerIds[]),
-    // dan auto-heal: voeg hem toe aan state.spelers[] onderaan.
-    function vindInState(matchupSpeler) {
-      if (!matchupSpeler) return null;
-      // uid-match — enige sleutel, geen naam-fallback
-      const found = state.spelers.find(s => s.uid === matchupSpeler.uid);
-      if (found) return found;
-      // Gastspeler — niet in ladder verwerken
-      const isGast = matchupSpeler.uid?.startsWith('gast_');
-      if (isGast) return null;
-      // Check of uid in ladder.spelerIds staat
-      const ladder = alleLadders.find(l => l.id === activeLadderId);
-      const inLadder = ladder?.spelerIds?.includes(matchupSpeler.uid);
-      if (!inLadder) return null;
-      // Auto-heal: voeg toe aan state.spelers
-      const maxRank = state.spelers.length > 0
-        ? Math.max(...state.spelers.map(s => s.rank || 0))
-        : 0;
-      const nieuw = {
-        uid: matchupSpeler.uid,
-        naam: matchupSpeler.naam,
-        hcp: matchupSpeler.hcp ?? 10,
-        rank: maxRank + 1,
-        partijen: 0,
-        gewonnen: 0
-      };
-      state.spelers.push(nieuw);
-      return nieuw;
-    }
-
-    const sw = vindInState(winnaar);
-    const sv = vindInState(verliezer);
+    // Zoek speler in lokale rankSpelers kopie op uid
+    const sw = rankSpelers.find(s => s.uid === winnaar.uid) || null;
+    const sv = rankSpelers.find(s => s.uid === verliezer.uid) || null;
 
     // Gastspelers of spelers niet in ladder — niet verwerken in ladderstand
     const heeftGast = winnaar.uid?.startsWith('gast_') || verliezer.uid?.startsWith('gast_') ||
@@ -559,7 +522,7 @@ async function bevestigUitslag() {
     let newWrank, newVrank;
     const swRank = sw.rank;
     const svRank = sv.rank;
-    const cfg = getLadderConfig();
+    const cfg = getLadderConfig(p.ladderId);
 
     if (swRank > svRank) {
       // Lager gerankte wint
@@ -583,11 +546,11 @@ async function bevestigUitslag() {
     }
 
     // Wijs beschikbare ranks toe aan andere spelers in relatieve volgorde
-    const n = state.spelers.length;
+    const n = rankSpelers.length;
     const gereserveerd = new Set([newWrank, newVrank]);
     const beschikbaar = [];
     for (let r = 1; r <= n; r++) { if (!gereserveerd.has(r)) beschikbaar.push(r); }
-    const anderen = state.spelers
+    const anderen = rankSpelers
       .filter(s => s.uid !== sw.uid && s.uid !== sv.uid)
       .sort((a, b) => a.rank - b.rank);
     anderen.forEach((s, i) => { s.rank = beschikbaar[i]; });
@@ -615,13 +578,20 @@ async function bevestigUitslag() {
         };
       })
   };
-  state.uitslagen.unshift(uitslag);
+  // Sla uitslag op in alleLadders[idx] en naar Firestore
+  const ladderIdx = alleLadders.findIndex(l => l.id === p.ladderId);
+  if (ladderIdx >= 0) {
+    if (!alleLadders[ladderIdx].data) alleLadders[ladderIdx].data = {};
+    if (!alleLadders[ladderIdx].data.uitslagen) alleLadders[ladderIdx].data.uitslagen = [];
+    alleLadders[ladderIdx].data.uitslagen.unshift(uitslag);
+    await slaUitslagenOp(p.ladderId);
+  }
 
   // Sla volledige scorekaart op als los Firestore document (30 dagen bewaren)
   try {
     await addDoc(UITSLAGEN_COL, {
       type: 'partij',
-      ladderId: activeLadderId,  // v3.0.0-11.11: zodat filtering per ladder mogelijk is
+      ladderId: p.ladderId,
       datum: new Date().toISOString(),
       timestamp: Date.now(),
       baan: p.baan,
@@ -637,19 +607,18 @@ async function bevestigUitslag() {
     });
   } catch(e) { console.error('Scorekaart opslaan mislukt:', e); }
 
-  // Verwijder deze partij uit actievePartijen
-  state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== p.partijId);
-  // v3.0.0-11.32: markeer als verwijderd zodat onSnapshot-guard hem herkent
+  // Verwijder partij uit alleLadders en Firestore — op p.ladderId, niet activeLadderId
+  const lIdx = alleLadders.findIndex(l => l.id === p.ladderId);
+  if (lIdx >= 0) {
+    alleLadders[lIdx].actievePartijen = (alleLadders[lIdx].actievePartijen || [])
+      .filter(ap => ap.partijId !== p.partijId);
+  }
   _verwijderdePartijIds.add(p.partijId);
 
-  // Onthoud welke spelers zojuist gespeeld hebben voor highlight in ladder
-  
-
-  await slaState();
-  // v3.0.0-11.24: verifieer dat de partij echt weg is (race-conditie protection)
-  await verwijderPartijMetRetry(activeLadderId, p.partijId);
-  // Fase 9b: sync naar standen/{uid} subcollectie
-  await syncStandenNaBevestigUitslag(activeLadderId);
+  // Verifieer dat de partij echt weg is (race-conditie protection)
+  await verwijderPartijMetRetry(p.ladderId, p.partijId);
+  // Sync rankSpelers naar standen/{uid}
+  await syncStandenNaBevestigUitslag(p.ladderId, rankSpelers);
   slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam).join(' vs ')}`);
 
   // Update knockout bracket als dit een knockout ladder is
@@ -733,19 +702,12 @@ async function annuleerEigenPartij() {
   const p = mijnPartij();
   if (!p) return;
 
-  // Verwijder uit de juiste ladder (kan afwijken van activeLadderId)
-  const ladderId = p.ladderId || activeLadderId;
-  if (ladderId !== activeLadderId) {
-    const snap = await getDoc(doc(db, 'ladders', ladderId));
-    if (snap.exists()) {
-      const filtered = (snap.data().actievePartijen || []).filter(ap => ap.partijId !== p.partijId);
-      await setDoc(doc(db, 'ladders', ladderId), { actievePartijen: filtered }, { merge: true });
-      const idx = alleLadders.findIndex(l => l.id === ladderId);
-      if (idx >= 0) { alleLadders[idx].actievePartijen = filtered; if (alleLadders[idx].data) alleLadders[idx].data.actievePartijen = filtered; }
-    }
-  } else {
-    state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== p.partijId);
-    await slaState();
+  // Verwijder altijd op p.ladderId — geen activeLadderId conditie nodig
+  await verwijderPartijMetRetry(p.ladderId, p.partijId);
+  const idx = alleLadders.findIndex(l => l.id === p.ladderId);
+  if (idx >= 0) {
+    alleLadders[idx].actievePartijen = (alleLadders[idx].actievePartijen || [])
+      .filter(ap => ap.partijId !== p.partijId);
   }
 
   closeModal('modal-uitslag');
@@ -766,10 +728,19 @@ async function verwijderActievePartij() {
   if (!confirm('Partij verwijderen? Dit kan niet ongedaan worden.')) return;
   const partijId = store._beheerPartijId;
   if (!partijId) return;
-  state.actievePartijen = (state.actievePartijen || []).filter(ap => ap.partijId !== partijId);
-  await slaState();
-  // v3.0.0-11.24: verifieer dat de partij echt weg is
-  await verwijderPartijMetRetry(activeLadderId, partijId);
+  // Zoek welke ladder deze partij heeft
+  const ladderMetPartij = alleLadders.find(l =>
+    (l.actievePartijen || []).some(ap => ap.partijId === partijId)
+  );
+  const ladderId = ladderMetPartij?.id;
+  if (ladderId) {
+    const idx = alleLadders.findIndex(l => l.id === ladderId);
+    if (idx >= 0) {
+      alleLadders[idx].actievePartijen = (alleLadders[idx].actievePartijen || [])
+        .filter(ap => ap.partijId !== partijId);
+    }
+    await verwijderPartijMetRetry(ladderId, partijId);
+  }
   closeModal('modal-beheer-partij');
   renderUitslagen();
   toast('Partij verwijderd');
@@ -790,7 +761,7 @@ async function editMatchupSlagen(matchIdx) {
   const val = parseInt(nieuw);
   if (isNaN(val) || val < 0) { toast('Ongeldig aantal slagen'); return; }
   m.hcpSlagen = val;
-  await slaState();
+  await slaActievePartijenOp(p.ladderId);
   renderMatchOverview();
   toast(`Slagen bijgewerkt: ${ontvanger.split(' ')[0]} +${val}`);
   } catch(e) { console.error('editMatchupSlagen mislukt:', e); toast('Aanpassen mislukt'); }
@@ -803,17 +774,17 @@ window.editMatchupSlagen = editMatchupSlagen;
 // Na elke bevestigUitslag schrijven we naast ladders.spelers[] ook
 // naar de standen/{uid} subcollectie zodat de view-laag up-to-date is.
 // Sync standen/{uid} na bevestigUitslag — uid staat nu direct op speler
-async function syncStandenNaBevestigUitslag(ladderId) {
+async function syncStandenNaBevestigUitslag(ladderId, rankSpelers) {
   try {
-    const ladderData = alleLadders.find(l => l.id === ladderId)?.data;
-    if (!ladderData) return;
+    const ladder = alleLadders.find(l => l.id === ladderId);
+    if (!ladder) return;
     const spelerIdSet = new Set(
-      (ladderData.spelerIds || []).filter(id => typeof id === 'string' && id.length > 10)
+      (ladder.spelerIds || ladder.data?.spelerIds || []).filter(id => typeof id === 'string' && id.length > 10)
     );
     if (spelerIdSet.size === 0) return;
 
     const writes = [];
-    (state.spelers || []).forEach(s => {
+    (rankSpelers || []).forEach(s => {
       const uid = s.uid;
       if (!uid || !spelerIdSet.has(uid)) return;
       const payload = {
