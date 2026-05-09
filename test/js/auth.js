@@ -423,15 +423,12 @@ async function wijzigWachtwoord() {
 async function slaState() {
   try {
     if (activeLadderId) {
-      // v3.0.0-11.51: spelers[] niet meer schrijven — standen/{uid} is de bron.
-      // Alleen actievePartijen en uitslagen horen nog in het ladder-doc.
-      const ladderSnap = await getDoc(doc(db, 'ladders', activeLadderId));
-      const bestaand = ladderSnap.exists() ? ladderSnap.data() : {};
+      // Schrijf alleen actievePartijen en uitslagen — merge zodat overige velden onaangeroerd blijven.
+      // Nooit het hele document spreaden: dat sleept legacy-velden met undefined mee.
       await setDoc(doc(db, 'ladders', activeLadderId), {
-        ...bestaand,
         actievePartijen: state.actievePartijen || [],
         uitslagen:       state.uitslagen       || [],
-      });
+      }, { merge: true });
     } else {
       await setDoc(STATE_DOC, JSON.parse(JSON.stringify(state)));
     }

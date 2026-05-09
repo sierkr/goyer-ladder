@@ -540,11 +540,16 @@ async function startPartij() {
     }
 
     const partijHcp = Math.round(parseFloat(hcpEl?.value));
-    if (!isNaN(partijHcp) && partijHcp !== speler.hcp) {
-      const sv = partijLadderSpelers.find(s => s.uid === speler.uid);
-      if (sv) sv.hcp = partijHcp;
-    }
-    spelers.push({ ...speler, hcp: isNaN(partijHcp) ? speler.hcp : partijHcp, partijHcp: isNaN(partijHcp) ? speler.hcp : partijHcp });
+    const hcp = isNaN(partijHcp) ? (speler.hcp ?? 0) : partijHcp;
+    // Sla alleen de voor een partij benodigde velden op — geen ranking-velden
+    // die undefined kunnen zijn (prevRank etc.) en Firestore laten crashen
+    spelers.push({
+      uid:      speler.uid,
+      naam:     speler.naam    ?? '',
+      hcp:      hcp,
+      partijHcp: hcp,
+      ...(speler.gast ? { gast: true } : {}),
+    });
   }
 
   if (nietHerkend.length > 0) {
@@ -631,15 +636,13 @@ async function startPartij() {
 
   // Voeg toe aan de juiste ladder
   if (partijLadderId !== activeLadderId) {
-    // Laad andere ladder en voeg partij toe
+    // Laad andere ladder en voeg partij toe — schrijf alleen actievePartijen terug
     const snap = await getDoc(doc(db, 'ladders', partijLadderId));
-    const ladderData = snap.exists() ? snap.data() : { ...JSON.parse(JSON.stringify(DEFAULT_STATE)) };
-    if (!ladderData.actievePartijen) ladderData.actievePartijen = [];
-    ladderData.actievePartijen.push(nieuwePartij);
-    await setDoc(doc(db, 'ladders', partijLadderId), ladderData);
+    const bestaandePartijen = snap.exists() ? (snap.data().actievePartijen || []) : [];
+    bestaandePartijen.push(nieuwePartij);
+    await setDoc(doc(db, 'ladders', partijLadderId), { actievePartijen: bestaandePartijen }, { merge: true });
     // Wissel naar die ladder zodat de ronde zichtbaar is
     store.activeLadderId = partijLadderId;
-    store.state = ladderData;
   } else {
     state.actievePartijen.push(nieuwePartij);
     await slaState();
