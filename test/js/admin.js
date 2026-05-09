@@ -10,7 +10,7 @@ import { db, auth, firebaseConfig, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL,
   genereerEmail, loginNaamVan,
   functions, httpsCallable } from './config.js';
 import { store, alleLadders, activeLadderId,
-  huidigeBruiker, uitdagingenData, store } from './store.js';
+  huidigeBruiker, uitdagingenData } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers,
   isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { openNieuweLadderModal, renderAdminLadders } from './beheer.js';
