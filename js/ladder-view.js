@@ -70,7 +70,7 @@ export function getLadderSpelers(ladderId) {
         rank:     stand.rank     || 0,
         partijen: stand.partijen || 0,
         gewonnen: stand.gewonnen || 0,
-        ...(stand.prevRank != null ? { prevRank: stand.prevRank } : {}),
+        prevRank: stand.prevRank,
       });
     }
     return resultaat.sort((a, b) => (a.rank || 999) - (b.rank || 999));

@@ -3,7 +3,7 @@
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, state, huidigeBruiker, archiefData, uitdagingenData, alleLadders, activeLadderId } from './store.js';
-import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { renderAdmin, renderProfiel } from './admin.js';
 import { renderLadder } from './ladder.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -479,21 +479,19 @@ function toonUitdagingBadge() {
   }
 }
 
-async function stuurUitdaging(naarUid) {
+async function stuurUitdaging(naarSpelerId) {
 
   try {
-  // Speler heeft nu uid als primaire sleutel
-  const naarSpeler = state.spelers.find(s => s.uid === naarUid);
+  const naarSpeler = state.spelers.find(s => s.id === naarSpelerId);
   if (!naarSpeler) return;
 
-  // Zoek account direct via uid
+  // Zoek e-mail van ontvanger in users lijst
   const users = await getUsers();
-  const naarUser = users.find(u => u.uid === naarUid)
-    || users.find(u => {
-      const naam = (u.gebruikersnaam || '').toLowerCase();
-      const spelernaam = naarSpeler.naam.toLowerCase();
-      return naam === spelernaam;
-    });
+  const naarUser = users.find(u => {
+    const naam = (u.gebruikersnaam || '').toLowerCase();
+    const spelernaam = naarSpeler.naam.toLowerCase();
+    return naam === spelernaam || spelernaam.includes(naam) || naam.includes(spelernaam.split(' ')[0]);
+  });
 
   if (!naarUser) { toast('Kan gebruiker niet vinden voor uitdaging'); return; }
 

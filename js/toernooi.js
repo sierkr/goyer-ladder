@@ -1,11 +1,11 @@
 // ============================================================
-//  toernooi.js — v3.0.0-11.45
+//  toernooi.js — v3.0.0-11.41
 //  Meerdaags toernooi: scores/flights/baan per dag
 //  Datastructuur: t.dagen[dagNr-1].{datum,baan,holes,flights,scores,afgerond}
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tSpelersLadderIds, _tRankingLadderIds, _flights } from './store.js';
-import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { renderHcpBlok, alleBANEN, renderHandmatigHoles } from './partij.js';
 import { renderLadder } from './ladder.js';
 import { slaSnapshotOp } from './beheer.js';
@@ -342,11 +342,11 @@ function toggleTSpelersLadder(ladderId, checked) {
   if (checked) _tSpelersLadderIds.add(ladderId);
   else _tSpelersLadderIds.delete(ladderId);
   if (_tSpelersLadderIds.size > 0) {
-    const geldigeUids = new Set(
+    const geldigeIds = new Set(
       alleLadders.filter(l => _tSpelersLadderIds.has(l.id))
-        .flatMap(l => l.spelerIds || [])
+        .flatMap(l => (l.spelers || []).map(s => String(s.id)))
     );
-    store._tGeselecteerdeSpelers = _tGeselecteerdeSpelers.filter(s => s.gast || geldigeUids.has(s.uid));
+    store._tGeselecteerdeSpelers = _tGeselecteerdeSpelers.filter(s => s.gast || geldigeIds.has(String(s.id)));
   }
   renderTGeselecteerdeSpelers();
 }
@@ -357,19 +357,15 @@ function toggleTRankingLadder(ladderId, checked) {
 }
 
 function getToernooiSpelersPool() {
-  // Gebruik alleSpelersData (uid-based) als bron, gefilterd op geselecteerde ladders
   const gezien = new Set();
   const spelers = [];
   const ladders = _tSpelersLadderIds.size > 0
     ? alleLadders.filter(l => _tSpelersLadderIds.has(l.id))
     : alleLadders;
-  // Verzamel uids die in de geselecteerde ladders zitten
-  const toegestaneUids = new Set(ladders.flatMap(l => l.spelerIds || []));
-  alleSpelersData.forEach(s => {
-    if (!s.uid || gezien.has(s.uid)) return;
-    if (toegestaneUids.size > 0 && !toegestaneUids.has(s.uid)) return;
-    gezien.add(s.uid);
-    spelers.push({ uid: s.uid, naam: s.naam, hcp: s.hcp ?? 0 });
+  ladders.forEach(l => {
+    (l.spelers || []).forEach(s => {
+      if (!gezien.has(s.id)) { gezien.add(s.id); spelers.push(s); }
+    });
   });
   return spelers.sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
 }
@@ -378,15 +374,15 @@ function zoekToernooiSpeler(zoek) {
   const lijst = document.getElementById('t-speler-zoek-lijst');
   if (!lijst) return;
   const term = zoek.toLowerCase().trim();
-  const geselecteerdeUids = new Set(store._tGeselecteerdeSpelers.map(s => s.uid));
-  const pool = getToernooiSpelersPool().filter(s => !geselecteerdeUids.has(s.uid));
+  const geselecteerdeIds = new Set(store._tGeselecteerdeSpelers.map(s => String(s.id)));
+  const pool = getToernooiSpelersPool().filter(s => !geselecteerdeIds.has(String(s.id)));
   const gefilterd = term ? pool.filter(s => s.naam.toLowerCase().includes(term)) : pool;
 
   if (gefilterd.length === 0) {
     lijst.innerHTML = `<div style="padding:10px 14px;font-size:13px;color:var(--light)">Geen spelers gevonden</div>`;
   } else {
     lijst.innerHTML = gefilterd.map(s => `
-      <div onpointerdown="event.preventDefault()" onclick="selecteerToernooiSpeler('${escAttr(s.uid)}','${escAttr(s.naam)}',${s.hcp})"
+      <div onpointerdown="event.preventDefault()" onclick="selecteerToernooiSpeler('${escAttr(s.id)}','${escAttr(s.naam)}',${s.hcp})"
         style="padding:10px 14px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;color:var(--dark);background:var(--card-bg)"
         onmouseenter="this.style.background='var(--green-pale)'" onmouseleave="this.style.background='var(--card-bg)'">
         <span>${esc(s.naam)}</span>
@@ -397,9 +393,9 @@ function zoekToernooiSpeler(zoek) {
   lijst.style.display = 'block';
 }
 
-function selecteerToernooiSpeler(uid, naam, hcp) {
-  if (!store._tGeselecteerdeSpelers.find(s => s.uid === uid)) {
-    store._tGeselecteerdeSpelers.push({ uid, naam, hcp, gast: false });
+function selecteerToernooiSpeler(id, naam, hcp) {
+  if (!store._tGeselecteerdeSpelers.find(s => String(s.id) === String(id))) {
+    store._tGeselecteerdeSpelers.push({ id, naam, hcp, gast: false });
   }
   const zoek = document.getElementById('t-speler-zoek');
   if (zoek) { zoek.value = ''; zoekToernooiSpeler(''); zoek.focus(); }
@@ -411,8 +407,8 @@ function sluitToernooiSpelerLijst() {
   if (lijst) lijst.style.display = 'none';
 }
 
-function verwijderToernooiSpelerSelectie(uid) {
-  store._tGeselecteerdeSpelers = store._tGeselecteerdeSpelers.filter(s => s.uid !== uid);
+function verwijderToernooiSpelerSelectie(id) {
+  store._tGeselecteerdeSpelers = store._tGeselecteerdeSpelers.filter(s => String(s.id) !== String(id));
   renderTGeselecteerdeSpelers();
   zoekToernooiSpeler(document.getElementById('t-speler-zoek')?.value || '');
 }
@@ -423,8 +419,8 @@ function voegGastspelerToe() {
   const hcpStr = prompt(`Handicap voor ${naam.trim()}:`, '10');
   if (hcpStr === null) return;
   const hcp = parseFloat(hcpStr) || 0;
-  const gastId = 'gast_' + Math.random().toString(36).slice(2, 10);
-  store._tGeselecteerdeSpelers.push({ uid: gastId, naam: naam.trim(), hcp, gast: true });
+  const gastId = 90000 + Math.floor(Math.random() * 9999);
+  store._tGeselecteerdeSpelers.push({ id: gastId, naam: naam.trim(), hcp, gast: true });
   renderTGeselecteerdeSpelers();
 }
 
@@ -439,7 +435,7 @@ function renderTGeselecteerdeSpelers() {
   el.innerHTML = _tGeselecteerdeSpelers.map(s => `
     <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:var(--green-pale);color:var(--green);border:1.5px solid var(--green);border-radius:20px;font-size:13px">
       ${esc(s.naam)}${s.gast ? ' <em style="font-size:11px;opacity:0.7">(gast)</em>' : ''}
-      <button onclick="verwijderToernooiSpelerSelectie('${escAttr(s.uid)}')" style="background:none;border:none;color:var(--green);cursor:pointer;font-size:14px;padding:0;line-height:1">×</button>
+      <button onclick="verwijderToernooiSpelerSelectie('${escAttr(s.id)}')" style="background:none;border:none;color:var(--green);cursor:pointer;font-size:14px;padding:0;line-height:1">×</button>
     </span>
   `).join('');
 }
@@ -470,15 +466,15 @@ function openFlightIndeling() {
   const interval = parseInt(document.getElementById('t-interval')?.value) || 0;
 
   if (_flights.length === 0) {
-    store._flights = [{ id: 1, naam: 'Flight 1', spelers: geselecteerd.map(s => ({ uid: s.uid, naam: s.naam, hcp: s.hcp })), starthole: 1, starttijd }];
+    store._flights = [{ id: 1, naam: 'Flight 1', spelers: geselecteerd.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp })), starthole: 1, starttijd }];
   } else {
     _flights.forEach((f, fi) => {
       if (!f.starttijd) f.starttijd = berekenFlightTijd(starttijd, interval, fi);
       if (!f.starthole) f.starthole = 1;
-      f.spelers = f.spelers.filter(s => geselecteerd.some(g => g.uid === s.uid));
+      f.spelers = f.spelers.filter(s => geselecteerd.some(g => g.id === s.id));
     });
-    const ingedeeld = new Set(_flights.flatMap(f => f.spelers.map(s => s.uid)));
-    const nieuw = geselecteerd.filter(s => !ingedeeld.has(s.uid)).map(s => ({ uid: s.uid, naam: s.naam, hcp: s.hcp }));
+    const ingedeeld = new Set(_flights.flatMap(f => f.spelers.map(s => s.id)));
+    const nieuw = geselecteerd.filter(s => !ingedeeld.has(s.id)).map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp }));
     if (nieuw.length > 0 && _flights.length > 0) _flights[0].spelers.push(...nieuw);
   }
 
@@ -497,7 +493,7 @@ function renderFlightLijst() {
   const container = document.getElementById('flight-lijst');
   if (!container) return;
 
-  const ingedeeld = new Set(_flights.flatMap(f => f.spelers.map(s => s.uid)));
+  const ingedeeld = new Set(_flights.flatMap(f => f.spelers.map(s => s.id)));
 
   container.innerHTML = _flights.map((f, fi) => `
     <div style="border:1.5px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden">
@@ -623,20 +619,18 @@ async function startToernooi() {
     if (geselecteerd.length < 2) { toast('Voeg minimaal 2 spelers toe aan flights'); return; }
     if (_flights.every(f => f.spelers.length === 0)) { toast('Verdeel spelers over flights'); return; }
 
-    const spelers = geselecteerd.map(s => ({
-      uid: s.uid, naam: s.naam, hcp: s.hcp, gast: s.gast || false
-    }));
+    const spelers = geselecteerd.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp, gast: s.gast || false }));
 
     // Bouw dagen[] — scores en flights leeg, worden per dag ingevuld
     const dagen = dagenConfig.map(cfg => {
       const scores = {};
-      spelers.forEach(s => { scores[s.uid] = Array(cfg.holes.length).fill(null); });
+      spelers.forEach(s => { scores[s.id] = Array(cfg.holes.length).fill(null); });
 
       // Dag 1 flights vanuit de flight indeling; overige dagen starten leeg
       const flights = cfg.dagNr === 1
         ? _flights.map(f => ({
             id: f.id, naam: f.naam,
-            spelerIds: f.spelers.map(s => s.uid),
+            spelerIds: f.spelers.map(s => s.id),
             starthole: f.starthole || 1,
             starttijd: f.starttijd || cfg.starttijd
           }))
@@ -774,7 +768,7 @@ async function voegDagToe() {
 
     // Nieuwe scores voor alle huidige spelers
     const scores = {};
-    t.spelers.forEach(s => { scores[s.uid] = Array(holes.length).fill(null); });
+    t.spelers.forEach(s => { scores[s.id] = Array(holes.length).fill(null); });
 
     // Flight indeling: start leeg (beheerder stelt in via flight modal)
     const starttijd = document.getElementById('t-dag-starttijd')?.value || '09:00';
@@ -816,7 +810,7 @@ function openFlightIndelingDag() {
   if (dag.flights && dag.flights.length > 0) {
     store._flights = dag.flights.map(f => ({
       id: f.id, naam: f.naam,
-      spelers: (f.spelerIds || []).map(sid => t.spelers.find(s => s.uid === sid)).filter(Boolean),
+      spelers: (f.spelerIds || []).map(sid => t.spelers.find(s => String(s.id) === String(sid))).filter(Boolean),
       starthole: f.starthole || 1,
       starttijd: f.starttijd || starttijd
     }));
@@ -845,7 +839,7 @@ async function slaFlightIndelingDagOp() {
 
     dag.flights = _flights.map(f => ({
       id: f.id, naam: f.naam,
-      spelerIds: f.spelers.map(s => s.uid),
+      spelerIds: f.spelers.map(s => s.id),
       starthole: f.starthole || 1,
       starttijd: f.starttijd || ''
     }));
@@ -917,7 +911,7 @@ function openToernooiSpelersBeheer() {
     <div style="display:flex;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
       <span style="flex:1;font-size:14px">${esc(s.naam)}${s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}</span>
       <button class="btn btn-sm" style="background:var(--alert-bg);color:var(--alert-text);border:none;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:12px"
-        onclick="verwijderToernooiSpelerNieuw('${escAttr(s.uid)}')">✕</button>
+        onclick="verwijderToernooiSpelerNieuw('${escAttr(s.id)}')">✕</button>
     </div>
   `).join('');
 
@@ -940,16 +934,16 @@ function zoekToernooiSpelerModal(zoek) {
   const lijst = document.getElementById('toernooi-speler-zoek-lijst');
   if (!lijst) return;
   const t = toernooiData;
-  const huidigeIds = new Set(t.spelers.map(s => s.uid));
+  const huidigeIds = new Set(t.spelers.map(s => String(s.id)));
   const term = zoek.toLowerCase().trim();
-  const pool = alleSpelersData.filter(s => !huidigeIds.has(s.uid))
+  const pool = alleSpelersData.filter(s => !huidigeIds.has(String(s.id)))
     .filter(s => !term || s.naam.toLowerCase().includes(term))
     .sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
 
   lijst.innerHTML = pool.length === 0
     ? '<div style="padding:10px 14px;font-size:13px;color:var(--light)">Geen spelers gevonden</div>'
     : pool.map(s => `
-      <div onpointerdown="event.preventDefault()" onclick="selecteerToernooiSpelerModal('${escAttr(s.uid)}','${escAttr(s.naam)}',${s.hcp})"
+      <div onpointerdown="event.preventDefault()" onclick="selecteerToernooiSpelerModal('${escAttr(s.id)}','${escAttr(s.naam)}',${s.hcp})"
         style="padding:10px 14px;cursor:pointer;font-size:14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;color:var(--dark);background:var(--card-bg)"
         onmouseenter="this.style.background='var(--green-pale)'" onmouseleave="this.style.background='var(--card-bg)'">
         <span>${esc(s.naam)}</span>
@@ -958,8 +952,8 @@ function zoekToernooiSpelerModal(zoek) {
   lijst.style.display = 'block';
 }
 
-function selecteerToernooiSpelerModal(uid, naam, hcp) {
-  _toernooiSpelerToevoegen = { uid, naam, hcp };
+function selecteerToernooiSpelerModal(id, naam, hcp) {
+  _toernooiSpelerToevoegen = { id, naam, hcp };
   document.getElementById('toernooi-speler-zoek').value = naam;
   sluitToernooiSpelerModal();
 }
@@ -974,14 +968,14 @@ async function voegBestaandeSpelerToeAanToernooi() {
     if (!_toernooiSpelerToevoegen) { toast('Selecteer eerst een speler'); return; }
     const t = toernooiData;
     const fi = parseInt(document.getElementById('toernooi-speler-flight-sel').value) || 0;
-    const speler = { uid: _toernooiSpelerToevoegen.uid, naam: _toernooiSpelerToevoegen.naam, hcp: _toernooiSpelerToevoegen.hcp, gast: false };
+    const speler = { id: _toernooiSpelerToevoegen.id, naam: _toernooiSpelerToevoegen.naam, hcp: _toernooiSpelerToevoegen.hcp, gast: false };
 
     t.spelers.push(speler);
     // Voeg scores toe aan ALLE dagen
     (t.dagen || []).forEach(dag => {
-      dag.scores[speler.uid] = Array(dag.holes.length).fill(null);
+      dag.scores[String(speler.id)] = Array(dag.holes.length).fill(null);
       if (dag.flights?.[fi]) {
-        dag.flights[fi].spelerIds = [...(dag.flights[fi].spelerIds || []), speler.uid];
+        dag.flights[fi].spelerIds = [...(dag.flights[fi].spelerIds || []), speler.id];
       }
     });
 
@@ -999,12 +993,12 @@ async function voegGastspelerToeAanToernooi() {
     if (!naam) { toast('Voer een naam in'); return; }
     const t = toernooiData;
     const fi = parseInt(document.getElementById('toernooi-gast-flight-sel').value) || 0;
-    const gastId = 'gast_' + Math.random().toString(36).slice(2, 10);
-    const speler = { uid: gastId, naam, hcp, gast: true };
+    const gastId = 90000 + Math.floor(Math.random() * 9999);
+    const speler = { id: gastId, naam, hcp, gast: true };
 
     t.spelers.push(speler);
     (t.dagen || []).forEach(dag => {
-      dag.scores[gastId] = Array(dag.holes.length).fill(null);
+      dag.scores[String(gastId)] = Array(dag.holes.length).fill(null);
       if (dag.flights?.[fi]) {
         dag.flights[fi].spelerIds = [...(dag.flights[fi].spelerIds || []), gastId];
       }
@@ -1021,11 +1015,14 @@ async function verwijderToernooiSpelerNieuw(spelerId) {
   try {
     if (!toernooiData || !actieveToernooiId) return;
     if (!confirm('Speler verwijderen uit dit toernooi?')) return;
-    toernooiData.spelers = toernooiData.spelers.filter(s => s.uid !== spelerId);
+    const id = String(spelerId);
+    toernooiData.spelers = toernooiData.spelers.filter(s => String(s.id) !== id);
+    // Verwijder uit alle dagen
     (toernooiData.dagen || []).forEach(dag => {
       delete dag.scores[spelerId];
+      delete dag.scores[id];
       if (dag.flights) {
-        dag.flights.forEach(f => { f.spelerIds = (f.spelerIds || []).filter(sid => sid !== spelerId); });
+        dag.flights.forEach(f => { f.spelerIds = (f.spelerIds || []).filter(sid => String(sid) !== id); });
       }
     });
     await setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(toernooiData)));
@@ -1041,7 +1038,7 @@ async function verwijderToernooiSpeler(spelerId) {
   try {
     if (!toernooiData || !actieveToernooiId) return;
     if (!confirm('Speler verwijderen uit dit toernooi?')) return;
-    toernooiData.spelers = toernooiData.spelers.filter(s => s.uid !== spelerId);
+    toernooiData.spelers = toernooiData.spelers.filter(s => String(s.id) !== String(spelerId));
     (toernooiData.dagen || []).forEach(dag => {
       delete dag.scores[spelerId];
       delete dag.scores[String(spelerId)];
@@ -1063,7 +1060,7 @@ function alleScoresIngevuld(t, dag) {
   if (!dag || !t || !t.spelers || t.spelers.length === 0) return false;
   return t.spelers.every(s =>
     (dag.holes || []).every((_, i) => {
-      const val = dag.scores?.[s.uid]?.[i];
+      const val = dag.scores?.[String(s.id)]?.[i] ?? dag.scores?.[s.id]?.[i];
       return val !== null && val !== undefined && val !== '';
     })
   );
@@ -1107,7 +1104,7 @@ function renderToernooiActief() {
   const mijnUid  = huidigeBruiker?.uid || null;
   const mijnFlight = flights.find(f =>
     (f.spelerIds || []).some(sid => {
-      const sp = t.spelers.find(s => s.uid === sid);
+      const sp = t.spelers.find(s => String(s.id) === String(sid));
       return sp && mijnUid && sp.uid === mijnUid;
     })
   );
@@ -1225,15 +1222,6 @@ function renderToernooiActief() {
         🏅 Toernooi afsluiten${t.modus !== 'strokeplay' && (t.rankingLadderIds?.length > 0 || t.ladderId) ? ' & ladder bijwerken' : ''}
       </button>
       ` : ''}
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border);margin-bottom:8px">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;font-size:13px;color:var(--dark)">
-          <input type="checkbox" id="t-toernooi-modus-chk"
-            ${t.toernooiModus ? 'checked' : ''}
-            onchange="toggleToernooiModus(this.checked)"
-            style="accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
-          <span><strong>Toernooi-modus</strong><br><span style="font-size:11px;color:var(--mid)">Deelnemers zien alleen Ronde &amp; Uitslag. Titelbalk toont toernooinaam.</span></span>
-        </label>
-      </div>
       <button class="btn btn-ghost btn-block" onclick="annuleerToernooi()" style="margin-bottom:8px;color:var(--red)">
         Toernooi annuleren
       </button>
@@ -1298,17 +1286,17 @@ function renderTScorecard() {
   let teTonenFlights = [];
   if (isBeheerder || flights.length === 0) {
     teTonenFlights = flights.length > 0
-      ? flights.map(f => ({ naam: f.naam, spelers: (f.spelerIds || []).map(sid => t.spelers.find(s => s.uid === sid)).filter(Boolean) }))
+      ? flights.map(f => ({ naam: f.naam, spelers: (f.spelerIds || []).map(sid => t.spelers.find(s => String(s.id) === String(sid))).filter(Boolean) }))
       : [{ naam: null, spelers: t.spelers }];
   } else {
     const mijnFlight = flights.find(f =>
       (f.spelerIds || []).some(sid => {
-        const sp = t.spelers.find(s => s.uid === sid);
+        const sp = t.spelers.find(s => String(s.id) === String(sid));
         return sp && mijnUid2 && sp.uid === mijnUid2;
       })
     );
     if (mijnFlight) {
-      teTonenFlights = [{ naam: mijnFlight.naam, spelers: (mijnFlight.spelerIds || []).map(sid => t.spelers.find(s => s.uid === sid)).filter(Boolean) }];
+      teTonenFlights = [{ naam: mijnFlight.naam, spelers: (mijnFlight.spelerIds || []).map(sid => t.spelers.find(s => String(s.id) === String(sid))).filter(Boolean) }];
     } else {
       teTonenFlights = [{ naam: null, spelers: t.spelers }];
     }
@@ -1359,7 +1347,7 @@ function renderTScorecard() {
     const delen = s.naam.split(' ');
     html += `<th class="player-col" style="max-width:70px">
       <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px" title="${esc(s.naam)}">${esc(delen[0])}</span>
-      <span class="hole-par" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px;${isBeheerder&&!dagAfgerond?'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)':''}" ${isBeheerder&&!dagAfgerond?`onclick="editToernooiHcp('${escAttr(s.uid)}')"`:''}>
+      <span class="hole-par" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px;${isBeheerder&&!dagAfgerond?'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)':''}" ${isBeheerder&&!dagAfgerond?`onclick="editToernooiHcp('${escAttr(s.id)}')"`:''}>
         ${esc(delen.slice(1).join(' ') || 'hcp '+Math.round(s.hcp))}
       </span>
     </th>`;
@@ -1370,14 +1358,14 @@ function renderTScorecard() {
     const h = dag.holes[holeIdx];
     html += `<tr><td class="player-col" style="font-weight:600">${holeIdx+1}<span class="hole-par">p${h.par} SI${h.si}</span></td>`;
     spelers.forEach((s, si) => {
-      const val = dag.scores?.[s.uid]?.[holeIdx];
+      const val = dag.scores?.[s.id]?.[holeIdx] ?? dag.scores?.[String(s.id)]?.[holeIdx];
       const tabIdx = tabOffset + si * dag.holes.length + spelRij + 1;
       if (dagAfgerond) {
         html += `<td style="text-align:center;font-family:'DM Mono',monospace;font-size:14px">${val !== null && val !== undefined ? val : '—'}</td>`;
       } else {
         html += `<td><input type="number" min="1" max="12" inputmode="numeric" value="${val !== null && val !== undefined ? val : ''}"
           tabindex="${tabIdx}" onfocus="this.select()"
-          oninput="updateTScoreAndAdvance('${escAttr(s.uid)}',${holeIdx},${tabIdx},this.value)"
+          oninput="updateTScoreAndAdvance('${escAttr(s.id)}',${holeIdx},${tabIdx},this.value)"
           style="width:42px;padding:4px;text-align:center;font-size:14px;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--dark)"></td>`;
       }
     });
@@ -1386,10 +1374,10 @@ function renderTScorecard() {
 
   html += '<tr class="t-totaal-rij" style="background:var(--green-pale)"><td class="player-col" style="font-weight:700">Tot</td>';
   spelers.forEach(s => {
-    const scores = dag.scores?.[s.uid] || [];
+    const scores = dag.scores?.[s.id] || dag.scores?.[String(s.id)] || [];
     const filled = scores.filter(v => v !== null && v !== undefined);
     const tot = filled.length ? filled.reduce((a,b) => a+Number(b), 0) : null;
-    html += `<td data-speler-id="${s.uid}" style="font-family:'DM Mono',monospace;font-weight:700;text-align:center">${tot !== null ? tot : '—'}</td>`;
+    html += `<td data-speler-id="${s.id}" style="font-family:'DM Mono',monospace;font-weight:700;text-align:center">${tot !== null ? tot : '—'}</td>`;
   });
   html += '</tr></tbody></table></div>';
 
@@ -1479,7 +1467,7 @@ function updateTTotaalRijInline() {
     const cellen = rij.querySelectorAll('td[data-speler-id]');
     cellen.forEach(cel => {
       const sid = cel.dataset.spelerId;
-      const scores = dag.scores?.[sid] || [];
+      const scores = dag.scores?.[sid] || dag.scores?.[String(sid)] || [];
       const filled = scores.filter(v => v !== null && v !== undefined);
       cel.textContent = filled.length ? filled.reduce((a,b) => a + Number(b), 0) : '—';
     });
@@ -1489,7 +1477,7 @@ function updateTTotaalRijInline() {
 function editToernooiHcp(spelerId) {
   const t = toernooiData;
   if (!t) return;
-  const speler = t.spelers.find(s => s.uid === spelerId);
+  const speler = t.spelers.find(s => String(s.id) === String(spelerId));
   if (!speler) return;
   const nieuw = prompt(`Playing handicap voor ${speler.naam.split(' ')[0]}:`, Math.round(speler.hcp));
   if (nieuw === null) return;
@@ -1506,11 +1494,11 @@ function editToernooiHcp(spelerId) {
   if (!isCoordinatorRol() && flights.length > 0) {
     const voornaam = (huidigeBruiker?.gebruikersnaam || '').toLowerCase().split(' ')[0];
     const mijnFlight = flights.find(f => (f.spelerIds || []).some(sid => {
-      const sp = t.spelers.find(s => s.uid === sid);
+      const sp = t.spelers.find(s => String(s.id) === String(sid));
       return sp && sp.naam.toLowerCase().includes(voornaam);
     }));
     if (mijnFlight) hcpSpelers = (mijnFlight.spelerIds || []).map(sid =>
-      t.spelers.find(s => s.uid === sid)).filter(Boolean);
+      t.spelers.find(s => String(s.id) === String(sid))).filter(Boolean);
   }
   renderHcpBlok(hcpSpelers, dag?.holes || [], t.hcpPct ?? 0.75, 'toernooi-hcp-blok');
   toast(`Handicap ${speler.naam.split(' ')[0]} bijgewerkt ✓`);
@@ -1557,8 +1545,8 @@ function berekenTPuntenVoorDag(t, dag) {
       let gespeeld = false;
 
       for (let h = 0; h < dag.holes.length; h++) {
-        const scoreA = dag.scores?.[sA.uid]?.[h];
-        const scoreB = dag.scores?.[sB.uid]?.[h];
+        const scoreA = dag.scores?.[sA.id]?.[h] ?? dag.scores?.[String(sA.id)]?.[h];
+        const scoreB = dag.scores?.[sB.id]?.[h] ?? dag.scores?.[String(sB.id)]?.[h];
         if (scoreA == null || scoreB == null) continue;
         gespeeld = true;
         const hole = dag.holes[h];
@@ -1636,7 +1624,7 @@ function berekenTPunten(dagNrOverride) {
 function berekenStrokeplayRanglijstVoorDag(t, dag) {
   if (!dag) return [];
   return t.spelers.map(s => {
-    const scores = dag.scores?.[s.uid] || [];
+    const scores = dag.scores?.[s.id] || dag.scores?.[String(s.id)] || [];
     const hcp = Math.round(s.hcp);
     const aantalHoles = dag.holes.length;
 
@@ -1955,11 +1943,12 @@ async function bevestigToernooiAfsluiten() {
       const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
       if (snapExists) {
         const ladderData = snapData;
-        const ladderSpelerUids = new Set((ladderData.spelers || []).map(s => s.uid).filter(Boolean));
+        const ladderSpelerIds = new Set((ladderData.spelers || []).map(s => String(s.id)));
+        const ladderSpelersOpNaam = new Map((ladderData.spelers || []).map(s => [s.naam.toLowerCase(), s]));
         const deelnemers = volgorde.filter(e =>
-          !e.s.gast && (e.s.uid && ladderSpelerUids.has(e.s.uid))
+          !e.s.gast && (ladderSpelerIds.has(String(e.s.id)) || ladderSpelersOpNaam.has(e.s.naam.toLowerCase()))
         ).filter(e => {
-          const ladderSpeler = ladderData.spelers.find(s => s.uid === e.s.uid);
+          const ladderSpeler = ladderData.spelers.find(s => String(s.id) === String(e.s.id) || s.naam.toLowerCase() === e.s.naam.toLowerCase());
           return (ladderSpeler?.partijen || 0) >= 5;
         });
 
@@ -1968,7 +1957,7 @@ async function bevestigToernooiAfsluiten() {
           const gesorteerd = [...deelnemers].sort((a,b) => b.pt - a.pt);
 
           gesorteerd.forEach(e => {
-            const sp = ladderData.spelers.find(s => s.uid === e.s.uid);
+            const sp = ladderData.spelers.find(s => String(s.id) === String(e.s.id) || s.naam.toLowerCase() === e.s.naam.toLowerCase());
             if (!sp) return;
             const pt = e.pt || 0;
             if (pt === 0) return;
@@ -1976,15 +1965,15 @@ async function bevestigToernooiAfsluiten() {
             const nieuweRank = Math.max(1, Math.min(ladderData.spelers.length, oudeRank - pt));
             if (nieuweRank === oudeRank) return;
             if (nieuweRank < oudeRank) {
-              ladderData.spelers.forEach(s => { if (s.uid !== sp.uid && s.rank >= nieuweRank && s.rank < oudeRank) s.rank++; });
+              ladderData.spelers.forEach(s => { if (s.id !== sp.id && s.rank >= nieuweRank && s.rank < oudeRank) s.rank++; });
             } else {
-              ladderData.spelers.forEach(s => { if (s.uid !== sp.uid && s.rank > oudeRank && s.rank <= nieuweRank) s.rank--; });
+              ladderData.spelers.forEach(s => { if (s.id !== sp.id && s.rank > oudeRank && s.rank <= nieuweRank) s.rank--; });
             }
             sp.rank = nieuweRank;
           });
 
           deelnemers.forEach(e => {
-            const sp = ladderData.spelers.find(s => s.uid === e.s.uid);
+            const sp = ladderData.spelers.find(s => String(s.id) === String(e.s.id) || s.naam.toLowerCase() === e.s.naam.toLowerCase());
             if (sp) {
               sp.partijen = (sp.partijen || 0) + (deelnemers.length - 1);
               sp.gewonnen = (sp.gewonnen || 0) + (e.w || 0);
@@ -1995,11 +1984,14 @@ async function bevestigToernooiAfsluiten() {
           await setDoc(doc(db, 'ladders', ladderId), ladderData);
 
           try {
-            const spelerIdsUid = new Set((ladderData.spelerIds || []).filter(id => typeof id === 'string' && id.length > 10));
+            const users = store._usersCache || [];
+            const naamNaarUid = {};
+            users.forEach(u => { if (u.naam) naamNaarUid[u.naam.toLowerCase()] = u.uid; });
+            const spelerIdsUid = (ladderData.spelerIds || []).filter(id => typeof id === 'string' && id.length > 10);
             const standenWrites = [];
             (ladderData.spelers || []).forEach(sp => {
-              const uid = sp.uid;
-              if (!uid || !spelerIdsUid.has(uid)) return;
+              const uid = naamNaarUid[(sp.naam || '').toLowerCase()];
+              if (!uid || !spelerIdsUid.includes(uid)) return;
               const payload = { rank: sp.rank || 0, partijen: sp.partijen || 0, gewonnen: sp.gewonnen || 0 };
               if (sp.prevRank != null) payload.prevRank = sp.prevRank;
               standenWrites.push(setDoc(doc(db, 'ladders', ladderId, 'standen', uid), payload).catch(err => console.warn('standen sync mislukt voor', uid, err.code)));
@@ -2103,25 +2095,6 @@ function kopieerLiveLink() {
 window.kopieerLiveLink = kopieerLiveLink;
 
 // ============================================================
-//  TOERNOOI-MODUS
+//  EXPORTS
 // ============================================================
-async function toggleToernooiModus(aan) {
-  try {
-    if (!toernooiData || !actieveToernooiId) return;
-    toernooiData.toernooiModus = !!aan;
-    const idx = alleToernooien.findIndex(t => t.id === actieveToernooiId);
-    if (idx >= 0) alleToernooien[idx].toernooiModus = !!aan;
-    await setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(toernooiData)));
-    // Laat auth.js de nav + header bijwerken
-    window.dispatchEvent(new CustomEvent('toernooiModusGewijzigd'));
-    toast(aan ? 'Toernooi-modus aan ✓' : 'Toernooi-modus uit');
-  } catch(e) { console.error('toggleToernooiModus mislukt:', e); toast('Er is iets misgegaan'); }
-}
-window.toggleToernooiModus = toggleToernooiModus;
-
-export function getActiefToernooiMetModus() {
-  return alleToernooien.find(t => t.toernooiModus && t.status === 'actief') || null;
-}
-
-
 export { alleScoresIngevuld, annuleerToernooi, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarLadderTab, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, toggleTRankingLadder, toggleTScorecard, toggleTSpeler, toggleTSpelersLadder, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpeler, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
