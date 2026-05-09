@@ -899,13 +899,11 @@ async function slaInitieelWachtwoordOp() {
 // ============================================================
 
 function openBulkImport() {
-  // Reset modal state
   document.getElementById('bulk-toernooi-naam').value = '';
   document.getElementById('bulk-import-voortgang').style.display = 'none';
   document.getElementById('bulk-import-resultaat').style.display = 'none';
   document.getElementById('bulk-import-start-btn').style.display = '';
 
-  // Render ladder-checkboxes
   const laddersEl = document.getElementById('bulk-import-ladders');
   if (laddersEl) {
     laddersEl.innerHTML = alleLadders.map(l => `
@@ -916,15 +914,12 @@ function openBulkImport() {
     `).join('');
   }
 
-  // Start with 5 empty rows
   const tbody = document.getElementById('bulk-import-rijen');
   tbody.innerHTML = '';
   for (let i = 0; i < 5; i++) _voegBulkRijAanToe(tbody);
 
   document.getElementById('modal-bulk-import').classList.add('open');
-
-  // Paste handler: detect Excel paste (tab-separated columns, newline rows)
-  tbody.addEventListener('paste', _handleBulkPaste, { once: false });
+  tbody.addEventListener('paste', _handleBulkPaste);
 }
 
 function sluitBulkImport() {
@@ -956,46 +951,40 @@ function _voegBulkRijAanToe(tbody) {
   tbody.appendChild(tr);
 }
 
-window._herNummerBulkRijen = _herNummerBulkRijen;
-
-function voegBulkRijToe() {
-  const tbody = document.getElementById('bulk-import-rijen');
-  if (tbody) { _voegBulkRijAanToe(tbody); _herNummerBulkRijen(); }
-}
-
-function _herNummerBulkRijen() {
+window._herNummerBulkRijen = function _herNummerBulkRijen() {
   const tbody = document.getElementById('bulk-import-rijen');
   if (!tbody) return;
   tbody.querySelectorAll('tr').forEach((tr, i) => {
     const nrTd = tr.querySelector('td:first-child');
     if (nrTd) nrTd.textContent = i + 1;
   });
+};
+
+function voegBulkRijToe() {
+  const tbody = document.getElementById('bulk-import-rijen');
+  if (tbody) { _voegBulkRijAanToe(tbody); _herNummerBulkRijen(); }
 }
 
 function _handleBulkPaste(e) {
   const active = document.activeElement;
   if (!active || !active.closest('#bulk-import-rijen')) return;
   const tekst = e.clipboardData?.getData('text') || '';
-  if (!tekst.includes('	') && !tekst.includes('
-')) return;
+  if (!tekst.includes('\t') && !tekst.includes('\n')) return;
   e.preventDefault();
 
   const tbody = document.getElementById('bulk-import-rijen');
-  const regels = tekst.trim().split(/
-?
-/).filter(r => r.trim());
+  const regels = tekst.trim().split(/\r?\n/).filter(r => r.trim());
   const startRij = active.closest('tr');
   const rijen = Array.from(tbody.querySelectorAll('tr'));
   let rijIdx = rijen.indexOf(startRij);
   if (rijIdx < 0) rijIdx = 0;
 
   regels.forEach((regel, i) => {
-    const cellen = regel.split('	');
-    const voornaam  = (cellen[0] || '').trim();
+    const cellen = regel.split('\t');
+    const voornaam   = (cellen[0] || '').trim();
     const achternaam = (cellen[1] || '').trim();
-    const hcp       = (cellen[2] || '').trim();
+    const hcp        = (cellen[2] || '').trim();
 
-    // Zorg dat er genoeg rijen zijn
     while (tbody.querySelectorAll('tr').length <= rijIdx + i) {
       _voegBulkRijAanToe(tbody);
     }
@@ -1019,12 +1008,11 @@ async function startBulkImport() {
     document.querySelectorAll('#bulk-import-ladders input[type=checkbox]:checked')
   ).map(cb => cb.value);
 
-  // Verzamel rijen met inhoud
   const tbody = document.getElementById('bulk-import-rijen');
   const rijen = Array.from(tbody.querySelectorAll('tr')).map(tr => ({
-    voornaam:  tr.querySelector('[data-col="voornaam"]')?.value.trim() || '',
+    voornaam:   tr.querySelector('[data-col="voornaam"]')?.value.trim() || '',
     achternaam: tr.querySelector('[data-col="achternaam"]')?.value.trim() || '',
-    hcp:       parseFloat(tr.querySelector('[data-col="hcp"]')?.value) || 0,
+    hcp:        parseFloat(tr.querySelector('[data-col="hcp"]')?.value) || 0,
     tr
   })).filter(r => r.voornaam && r.achternaam);
 
@@ -1040,38 +1028,34 @@ async function startBulkImport() {
 
   for (let i = 0; i < rijen.length; i++) {
     const { voornaam, achternaam, hcp, tr } = rijen[i];
-    const naam  = `${voornaam} ${achternaam}`;
-    const email = genereerEmail(voornaam, achternaam);
+    const naam     = `${voornaam} ${achternaam}`;
+    const email    = genereerEmail(voornaam, achternaam);
     const loginTxt = loginNaamVan(email);
 
-    // Voortgang tonen
     document.getElementById('bulk-import-status').textContent =
       `Bezig met ${i + 1} van ${rijen.length}: ${naam}…`;
     document.getElementById('bulk-import-balk').style.width =
       `${Math.round((i / rijen.length) * 100)}%`;
 
-    // Visuele feedback per rij
     const markeerRij = (ok, tekst) => {
       tr.style.background = ok ? 'var(--green-pale)' : '#fde8e8';
       const nrTd = tr.querySelector('td:first-child');
       if (nrTd) nrTd.textContent = ok ? '✓' : '✗';
-      if (!ok) {
+      if (!ok && tekst) {
         const errSpan = document.createElement('span');
         errSpan.style.cssText = 'font-size:11px;color:var(--red);display:block;padding:2px 6px';
         errSpan.textContent = tekst;
-        tr.querySelector('td:nth-child(3)').appendChild(errSpan);
+        const td = tr.querySelector('td:nth-child(3)');
+        if (td) td.appendChild(errSpan);
       }
     };
 
     try {
-      // Controleer dubbele naam
       const users = await getUsers();
       if (users.find(u => u.email === email)) {
-        markeerRij(false, 'Naam al in gebruik');
-        continue;
+        markeerRij(false, 'Naam al in gebruik'); continue;
       }
 
-      // Maak Firebase Auth account via tijdelijke secundaire app
       let uid = null;
       try {
         const { initializeApp: init2, deleteApp } =
@@ -1084,15 +1068,11 @@ async function startBulkImport() {
         uid = cred.user.uid;
         try { await deleteApp(tijdApp); } catch(e) {}
       } catch(authErr) {
-        if (authErr.code === 'auth/email-already-in-use') {
-          markeerRij(false, 'Account bestaat al');
-        } else {
-          markeerRij(false, authErr.message);
-        }
+        markeerRij(false, authErr.code === 'auth/email-already-in-use'
+          ? 'Account bestaat al' : authErr.message);
         continue;
       }
 
-      // spelers/{uid} aanmaken met toernooiSpeler-vlag en toernooiNaam
       await setDoc(doc(db, 'spelers', uid), {
         uid, naam, email, rol: 'speler', hcp: Math.round(hcp),
         eersteLogin: true,
@@ -1100,7 +1080,6 @@ async function startBulkImport() {
         toernooiNaam
       });
 
-      // Toevoegen aan geselecteerde ladders
       if (geselecteerdeLadders.length > 0) {
         await voegSpelerToeAanLadders(geselecteerdeLadders, { naam, hcp: Math.round(hcp) }, uid);
       }
@@ -1113,11 +1092,10 @@ async function startBulkImport() {
       markeerRij(false, e.message || 'Onbekende fout');
     }
 
-    // Korte pauze tegen Firebase Auth rate limiting
+    // Pauze tegen Firebase Auth rate limiting
     await new Promise(r => setTimeout(r, 350));
   }
 
-  // Afronden
   document.getElementById('bulk-import-balk').style.width = '100%';
   document.getElementById('bulk-import-status').textContent =
     `Klaar — ${succes} van ${rijen.length} spelers aangemaakt`;
@@ -1125,8 +1103,7 @@ async function startBulkImport() {
   if (credentials.length > 0) {
     document.getElementById('bulk-import-resultaat').style.display = '';
     document.getElementById('bulk-import-credentials').value =
-      `Toernooi: ${toernooiNaam}\n` +
-      `Wachtwoord (tijdelijk): ${pass}\n\n` +
+      `Toernooi: ${toernooiNaam}\nWachtwoord (tijdelijk): ${pass}\n\n` +
       credentials.join('\n');
   }
 
@@ -1138,12 +1115,10 @@ function kopieerBulkCredentials() {
   if (!el) return;
   navigator.clipboard.writeText(el.value)
     .then(() => toast('Gekopieerd ✓'))
-    .catch(() => {
-      el.select();
-      document.execCommand('copy');
-      toast('Gekopieerd ✓');
-    });
+    .catch(() => { el.select(); document.execCommand('copy'); toast('Gekopieerd ✓'); });
 }
+
+
 
 // ============================================================
 //  EXPORTS
