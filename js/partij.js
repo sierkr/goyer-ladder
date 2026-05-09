@@ -386,8 +386,10 @@ function onBaanSelect() {
 // context: 'partij' (default) of 'toernooi'
 function renderHandmatigHoles(context) {
   context = context || 'partij';
-  const containerId  = context === 'toernooi' ? 't-holes-handmatig'  : 'holes-handmatig';
-  const naamInputId  = context === 'toernooi' ? 't-baan-naam-nieuw'  : 'baan-naam-nieuw';
+  const isTDag = context.startsWith('toernooi-');
+  const dagNr  = isTDag ? context.split('-')[1] : null;
+  const containerId  = isTDag ? `t-holes-handmatig-${dagNr}` : (context === 'toernooi' ? 't-holes-handmatig' : 'holes-handmatig');
+  const naamInputId  = isTDag ? `t-baan-naam-nieuw-${dagNr}` : (context === 'toernooi' ? 't-baan-naam-nieuw' : 'baan-naam-nieuw');
   let html = `<div class="form-group" style="margin-bottom:10px">
     <label>Naam van de baan</label>
     <input type="text" id="${naamInputId}" placeholder="bijv. Golfbaan de Poel" style="font-size:16px">
@@ -408,10 +410,12 @@ function renderHandmatigHoles(context) {
   document.getElementById(containerId).innerHTML = html;
 }
 
-// context: 'partij' (default) of 'toernooi'
+// context: 'partij' (default), 'toernooi', of 'toernooi-{dagNr}'
 async function slaAangepasteBaanOp(context) {
   context = context || 'partij';
-  const naamInputId = context === 'toernooi' ? 't-baan-naam-nieuw' : 'baan-naam-nieuw';
+  const isTDag = context.startsWith('toernooi-');
+  const dagNr  = isTDag ? context.split('-')[1] : null;
+  const naamInputId = isTDag ? `t-baan-naam-nieuw-${dagNr}` : (context === 'toernooi' ? 't-baan-naam-nieuw' : 'baan-naam-nieuw');
   const naam = document.getElementById(naamInputId)?.value?.trim();
   if (!naam) { toast('Geef de baan eerst een naam'); return; }
 
@@ -440,11 +444,12 @@ async function slaAangepasteBaanOp(context) {
   try {
     await setDoc(BANEN_DOC, { lijst: aangepasteBanen });
     toast(`${naam} opgeslagen`);
-    if (context === 'toernooi') {
-      // Herlaad toernooi baan-selector en selecteer de nieuwe baan
-      document.getElementById('t-baan-handmatig').style.display = 'none';
-      // initToernooiSetup herladen via import vanuit toernooi.js — roep via store-event
-      // Eenvoudiger: dispatch custom event dat toernooi.js opvangt
+    if (isTDag || context === 'toernooi') {
+      // Verberg de handmatig-container voor dit dag-blok
+      if (dagNr) {
+        const hw = document.getElementById(`t-baan-handmatig-${dagNr}`);
+        if (hw) hw.style.display = 'none';
+      }
       window.dispatchEvent(new CustomEvent('baanToegevoegd', { detail: { naam } }));
     } else {
       initPartijForm();

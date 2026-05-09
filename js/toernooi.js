@@ -1,5 +1,5 @@
 // ============================================================
-//  toernooi.js — v3.0.0-11.37
+//  toernooi.js — v3.0.0-11.41
 //  Meerdaags toernooi: scores/flights/baan per dag
 //  Datastructuur: t.dagen[dagNr-1].{datum,baan,holes,flights,scores,afgerond}
 // ============================================================
@@ -103,23 +103,42 @@ function renderToernooi() {
 // ============================================================
 //  BAAN SELECTOR IN TOERNOOI SETUP
 // ============================================================
-function onTBaanSelect() {
-  const val = document.getElementById('t-baan')?.value;
-  const hw  = document.getElementById('t-baan-handmatig');
+
+// Per dag-blok: onchange handler voor de baan-select
+function onTDagBaanSelect(sel, dagNr) {
+  const hw = document.getElementById(`t-baan-handmatig-${dagNr}`);
   if (!hw) return;
-  if (val === 'Handmatig invoeren') {
+  if (sel.value === 'Handmatig invoeren') {
     hw.style.display = 'block';
-    renderHandmatigHoles('toernooi');
+    // Tijdelijk actieve dag-context opslaan zodat slaAangepasteBaanOp het juiste blok weet
+    window._activeTDagNr = dagNr;
+    renderHandmatigHoles(`toernooi-${dagNr}`);
   } else {
     hw.style.display = 'none';
   }
 }
+window.onTDagBaanSelect = onTDagBaanSelect;
 
 window.addEventListener('baanToegevoegd', (e) => {
   const naam = e.detail?.naam;
-  initToernooiSetup();
-  const baanSel = document.getElementById('t-baan');
-  if (baanSel && naam) baanSel.value = naam;
+  // Verberg alle open handmatig-containers
+  document.querySelectorAll('[id^="t-baan-handmatig-"]').forEach(el => { el.style.display = 'none'; });
+  // Herlaad dag-blokken (vernieuwt baan-opties)
+  renderDagBlokken();
+  // Selecteer de nieuwe baan in alle dag-blokken (het blok dat de baan heeft aangemaakt)
+  if (naam) {
+    const dagNr = window._activeTDagNr;
+    const container = document.getElementById('t-dag-blokken');
+    if (container && dagNr) {
+      const blokken = container.querySelectorAll('.dag-blok');
+      const blok = blokken[dagNr - 1];
+      if (blok) {
+        const sel = blok.querySelector('.t-dag-baan');
+        if (sel && [...sel.options].some(o => o.value === naam)) sel.value = naam;
+      }
+    }
+    window._activeTDagNr = null;
+  }
 });
 
 // ============================================================
@@ -270,10 +289,13 @@ function renderDagBlokken() {
       </div>
       <div class="form-group" style="margin-bottom:10px">
         <label>Baan</label>
-        <select class="t-dag-baan">
+        <select class="t-dag-baan" onchange="onTDagBaanSelect(this, ${d})">
           ${baanOpties}
           <option value="Handmatig invoeren">+ Nieuwe baan toevoegen</option>
         </select>
+        <div id="t-baan-handmatig-${d}" style="display:none;margin-top:10px">
+          <div id="t-holes-handmatig-${d}"></div>
+        </div>
       </div>
       <div class="form-group" style="margin-bottom:10px">
         <label>Aantal holes</label>
@@ -458,6 +480,10 @@ function openFlightIndeling() {
 
   window._toernooiStarttijd = starttijd;
   window._toernooiInterval = interval;
+  window._flightDagModus = false;
+
+  const startBtn = document.getElementById('flight-modal-start-btn');
+  if (startBtn) { startBtn.textContent = 'Toernooi starten →'; startBtn.onclick = startToernooi; }
 
   renderFlightLijst();
   document.getElementById('modal-flight-indeling').classList.add('open');
@@ -796,6 +822,9 @@ function openFlightIndelingDag() {
   window._toernooiStarttijd = starttijd;
   window._toernooiInterval  = interval;
   window._flightDagModus = true; // signaal: sla op in dag ipv nieuw toernooi
+
+  const startBtn = document.getElementById('flight-modal-start-btn');
+  if (startBtn) { startBtn.textContent = 'Indeling opslaan →'; startBtn.onclick = slaFlightIndelingDagOp; }
 
   renderFlightLijst();
   document.getElementById('modal-flight-indeling').classList.add('open');
