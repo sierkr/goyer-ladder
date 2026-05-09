@@ -79,8 +79,8 @@ function setIngelogdVanafProfiel(firebaseUser, profiel) {
     rol:            profiel.rol  || 'speler',
     spelerId:       firebaseUser.uid,
     eersteLogin:    profiel.eersteLogin === true, // v3.0.0-11
-    toernooiSpeler: profiel.toernooiSpeler === true, // v3.0.0-11.67
-    toernooiNaam:   profiel.toernooiNaam   || null,  // v3.0.0-11.67
+    toernooiSpeler: profiel.toernooiSpeler === true, // v3.0.0-11.68
+    toernooiNaam:   profiel.toernooiNaam   || null,  // v3.0.0-11.68
   };
 
   vervolgIngelogd();
@@ -92,7 +92,7 @@ function updateSiteTitel() {
   const h1Second = document.getElementById('h1-second');
   if (!h1Second) return;
 
-  // v3.0.0-11.67: toernooiSpeler-vlag op profiel heeft prioriteit — toont de toernooijnaam
+  // v3.0.0-11.68: toernooiSpeler-vlag op profiel heeft prioriteit — toont de toernooijnaam
   // die bij aanmaken is meegegeven. Onafhankelijk van de globale toernooi-modus checkbox,
   // zodat andere ladder-spelers de normale titelbalk zien.
   if (huidigeBruiker.toernooiSpeler && huidigeBruiker.toernooiNaam) {
@@ -236,7 +236,7 @@ function pasToernooiModusNavToe() {
   if (!huidigeBruiker) return;
   if (isBeheerderRol() || isCoordinatorRol()) return; // beheerders altijd volledig zicht
 
-  // v3.0.0-11.67: twee paden — toernooiSpeler-vlag op profiel (batch-import)
+  // v3.0.0-11.68: twee paden — toernooiSpeler-vlag op profiel (batch-import)
   // of deelnemer van een actief toernooi met toernooiModus aan.
   const isToernooiSpeler = huidigeBruiker.toernooiSpeler === true;
   const actief = getActiefToernooiMetModus();
@@ -246,7 +246,8 @@ function pasToernooiModusNavToe() {
   if (!isToernooiSpeler && !isDeelnemerViaToernooiModus) return;
 
   // Verberg alle tabs behalve Toernooi en Uitslag
-  const verbergTabs = ['ladder', 'partij', 'ronde', 'help', 'archief', 'profiel', 'admin'];
+  // v3.0.0-11.68: uitslagen verborgen — ladder-partijen zijn niet relevant voor toernooi-deelnemers
+  const verbergTabs = ['ladder', 'partij', 'ronde', 'uitslagen', 'help', 'archief', 'profiel', 'admin'];
   verbergTabs.forEach(tab => {
     const idBtn = document.getElementById(`nav-${tab}-btn`);
     if (idBtn) idBtn.style.display = 'none';
@@ -287,7 +288,7 @@ function vervolgIngelogd() {
     const mijnToernooien = alleToernooien.filter(t =>
       (t.spelers || []).some(s => uid && s.uid === uid)
     );
-    // v3.0.0-11.67: toernooiSpeler-vlag toont ook de toernooi-tab, ook als nog
+    // v3.0.0-11.68: toernooiSpeler-vlag toont ook de toernooi-tab, ook als nog
     // niet in een toernooispelers-lijst staat (toernooi nog niet aangemaakt).
     if (mijnToernooien.length > 0 || huidigeBruiker.toernooiSpeler) {
       document.getElementById('nav-toernooi-btn').style.display = '';
@@ -499,7 +500,7 @@ async function initFirestore() {
   }, 3000);
 
   try {
-    // v3.0.0-11.67: laad initieel wachtwoord parallel met overige docs
+    // v3.0.0-11.68: laad initieel wachtwoord parallel met overige docs
     const [baanSnap, archiefSnap, uitdSnap, toernooiSnap, volgordeSnap] =
       await Promise.all([
         getDoc(BANEN_DOC),
