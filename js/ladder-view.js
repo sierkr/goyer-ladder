@@ -70,15 +70,16 @@ export function getLadderSpelers(ladderId) {
         rank:     stand.rank     || 0,
         partijen: stand.partijen || 0,
         gewonnen: stand.gewonnen || 0,
-        prevRank: stand.prevRank,
+        prevRank: stand.prevRank ?? null,
       });
     }
     return resultaat.sort((a, b) => (a.rank || 999) - (b.rank || 999));
   }
 
-  // Fallback: oude ladder.spelers[] (wordt in fase 9b uitgefaseerd)
-  return [...(ladder.data?.spelers || ladder.spelers || [])]
-    .sort((a, b) => (a.rank || 999) - (b.rank || 999));
+  // v3.0.0-11.51: geen fallback op ladder.spelers[] — standen/{uid} is altijd de bron.
+  // Als standen/ nog leeg is bij eerste load, geeft getLadderSpelers() [] terug
+  // totdat de listener fired en renderLadder() opnieuw aanroept.
+  return [];
 }
 
 /**

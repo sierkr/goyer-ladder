@@ -3,7 +3,7 @@
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG } from './store.js';
-import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { laadInviteStatus } from './auth.js';
 import { renderLadder } from './ladder.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -21,7 +21,25 @@ async function openStandAanpassen(ladderId) {
 
   const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
   if (!snapExists) return;
-  store._standAanpassenSpelers = [...(snapData.spelers || [])].sort((a,b) => a.rank - b.rank);
+  // Laad ranking uit spelerIds + standen/{uid} — geen ladder.spelers[] meer
+  const spelerIds = snapData.spelerIds || [];
+  const standenSnaps = await Promise.all(
+    spelerIds.map(uid => getDoc(doc(db, 'ladders', ladderId, 'standen', uid)).catch(() => null))
+  );
+  const spelersUitStanden = spelerIds.map((uid, i) => {
+    const d = standenSnaps[i]?.exists() ? standenSnaps[i].data() : {};
+    const profiel = (store._usersCache || []).find(u => u.uid === uid) || {};
+    return {
+      uid,
+      naam:     profiel.naam     || uid,
+      hcp:      profiel.hcp      ?? 0,
+      rank:     d.rank           || 0,
+      partijen: d.partijen       || 0,
+      gewonnen: d.gewonnen       || 0,
+      prevRank: d.prevRank       ?? null,
+    };
+  });
+  store._standAanpassenSpelers = spelersUitStanden.sort((a, b) => (a.rank || 999) - (b.rank || 999));
 
   document.getElementById('stand-aanpassen-titel').textContent = `Stand — ${ladder.naam}`;
   renderStandAanpassenLijst();
@@ -54,68 +72,24 @@ function verschuifStand(idx, delta) {
 }
 
 async function slaStandOp() {
-
   try {
-  const ladderId = _standAanpassenLadderId;
-  if (!ladderId) return;
-  _standAanpassenSpelers.forEach((s, idx) => s.rank = idx + 1);
-  const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
-  if (!snapExists) return;
-  const data = snapData;
-  data.spelers = _standAanpassenSpelers;
-  await setDoc(doc(db, 'ladders', ladderId), data);
-  const idx = alleLadders.findIndex(l => l.id === ladderId);
-  if (idx >= 0) alleLadders[idx].spelers = _standAanpassenSpelers;
-  if (ladderId === activeLadderId) state.spelers = _standAanpassenSpelers;
+    const ladderId = _standAanpassenLadderId;
+    if (!ladderId) return;
+    _standAanpassenSpelers.forEach((s, idx) => s.rank = idx + 1);
 
-  // v3.0.0-11.28: sync ook standen/{uid} subcollectie. Spelers in
-  // _standAanpassenSpelers hebben mogelijk een numerieke s.id ipv een uid;
-  // val dan terug op naam-lookup via store._usersCache (zelfde als
-  // syncStandenNaBevestigUitslag).
-  const users = store._usersCache || [];
-  const naamNaarUids = {};
-  users.forEach(u => {
-    if (!u.naam) return;
-    const key = u.naam.toLowerCase().trim();
-    if (!naamNaarUids[key]) naamNaarUids[key] = [];
-    naamNaarUids[key].push(u.uid);
-  });
-  function vindUidVoor(s) {
-    if (typeof s.id === 'string' && s.id.length > 10) return s.id;
-    const key = (s.naam || '').toLowerCase().trim();
-    const kandidaten = naamNaarUids[key];
-    if (!kandidaten || kandidaten.length === 0) return null;
-    if (kandidaten.length > 1) {
-      console.warn(`[slaStandOp] naam-collision voor "${s.naam}": ${kandidaten.length} uids — niet gesynct`);
-      return null;
-    }
-    return kandidaten[0];
-  }
+    // Schrijf uitsluitend naar standen/{uid} — ladder.spelers[] is niet meer de bron
+    const writes = _standAanpassenSpelers
+      .filter(s => s.uid)
+      .map(s => {
+        const payload = { rank: s.rank || 0, partijen: s.partijen || 0, gewonnen: s.gewonnen || 0 };
+        if (s.prevRank != null) payload.prevRank = s.prevRank;
+        return setDoc(doc(db, 'ladders', ladderId, 'standen', s.uid), payload);
+      });
+    await Promise.all(writes);
 
-  const writes = [];
-  let geschreven = 0, overgeslagen = 0;
-  for (const s of _standAanpassenSpelers) {
-    if (!s.naam) { overgeslagen++; continue; }
-    const uid = vindUidVoor(s);
-    if (!uid) { overgeslagen++; continue; }
-    const payload = {
-      rank:     s.rank     || 0,
-      partijen: s.partijen || 0,
-      gewonnen: s.gewonnen || 0,
-    };
-    if (s.prevRank != null) payload.prevRank = s.prevRank;
-    writes.push(
-      setDoc(doc(db, 'ladders', ladderId, 'standen', uid), payload)
-        .then(() => geschreven++)
-        .catch(err => console.warn('[slaStandOp] standen sync mislukt voor', s.naam, err.code))
-    );
-  }
-  await Promise.all(writes);
-  console.log(`[slaStandOp] standen-sync klaar: ${geschreven} geschreven, ${overgeslagen} overgeslagen`);
-
-  closeModal('modal-stand-aanpassen');
-  renderLadder();
-  toast('Stand bijgewerkt ✓');
+    closeModal('modal-stand-aanpassen');
+    renderLadder();
+    toast('Stand bijgewerkt ✓');
   } catch(e) { console.error('slaStandOp mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
@@ -157,12 +131,8 @@ async function slaLadderInstellingenOp() {
   };
 
   
-  // Sla op in Firestore
-  const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
-  if (snapExists) {
-    data.config = config;
-    await setDoc(doc(db, 'ladders', ladderId), data);
-  }
+  // Sla op in Firestore — alleen config aanraken via merge
+  await setDoc(doc(db, 'ladders', ladderId), { config }, { merge: true });
 
   // Update cache
   const idx = alleLadders.findIndex(l => l.id === ladderId);
@@ -194,10 +164,17 @@ async function maakNieuweLadder() {
     toast('Een ladder met deze naam bestaat al'); return;
   }
   const id = naam.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
-  const nieuweData = { id: snap.id, ...snap.data() };
+  const nieuweData = {
+    naam,
+    type,
+    spelerIds: [],
+    config: { ...DEFAULT_LADDER_CONFIG },
+    actievePartijen: [],
+    uitslagen: [],
+  };
 
     await setDoc(doc(db, 'ladders', id), nieuweData);
-  alleLadders.push({ id, naam, spelerIds: [], spelers: [], type });
+  alleLadders.push({ id, naam, spelerIds: [], type });
   closeModal('modal-nieuwe-ladder');
   renderAdminLadders();
   toast(`Ladder "${naam}" aangemaakt ✓`);
@@ -263,8 +240,7 @@ async function openLadderSpelersModal(ladderId) {
     document.getElementById('ladder-spelers-lijst').innerHTML = gesorteerd.length === 0
       ? '<p style="font-size:13px;color:var(--light);padding:12px 0">Geen spelers gevonden. Voeg eerst spelers toe via Spelers beheren.</p>'
       : gesorteerd.map(u => {
-          const inLadder = huidigeUids.has(u.uid) ||
-            (u.naam && (ladderDataVers.spelers || []).some(s => s.naam?.toLowerCase() === u.naam.toLowerCase()));
+          const inLadder = huidigeUids.has(u.uid);
           const hcp = u.hcp != null ? u.hcp : '—';
           return `<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer">
             <input type="checkbox" value="${escAttr(u.uid)}" ${inLadder ? 'checked' : ''}
@@ -286,68 +262,36 @@ async function slaLadderSpelersOp() {
     if (!ladderId) return;
 
     const checkboxes = document.querySelectorAll('#ladder-spelers-lijst input[type=checkbox]');
-    // Geselecteerde UIDs (strings) uit de checkboxes
-    const geselecteerdeUids = [...checkboxes]
-      .filter(c => c.checked)
-      .map(c => c.value);  // uid strings
+    const geselecteerdeUids = [...checkboxes].filter(c => c.checked).map(c => c.value);
 
     const { exists: snapExists, data: snapData } = await getLadderData(ladderId, true);
     const ladderData = snapExists ? snapData
       : { ...JSON.parse(JSON.stringify(DEFAULT_STATE)), naam: alleLadders.find(l => l.id === ladderId)?.naam };
 
-    const huidigeSpelers = ladderData.spelers || [];
+    // Schrijf standen/{uid} voor nieuwe spelers (bestaande blijven ongewijzigd)
+    const huidigeUids = new Set(ladderData.spelerIds || []);
+    const nieuweUids  = geselecteerdeUids.filter(uid => !huidigeUids.has(uid));
+    const nieuweRankBase = geselecteerdeUids.length - nieuweUids.length;
+    await Promise.all(nieuweUids.map((uid, i) =>
+      setDoc(doc(db, 'ladders', ladderId, 'standen', uid), {
+        rank: nieuweRankBase + i + 1, partijen: 0, gewonnen: 0
+      }).catch(e => console.warn('standen write mislukt voor', uid, e.code))
+    ));
 
-    // Bouw spelers[] opnieuw op — backward compat voor partij/ronde modules
-    // Match uid → bestaande speler via naam of maak nieuw entry
-    const nieuweSpelers = [];
-    for (const cb of [...checkboxes].filter(c => c.checked)) {
-      const uid  = cb.value;
-      const naam = cb.dataset.naam || '';
-      const hcp  = parseFloat(cb.dataset.hcp) || 0;
+    // Verwijder standen/{uid} voor spelers die uit de ladder zijn gehaald
+    const verwijderdeUids = [...huidigeUids].filter(uid => !geselecteerdeUids.includes(uid));
+    await Promise.all(verwijderdeUids.map(uid =>
+      deleteDoc(doc(db, 'ladders', ladderId, 'standen', uid))
+        .catch(e => console.warn('standen delete mislukt voor', uid, e.code))
+    ));
 
-      // Zoek bestaand entry op naam
-      const bestaand = huidigeSpelers.find(s => s.naam?.toLowerCase() === naam.toLowerCase());
-      if (bestaand) {
-        nieuweSpelers.push({ ...bestaand });
-      } else {
-        // v3.0.0-9c: alleen nog getNextId(), geen alleSpelersData-lookup.
-        // Numeric ids verdwijnen in een volgende fase.
-        const numericId = getNextId() + nieuweSpelers.length;
-        nieuweSpelers.push({
-          id: numericId, naam, hcp,
-          rank: nieuweSpelers.length + 1, partijen: 0, gewonnen: 0
-        });
-      }
-
-      // Schrijf ook standen/{uid} als die nog niet bestaat
-      try {
-        const standenRef = doc(db, 'ladders', ladderId, 'standen', uid);
-        const standenSnap = await getDoc(standenRef);
-        if (!standenSnap.exists()) {
-          const nieuweRank = nieuweSpelers.length;
-          await setDoc(standenRef, { rank: nieuweRank, partijen: 0, gewonnen: 0 });
-        }
-      } catch(e) { console.warn('standen write mislukt voor', uid, e.code); }
-    }
-
-    nieuweSpelers.sort((a, b) => a.rank - b.rank).forEach((s, i) => s.rank = i + 1);
-
-    // Sla op: spelerIds als UIDs (primary), spelers[] als numeric (backward compat)
-    const updatedData = { ...ladderData, spelers: nieuweSpelers, spelerIds: geselecteerdeUids };
-    await setDoc(doc(db, 'ladders', ladderId), updatedData);
+    // Sla alleen spelerIds op via merge — nooit het hele document herschrijven
+    await setDoc(doc(db, 'ladders', ladderId), { spelerIds: geselecteerdeUids }, { merge: true });
 
     const idx = alleLadders.findIndex(l => l.id === ladderId);
     if (idx >= 0) {
       alleLadders[idx].spelerIds = geselecteerdeUids;
-      alleLadders[idx].spelers   = nieuweSpelers;
-      if (alleLadders[idx].data) {
-        alleLadders[idx].data.spelerIds = geselecteerdeUids;
-        alleLadders[idx].data.spelers   = nieuweSpelers;
-      }
-    }
-    if (ladderId === activeLadderId) {
-      state.spelers   = nieuweSpelers;
-      state.spelerIds = geselecteerdeUids;
+      if (alleLadders[idx].data) alleLadders[idx].data.spelerIds = geselecteerdeUids;
     }
 
     closeModal('modal-ladder-spelers');
@@ -375,7 +319,7 @@ async function renderAdminLadders() {
       </div>` : ''}
       <div style="flex:1">
         <div style="font-weight:600">${esc(l.naam)}</div>
-        <div style="font-size:11px;color:var(--light)">${(l.spelers||[]).length} spelers${(l.data?.type || l.type) === 'knockout' ? ' · knock-out' : ''}</div>
+        <div style="font-size:11px;color:var(--light)">${(l.spelerIds||[]).length} spelers${(l.data?.type || l.type) === 'knockout' ? ' · knock-out' : ''}</div>
       </div>
       <button class="btn btn-sm btn-ghost" onclick="openLadderSpelersModal('${escAttr(l.id)}')">👥 Spelers</button>
       <button class="btn btn-sm btn-ghost" onclick="openStandAanpassen('${escAttr(l.id)}')">↕ Stand</button>
@@ -398,19 +342,32 @@ function openSnapshotsModal() {
 
 async function slaSnapshotOp(label) {
   try {
+    if (!activeLadderId) return;
     // Verwijder snapshots ouder dan 30 dagen
     const dertig = Date.now() - 30 * 24 * 60 * 60 * 1000;
     const oudeSnaps = await getDocs(query(SNAPSHOTS_COL, where('timestamp', '<', dertig)));
     oudeSnaps.forEach(d => deleteDoc(d.ref));
 
-    // Sla nieuwe snapshot op
+    // Lees actuele standen uit standen/{uid} — niet uit state.spelers
+    const ladder = alleLadders.find(l => l.id === activeLadderId);
+    const spelerIds = ladder?.spelerIds || ladder?.data?.spelerIds || [];
+    const standenSnaps = await Promise.all(
+      spelerIds.map(uid => getDoc(doc(db, 'ladders', activeLadderId, 'standen', uid)).catch(() => null))
+    );
+    const spelersSnapshot = spelerIds.map((uid, i) => {
+      const d = standenSnaps[i]?.exists() ? standenSnaps[i].data() : {};
+      const profiel = (store._usersCache || []).find(u => u.uid === uid) || {};
+      return { uid, naam: profiel.naam || uid, hcp: profiel.hcp ?? 0,
+               rank: d.rank || 0, partijen: d.partijen || 0, gewonnen: d.gewonnen || 0 };
+    });
+
     await addDoc(SNAPSHOTS_COL, {
       label,
       ladderId: activeLadderId,
-      ladderNaam: alleLadders.find(l => l.id === activeLadderId)?.naam || activeLadderId,
+      ladderNaam: ladder?.naam || activeLadderId,
       timestamp: Date.now(),
       datum: new Date().toLocaleString('nl-NL'),
-      spelers: JSON.parse(JSON.stringify(state.spelers))
+      spelers: spelersSnapshot
     });
   } catch(e) { console.error('Snapshot mislukt:', e); }
 }
@@ -445,7 +402,7 @@ async function herstelSnapshot(snapId) {
     const snapDoc = await getDoc(doc(db, 'snapshots', snapId));
     if (!snapDoc.exists()) { toast('Snapshot niet gevonden'); return; }
     const data = snapDoc.data();
-    const ladderId = data.ladderId || activeLadderId;
+    const ladderId   = data.ladderId || activeLadderId;
     const ladderNaam = data.ladderNaam || ladderId;
 
     if (!confirm(`Ladderstand van "${ladderNaam}" herstellen naar:\n${data.label} (${data.datum})?\n\nDe huidige stand wordt eerst opgeslagen.`)) return;
@@ -453,33 +410,16 @@ async function herstelSnapshot(snapId) {
     // Sla huidige stand op voordat we herstellen
     await slaSnapshotOp('⚠️ Voor herstel op ' + new Date().toLocaleString('nl-NL'));
 
-    // Laad de juiste ladder uit Firestore
-    const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
-    if (!snapExists) { toast('Ladder niet gevonden'); return; }
-    const ladderData = snapData;
-
-    // Herstel spelers inclusief alle statistieken
-    ladderData.spelers = data.spelers.map(s => ({
-      ...s,
-      partijen: s.partijen ?? 0,
-      gewonnen: s.gewonnen ?? 0,
-      prevRank: null
-    }));
-
-    // Schrijf naar de juiste ladder
-    await setDoc(doc(db, 'ladders', ladderId), ladderData);
-
-    // Update lokale state als het de actieve ladder is
-    if (ladderId === activeLadderId) {
-      state.spelers = ladderData.spelers;
-    }
-
-    // Update alleLadders cache
-    const idx = alleLadders.findIndex(l => l.id === ladderId);
-    if (idx >= 0) {
-      alleLadders[idx].spelers = ladderData.spelers;
-      alleLadders[idx].data = ladderData;
-    }
+    // Schrijf elke speler terug naar standen/{uid}
+    const writes = (data.spelers || [])
+      .filter(s => s.uid)
+      .map(s => setDoc(doc(db, 'ladders', ladderId, 'standen', s.uid), {
+        rank:     s.rank     ?? 0,
+        partijen: s.partijen ?? 0,
+        gewonnen: s.gewonnen ?? 0,
+        prevRank: null,
+      }));
+    await Promise.all(writes);
 
     renderLadder();
     toast(`Ladderstand "${ladderNaam}" hersteld ✓`);

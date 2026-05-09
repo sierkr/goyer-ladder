@@ -3,7 +3,7 @@
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, state, huidigeBruiker, archiefData, uitdagingenData, alleLadders, activeLadderId } from './store.js';
-import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { renderAdmin, renderProfiel } from './admin.js';
 import { renderLadder } from './ladder.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -77,74 +77,60 @@ async function bevestigNieuwSeizoen() {
         const data = ladderSnap.data();
         const ladderNaam = data.naam || ladderId;
 
-        // 2) Archiveer eindstand (vóór omdraaien — de archief toont de uitgangssituatie)
-        const spelersSorteerd = [...(data.spelers || [])].sort((a, b) => (a.rank || 999) - (b.rank || 999));
+        // 2) Lees eindstand uit standen/{uid} — niet uit ladder.spelers[]
+        const standenSnap = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
+        const spelerIds   = data.spelerIds || [];
+        const usersCache  = store._usersCache || [];
+
+        const standenData = standenSnap.docs
+          .filter(d => spelerIds.includes(d.id))
+          .map(d => {
+            const profiel = usersCache.find(u => u.uid === d.id) || {};
+            return {
+              uid:      d.id,
+              naam:     profiel.naam     || d.id,
+              hcp:      profiel.hcp      ?? 0,
+              rank:     d.data().rank    || 0,
+              partijen: d.data().partijen || 0,
+              gewonnen: d.data().gewonnen || 0,
+            };
+          })
+          .sort((a, b) => (a.rank || 999) - (b.rank || 999));
+
         const seizoen = {
           naam,
           ladderId,
           ladderNaam,
           datum: new Date().toLocaleDateString('nl-NL'),
           timestamp: Date.now(),
-          eindstand: spelersSorteerd.map(s => ({
-            rank: s.rank,
-            naam: s.naam,
-            partijen: s.partijen || 0,
-            gewonnen: s.gewonnen || 0,
-            hcp: Math.round(s.hcp || 0)
+          eindstand: standenData.map(s => ({
+            rank: s.rank, naam: s.naam,
+            partijen: s.partijen, gewonnen: s.gewonnen,
+            hcp: Math.round(s.hcp)
           }))
         };
         archiefData.unshift(seizoen);
         await setDoc(ARCHIEF_DOC, { seizoenen: archiefData });
         alleIdsArchiefOK.push(ladderId);
 
-        // 3) Reset spelers[]: hernummer naar 1..N, eventueel omgedraaid
-        // Als omdraaien=true: rank N wordt 1, rank N-1 wordt 2, etc.
-        const aantal = spelersSorteerd.length;
+        // 3) Bepaal nieuwe volgorde: omdraaien of behouden
         const nieuweVolgorde = omdraaien
-          ? [...spelersSorteerd].reverse()
-          : spelersSorteerd;
-        const gereset = nieuweVolgorde.map((s, i) => ({
-          ...s,
-          rank: i + 1,
-          partijen: 0,
-          gewonnen: 0,
-        }));
-        gereset.forEach(s => { delete s.prevRank; });
+          ? [...standenData].reverse()
+          : standenData;
 
-        // 4) Update ladder-doc: nieuwe spelers[], wis uitslagen[] + actievePartijen[]
+        // 4) Reset ladder-doc: wis uitslagen[] + actievePartijen[] via merge
         await setDoc(doc(db, 'ladders', ladderId), {
-          ...data,
-          spelers: gereset,
           uitslagen: [],
           actievePartijen: [],
-        });
+        }, { merge: true });
 
-        // 5) Reset standen/{uid} subcollection
-        const standenSnap = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
-        const nieuweStandenPromises = [];
-        for (const sDoc of standenSnap.docs) {
-          const uid = sDoc.id;
-          // Vind nieuwe rank via spelerIds[] order of gereset[] naam-match
-          const spelerInLadder = gereset.find((sp, i) => {
-            // Probeer match via spelerIds index (als er een uid-veld in spelers[] zou zitten)
-            return false; // val door naar naam-match hieronder
-          });
-          // Fallback: via speler-doc naam ophalen
-          const spelersDocSnap = await getDoc(doc(db, 'spelers', uid)).catch(() => null);
-          const spelerNaam = spelersDocSnap?.exists() ? spelersDocSnap.data().naam : null;
-          const matchIndex = spelerNaam
-            ? gereset.findIndex(sp => (sp.naam || '').toLowerCase() === spelerNaam.toLowerCase())
-            : -1;
-          const nieuweRank = matchIndex >= 0 ? matchIndex + 1 : 0;
-          nieuweStandenPromises.push(
-            setDoc(doc(db, 'ladders', ladderId, 'standen', uid), {
-              rank: nieuweRank,
-              partijen: 0,
-              gewonnen: 0,
-            })
-          );
-        }
-        await Promise.all(nieuweStandenPromises);
+        // 5) Reset standen/{uid} met nieuwe ranks en 0-statistieken
+        const resetPromises = nieuweVolgorde.map((s, i) =>
+          setDoc(doc(db, 'ladders', ladderId, 'standen', s.uid), {
+            rank: i + 1, partijen: 0, gewonnen: 0,
+          })
+        );
+        await Promise.all(resetPromises);
 
         // 6) Delete uitslagen/ docs voor deze ladder
         // Filter op ladderId veld (nieuwe docs) — legacy docs zonder ladderId worden later opgeruimd
@@ -162,10 +148,8 @@ async function bevestigNieuwSeizoen() {
         // 8) Update lokale alleLadders cache
         const idx = alleLadders.findIndex(l => l.id === ladderId);
         if (idx >= 0) {
-          alleLadders[idx].spelers = gereset;
           alleLadders[idx].actievePartijen = [];
           if (alleLadders[idx].data) {
-            alleLadders[idx].data.spelers = gereset;
             alleLadders[idx].data.uitslagen = [];
             alleLadders[idx].data.actievePartijen = [];
           }
@@ -173,7 +157,6 @@ async function bevestigNieuwSeizoen() {
 
         // 9) Als dit de actieve ladder is: reset ook state-variabele
         if (ladderId === activeLadderId) {
-          state.spelers = gereset;
           state.uitslagen = [];
           state.actievePartijen = [];
         }
@@ -479,20 +462,11 @@ function toonUitdagingBadge() {
   }
 }
 
-async function stuurUitdaging(naarSpelerId) {
-
+async function stuurUitdaging(naarUid) {
   try {
-  const naarSpeler = state.spelers.find(s => s.id === naarSpelerId);
-  if (!naarSpeler) return;
-
-  // Zoek e-mail van ontvanger in users lijst
+  // Zoek speler via uid in de actieve ladder (standen/{uid} via getLadderSpelers)
   const users = await getUsers();
-  const naarUser = users.find(u => {
-    const naam = (u.gebruikersnaam || '').toLowerCase();
-    const spelernaam = naarSpeler.naam.toLowerCase();
-    return naam === spelernaam || spelernaam.includes(naam) || naam.includes(spelernaam.split(' ')[0]);
-  });
-
+  const naarUser = users.find(u => u.uid === naarUid);
   if (!naarUser) { toast('Kan gebruiker niet vinden voor uitdaging'); return; }
 
   // Check of er al een open uitdaging is
@@ -508,7 +482,7 @@ async function stuurUitdaging(naarSpelerId) {
     vanEmail: huidigeBruiker.email,
     vanNaam: huidigeBruiker.gebruikersnaam,
     naarEmail: naarUser.email,
-    naarNaam: naarUser.gebruikersnaam || naarSpeler.naam,
+    naarNaam: naarUser.naam || naarUser.gebruikersnaam || '',
     naarUid: naarUser.uid || null,
     status: 'open',
     timestamp: Date.now()
@@ -522,7 +496,7 @@ async function stuurUitdaging(naarSpelerId) {
     await stuurNotificatie(naarUser.uid, '⚔️ Nieuwe uitdaging!', `${huidigeBruiker.gebruikersnaam} daagt je uit voor een matchplay partij`);
   }
 
-  toast(`Uitdaging verstuurd naar ${naarSpeler.naam.split(' ')[0]} ✓`);
+  toast(`Uitdaging verstuurd naar ${(naarUser.naam || naarUser.gebruikersnaam || '').split(' ')[0]} ✓`);
   renderLadder(); // refresh voor uitdagingsknop
   } catch(e) { console.error('stuurUitdaging mislukt:', e); }
 }

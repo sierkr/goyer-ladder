@@ -3,7 +3,7 @@
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, _beheerPartijId, _beheerWinnaars } from './store.js';
-import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, getNextId, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { mijnPartij } from './partij.js';
 import { renderLadder } from './ladder.js';
 import { renderRonde, showLadderChanges, syncStandenNaBevestigUitslag, verwijderPartijMetRetry } from './ronde.js';
@@ -109,7 +109,7 @@ function renderUitslagen() {
       const namen = p.spelers.map(s => esc(s.naam)).join(', ');
       // Hoeveel holes ingevuld?
       const ingevuld = p.spelers.length > 0
-        ? p.scores[p.spelers[0].id]?.filter(v => v !== null).length || 0
+        ? p.scores[p.spelers[0].uid]?.filter(v => v !== null).length || 0
         : 0;
       return `
         <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
@@ -171,11 +171,11 @@ function openBeheerPartij(partijId) {
     // Bereken stand op basis van ingevulde scores
     let standA = 0;
     p.holes.forEach((hole, i) => {
-      const sA = p.scores[m.spelerA.id]?.[i];
-      const sB = p.scores[m.spelerB.id]?.[i];
+      const sA = p.scores[m.spelerA.uid]?.[i];
+      const sB = p.scores[m.spelerB.uid]?.[i];
       if (sA == null || sB == null) return;
-      const slagA = m.hcpOntvanger === m.spelerA.id && hole.si <= m.hcpSlagen ? 1 : 0;
-      const slagB = m.hcpOntvanger === m.spelerB.id && hole.si <= m.hcpSlagen ? 1 : 0;
+      const slagA = m.hcpOntvanger === m.spelerA.uid && hole.si <= m.hcpSlagen ? 1 : 0;
+      const slagB = m.hcpOntvanger === m.spelerB.uid && hole.si <= m.hcpSlagen ? 1 : 0;
       if ((sA - slagA) < (sB - slagB)) standA++;
       else if ((sA - slagA) > (sB - slagB)) standA--;
     });
@@ -232,16 +232,10 @@ async function bevestigBeheerUitslag() {
     if (kant === 'SKIP') return;
     const winnaar = kant === 'A' ? m.spelerA : m.spelerB;
     const verliezer = kant === 'A' ? m.spelerB : m.spelerA;
-    // v3.0.0-11.5: match eerst op id, fallback op naam (voor view-laag uid-ids)
-    const sw = state.spelers.find(s => s.id === winnaar.id)
-             || state.spelers.find(s => s.naam?.toLowerCase() === winnaar.naam?.toLowerCase());
-    const sv = state.spelers.find(s => s.id === verliezer.id)
-             || state.spelers.find(s => s.naam?.toLowerCase() === verliezer.naam?.toLowerCase());
-    if (!sw || !sv) {
-      console.warn('[beheer-uitslag] matchup', idx, 'skipped — speler niet in state',
-        'winnaar:', winnaar.naam, sw?'ok':'NIET', 'verliezer:', verliezer.naam, sv?'ok':'NIET');
-      return;
-    }
+    // uid-match — enige sleutel, geen naam-fallback
+    const sw = state.spelers.find(s => s.uid === winnaar.uid);
+    const sv = state.spelers.find(s => s.uid === verliezer.uid);
+    if (!sw || !sv) { return; }
     const oldWrank = sw.rank, oldVrank = sv.rank;
     sw.partijen++; sv.partijen++; sw.gewonnen++;
     let newWrank, newVrank;
@@ -267,7 +261,7 @@ async function bevestigBeheerUitslag() {
     const beschikbaar2 = [];
     for (let r = 1; r <= n2; r++) { if (!gereserveerd2.has(r)) beschikbaar2.push(r); }
     const anderen2 = state.spelers
-      .filter(s => s.id !== sw.id && s.id !== sv.id)
+      .filter(s => s.uid !== sw.uid && s.uid !== sv.uid)
       .sort((a, b) => a.rank - b.rank);
     anderen2.forEach((s, i) => { s.rank = beschikbaar2[i]; });
     changes.push({ winnaar: sw.naam, verliezer: sv.naam, wOud: oldWrank, wNieuw: newWrank, vOud: oldVrank, vNieuw: newVrank });
@@ -313,11 +307,10 @@ async function annuleerEigenPartij() {
   if (ladderId !== activeLadderId) {
     const snap = await getDoc(doc(db, 'ladders', ladderId));
     if (snap.exists()) {
-      const data = snap.data();
-      data.actievePartijen = (data.actievePartijen || []).filter(ap => ap.partijId !== p.partijId);
-      await setDoc(doc(db, 'ladders', ladderId), data);
+      const filtered = (snap.data().actievePartijen || []).filter(ap => ap.partijId !== p.partijId);
+      await setDoc(doc(db, 'ladders', ladderId), { actievePartijen: filtered }, { merge: true });
       const idx = alleLadders.findIndex(l => l.id === ladderId);
-      if (idx >= 0) { alleLadders[idx].actievePartijen = data.actievePartijen; if (alleLadders[idx].data) alleLadders[idx].data.actievePartijen = data.actievePartijen; }
+      if (idx >= 0) { alleLadders[idx].actievePartijen = filtered; if (alleLadders[idx].data) alleLadders[idx].data.actievePartijen = filtered; }
     }
   } else {
     state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== p.partijId);
@@ -404,7 +397,7 @@ function renderLiveScoreBord() {
   document.getElementById('live-scorebord-titel').textContent = p.baan;
 
   const naamMap = {};
-  p.spelers.forEach(s => { naamMap[s.id] = s.naam; });
+  p.spelers.forEach(s => { naamMap[s.uid] = s.naam; });
 
   // Matchstand per koppel
   let matchHtml = '<div style="margin-bottom:16px">';
@@ -414,15 +407,15 @@ function renderLiveScoreBord() {
     // Bereken stand
     let standA = 0, gespeeld = 0;
     p.holes.forEach((hole, i) => {
-      const sA = p.scores[m.spelerA.id]?.[i];
-      const sB = p.scores[m.spelerB.id]?.[i];
+      const sA = p.scores[m.spelerA.uid]?.[i];
+      const sB = p.scores[m.spelerB.uid]?.[i];
       if (sA == null || sB == null) return;
       gespeeld++;
       const aantalHoles = p.holes.length;
       const diff = m.hcpSlagen;
-      const slagA = m.hcpOntvanger === m.spelerA.id
+      const slagA = m.hcpOntvanger === m.spelerA.uid
         ? ((hole.si <= Math.min(diff, aantalHoles) ? 1 : 0) + (hole.si <= Math.max(0, diff - aantalHoles) ? 1 : 0)) : 0;
-      const slagB = m.hcpOntvanger === m.spelerB.id
+      const slagB = m.hcpOntvanger === m.spelerB.uid
         ? ((hole.si <= Math.min(diff, aantalHoles) ? 1 : 0) + (hole.si <= Math.max(0, diff - aantalHoles) ? 1 : 0)) : 0;
       if ((sA - slagA) < (sB - slagB)) standA++;
       else if ((sA - slagA) > (sB - slagB)) standA--;
@@ -444,7 +437,7 @@ function renderLiveScoreBord() {
                         : beslist ? `${esc(standA > 0 ? nA : nB)} wint ${Math.abs(standA)}&${resterend}`
                         : (standA > 0 ? `${esc(nA)} ${standA} UP` : `${esc(nB)} ${Math.abs(standA)} UP`);
     const hcpTekst = m.hcpSlagen > 0
-      ? `<span style="font-size:11px;color:var(--light)">${esc(m.hcpOntvanger === m.spelerA.id ? nA : nB)} +${m.hcpSlagen}</span>`
+      ? `<span style="font-size:11px;color:var(--light)">${esc(m.hcpOntvanger === m.spelerA.uid ? nA : nB)} +${m.hcpSlagen}</span>`
       : '';
     matchHtml += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
       <div>
@@ -461,11 +454,11 @@ function renderLiveScoreBord() {
 
   // Scorekaart (read-only)
   const totalen = {};
-  p.spelers.forEach(s => { totalen[s.id] = 0; });
+  p.spelers.forEach(s => { totalen[s.uid] = 0; });
   let tabelHtml = '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px;width:100%">';
   tabelHtml += '<tr><th style="background:var(--green);color:white;padding:6px 8px;text-align:left">Hole</th>';
   p.spelers.forEach(s => {
-    tabelHtml += `<th style="background:var(--green);color:white;padding:6px 8px;text-align:center">${esc(naamMap[s.id])}</th>`;
+    tabelHtml += `<th style="background:var(--green);color:white;padding:6px 8px;text-align:center">${esc(naamMap[s.uid])}</th>`;
   });
   tabelHtml += '</tr>';
   p.holes.forEach((h, i) => {
@@ -473,8 +466,8 @@ function renderLiveScoreBord() {
     tabelHtml += `<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:5px 8px;font-weight:600">${holeNr}<span style="font-size:10px;color:var(--light);margin-left:3px">p${h.par}</span></td>`;
     p.spelers.forEach(s => {
-      const val = p.scores[s.id]?.[i];
-      if (val != null) totalen[s.id] += Number(val);
+      const val = p.scores[s.uid]?.[i];
+      if (val != null) totalen[s.uid] += Number(val);
       const kleur = val == null ? '' : val <= h.par - 2 ? '#d4edda' : val === h.par - 1 ? '#d8f3dc' : val === h.par + 1 ? '#fff3cd' : val >= h.par + 2 ? '#f8d7da' : '';
       const txtCol = kleur ? '#1a1a1a' : 'var(--dark)';
       tabelHtml += `<td style="text-align:center;padding:5px;background:${kleur};color:${txtCol}">${val != null ? val : '—'}</td>`;
@@ -483,8 +476,8 @@ function renderLiveScoreBord() {
   });
   tabelHtml += '<tr style="background:var(--green-pale);font-weight:700"><td style="padding:5px 8px">Totaal</td>';
   p.spelers.forEach(s => {
-    const filled = p.scores[s.id]?.filter(v => v != null).length || 0;
-    tabelHtml += `<td style="text-align:center;font-family:'DM Mono',monospace">${filled > 0 ? totalen[s.id] : '—'}</td>`;
+    const filled = p.scores[s.uid]?.filter(v => v != null).length || 0;
+    tabelHtml += `<td style="text-align:center;font-family:'DM Mono',monospace">${filled > 0 ? totalen[s.uid] : '—'}</td>`;
   });
   tabelHtml += '</tr></table></div>';
 
