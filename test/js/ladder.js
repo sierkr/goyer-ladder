@@ -45,7 +45,7 @@ async function renderLadder() {
           const volgorde = volgordeSnap.exists() ? (volgordeSnap.data().volgorde || []) : [];
           store.alleLadders = laddersSnap.docs.map(d => ({
             id: d.id, naam: d.data().naam, type: d.data().type || 'ranking',
-            spelerIds: d.data().spelerIds || [], spelers: d.data().spelers || [],
+            spelerIds: d.data().spelerIds || [],
             actievePartijen: d.data().actievePartijen || [], config: d.data().config || null,
             data: d.data()
           }));

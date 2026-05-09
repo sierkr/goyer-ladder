@@ -1955,62 +1955,63 @@ async function bevestigToernooiAfsluiten() {
       const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
       if (snapExists) {
         const ladderData = snapData;
-        const ladderSpelerUids = new Set((ladderData.spelers || []).map(s => s.uid).filter(Boolean));
+        // Lees huidige standen uit standen/{uid} — niet uit ladderData.spelers[]
+        const standenSnap = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
+        const standenMap = {};
+        standenSnap.docs.forEach(d => { standenMap[d.id] = { uid: d.id, ...d.data() }; });
+
+        const spelerIds = new Set(ladderData.spelerIds || []);
         const deelnemers = volgorde.filter(e =>
-          !e.s.gast && (e.s.uid && ladderSpelerUids.has(e.s.uid))
-        ).filter(e => {
-          const ladderSpeler = ladderData.spelers.find(s => s.uid === e.s.uid);
-          return (ladderSpeler?.partijen || 0) >= 5;
-        });
+          !e.s.gast && e.s.uid && spelerIds.has(e.s.uid) && standenMap[e.s.uid]
+        ).filter(e => (standenMap[e.s.uid]?.partijen || 0) >= 5);
 
         if (deelnemers.length > 0) {
-          ladderData.spelers.forEach(s => { s.prevRank = s.rank; });
-          const gesorteerd = [...deelnemers].sort((a,b) => b.pt - a.pt);
+          // Sla prevRank op
+          Object.values(standenMap).forEach(s => { s.prevRank = s.rank; });
+          const gesorteerd = [...deelnemers].sort((a, b) => b.pt - a.pt);
 
           gesorteerd.forEach(e => {
-            const sp = ladderData.spelers.find(s => s.uid === e.s.uid);
+            const sp = standenMap[e.s.uid];
             if (!sp) return;
             const pt = e.pt || 0;
             if (pt === 0) return;
-            const oudeRank = sp.rank;
-            const nieuweRank = Math.max(1, Math.min(ladderData.spelers.length, oudeRank - pt));
+            const oudeRank  = sp.rank;
+            const maxRank   = Object.keys(standenMap).length;
+            const nieuweRank = Math.max(1, Math.min(maxRank, oudeRank - pt));
             if (nieuweRank === oudeRank) return;
             if (nieuweRank < oudeRank) {
-              ladderData.spelers.forEach(s => { if (s.uid !== sp.uid && s.rank >= nieuweRank && s.rank < oudeRank) s.rank++; });
+              Object.values(standenMap).forEach(s => {
+                if (s.uid !== sp.uid && s.rank >= nieuweRank && s.rank < oudeRank) s.rank++;
+              });
             } else {
-              ladderData.spelers.forEach(s => { if (s.uid !== sp.uid && s.rank > oudeRank && s.rank <= nieuweRank) s.rank--; });
+              Object.values(standenMap).forEach(s => {
+                if (s.uid !== sp.uid && s.rank > oudeRank && s.rank <= nieuweRank) s.rank--;
+              });
             }
             sp.rank = nieuweRank;
           });
 
           deelnemers.forEach(e => {
-            const sp = ladderData.spelers.find(s => s.uid === e.s.uid);
+            const sp = standenMap[e.s.uid];
             if (sp) {
               sp.partijen = (sp.partijen || 0) + (deelnemers.length - 1);
               sp.gewonnen = (sp.gewonnen || 0) + (e.w || 0);
             }
           });
 
-          [...ladderData.spelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
-          await setDoc(doc(db, 'ladders', ladderId), ladderData);
+          // Hernummer ranks 1..N
+          Object.values(standenMap).sort((a, b) => a.rank - b.rank).forEach((s, i) => { s.rank = i + 1; });
 
-          try {
-            const spelerIdsUid = new Set((ladderData.spelerIds || []).filter(id => typeof id === 'string' && id.length > 10));
-            const standenWrites = [];
-            (ladderData.spelers || []).forEach(sp => {
-              const uid = sp.uid;
-              if (!uid || !spelerIdsUid.has(uid)) return;
-              const payload = { rank: sp.rank || 0, partijen: sp.partijen || 0, gewonnen: sp.gewonnen || 0 };
-              if (sp.prevRank != null) payload.prevRank = sp.prevRank;
-              standenWrites.push(setDoc(doc(db, 'ladders', ladderId, 'standen', uid), payload).catch(err => console.warn('standen sync mislukt voor', uid, err.code)));
-            });
-            await Promise.all(standenWrites);
-          } catch(e) { console.warn('standen sync:', e); }
+          // Schrijf alle standen terug naar standen/{uid}
+          const standenWrites = Object.values(standenMap).map(sp => {
+            const payload = { rank: sp.rank || 0, partijen: sp.partijen || 0, gewonnen: sp.gewonnen || 0 };
+            if (sp.prevRank != null) payload.prevRank = sp.prevRank;
+            return setDoc(doc(db, 'ladders', ladderId, 'standen', sp.uid), payload)
+              .catch(err => console.warn('standen sync mislukt voor', sp.uid, err.code));
+          });
+          await Promise.all(standenWrites);
 
-          const ladderIdx = alleLadders.findIndex(l => l.id === ladderId);
-          if (ladderIdx >= 0) alleLadders[ladderIdx].spelers = ladderData.spelers;
           if (ladderId === activeLadderId) {
-            state.spelers = ladderData.spelers;
             await slaSnapshotOp(`🏅 Na toernooi: ${t.naam}`);
           }
         }

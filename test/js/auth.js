@@ -1,8 +1,7 @@
 // ============================================================
-//  auth.js — v2.6.0 — fase 2 refactor
+//  auth.js — v3.0.0 — uid-architectuur volledig
 //  Primaire identifier: Firebase Auth uid
-//  Bron van waarheid:   spelers/{uid}
-//  Backward compat:     getUsers() / saveUsers() / getNextId()
+//  Bron van waarheid:   spelers/{uid} (profiel), standen/{uid} (ranking)
 //                       blijven beschikbaar voor fase 3-5
 // ============================================================
 import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
@@ -185,26 +184,18 @@ async function slaEersteLoginOp() {
     await setDoc(doc(db, 'spelers', huidigeBruiker.uid),
       { ...data, hcp: hcpInt, eersteLogin: false });
 
-    // Stap 3: sync hcp naar alle ladders waar speler in zit
-    // v3.0.0-11: gewone speler heeft geen write-rechten op ladder-doc (alleen coord
-    // of via geldige invite). Wordt daarom best-effort: bij permission-denied loopt
-    // het door — de hcp in spelers/{uid} is de bron van waarheid, en de ladder.spelers[]
-    // hcp wordt straks in elke partij-bevestig gesynct.
+    // Stap 3: hcp sync naar standen/{uid} in alle ladders waar speler in zit.
+    // spelers/{uid} hierboven is de bron van waarheid — ladder.spelers[] niet meer.
     for (const ladder of alleLadders) {
       if (!(ladder.spelerIds || []).includes(huidigeBruiker.uid)) continue;
       try {
-        const ladderSnap = await getDoc(doc(db, 'ladders', ladder.id));
-        if (!ladderSnap.exists()) continue;
-        const ladderData = ladderSnap.data();
-        const spelers = (ladderData.spelers || []).map(s =>
-          s.naam?.toLowerCase() === huidigeBruiker.gebruikersnaam.toLowerCase()
-            ? { ...s, hcp: hcpInt } : s
-        );
-        await setDoc(doc(db, 'ladders', ladder.id), { ...ladderData, spelers });
+        const standenRef  = doc(db, 'ladders', ladder.id, 'standen', huidigeBruiker.uid);
+        const standenSnap = await getDoc(standenRef);
+        if (standenSnap.exists()) {
+          await setDoc(standenRef, { ...standenSnap.data(), hcp: hcpInt });
+        }
       } catch(e) {
-        // Verwacht bij gewone spelers — geen write-rechten op ladder-doc.
-        // Niet blokkerend: hcp staat al in spelers/{uid}.
-        console.warn('hcp sync naar ladder', ladder.id, 'mislukt:', e.code);
+        console.warn('hcp sync naar standen/', ladder.id, 'mislukt:', e.code);
       }
     }
 
@@ -432,7 +423,15 @@ async function wijzigWachtwoord() {
 async function slaState() {
   try {
     if (activeLadderId) {
-      await setDoc(doc(db, 'ladders', activeLadderId), JSON.parse(JSON.stringify(state)));
+      // v3.0.0-11.51: spelers[] niet meer schrijven — standen/{uid} is de bron.
+      // Alleen actievePartijen en uitslagen horen nog in het ladder-doc.
+      const ladderSnap = await getDoc(doc(db, 'ladders', activeLadderId));
+      const bestaand = ladderSnap.exists() ? ladderSnap.data() : {};
+      await setDoc(doc(db, 'ladders', activeLadderId), {
+        ...bestaand,
+        actievePartijen: state.actievePartijen || [],
+        uitslagen:       state.uitslagen       || [],
+      });
     } else {
       await setDoc(STATE_DOC, JSON.parse(JSON.stringify(state)));
     }
@@ -530,18 +529,20 @@ async function initFirestore() {
           ? [{ ...bestaandeState.actievePartij, partijId: `p_${Date.now()}` }] : [];
         delete bestaandeState.actievePartij;
       }
-      if (!bestaandeState.spelers) bestaandeState.spelers = [];
-      // v3.0.0-9c: migratie naar ladder/spelers verwijderd — _usersCache is bron van waarheid
+      // v3.0.0-11.51: spelers[] niet meer leidend — standen/{uid} is de bron
       const mpRef = doc(db, 'ladders', 'mp');
-      await setDoc(mpRef, { ...bestaandeState, naam: 'MP',
-        spelerIds: bestaandeState.spelers.map(s => s.id) });
+      await setDoc(mpRef, {
+        ...bestaandeState,
+        naam: 'MP',
+        spelerIds: bestaandeState.spelerIds || (bestaandeState.spelers || []).map(s => s.uid || s.id).filter(Boolean),
+      });
       store.alleLadders    = [{ id: 'mp', naam: 'MP',
-        spelerIds: bestaandeState.spelers.map(s => s.id),
-        spelers: bestaandeState.spelers, actievePartijen: bestaandeState.actievePartijen }];
+        spelerIds: bestaandeState.spelerIds || [],
+        actievePartijen: bestaandeState.actievePartijen }];
       laddersSnap.docs.filter(d => d.id !== 'mp').forEach(d => {
         alleLadders.push({ id: d.id, naam: d.data().naam,
           spelerIds: d.data().spelerIds || [],
-          spelers: d.data().spelers || [], actievePartijen: d.data().actievePartijen || [] });
+          actievePartijen: d.data().actievePartijen || [] });
       });
       store.state          = bestaandeState;
       store.activeLadderId = 'mp';
@@ -550,7 +551,6 @@ async function initFirestore() {
         id: d.id, naam: d.data().naam,
         type:            d.data().type            || 'ranking',
         spelerIds:       d.data().spelerIds       || [],
-        spelers:         d.data().spelers         || [],
         actievePartijen: d.data().actievePartijen || [],
         config: d.data().config || null,
         data:   d.data()
@@ -583,21 +583,20 @@ async function initFirestore() {
       if (!snap.exists() || !huidigeBruiker) return;
       const nieuweState = snap.data();
       // v3.0.0-11.32: guard tegen stale snapshot na bevestigUitslag.
-      // Blokkeer alleen snapshots die een partijId bevatten die lokaal al
-      // VERWIJDERD is. Nieuwe partijIds (net gestart) worden wél doorgelaten —
-      // de oude guard blokkeerde die ten onrechte, waardoor een net-gestarte
-      // partij meteen weer verdween.
-      const heeftStalePartij = (nieuweState.actievePartijen || [])
-        .some(p => _verwijderdePartijIds.has(p.partijId));
+      // Blokkeer alleen snapshots waarbij ALLE actieve partijen al lokaal verwijderd zijn.
+      // Als er ook nieuwe partijen in zitten (net gestart door iemand anders) dan
+      // moet de snapshot wél verwerkt worden — anders verdwijnt die nieuwe partij.
+      const actieveInSnap = nieuweState.actievePartijen || [];
+      const heeftStalePartij = actieveInSnap.length > 0 &&
+        actieveInSnap.every(p => _verwijderdePartijIds.has(p.partijId));
       if (heeftStalePartij) {
-        console.log('[onSnapshot] stale snapshot genegeerd — bevat al-verwijderde partijId');
+        console.log('[onSnapshot] stale snapshot genegeerd — alle partijen al verwijderd');
         return;
       }
       store.state = nieuweState;
       if (!store.state.actievePartijen) store.state.actievePartijen = [];
       const idx = store.alleLadders.findIndex(l => l.id === activeLadderId);
       if (idx >= 0) {
-        store.alleLadders[idx].spelers         = store.state.spelers        || [];
         store.alleLadders[idx].spelerIds       = store.state.spelerIds       || [];
         store.alleLadders[idx].actievePartijen = store.state.actievePartijen;
         store.alleLadders[idx].data            = snap.data();
@@ -619,7 +618,6 @@ async function initFirestore() {
       if (!snap.exists() || !huidigeBruiker) return;
       const idx = alleLadders.findIndex(l => l.id === ladder.id);
       if (idx >= 0) {
-        alleLadders[idx].spelers   = snap.data().spelers   || [];
         alleLadders[idx].spelerIds = snap.data().spelerIds || [];
         alleLadders[idx].data      = snap.data();
       }
@@ -815,13 +813,12 @@ async function registreerSpeler() {
 
     // Stap 3: Ladder data laden
     const ladderSnap = await getDoc(doc(db, 'ladders', targetLadderId));
-    const ladderData = ladderSnap.exists() ? ladderSnap.data() : { spelers: [] };
-    ladderData.spelers   = ladderData.spelers   || [];
+    const ladderData = ladderSnap.exists() ? ladderSnap.data() : {};
     ladderData.spelerIds = ladderData.spelerIds || [];
 
-    const maxRank = ladderData.spelers.length > 0
-      ? Math.max(...ladderData.spelers.map(s => s.rank || 0)) : 0;
-    const newRank = maxRank + 1;
+    // Rank = huidige aantal standen + 1
+    const standenSnap = await getDocs(collection(db, 'ladders', targetLadderId, 'standen'));
+    const newRank = standenSnap.size + 1;
 
     // Stap 4-7: ladder toewijzen — vereist actieve invite of coordinator rechten
     try {
@@ -832,12 +829,6 @@ async function registreerSpeler() {
       // Stap 5: spelerIds bijwerken
       if (!ladderData.spelerIds.includes(uid)) {
         ladderData.spelerIds = [...ladderData.spelerIds, uid];
-      }
-
-      // Stap 6: schrijf naar ladders.spelers[] met uid als primaire sleutel
-      const bestaatAl = ladderData.spelers.some(s => s.uid === uid);
-      if (!bestaatAl) {
-        ladderData.spelers.push({ uid, naam, hcp, rank: newRank, partijen: 0, gewonnen: 0 });
       }
       await setDoc(doc(db, 'ladders', targetLadderId), ladderData);
     } catch(ladderErr) {

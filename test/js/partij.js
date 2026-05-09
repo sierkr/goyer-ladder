@@ -160,14 +160,8 @@ function initPartijForm() {
       return;
     }
     if (huidigeBruiker) {
-      const uidLocal     = huidigeBruiker.uid;
-      const naam         = huidigeBruiker.gebruikersnaam;
-      let gekoppeld = uidLocal ? ladderSpelers.find(s => s.uid === uidLocal) : null;
-      if (!gekoppeld && naam) {
-        gekoppeld = ladderSpelers.find(s => s.naam?.toLowerCase() === naam.toLowerCase());
-      }
-      console.log('[partij] auto-select slot 1:', gekoppeld ? `${gekoppeld.naam} (${gekoppeld.id})` : 'NIET GEVONDEN',
-        '— ingelogd:', naam, uidLocal, '— ladder heeft', ladderSpelers.length, 'spelers');
+      const uidLocal = huidigeBruiker.uid;
+      const gekoppeld = uidLocal ? ladderSpelers.find(s => s.uid === uidLocal) : null;
       if (gekoppeld) {
         selecteerPartijSpeler(1, gekoppeld.id, gekoppeld.naam, gekoppeld.hcp);
         vulKnockoutTegenstander(gekoppeld.naam);
@@ -202,15 +196,7 @@ function vulKnockoutTegenstander(spelersNaam) {
 
 function getPartijLadderSpelers() {
   const ladderId = document.getElementById('partij-ladder-select')?.value || activeLadderId;
-  // Primary bron: view-laag (spelers/{uid} + standen/{uid})
-  const viaView = getLadderSpelers(ladderId);
-  if (viaView.length > 0) {
-    return viaView.sort((a, b) => (a.rank || 999) - (b.rank || 999));
-  }
-  // Fallback op oude ladder.spelers[] als view-laag (nog) niet gevuld is
-  const ladder = alleLadders.find(l => l.id === ladderId);
-  const ladderSpelers = ladder?.spelers || state.spelers || [];
-  return [...ladderSpelers].sort((a, b) => (a.rank || 999) - (b.rank || 999));
+  return getLadderSpelers(ladderId).sort((a, b) => (a.rank || 999) - (b.rank || 999));
 }
 
 function herlaadPartijSpelers() {

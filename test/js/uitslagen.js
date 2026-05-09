@@ -232,16 +232,10 @@ async function bevestigBeheerUitslag() {
     if (kant === 'SKIP') return;
     const winnaar = kant === 'A' ? m.spelerA : m.spelerB;
     const verliezer = kant === 'A' ? m.spelerB : m.spelerA;
-    // v3.0.0-11.5: match eerst op id, fallback op naam (voor view-laag uid-ids)
-    const sw = state.spelers.find(s => s.uid === winnaar.uid)
-             || state.spelers.find(s => s.naam?.toLowerCase() === winnaar.naam?.toLowerCase());
-    const sv = state.spelers.find(s => s.uid === verliezer.uid)
-             || state.spelers.find(s => s.naam?.toLowerCase() === verliezer.naam?.toLowerCase());
-    if (!sw || !sv) {
-      console.warn('[beheer-uitslag] matchup', idx, 'skipped — speler niet in state',
-        'winnaar:', winnaar.naam, sw?'ok':'NIET', 'verliezer:', verliezer.naam, sv?'ok':'NIET');
-      return;
-    }
+    // uid-match — enige sleutel, geen naam-fallback
+    const sw = state.spelers.find(s => s.uid === winnaar.uid);
+    const sv = state.spelers.find(s => s.uid === verliezer.uid);
+    if (!sw || !sv) { return; }
     const oldWrank = sw.rank, oldVrank = sv.rank;
     sw.partijen++; sv.partijen++; sw.gewonnen++;
     let newWrank, newVrank;

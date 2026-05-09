@@ -1,9 +1,7 @@
 // ============================================================
-//  admin.js — v2.7.0 — fase 3 refactor
+//  admin.js — v3.0.0 — uid-architectuur volledig
 //  Primaire identifier: uid (Firebase Auth uid)
-//  Bron van waarheid:   spelers/{uid}
-//  Backward compat:     dual-write naar ladders.spelers[] en ladder/spelers
-//                       voor fase 4-5 modules
+//  Bron van waarheid:   spelers/{uid} (profiel), standen/{uid} (ranking)
 // ============================================================
 import { db, auth, firebaseConfig, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL,
   SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC,
@@ -46,9 +44,6 @@ function renderAdmin() {
   const nieuweLadderBtn = ladderSectie?.querySelector('button[onclick="openNieuweLadderModal()"]');
   if (nieuweLadderBtn) nieuweLadderBtn.style.display = isBeheerder ? '' : 'none';
 
-  const migratieWrap = document.getElementById('uid-migratie-wrap');
-  if (migratieWrap) migratieWrap.style.display = isBeheerder ? '' : 'none';
-
   if (!isCoord) return;
   if (isBeheerder) renderAdminSpelersEnAccounts();
   renderAdminLadders();
@@ -72,11 +67,9 @@ async function renderAdminSpelersEnAccounts() {
     const naam = u.naam || u.gebruikersnaam || '—';
     const hcp  = u.hcp != null ? u.hcp : null;
 
-    // Ladder-lidmaatschap: controleer via spelerIds[] (uid-based, fase 1)
-    // Fallback op naam-match voor ladders die nog niet gemigreerd zijn
+    // Ladder-lidmaatschap: uitsluitend via spelerIds[] (uid)
     const mijnLadders = alleLadders.filter(l =>
-      (l.spelerIds || []).includes(uid) ||
-      (l.spelers   || []).some(s => s.naam?.toLowerCase() === naam.toLowerCase())
+      (l.spelerIds || []).includes(uid)
     );
     const ladderBadges = mijnLadders.map(l =>
       `<span class="badge badge-grey" style="font-size:10px">${esc(l.naam)}</span>`
@@ -160,35 +153,26 @@ async function voegSpelerToeAanLadders(ladderIds, speler, uid) {
       const snap = await getDoc(doc(db, 'ladders', ladderId));
       if (!snap.exists()) continue;
       const data      = snap.data();
-      const spelers   = data.spelers   || [];
       const spelerIds = data.spelerIds || [];
-      const maxRank   = spelers.length > 0 ? Math.max(...spelers.map(s => s.rank || 0)) : 0;
-      const newRank   = maxRank + 1;
 
-      // spelers[] met uid als sleutel
-      if (!spelers.find(s => s.uid === uid)) {
-        spelers.push({ uid, naam: speler.naam, hcp: speler.hcp, rank: newRank, partijen: 0, gewonnen: 0 });
-      }
+      if (spelerIds.includes(uid)) continue; // al lid
 
-      // spelerIds[] — uid-based
-      if (!spelerIds.includes(uid)) {
-        spelerIds.push(uid);
-      }
+      // Bepaal rank op basis van huidige standen/{uid} count
+      const standenSnap = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
+      const newRank = standenSnap.size + 1;
 
-      await setDoc(doc(db, 'ladders', ladderId), { ...data, spelers, spelerIds });
+      // Voeg uid toe aan spelerIds
+      spelerIds.push(uid);
+      await setDoc(doc(db, 'ladders', ladderId), { ...data, spelerIds });
 
-      // standen/{uid} aanmaken
+      // Maak standen/{uid} aan
       await setDoc(doc(db, 'ladders', ladderId, 'standen', uid),
         { rank: newRank, partijen: 0, gewonnen: 0 });
 
       const idx = alleLadders.findIndex(l => l.id === ladderId);
       if (idx >= 0) {
-        alleLadders[idx].spelers   = spelers;
         alleLadders[idx].spelerIds = spelerIds;
-        if (alleLadders[idx].data) {
-          alleLadders[idx].data.spelers   = spelers;
-          alleLadders[idx].data.spelerIds = spelerIds;
-        }
+        if (alleLadders[idx].data) alleLadders[idx].data.spelerIds = spelerIds;
       }
     } catch(e) {
       console.error('voegSpelerToeAanLadders mislukt voor ladder', ladderId, e);
@@ -214,11 +198,10 @@ async function openAddPlayer() {
   try {
     const users = await getUsers();
     const lijst = document.getElementById('add-player-accounts-lijst');
-    // Accounts zonder ladder-lidmaatschap
+    // Accounts zonder ladder-lidmaatschap — uitsluitend via spelerIds[] (uid)
     const zonderLadder = users.filter(u =>
       !alleLadders.some(l =>
-        (l.spelerIds || []).includes(u.uid) ||
-        (l.spelers   || []).some(s => s.naam?.toLowerCase() === (u.naam || '').toLowerCase())
+        (l.spelerIds || []).includes(u.uid)
       )
     );
     if (zonderLadder.length === 0) {
@@ -461,42 +444,22 @@ async function saveEditPlayer() {
   if (isNaN(hcp)) { toast('Voer een handicap in'); return; }
 
   try {
-    // Lees huidig profiel voor naam-vergelijking
     const snap = await getDoc(doc(db, 'spelers', uid));
     if (!snap.exists()) { toast('Speler niet gevonden in spelers/ collectie'); return; }
-    const oudeNaam = snap.data().naam;
 
-    // Schrijf naar spelers/{uid}
+    // Schrijf naar spelers/{uid} — enige bron voor naam/hcp/rol
     await setDoc(doc(db, 'spelers', uid), { ...snap.data(), naam, hcp, rol });
 
-    // v3.0.0-9c: sync naar legacy master lijst (ladder/spelers) verwijderd.
-    // spelers/{uid} write hierboven is de enige bron voor naam/hcp/rol.
-
-    // Dual-write: sync naam/hcp naar alle ladders (backward compat)
+    // Sync hcp naar standen/{uid} in alle ladders waar speler in zit
     for (const ladder of alleLadders) {
-      const ladderSnap = await getDoc(doc(db, 'ladders', ladder.id));
-      if (!ladderSnap.exists()) continue;
-      const data = ladderSnap.data();
-
-      // Zoek speler via uid in spelerIds OF via naam in spelers[]
-      const inLadder = (data.spelerIds || []).includes(uid) ||
-        (data.spelers || []).some(s => s.naam?.toLowerCase() === oudeNaam?.toLowerCase());
-      if (!inLadder) continue;
-
-      let gewijzigd = false;
-      (data.spelers || []).forEach(s => {
-        if (s.naam?.toLowerCase() === oudeNaam?.toLowerCase()) {
-          s.naam = naam; s.hcp = hcp; gewijzigd = true;
+      if (!(ladder.spelerIds || []).includes(uid)) continue;
+      try {
+        const standenRef  = doc(db, 'ladders', ladder.id, 'standen', uid);
+        const standenSnap = await getDoc(standenRef);
+        if (standenSnap.exists()) {
+          await setDoc(standenRef, { ...standenSnap.data(), hcp });
         }
-      });
-      if (ladder.id === activeLadderId) {
-        const sp = state.spelers?.find(s => s.naam?.toLowerCase() === oudeNaam?.toLowerCase());
-        if (sp) { sp.naam = naam; sp.hcp = hcp; }
-      }
-      if (gewijzigd) {
-        await setDoc(doc(db, 'ladders', ladder.id), data);
-        ladder.spelers = data.spelers;
-      }
+      } catch(e) { console.warn('hcp sync standen/', ladder.id, 'mislukt:', e.code); }
     }
 
     closeModal('modal-edit-player');
@@ -529,25 +492,19 @@ async function removePlayer(uid) {
       if (!ladderSnap.exists()) continue;
       const data = ladderSnap.data();
 
-      const inSpelerIds = (data.spelerIds || []).includes(uid);
-      const inSpelers   = (data.spelers   || []).some(s => s.naam?.toLowerCase() === naam?.toLowerCase());
-      if (!inSpelerIds && !inSpelers) continue;
+      if (!(data.spelerIds || []).includes(uid)) continue;
 
-      data.spelerIds = (data.spelerIds || []).filter(id => id !== uid);
-      data.spelers   = (data.spelers   || []).filter(s => s.naam?.toLowerCase() !== naam?.toLowerCase());
-      data.spelers.sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i + 1);
+      data.spelerIds       = (data.spelerIds       || []).filter(id => id !== uid);
       data.actievePartijen = (data.actievePartijen || []).filter(p =>
-        !p.spelers?.some(s => s.naam?.toLowerCase() === naam?.toLowerCase())
+        !p.spelers?.some(s => s.uid === uid)
       );
       await setDoc(doc(db, 'ladders', ladder.id), data);
 
       // Verwijder standen/{uid}
       try { await deleteDoc(doc(db, 'ladders', ladder.id, 'standen', uid)); } catch(e) {}
 
-      ladder.spelers   = data.spelers;
       ladder.spelerIds = data.spelerIds;
       if (ladder.id === activeLadderId) {
-        state.spelers         = data.spelers;
         state.actievePartijen = data.actievePartijen;
       }
     }
@@ -683,47 +640,25 @@ async function slaProfielHcpOp() {
   try {
     const val = parseFloat(document.getElementById('profiel-hcp-input').value);
     if (isNaN(val)) { toast('Voer een geldige handicap in'); return; }
+    if (!huidigeBruiker.uid) { toast('Niet ingelogd'); return; }
 
-    const gebruiker = huidigeBruiker.gebruikersnaam.toLowerCase().trim();
-    const voornaam  = gebruiker.split(' ')[0];
-    const matchNaam = (naam) => {
-      const n = naam.toLowerCase().trim();
-      return n === gebruiker || n.split(' ')[0] === voornaam ||
-             n.includes(voornaam) || gebruiker.includes(n.split(' ')[0]);
-    };
+    // Schrijf naar spelers/{uid} — enige bron voor hcp
+    const spelersSnap = await getDoc(doc(db, 'spelers', huidigeBruiker.uid));
+    if (!spelersSnap.exists()) { toast('Spelersprofiel niet gevonden'); return; }
+    await setDoc(doc(db, 'spelers', huidigeBruiker.uid), { ...spelersSnap.data(), hcp: val });
 
-    // Schrijf naar spelers/{uid} (nieuw v2.7)
-    if (huidigeBruiker.uid) {
-      try {
-        const spelersSnap = await getDoc(doc(db, 'spelers', huidigeBruiker.uid));
-        if (spelersSnap.exists()) {
-          await setDoc(doc(db, 'spelers', huidigeBruiker.uid), { ...spelersSnap.data(), hcp: val });
-        }
-      } catch(e) { console.error('hcp update spelers/ mislukt:', e); }
-    }
-
-    // v3.0.0-9c: sync naar legacy ladder/spelers master lijst verwijderd.
-    // spelers/{uid} write hierboven is de bron; alleSpelersData volgt via listener.
-
-    // Sync naar alle ladders
-    let gevonden = false;
+    // Sync hcp naar standen/{uid} in alle ladders waar speler in zit
     for (const ladder of alleLadders) {
-      const snap = await getDoc(doc(db, 'ladders', ladder.id));
-      if (!snap.exists()) continue;
-      const data   = snap.data();
-      const speler = (data.spelers || []).find(s => matchNaam(s.naam));
-      if (speler) {
-        speler.hcp = val;
-        await setDoc(doc(db, 'ladders', ladder.id), data);
-        gevonden = true;
-        if (ladder.id === activeLadderId) {
-          const sp = state.spelers?.find(s => matchNaam(s.naam));
-          if (sp) sp.hcp = val;
+      if (!(ladder.spelerIds || []).includes(huidigeBruiker.uid)) continue;
+      try {
+        const standenRef  = doc(db, 'ladders', ladder.id, 'standen', huidigeBruiker.uid);
+        const standenSnap = await getDoc(standenRef);
+        if (standenSnap.exists()) {
+          await setDoc(standenRef, { ...standenSnap.data(), hcp: val });
         }
-      }
+      } catch(e) { console.warn('hcp sync standen/', ladder.id, 'mislukt:', e.code); }
     }
 
-    if (!gevonden && !masterSpeler) { toast('Geen gekoppeld spelersprofiel gevonden'); return; }
     toast('Playing Handicap bijgewerkt ✓');
     renderProfiel();
   } catch(e) { console.error('slaProfielHcpOp mislukt:', e); }
@@ -867,20 +802,14 @@ async function removeUser(uid) {
 
     // Verwijder uit alle ladders op uid
     for (const ladder of alleLadders) {
+      if (!(ladder.spelerIds || []).includes(uid)) continue;
       const ladderSnap = await getDoc(doc(db, 'ladders', ladder.id));
       if (!ladderSnap.exists()) continue;
       const data = ladderSnap.data();
-      const inSpelerIds = (data.spelerIds || []).includes(uid);
-      const inSpelers   = (data.spelers   || []).some(s => s.uid === uid);
-      if (!inSpelerIds && !inSpelers) continue;
-      data.spelers   = (data.spelers  || []).filter(s => s.uid !== uid);
       data.spelerIds = (data.spelerIds || []).filter(id => id !== uid);
-      data.spelers.sort((a,b) => (a.rank||0) - (b.rank||0)).forEach((s,i) => s.rank = i + 1);
       await setDoc(doc(db, 'ladders', ladder.id), data);
       try { await deleteDoc(doc(db, 'ladders', ladder.id, 'standen', uid)); } catch(e) {}
-      ladder.spelers   = data.spelers;
       ladder.spelerIds = data.spelerIds;
-      if (ladder.id === activeLadderId) state.spelers = data.spelers;
     }
 
     renderAdmin();
@@ -895,14 +824,26 @@ async function removeUser(uid) {
 
 async function verschuifRank(uid, delta) {
   try {
-    const speler = state.spelers.find(s => s.uid === uid);
-    if (!speler) return;
-    const nieuwRank = speler.rank + delta;
-    if (nieuwRank < 1 || nieuwRank > state.spelers.length) return;
-    const ander = state.spelers.find(s => s.rank === nieuwRank);
-    if (ander) ander.rank = speler.rank;
-    speler.rank = nieuwRank;
-    await slaState();
+    if (!activeLadderId) return;
+    // Lees huidige standen uit standen/{uid}
+    const standenSnap = await getDocs(collection(db, 'ladders', activeLadderId, 'standen'));
+    const standen = standenSnap.docs.map(d => ({ uid: d.id, ...d.data() }))
+      .sort((a, b) => (a.rank || 0) - (b.rank || 0));
+
+    const idx = standen.findIndex(s => s.uid === uid);
+    if (idx === -1) return;
+    const nieuwIdx = idx + delta;
+    if (nieuwIdx < 0 || nieuwIdx >= standen.length) return;
+
+    // Wissel de twee ranks
+    const oudeRank  = standen[idx].rank;
+    const nieuweRank = standen[nieuwIdx].rank;
+    await Promise.all([
+      setDoc(doc(db, 'ladders', activeLadderId, 'standen', standen[idx].uid),
+        { ...standen[idx], rank: nieuweRank }),
+      setDoc(doc(db, 'ladders', activeLadderId, 'standen', standen[nieuwIdx].uid),
+        { ...standen[nieuwIdx], rank: oudeRank }),
+    ]);
     renderAdmin();
   } catch(e) { console.error('verschuifRank mislukt:', e); }
 }
@@ -919,228 +860,9 @@ document.querySelectorAll('.modal-overlay').forEach(o => {
   });
 });
 
-// koppelSpelerIds — no-op in v2.7.0 (vervangen door migratie fase 1)
-async function koppelSpelerIds() {
-  toast('Speler-ID koppeling is vervangen door de nieuwe architectuur (v3). Geen actie nodig.');
-}
 
 // ============================================================
-//  UID MIGRATIE — ladder.spelers[] koppelen aan Firebase uid
-// ============================================================
-let _uidMigKoppelingen = [];
-let _uidMigAccounts    = [];
-
-function _normNaam(n) { return (n || '').toLowerCase().trim().replace(/\s+/g, ' '); }
-
-function _setMigStatus(msg, type) {
-  const el = document.getElementById('uid-mig-status');
-  if (!el) return;
-  const kleur = { ok: 'var(--green)', error: 'var(--red)', warn: 'var(--gold)', info: 'var(--mid)' }[type] || 'var(--mid)';
-  el.innerHTML = `<span style="color:${kleur}">${msg}</span>`;
-}
-
-function _migLog(msg) {
-  const box = document.getElementById('uid-mig-log');
-  if (!box) return;
-  box.style.display = '';
-  box.textContent += msg + '\n';
-  box.scrollTop = box.scrollHeight;
-}
-
-async function startUidMigratie() {
-  _setMigStatus('Bezig met laden…', 'info');
-  document.getElementById('uid-mig-tabel').style.display = 'none';
-  document.getElementById('uid-mig-acties').style.display = 'none';
-  document.getElementById('uid-mig-log').style.display = 'none';
-  document.getElementById('uid-mig-log').textContent = '';
-  document.getElementById('uid-mig-samenvatting').innerHTML = '';
-  document.getElementById('uid-mig-tbody').innerHTML = '';
-
-  try {
-    // Laad alle accounts uit spelers/{uid}
-    const spelersSnap = await getDocs(collection(db, 'spelers'));
-    _uidMigAccounts = spelersSnap.docs.map(d => ({
-      uid:   d.id,
-      naam:  d.data().naam  || '',
-      email: d.data().email || '',
-    }));
-
-    // Laad alle ladders
-    const laddersSnap = await getDocs(collection(db, 'ladders'));
-    const ladders = laddersSnap.docs.map(d => ({
-      id:      d.id,
-      naam:    d.data().naam || d.id,
-      spelers: d.data().spelers || [],
-    }));
-
-    // Analyseer koppelingen
-    _uidMigKoppelingen = [];
-    for (const ladder of ladders) {
-      for (const sp of ladder.spelers) {
-        // Al gekoppeld?
-        if (sp.uid && _uidMigAccounts.find(a => a.uid === sp.uid)) {
-          _uidMigKoppelingen.push({ ladderId: ladder.id, ladderNaam: ladder.naam, speler: sp, uid: sp.uid, matchType: 'uid', account: _uidMigAccounts.find(a => a.uid === sp.uid) });
-          continue;
-        }
-        // Exacte naam-match
-        const exact = _uidMigAccounts.find(a => _normNaam(a.naam) === _normNaam(sp.naam));
-        if (exact) {
-          _uidMigKoppelingen.push({ ladderId: ladder.id, ladderNaam: ladder.naam, speler: sp, uid: exact.uid, matchType: 'exact', account: exact });
-          continue;
-        }
-        // Fuzzy: voornaam
-        const voornaam = _normNaam(sp.naam).split(' ')[0];
-        const fuzzy = _uidMigAccounts.filter(a => _normNaam(a.naam).startsWith(voornaam + ' ') || _normNaam(a.naam) === voornaam);
-        if (fuzzy.length === 1) {
-          _uidMigKoppelingen.push({ ladderId: ladder.id, ladderNaam: ladder.naam, speler: sp, uid: fuzzy[0].uid, matchType: 'fuzzy', account: fuzzy[0] });
-          continue;
-        }
-        // Niet gevonden
-        _uidMigKoppelingen.push({ ladderId: ladder.id, ladderNaam: ladder.naam, speler: sp, uid: null, matchType: 'missing', account: null });
-      }
-    }
-
-    _renderMigTabel();
-  } catch(e) {
-    _setMigStatus('Laden mislukt: ' + (e.message || e.code || String(e)), 'error');
-    console.error('startUidMigratie fout:', e);
-  }
-}
-
-function _renderMigTabel() {
-  const tbody = document.getElementById('uid-mig-tbody');
-  let nUid = 0, nExact = 0, nFuzzy = 0, nMissing = 0;
-
-  const rijen = _uidMigKoppelingen.map((k, idx) => {
-    if (k.matchType === 'uid')     nUid++;
-    else if (k.matchType === 'exact')   nExact++;
-    else if (k.matchType === 'fuzzy')   nFuzzy++;
-    else                                nMissing++;
-
-    const badgeStijl = {
-      uid:     'background:#e8f5e9;color:#2e7d32',
-      exact:   'background:#e8f5e9;color:#2e7d32',
-      fuzzy:   'background:#fff3e0;color:#e65100',
-      missing: 'background:#fce4ec;color:#c62828',
-      manual:  'background:#f3e5f5;color:#7b1fa2',
-    }[k.matchType] || '';
-
-    const badgeLabel = { uid: 'Al uid ✓', exact: 'Exacte naam', fuzzy: 'Fuzzy ⚠', missing: 'Niet gevonden', manual: 'Handmatig' }[k.matchType] || '?';
-    const rijKleur = k.matchType === 'fuzzy' ? 'background:#fffde7' : k.matchType === 'missing' ? 'background:#fce4ec' : '';
-
-    const opties = _uidMigAccounts.map(a =>
-      `<option value="${esc(a.uid)}" ${k.uid === a.uid ? 'selected' : ''}>${esc(a.naam)} (${esc(a.email)})</option>`
-    ).join('');
-
-    return `<tr style="${rijKleur}" id="uid-mig-rij-${idx}">
-      <td style="padding:6px 10px;border-bottom:1px solid var(--border)">
-        <strong>${esc(k.speler.naam)}</strong><br>
-        <span style="font-size:10px;color:var(--light);font-family:monospace">uid:${k.speler.uid?.slice(0,8) ?? '?'}… · ${esc(k.ladderNaam)}</span>
-      </td>
-      <td style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:center;font-family:monospace">${k.speler.hcp ?? '—'}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:center;font-family:monospace">${k.speler.rank ?? '—'}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid var(--border)"><span style="display:inline-block;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:700;${badgeStijl}">${badgeLabel}</span></td>
-      <td style="padding:6px 10px;border-bottom:1px solid var(--border)">
-        <select onchange="uidMigSelectGewijzigd(${idx},this)" style="width:100%;padding:4px 6px;border:1.5px solid var(--border);border-radius:6px;font-size:12px;background:var(--card-bg);color:var(--dark)">
-          <option value="">— Overslaan —</option>
-          ${opties}
-        </select>
-        ${k.account ? `<div style="font-size:10px;color:var(--light);font-family:monospace;margin-top:2px">${esc(k.account.uid)}</div>` : ''}
-      </td>
-    </tr>`;
-  });
-
-  tbody.innerHTML = rijen.join('');
-  document.getElementById('uid-mig-tabel').style.display = '';
-  document.getElementById('uid-mig-acties').style.display = '';
-
-  const totaal = _uidMigKoppelingen.length;
-  document.getElementById('uid-mig-samenvatting').innerHTML = `
-    <div style="background:var(--soft-bg);border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:4px">
-      <span style="color:var(--green)">✓ Al uid: ${nUid}</span> &nbsp;·&nbsp;
-      <span style="color:var(--green)">Exacte naam: ${nExact}</span> &nbsp;·&nbsp;
-      <span style="color:var(--gold)">Fuzzy (check!): ${nFuzzy}</span> &nbsp;·&nbsp;
-      <span style="color:var(--red)">Niet gevonden: ${nMissing}</span> &nbsp;·&nbsp;
-      Totaal: ${totaal}
-    </div>
-    ${nFuzzy  > 0 ? `<div style="color:var(--gold);font-size:12px;margin-bottom:4px">⚠ Controleer de oranje rijen — fuzzy match kan fout zijn.</div>` : ''}
-    ${nMissing > 0 ? `<div style="color:var(--red);font-size:12px">❌ ${nMissing} speler(s) worden overgeslagen. Kies handmatig een account via het dropdown.</div>` : ''}
-  `;
-
-  _setMigStatus(`Analyse klaar — ${totaal} speler-objecten gevonden.`, 'ok');
-}
-
-window.uidMigSelectGewijzigd = function(idx, sel) {
-  const uid = sel.value;
-  _uidMigKoppelingen[idx].uid = uid || null;
-  _uidMigKoppelingen[idx].matchType = uid ? 'manual' : 'missing';
-  _uidMigKoppelingen[idx].account = uid ? _uidMigAccounts.find(a => a.uid === uid) || null : null;
-  sel.style.borderColor = uid ? 'var(--green)' : 'var(--red)';
-};
-
-async function voerUidMigratieUit() {
-  if (!confirm('Koppelingen opslaan in Firestore? Dit wijzigt ladder.spelers[] voor alle ladders.')) return;
-
-  document.getElementById('uid-mig-acties').style.display = 'none';
-  document.getElementById('uid-mig-log').textContent = '';
-  _migLog('=== UID Migratie gestart ===\n');
-
-  // Groepeer per ladder
-  const perLadder = {};
-  for (const k of _uidMigKoppelingen) {
-    if (!perLadder[k.ladderId]) perLadder[k.ladderId] = { naam: k.ladderNaam, koppelingen: [] };
-    perLadder[k.ladderId].koppelingen.push(k);
-  }
-
-  let gedaan = 0, errors = 0;
-
-  for (const [ladderId, { naam, koppelingen }] of Object.entries(perLadder)) {
-    _migLog(`\n── Ladder: ${naam}`);
-    try {
-      const snap = await getDoc(doc(db, 'ladders', ladderId));
-      if (!snap.exists()) { _migLog('  ⚠ Niet gevonden — overgeslagen'); continue; }
-
-      const data = snap.data();
-      let gewijzigd = false;
-
-      const nieuweSpelers = (data.spelers || []).map(sp => {
-        const k = koppelingen.find(k => String(k.speler.id) === String(sp.id) && k.speler.naam === sp.naam);
-        if (!k || !k.uid) {
-          _migLog(`  ⏭  ${sp.naam} — overgeslagen (geen uid)`);
-          return sp;
-        }
-        if (sp.uid === k.uid) {
-          _migLog(`  ✓  ${sp.naam} — uid al correct`);
-          return sp;
-        }
-        gewijzigd = true;
-        const type = { uid: 'uid', exact: 'exacte naam', fuzzy: 'fuzzy', manual: 'handmatig' }[k.matchType] || '?';
-        _migLog(`  🔗  ${sp.naam} → ${k.uid.slice(0,12)}… [${type}]`);
-        return { ...sp, uid: k.uid };
-      });
-
-      if (gewijzigd) {
-        await setDoc(doc(db, 'ladders', ladderId), { ...data, spelers: nieuweSpelers });
-        _migLog(`  💾  Opgeslagen`);
-      } else {
-        _migLog(`  ℹ  Geen wijzigingen`);
-      }
-      gedaan++;
-    } catch(e) {
-      errors++;
-      _migLog(`  ❌ Fout: ${e.message || e.code}`);
-    }
-  }
-
-  _migLog(`\n=== Klaar: ${gedaan} ladder(s) verwerkt, ${errors} fout(en) ===`);
-  _setMigStatus(errors === 0 ? `✓ Migratie geslaagd — ${gedaan} ladder(s) bijgewerkt.` : `⚠ Klaar met ${errors} fout(en) — zie log.`, errors === 0 ? 'ok' : 'warn');
-}
-
-window.startUidMigratie    = startUidMigratie;
-window.voerUidMigratieUit  = voerUidMigratieUit;
-
-// ============================================================
-//  EXPORTS — identiek aan v2.5.x
+//  EXPORTS
 // ============================================================
 export {
   renderAdmin, renderAdminSpelersEnAccounts,
@@ -1149,6 +871,6 @@ export {
   renderProfiel, slaProfielHcpOp,
   sorteerUsers, renderAdminUsers, openEditUser, saveEditUser,
   openAddUser, saveNewUser, removeUser,
-  verschuifRank, resetData, closeModal, koppelSpelerIds,
+  verschuifRank, resetData, closeModal,
   kopieerCredentials, vraagResetWachtwoord,
 };

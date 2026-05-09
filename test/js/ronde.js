@@ -52,7 +52,7 @@ function renderScorecard() {
   p.spelers.forEach(s => {
     headHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px">
       ${esc(naamMap[s.uid])}<br>
-      <span onclick="editPartijHcp('${escAttr(s.uid)}'}')" style="font-size:10px;font-weight:400;color:rgba(255,255,255,0.7);cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)" title="Klik om aan te passen">hcp ${Math.round(s.partijHcp)}</span><br>
+      <span onclick="editPartijHcp('${escAttr(s.uid)}')" style="font-size:10px;font-weight:400;color:rgba(255,255,255,0.7);cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)" title="Klik om aan te passen">hcp ${Math.round(s.partijHcp)}</span><br>
       <button onclick="verwijderSpelerUitRonde('${escAttr(s.uid)}')" style="background:rgba(255,255,255,0.15);border:none;border-radius:4px;color:rgba(255,255,255,0.8);font-size:10px;cursor:pointer;padding:2px 5px;margin-top:2px">✕ verwijder</button>
     </th>`;
   });
@@ -516,11 +516,8 @@ async function bevestigUitslag() {
     // dan auto-heal: voeg hem toe aan state.spelers[] onderaan.
     function vindInState(matchupSpeler) {
       if (!matchupSpeler) return null;
-      // uid-match — primaire sleutel
-      let found = state.spelers.find(s => s.uid === matchupSpeler.uid);
-      if (found) return found;
-      // naam-match als fallback (voor bestaande partijen zonder uid)
-      found = state.spelers.find(s => s.naam?.toLowerCase() === matchupSpeler.naam?.toLowerCase());
+      // uid-match — enige sleutel, geen naam-fallback
+      const found = state.spelers.find(s => s.uid === matchupSpeler.uid);
       if (found) return found;
       // Gastspeler — niet in ladder verwerken
       const isGast = matchupSpeler.uid?.startsWith('gast_');
@@ -542,23 +539,16 @@ async function bevestigUitslag() {
         gewonnen: 0
       };
       state.spelers.push(nieuw);
-      console.log('[bevestig] auto-heal: speler', matchupSpeler.naam, 'toegevoegd aan state.spelers rank', nieuw.rank);
       return nieuw;
     }
 
     const sw = vindInState(winnaar);
     const sv = vindInState(verliezer);
 
-    // v3.0.0-11.5 diagnose: log matchup verwerking
-    console.log('[bevestig] matchup', idx,
-      'winnaar:', winnaar.naam, '→ sw:', sw ? `rank ${sw.rank}` : 'NIET GEVONDEN',
-      '| verliezer:', verliezer.naam, '→ sv:', sv ? `rank ${sv.rank}` : 'NIET GEVONDEN');
-
     // Gastspelers of spelers niet in ladder — niet verwerken in ladderstand
     const heeftGast = winnaar.uid?.startsWith('gast_') || verliezer.uid?.startsWith('gast_') ||
                       !sw || !sv;
     if (heeftGast) {
-      console.log('[bevestig] matchup', idx, 'GESKIPT (gast of niet-gevonden)');
       return;
     }
     const oldWrank = sw.rank;
@@ -605,10 +595,6 @@ async function bevestigUitslag() {
     changes.push({ winnaar: sw.naam, verliezer: sv.naam, wOud: oldWrank, wNieuw: newWrank, vOud: oldVrank, vNieuw: newVrank });
     sw.rank = newWrank;
     sv.rank = newVrank;
-
-    // v3.0.0-11.5 diagnose
-    console.log('[bevestig] matchup', idx, 'rank-update:',
-      `${sw.naam} ${oldWrank}→${newWrank}, ${sv.naam} ${oldVrank}→${newVrank}`);
   });
 
   // Ranks zijn al correct toegewezen per matchup — geen extra normalisatie nodig
