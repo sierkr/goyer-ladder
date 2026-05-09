@@ -1,5 +1,5 @@
 // ============================================================
-//  toernooi.js — v3.0.0-11.43
+//  toernooi.js — v3.0.0-11.45
 //  Meerdaags toernooi: scores/flights/baan per dag
 //  Datastructuur: t.dagen[dagNr-1].{datum,baan,holes,flights,scores,afgerond}
 // ============================================================
@@ -619,7 +619,10 @@ async function startToernooi() {
     if (geselecteerd.length < 2) { toast('Voeg minimaal 2 spelers toe aan flights'); return; }
     if (_flights.every(f => f.spelers.length === 0)) { toast('Verdeel spelers over flights'); return; }
 
-    const spelers = geselecteerd.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp, gast: s.gast || false }));
+    const spelers = geselecteerd.map(s => {
+      const spelersDoc = alleSpelersData.find(sd => String(sd.id) === String(s.id));
+      return { id: s.id, naam: s.naam, hcp: s.hcp, gast: s.gast || false, uid: spelersDoc?.uid || null };
+    });
 
     // Bouw dagen[] — scores en flights leeg, worden per dag ingevuld
     const dagen = dagenConfig.map(cfg => {

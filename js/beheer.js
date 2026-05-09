@@ -194,14 +194,7 @@ async function maakNieuweLadder() {
     toast('Een ladder met deze naam bestaat al'); return;
   }
   const id = naam.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now();
-  const nieuweData = {
-    naam,
-    type,
-    spelers: [],
-    spelerIds: [],
-    config: { ...DEFAULT_LADDER_CONFIG },
-    ...JSON.parse(JSON.stringify(DEFAULT_STATE))
-  };
+  const nieuweData = { id: snap.id, ...snap.data() };
 
     await setDoc(doc(db, 'ladders', id), nieuweData);
   alleLadders.push({ id, naam, spelerIds: [], spelers: [], type });

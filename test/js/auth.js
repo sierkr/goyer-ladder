@@ -88,15 +88,22 @@ function setIngelogdVanafProfiel(firebaseUser, profiel) {
 
 function updateSiteTitel() {
   if (!huidigeBruiker) return;
+  const h1First  = document.getElementById('h1-first');
   const h1Second = document.getElementById('h1-second');
   if (!h1Second) return;
 
-  // Toernooi-modus heeft prioriteit: toon de toernooinaam
+  // Toernooi-modus heeft prioriteit: verberg prefix, toon alleen toernooinaam
   const actief = getActiefToernooiMetModus();
   if (actief) {
-    h1Second.textContent = ` ${actief.naam}`;
+    if (h1First)  h1First.style.display  = 'none';
+    h1Second.textContent = `🏌️ ${actief.naam}`;
+    h1Second.style.paddingLeft = '0';
     return;
   }
+
+  // Herstel normale staat
+  if (h1First)  { h1First.style.display = ''; }
+  h1Second.style.paddingLeft = '';
 
   const uid = huidigeBruiker.uid;
   const mijnLadders = isCoordinatorRol()
@@ -229,7 +236,13 @@ function pasToernooiModusNavToe() {
   if (!actief) return; // geen actief toernooi-modus toernooi — niets doen
 
   const uid = huidigeBruiker.uid;
-  const isDeelnemer = (actief.spelers || []).some(s => s.uid === uid);
+  // Spelers in toernooi hebben soms geen uid (aangemaakt voor uid-koppeling bestond).
+  // Match op uid OF op numeriek speler-id via alleSpelersData.
+  const mijnSpelerData = alleSpelersData.find(s => s.uid === uid || s.id === uid);
+  const isDeelnemer = (actief.spelers || []).some(s =>
+    (uid && s.uid === uid) ||
+    (mijnSpelerData && String(s.id) === String(mijnSpelerData.id))
+  );
   if (!isDeelnemer) return; // speler zit niet in dit toernooi — niets doen
 
   // Verberg alle tabs behalve Ronde en Uitslag
