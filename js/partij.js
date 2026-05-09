@@ -133,8 +133,11 @@ function initPartijForm() {
   });
   sel.innerHTML += `<option value="Handmatig invoeren">+ Handmatig invoeren / nieuwe baan</option>`;
 
-  // Selecteer eerste baan als default (alleen als geen opgeslagen state)
-  if (!heeftOpgeslagen && aangepasteBanen.length > 0) sel.value = aangepasteBanen[0].naam;
+  // Selecteer De Goyer als default, anders eerste beschikbare baan
+  if (!heeftOpgeslagen && aangepasteBanen.length > 0) {
+    const deGoyer = aangepasteBanen.find(b => b.naam === 'De Goyer');
+    sel.value = deGoyer ? deGoyer.naam : aangepasteBanen[0].naam;
+  }
 
   // Player slots
   store.playerSlotCount = 0;
@@ -375,12 +378,8 @@ function onBaanSelect() {
     renderHandmatigHoles();
   } else {
     hw.style.display = 'none';
-    // Elke baan kan beheerd worden door een coordinator of de aanmaker
-    const baan = aangepasteBanen.find(b => b.naam === val);
-    if (baan) {
-      const kanBeheren = isCoordinatorRol() || baan.aangemaakt_door === huidigeBruiker?.gebruikersnaam;
-      if (kanBeheren) beheerWrap.style.display = 'block';
-    }
+    // Alleen beheerder/coordinator mag banen verwijderen
+    if (isCoordinatorRol()) beheerWrap.style.display = 'block';
   }
 }
 
