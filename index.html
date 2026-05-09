@@ -1267,30 +1267,17 @@
           <input type="text" id="t-naam" placeholder="bijv. Clubkampioenschap 2025">
         </div>
         <div class="form-group">
-          <label>Datum</label>
-          <input type="date" id="t-datum">
-        </div>
-        <div class="form-group">
-          <label>Baan</label>
-          <select id="t-baan"></select>
-          <div id="t-baan-handmatig" style="display:none;margin-top:10px">
-            <div id="t-holes-handmatig"></div>
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-          <div class="form-group" style="margin:0">
-            <label>Aantal holes</label>
-            <select id="t-holes" onchange="toggleHolesCustom()">
-              <option value="18">18 holes</option>
-              <option value="9">9 holes</option>
-              <option value="custom">Aangepast...</option>
+          <label>Aantal dagen</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="t-aantal-dagen" onchange="renderDagBlokken()" style="width:auto">
+              <option value="1">1 dag</option>
+              <option value="2">2 dagen</option>
+              <option value="3">3 dagen</option>
+              <option value="4">4 dagen</option>
             </select>
           </div>
-          <div class="form-group" style="margin:0;display:none" id="t-holes-custom-wrap">
-            <label>Aangepast</label>
-            <input type="number" id="t-holes-custom" min="1" max="18" placeholder="bijv. 12" style="text-align:center">
-          </div>
         </div>
+        <div id="t-dag-blokken"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
           <div class="form-group" style="margin:0">
             <label>Starttijd</label>

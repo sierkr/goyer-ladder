@@ -49,7 +49,7 @@ import { renderToernooi, herlaadToernooien, selecteerToernooi, gaNaarToernooiOve
   updateTScoreAndAdvance, updateTScore, editToernooiHcp,
   toggleTScorecard, openToernooiAfsluiten, bevestigToernooiAfsluiten,
   annuleerToernooi, toggleTSpelersLadder, toggleTRankingLadder,
-  selecteerDag, openNieuweDagModal, voegDagToe, sluitDagAf } from './toernooi.js';
+  selecteerDag, openNieuweDagModal, voegDagToe, sluitDagAf, renderDagBlokken } from './toernooi.js';
 import { openStandAanpassen, verschuifStand, slaStandOp,
   openLadderInstellingen, slaLadderInstellingenOp,
   openNieuweLadderModal, maakNieuweLadder, verschuifLadder,
@@ -172,6 +172,7 @@ window.selecteerDag = selecteerDag;
 window.openNieuweDagModal = openNieuweDagModal;
 window.voegDagToe = voegDagToe;
 window.sluitDagAf = sluitDagAf;
+window.renderDagBlokken = renderDagBlokken;
 window.openFlightIndelingDag = openFlightIndelingDag;
 window.slaFlightIndelingDagOp = slaFlightIndelingDagOp;
 window.openStandAanpassen = openStandAanpassen;
@@ -209,7 +210,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v3.0.0-11.37';
+  const VERSION = 'v3.0.0-11.39';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -250,7 +251,7 @@ window.toggleTRankingLadder = toggleTRankingLadder;
 // Bij mismatch: sla partijformulier op in sessionStorage → hard reload.
 // Werkt ook als de app uren open staat als PWA zonder herstart.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v3.0.0-11.37';
+  const LOKALE_VERSIE = 'v3.0.0-11.39';
   let _versieCheckBezig = false;
   let _updateGepland    = false;
 

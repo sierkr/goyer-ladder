@@ -204,22 +204,8 @@ function selecteerToernooi(id) {
 //  SETUP FORMULIER
 // ============================================================
 function initToernooiSetup() {
-  const baanSel = document.getElementById('t-baan');
-  if (baanSel) {
-    const banen = alleBANEN();
-    baanSel.innerHTML = Object.keys(banen)
-      .filter(n => n !== 'Handmatig invoeren')
-      .map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`)
-      .join('');
-    baanSel.innerHTML += `<option value="Handmatig invoeren">+ Nieuwe baan toevoegen</option>`;
-    baanSel.onchange = onTBaanSelect;
-    const hw = document.getElementById('t-baan-handmatig');
-    if (hw) hw.style.display = 'none';
-  }
-
-  if (!document.getElementById('t-datum')?.value) {
-    document.getElementById('t-datum').value = new Date().toISOString().split('T')[0];
-  }
+  // v3.0.0-11.39: dag-blokken initialiseren
+  renderDagBlokken();
 
   const spelersLaddersEl = document.getElementById('t-spelers-ladders');
   if (spelersLaddersEl) {
@@ -243,6 +229,92 @@ function initToernooiSetup() {
 
   renderTGeselecteerdeSpelers();
 }
+
+// Rendert één dag-configuratie blok per dag
+function renderDagBlokken() {
+  const aantalDagen = parseInt(document.getElementById('t-aantal-dagen')?.value) || 1;
+  const container   = document.getElementById('t-dag-blokken');
+  if (!container) return;
+
+  const banen = alleBANEN();
+  const baanOpties = Object.keys(banen)
+    .filter(n => n !== 'Handmatig invoeren')
+    .map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`)
+    .join('');
+
+  // Bewaar bestaande waarden zodat wisselen van aantal dagen de invoer niet wist
+  const bestaand = Array.from(container.querySelectorAll('.dag-blok')).map(blok => ({
+    datum:  blok.querySelector('.t-dag-datum')?.value  || '',
+    baan:   blok.querySelector('.t-dag-baan')?.value   || '',
+    holes:  blok.querySelector('.t-dag-holes')?.value  || '18',
+    hcust:  blok.querySelector('.t-dag-holes-custom')?.value || ''
+  }));
+
+  let html = '';
+  for (let d = 1; d <= aantalDagen; d++) {
+    const prev      = bestaand[d - 1] || {};
+    const label     = aantalDagen > 1 ? `Dag ${d}` : 'Speeldag';
+    const dagDatum  = prev.datum || '';
+    const dagBaan   = prev.baan  || '';
+    const dagHoles  = prev.holes || '18';
+    const dagHcust  = prev.hcust || '';
+    const showCust  = dagHoles === 'custom' ? '' : 'display:none';
+
+    html += `
+    <div class="dag-blok" style="border:1.5px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+      ${aantalDagen > 1 ? `<div style="font-weight:700;font-size:13px;color:var(--green);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">${label}</div>` : ''}
+      <div class="form-group" style="margin-bottom:10px">
+        <label>Datum</label>
+        <input type="date" class="t-dag-datum" value="${esc(dagDatum)}"
+          ${d === 1 && !dagDatum ? `placeholder="${new Date().toISOString().split('T')[0]}"` : ''}>
+      </div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label>Baan</label>
+        <select class="t-dag-baan">
+          ${baanOpties}
+          <option value="Handmatig invoeren">+ Nieuwe baan toevoegen</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label>Aantal holes</label>
+        <select class="t-dag-holes" onchange="this.closest('.dag-blok').querySelector('.t-dag-holes-custom-wrap').style.display=this.value==='custom'?'block':'none'">
+          <option value="18" ${dagHoles==='18'?'selected':''}>18 holes</option>
+          <option value="9"  ${dagHoles==='9' ?'selected':''}>9 holes</option>
+          <option value="custom" ${dagHoles==='custom'?'selected':''}>Aangepast...</option>
+        </select>
+        <div class="t-dag-holes-custom-wrap" style="${showCust};margin-top:6px">
+          <input type="number" class="t-dag-holes-custom" min="1" max="18"
+            placeholder="bijv. 12" style="text-align:center;width:80px" value="${esc(dagHcust)}">
+        </div>
+      </div>
+    </div>`;
+  }
+  container.innerHTML = html;
+
+  // Herstel baan-selectie (na innerHTML vervangen)
+  const blokken = container.querySelectorAll('.dag-blok');
+  blokken.forEach((blok, i) => {
+    const prev = bestaand[i];
+    if (prev?.baan) {
+      const sel = blok.querySelector('.t-dag-baan');
+      if (sel && [...sel.options].some(o => o.value === prev.baan)) {
+        sel.value = prev.baan;
+      }
+    } else {
+      // Default: De Goyer op dag 1, zelfde baan als dag 1 op volgende dagen
+      const sel = blok.querySelector('.t-dag-baan');
+      if (sel) {
+        const deGoyer = [...sel.options].find(o => o.value === 'De Goyer');
+        if (i === 0 && deGoyer) sel.value = 'De Goyer';
+        else if (i > 0) {
+          const dag1Baan = container.querySelector('.dag-blok .t-dag-baan')?.value;
+          if (dag1Baan && [...sel.options].some(o => o.value === dag1Baan)) sel.value = dag1Baan;
+        }
+      }
+    }
+  });
+}
+window.renderDagBlokken = renderDagBlokken;
 
 function toggleTSpelersLadder(ladderId, checked) {
   if (checked) _tSpelersLadderIds.add(ladderId);
@@ -474,58 +546,82 @@ function verplaatsSpelerFlight(vanFi, si, naarFi) {
 }
 
 // ============================================================
-//  START TOERNOOI — bouwt dag 1
+//  START TOERNOOI — leest alle dag-blokken in
 // ============================================================
 async function startToernooi() {
   try {
     const naam     = document.getElementById('t-naam').value.trim();
-    const datum    = document.getElementById('t-datum').value;
-    const baanNaam = document.getElementById('t-baan').value;
-    const holesVal = document.getElementById('t-holes').value;
-    const holesCount = holesVal === 'custom'
-      ? parseInt(document.getElementById('t-holes-custom').value) || 18
-      : parseInt(holesVal);
-    const ptWin  = parseFloat(document.getElementById('t-pt-win').value);
-    const ptTie  = parseFloat(document.getElementById('t-pt-tie').value);
-    const ptLoss = parseFloat(document.getElementById('t-pt-loss').value);
-    const hcpPct = parseFloat(document.getElementById('t-hcp-pct').value) / 100;
+    const ptWin    = parseFloat(document.getElementById('t-pt-win').value);
+    const ptTie    = parseFloat(document.getElementById('t-pt-tie').value);
+    const ptLoss   = parseFloat(document.getElementById('t-pt-loss').value);
+    const hcpPct   = parseFloat(document.getElementById('t-hcp-pct').value) / 100;
     const ladderId = [..._tRankingLadderIds][0] || null;
     const rankingLadderIds = [..._tRankingLadderIds];
+    const modus    = document.querySelector('input[name="t-modus"]:checked')?.value || 'matchplay';
+    const starttijd = document.getElementById('t-starttijd')?.value || '09:00';
+    const interval  = parseInt(document.getElementById('t-interval')?.value) || 0;
 
-    if (!naam)  { toast('Voer een naam in'); return; }
-    if (!datum) { toast('Voer een datum in'); return; }
+    if (!naam) { toast('Voer een naam in'); return; }
 
+    // Lees alle dag-blokken
+    const dagBlokken = Array.from(document.querySelectorAll('#t-dag-blokken .dag-blok'));
+    if (dagBlokken.length === 0) { toast('Configureer minimaal één dag'); return; }
+
+    const banen = alleBANEN();
+    const dagenConfig = [];
+    for (let i = 0; i < dagBlokken.length; i++) {
+      const blok    = dagBlokken[i];
+      const datum   = blok.querySelector('.t-dag-datum')?.value;
+      const baanNaam = blok.querySelector('.t-dag-baan')?.value;
+      const holesVal = blok.querySelector('.t-dag-holes')?.value || '18';
+      const holesCount = holesVal === 'custom'
+        ? parseInt(blok.querySelector('.t-dag-holes-custom')?.value) || 18
+        : parseInt(holesVal);
+
+      if (!datum)    { toast(`Voer een datum in voor dag ${i+1}`); return; }
+      if (!baanNaam || baanNaam === 'Handmatig invoeren') { toast(`Selecteer een baan voor dag ${i+1}`); return; }
+
+      let holes = [];
+      if (banen[baanNaam]?.holes) holes = banen[baanNaam].holes.slice(0, holesCount);
+      if (!holes.length) { toast(`Baan heeft geen holes geconfigureerd (dag ${i+1})`); return; }
+
+      dagenConfig.push({ dagNr: i + 1, datum, baan: baanNaam, holes, starttijd, interval });
+    }
+
+    // Spelers uit flights
     const geselecteerd = _flights.flatMap(f => f.spelers);
     if (geselecteerd.length < 2) { toast('Voeg minimaal 2 spelers toe aan flights'); return; }
     if (_flights.every(f => f.spelers.length === 0)) { toast('Verdeel spelers over flights'); return; }
 
-    const banen = alleBANEN();
-    let holes = [];
-    if (banen[baanNaam]?.holes) holes = banen[baanNaam].holes.slice(0, holesCount);
-    if (!holes.length) { toast('Baan heeft geen holes geconfigureerd'); return; }
+    const spelers = geselecteerd.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp, gast: s.gast || false }));
 
-    const scores = {};
-    geselecteerd.forEach(s => { scores[s.id] = Array(holes.length).fill(null); });
+    // Bouw dagen[] — scores en flights leeg, worden per dag ingevuld
+    const dagen = dagenConfig.map(cfg => {
+      const scores = {};
+      spelers.forEach(s => { scores[s.id] = Array(cfg.holes.length).fill(null); });
 
-    const modus = document.querySelector('input[name="t-modus"]:checked')?.value || 'matchplay';
+      // Dag 1 flights vanuit de flight indeling; overige dagen starten leeg
+      const flights = cfg.dagNr === 1
+        ? _flights.map(f => ({
+            id: f.id, naam: f.naam,
+            spelerIds: f.spelers.map(s => s.id),
+            starthole: f.starthole || 1,
+            starttijd: f.starttijd || cfg.starttijd
+          }))
+        : [];
 
-    // v3.0.0-11.37: meerdaagse structuur — dag 1 aanmaken
-    const dag1 = {
-      dagNr: 1,
-      datum,
-      baan: baanNaam,
-      holes,
-      starttijd: document.getElementById('t-starttijd')?.value || '',
-      interval:  parseInt(document.getElementById('t-interval')?.value) || 0,
-      flights: _flights.map(f => ({
-        id: f.id, naam: f.naam,
-        spelerIds: f.spelers.map(s => s.id),
-        starthole: f.starthole || 1,
-        starttijd: f.starttijd || ''
-      })),
-      scores,
-      afgerond: false
-    };
+      return {
+        dagNr:    cfg.dagNr,
+        datum:    cfg.datum,
+        baan:     cfg.baan,
+        holes:    cfg.holes,
+        starttijd: cfg.starttijd,
+        interval:  cfg.interval,
+        flights,
+        scores,
+        afgerond: false
+      };
+    });
 
     const nieuweToernooi = {
       status: 'actief',
@@ -533,8 +629,8 @@ async function startToernooi() {
       ptWin, ptTie, ptLoss, hcpPct,
       ladderId: ladderId || null,
       rankingLadderIds,
-      spelers: geselecteerd.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp, gast: s.gast || false })),
-      dagen: [dag1],
+      spelers,
+      dagen,
       actiefDagNr: 1,
       timestamp: Date.now()
     };
@@ -545,7 +641,6 @@ async function startToernooi() {
     store.toernooiData = nieuweToernooi;
     store.actieveToernooiId = newRef.id;
 
-    // Realtime listener voor nieuw toernooi
     const unsub = onSnapshot(doc(db, 'toernooien', newRef.id), (snap) => {
       if (!snap.exists()) return;
       const nieuweData = { id: snap.id, ...snap.data() };
@@ -566,9 +661,10 @@ async function startToernooi() {
     store._tSpelersLadderIds = new Set();
     store._tRankingLadderIds = new Set();
     document.getElementById('t-naam').value = '';
-    document.getElementById('t-datum').value = '';
+    document.getElementById('t-aantal-dagen').value = '1';
     document.querySelectorAll('#t-spelers-ladders input, #t-ranking-ladders input').forEach(cb => cb.checked = false);
     renderTGeselecteerdeSpelers();
+    renderDagBlokken();
     const setupHeader = document.querySelector('#toernooi-setup-wrap .card-header.inklapbaar');
     if (setupHeader && !setupHeader.classList.contains('ingeklapt')) {
       setupHeader.classList.add('ingeklapt');
@@ -1972,4 +2068,4 @@ window.kopieerLiveLink = kopieerLiveLink;
 // ============================================================
 //  EXPORTS
 // ============================================================
-export { alleScoresIngevuld, annuleerToernooi, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarLadderTab, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, toggleTRankingLadder, toggleTScorecard, toggleTSpeler, toggleTSpelersLadder, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpeler, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
+export { alleScoresIngevuld, annuleerToernooi, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarLadderTab, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, toggleTRankingLadder, toggleTScorecard, toggleTSpeler, toggleTSpelersLadder, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpeler, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
