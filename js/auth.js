@@ -19,7 +19,7 @@ import { renderLadder } from './ladder.js';
 import { toonUitdagingBadge } from './archief.js';
 import { closeModal, renderAdmin, renderProfiel } from './admin.js';
 import { renderRonde } from './ronde.js';
-import { renderToernooi } from './toernooi.js';
+import { renderToernooi, getActiefToernooiMetModus } from './toernooi.js';
 import { renderUitslagen } from './uitslagen.js';
 import { startAlleStandenListeners, stopAlleStandenListeners } from './ladder-view.js';
 
@@ -88,18 +88,32 @@ function setIngelogdVanafProfiel(firebaseUser, profiel) {
 
 function updateSiteTitel() {
   if (!huidigeBruiker) return;
+  const h1First  = document.getElementById('h1-first');
+  const h1Second = document.getElementById('h1-second');
+  if (!h1Second) return;
+
+  // Toernooi-modus heeft prioriteit: verberg prefix, toon alleen toernooinaam
+  const actief = getActiefToernooiMetModus();
+  if (actief) {
+    if (h1First)  h1First.style.display  = 'none';
+    h1Second.textContent = `🏌️ ${actief.naam}`;
+    h1Second.style.paddingLeft = '0';
+    return;
+  }
+
+  // Herstel normale staat
+  if (h1First)  { h1First.style.display = ''; }
+  h1Second.style.paddingLeft = '';
+
   const uid = huidigeBruiker.uid;
   const mijnLadders = isCoordinatorRol()
     ? alleLadders
     : alleLadders.filter(l => uid && (l.spelerIds || []).includes(uid));
-  const h1Second = document.getElementById('h1-second');
-  if (h1Second) {
-    const alleenHeerendag = mijnLadders.length === 1 &&
-      mijnLadders[0].naam.toLowerCase().includes('heerendag');
-    h1Second.textContent = alleenHeerendag
-      ? ` ${mijnLadders[0].naam} Ladder`
-      : ' MP Ladder';
-  }
+  const alleenHeerendag = mijnLadders.length === 1 &&
+    mijnLadders[0].naam.toLowerCase().includes('heerendag');
+  h1Second.textContent = alleenHeerendag
+    ? ` ${mijnLadders[0].naam} Ladder`
+    : ' MP Ladder';
 }
 
 // ============================================================
@@ -211,6 +225,54 @@ async function slaEersteLoginOp() {
   }
 }
 
+// ============================================================
+//  TOERNOOI-MODUS NAV
+// ============================================================
+function pasToernooiModusNavToe() {
+  if (!huidigeBruiker) return;
+  if (isBeheerderRol() || isCoordinatorRol()) return; // beheerders altijd volledig zicht
+
+  const actief = getActiefToernooiMetModus();
+  if (!actief) return; // geen actief toernooi-modus toernooi — niets doen
+
+  const uid = huidigeBruiker.uid;
+  // Spelers in toernooi hebben soms geen uid (aangemaakt voor uid-koppeling bestond).
+  // Match op uid OF op numeriek speler-id via alleSpelersData.
+  const mijnSpelerData = alleSpelersData.find(s => s.uid === uid || s.id === uid);
+  const isDeelnemer = (actief.spelers || []).some(s =>
+    (uid && s.uid === uid) ||
+    (mijnSpelerData && String(s.id) === String(mijnSpelerData.id))
+  );
+  if (!isDeelnemer) return; // speler zit niet in dit toernooi — niets doen
+
+  // Verberg alle tabs behalve Ronde en Uitslag
+  const verbergTabs = ['ladder', 'partij', 'help', 'archief', 'toernooi', 'profiel', 'admin'];
+  verbergTabs.forEach(tab => {
+    // Tabs zonder id: selecteer via onclick attribuut
+    const btn = document.querySelector(`nav button[onclick="showPage('${tab}')"]`);
+    if (btn) btn.style.display = 'none';
+    // Tabs met een id-knop
+    const idBtn = document.getElementById(`nav-${tab}-btn`);
+    if (idBtn) idBtn.style.display = 'none';
+  });
+
+  // Zorg dat Ronde actief is als huidige pagina verborgen wordt
+  const actievePagina = document.querySelector('.page.active');
+  const actieveId = actievePagina?.id?.replace('page-', '');
+  if (actieveId && verbergTabs.includes(actieveId)) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-ronde')?.classList.add('active');
+    document.querySelector('nav button[onclick="showPage(\'ronde\')"]')?.classList.add('active');
+  }
+}
+
+// Luister naar toernooiModusGewijzigd event vanuit toernooi.js
+window.addEventListener('toernooiModusGewijzigd', () => {
+  updateSiteTitel();
+  pasToernooiModusNavToe();
+});
+
 function vervolgIngelogd() {
   document.getElementById('login-scherm').classList.remove('actief');
   document.getElementById('login-fout').style.display = 'none';
@@ -239,6 +301,9 @@ function vervolgIngelogd() {
 
   const versieBadge = document.getElementById('versie-badge');
   if (versieBadge) versieBadge.style.display = isBeheerderRol() ? '' : 'none';
+
+  // Pas toernooi-modus nav toe (verbergt tabs voor deelnemers indien actief)
+  pasToernooiModusNavToe();
 
   renderLadder();
   registreerNotificatieToken();

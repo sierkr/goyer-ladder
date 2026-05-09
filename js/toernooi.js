@@ -1,5 +1,5 @@
 // ============================================================
-//  toernooi.js — v3.0.0-11.41
+//  toernooi.js — v3.0.0-11.44
 //  Meerdaags toernooi: scores/flights/baan per dag
 //  Datastructuur: t.dagen[dagNr-1].{datum,baan,holes,flights,scores,afgerond}
 // ============================================================
@@ -619,7 +619,10 @@ async function startToernooi() {
     if (geselecteerd.length < 2) { toast('Voeg minimaal 2 spelers toe aan flights'); return; }
     if (_flights.every(f => f.spelers.length === 0)) { toast('Verdeel spelers over flights'); return; }
 
-    const spelers = geselecteerd.map(s => ({ id: s.id, naam: s.naam, hcp: s.hcp, gast: s.gast || false }));
+    const spelers = geselecteerd.map(s => {
+      const spelersDoc = alleSpelersData.find(sd => String(sd.id) === String(s.id));
+      return { id: s.id, naam: s.naam, hcp: s.hcp, gast: s.gast || false, uid: spelersDoc?.uid || null };
+    });
 
     // Bouw dagen[] — scores en flights leeg, worden per dag ingevuld
     const dagen = dagenConfig.map(cfg => {
@@ -1222,6 +1225,15 @@ function renderToernooiActief() {
         🏅 Toernooi afsluiten${t.modus !== 'strokeplay' && (t.rankingLadderIds?.length > 0 || t.ladderId) ? ' & ladder bijwerken' : ''}
       </button>
       ` : ''}
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border);margin-bottom:8px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;font-size:13px;color:var(--dark)">
+          <input type="checkbox" id="t-toernooi-modus-chk"
+            ${t.toernooiModus ? 'checked' : ''}
+            onchange="toggleToernooiModus(this.checked)"
+            style="accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
+          <span><strong>Toernooi-modus</strong><br><span style="font-size:11px;color:var(--mid)">Deelnemers zien alleen Ronde &amp; Uitslag. Titelbalk toont toernooinaam.</span></span>
+        </label>
+      </div>
       <button class="btn btn-ghost btn-block" onclick="annuleerToernooi()" style="margin-bottom:8px;color:var(--red)">
         Toernooi annuleren
       </button>
@@ -2095,6 +2107,25 @@ function kopieerLiveLink() {
 window.kopieerLiveLink = kopieerLiveLink;
 
 // ============================================================
-//  EXPORTS
+//  TOERNOOI-MODUS
 // ============================================================
+async function toggleToernooiModus(aan) {
+  try {
+    if (!toernooiData || !actieveToernooiId) return;
+    toernooiData.toernooiModus = !!aan;
+    const idx = alleToernooien.findIndex(t => t.id === actieveToernooiId);
+    if (idx >= 0) alleToernooien[idx].toernooiModus = !!aan;
+    await setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(toernooiData)));
+    // Laat auth.js de nav + header bijwerken
+    window.dispatchEvent(new CustomEvent('toernooiModusGewijzigd'));
+    toast(aan ? 'Toernooi-modus aan ✓' : 'Toernooi-modus uit');
+  } catch(e) { console.error('toggleToernooiModus mislukt:', e); toast('Er is iets misgegaan'); }
+}
+window.toggleToernooiModus = toggleToernooiModus;
+
+export function getActiefToernooiMetModus() {
+  return alleToernooien.find(t => t.toernooiModus && t.status === 'actief') || null;
+}
+
+
 export { alleScoresIngevuld, annuleerToernooi, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarLadderTab, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, toggleTRankingLadder, toggleTScorecard, toggleTSpeler, toggleTSpelersLadder, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpeler, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
