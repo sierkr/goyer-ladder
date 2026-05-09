@@ -3,7 +3,7 @@
 // ============================================================
 import { db, BANEN_DOC, LADDERS_COL, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, state, alleLadders, activeLadderId, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
-import { slaState, getLadderData, getNextId, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
+import { slaState, getLadderData, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { objNaarRondes } from './knockout.js';
 import { getLadderSpelers, isInLadder } from './ladder-view.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
