@@ -2,8 +2,8 @@
 //  partij.js — Partij aanmaken, banen, naam helpers
 // ============================================================
 import { db, BANEN_DOC, LADDERS_COL, DEFAULT_STATE, esc, escAttr } from './config.js';
-import { store, state, alleLadders, activeLadderId, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
-import { slaState, getLadderData, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
+import { store, alleLadders, activeLadderId, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
+import { slaActievePartijenOp, getLadderData, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { objNaarRondes } from './knockout.js';
 import { getLadderSpelers, isInLadder } from './ladder-view.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -477,13 +477,8 @@ function mijnPartij() {
     p.spelers.some(s => s.uid === uid)
   ) || null;
 
-  // Zoek eerst in actieve ladder
-  const inActief = zoekInPartijen(state.actievePartijen);
-  if (inActief) return inActief;
-
-  // Zoek in andere ladders (via alleLadders cache)
+  // Zoek in alle ladders — geen activeLadderId onderscheid meer
   for (const l of alleLadders) {
-    if (l.id === activeLadderId) continue;
     const gevonden = zoekInPartijen(l.actievePartijen);
     if (gevonden) return gevonden;
   }
@@ -567,12 +562,7 @@ async function startPartij() {
   for (const l of alleLadders) {
     (l.actievePartijen || []).forEach(p => alleActieve.push({ ...p, _ladderNaam: l.naam || l.id }));
   }
-  // Tel ook eventuele extra actieve partijen in de active state
-  (state.actievePartijen || []).forEach(p => {
-    if (!alleActieve.some(a => a.partijId === p.partijId)) {
-      alleActieve.push({ ...p, _ladderNaam: 'huidige ladder' });
-    }
-  });
+  // alleLadders bevat alle actieve partijen — geen extra state-check nodig
   const bezet = spelers.find(s => {
     if (s.uid?.startsWith('gast_')) return false; // gastspeler
     return alleActieve.some(p =>
@@ -634,22 +624,12 @@ async function startPartij() {
 
   spelers.forEach(s => { nieuwePartij.scores[s.uid] = Array(activeHoles.length).fill(null); });
 
-  // Voeg toe aan de juiste ladder
-  if (partijLadderId !== activeLadderId) {
-    // Laad andere ladder en voeg partij toe — schrijf alleen actievePartijen terug
-    const snap = await getDoc(doc(db, 'ladders', partijLadderId));
-    const bestaandePartijen = snap.exists() ? (snap.data().actievePartijen || []) : [];
-    bestaandePartijen.push(nieuwePartij);
-    await setDoc(doc(db, 'ladders', partijLadderId), { actievePartijen: bestaandePartijen }, { merge: true });
-    // Wissel ladder en update lokale state zodat renderRonde direct de juiste partij heeft
-    store.activeLadderId = partijLadderId;
-    store.state.actievePartijen = bestaandePartijen;
-    const ladderIdx = store.alleLadders.findIndex(l => l.id === partijLadderId);
-    if (ladderIdx >= 0) store.alleLadders[ladderIdx].actievePartijen = bestaandePartijen;
-  } else {
-    state.actievePartijen.push(nieuwePartij);
-    await slaState();
+  // Voeg toe aan alleLadders en schrijf naar Firestore — altijd op partijLadderId
+  const ladderIdx = alleLadders.findIndex(l => l.id === partijLadderId);
+  if (ladderIdx >= 0) {
+    alleLadders[ladderIdx].actievePartijen = [...(alleLadders[ladderIdx].actievePartijen || []), nieuwePartij];
   }
+  await slaActievePartijenOp(partijLadderId);
 
   toast('Partij gestart! ⛳');
   document.querySelectorAll('nav button')[2].click();

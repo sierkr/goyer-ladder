@@ -2,7 +2,6 @@
 //  auth.js — v3.0.0 — uid-architectuur volledig
 //  Primaire identifier: Firebase Auth uid
 //  Bron van waarheid:   spelers/{uid} (profiel), standen/{uid} (ranking)
-//                       blijven beschikbaar voor fase 3-5
 // ============================================================
 import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
@@ -10,7 +9,7 @@ import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   EMAIL_SUFFIX, INITIEEL_WACHTWOORD, DEFAULT_HCP,
   genereerEmail, loginNaamVan } from './config.js';
 import { store, DEFAULT_LADDER_CONFIG,
-  state, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker,
+  alleLadders, activeLadderId, alleSpelersData, huidigeBruiker,
   _usersCache, archiefData, uitdagingenData, toernooiData, alleToernooien,
   actieveToernooiId, _firestoreReady, _vasteListeners, _toernooiListeners,
   _bezigMetRegistratie, playerSlotCount, _verwijderdePartijIds } from './store.js';
@@ -420,19 +419,29 @@ async function wijzigWachtwoord() {
 //  FIRESTORE — opslaan & initialisatie
 // ============================================================
 
-async function slaState() {
+// ============================================================
+//  slaActievePartijdnOp — schrijft actievePartijen van één ladder naar Firestore.
+//  Vervangt de oude slaState() singleton. Elke caller geeft het ladderId mee.
+// ============================================================
+export async function slaActievePartijenOp(ladderId) {
+  if (!ladderId) return;
   try {
-    if (activeLadderId) {
-      // Schrijf alleen actievePartijen en uitslagen — merge zodat overige velden onaangeroerd blijven.
-      // Nooit het hele document spreaden: dat sleept legacy-velden met undefined mee.
-      await setDoc(doc(db, 'ladders', activeLadderId), {
-        actievePartijen: state.actievePartijen || [],
-        uitslagen:       state.uitslagen       || [],
-      }, { merge: true });
-    } else {
-      await setDoc(STATE_DOC, JSON.parse(JSON.stringify(state)));
-    }
-  } catch(e) { console.error('Firestore save error:', e); }
+    const ladder = alleLadders.find(l => l.id === ladderId);
+    const actievePartijen = ladder?.actievePartijen || [];
+    await setDoc(doc(db, 'ladders', ladderId), { actievePartijen }, { merge: true });
+  } catch(e) { console.error('[slaActievePartijenOp] mislukt voor', ladderId, e); }
+}
+
+// ============================================================
+//  slaUitslagenOp — schrijft uitslagen van één ladder naar Firestore.
+// ============================================================
+export async function slaUitslagenOp(ladderId) {
+  if (!ladderId) return;
+  try {
+    const ladder = alleLadders.find(l => l.id === ladderId);
+    const uitslagen = ladder?.data?.uitslagen || ladder?.uitslagen || [];
+    await setDoc(doc(db, 'ladders', ladderId), { uitslagen }, { merge: true });
+  } catch(e) { console.error('[slaUitslagenOp] mislukt voor', ladderId, e); }
 }
 
 // ============================================================
@@ -535,13 +544,14 @@ async function initFirestore() {
       });
       store.alleLadders    = [{ id: 'mp', naam: 'MP',
         spelerIds: bestaandeState.spelerIds || [],
-        actievePartijen: bestaandeState.actievePartijen }];
+        actievePartijen: bestaandeState.actievePartijen,
+        data: bestaandeState }];
       laddersSnap.docs.filter(d => d.id !== 'mp').forEach(d => {
         alleLadders.push({ id: d.id, naam: d.data().naam,
           spelerIds: d.data().spelerIds || [],
-          actievePartijen: d.data().actievePartijen || [] });
+          actievePartijen: d.data().actievePartijen || [],
+          data: d.data() });
       });
-      store.state          = bestaandeState;
       store.activeLadderId = 'mp';
     } else {
       store.alleLadders = laddersSnap.docs.map(d => ({
@@ -561,10 +571,6 @@ async function initFirestore() {
       }
       const actief = laddersSnap.docs.find(d => d.id === 'mp') || laddersSnap.docs[0];
       if (!actief) { console.warn('Geen ladders gevonden'); toonLaadOverlay(false); return; }
-      const actiefData = actief.data();
-      if (!actiefData) { console.error('Ladder data undefined'); toonLaadOverlay(false); return; }
-      store.state          = actiefData;
-      if (!store.state.actievePartijen) store.state.actievePartijen = [];
       store.activeLadderId = actief.id;
 
       // v3.0.0-9c: tweede migratieblok (ladders→alleSpelersData→SPELERS_DOC) verwijderd.
@@ -574,30 +580,26 @@ async function initFirestore() {
 
   clearTimeout(loginFallback);
 
-  // ── Live listener: actieve ladder ──────────────────────────
-  if (store.activeLadderId) {
-    _vasteListeners.push(onSnapshot(doc(db, 'ladders', store.activeLadderId), (snap) => {
+  // ── Live listeners: alle ladders gelijkwaardig ─────────────
+  // Elke ladder heeft zijn eigen onSnapshot die alleLadders[idx] bijhoudt.
+  // Er is geen "primaire" of "actieve" ladder-listener meer.
+  alleLadders.forEach(ladder => {
+    _vasteListeners.push(onSnapshot(doc(db, 'ladders', ladder.id), (snap) => {
       if (!snap.exists() || !huidigeBruiker) return;
-      const nieuweState = snap.data();
-      // v3.0.0-11.32: guard tegen stale snapshot na bevestigUitslag.
-      // Blokkeer alleen snapshots waarbij ALLE actieve partijen al lokaal verwijderd zijn.
-      // Als er ook nieuwe partijen in zitten (net gestart door iemand anders) dan
-      // moet de snapshot wél verwerkt worden — anders verdwijnt die nieuwe partij.
-      const actieveInSnap = nieuweState.actievePartijen || [];
+      const data = snap.data();
+      const idx  = alleLadders.findIndex(l => l.id === ladder.id);
+      if (idx < 0) return;
+
+      const actieveInSnap = data.actievePartijen || [];
+      // Guard: negeer snapshot waarbij alle partijen al lokaal verwijderd zijn
       const heeftStalePartij = actieveInSnap.length > 0 &&
         actieveInSnap.every(p => _verwijderdePartijIds.has(p.partijId));
-      if (heeftStalePartij) {
-        console.log('[onSnapshot] stale snapshot genegeerd — alle partijen al verwijderd');
-        return;
-      }
-      store.state = nieuweState;
-      if (!store.state.actievePartijen) store.state.actievePartijen = [];
-      const idx = store.alleLadders.findIndex(l => l.id === activeLadderId);
-      if (idx >= 0) {
-        store.alleLadders[idx].spelerIds       = store.state.spelerIds       || [];
-        store.alleLadders[idx].actievePartijen = store.state.actievePartijen;
-        store.alleLadders[idx].data            = snap.data();
-      }
+      if (heeftStalePartij) return;
+
+      alleLadders[idx].spelerIds       = data.spelerIds       || [];
+      alleLadders[idx].actievePartijen = actieveInSnap;
+      alleLadders[idx].data            = data;
+
       const ap = document.querySelector('.page.active')?.id?.replace('page-', '');
       if (ap === 'ladder')   renderLadder();
       if (ap === 'uitslagen') renderUitslagen();
@@ -605,23 +607,6 @@ async function initFirestore() {
       if (ap === 'ronde')    renderRonde();
       if (ap === 'profiel')  renderProfiel();
       if (ap === 'toernooi') renderToernooi();
-      updateSiteTitel();
-    }));
-  }
-
-  // ── Live listener: overige ladders ─────────────────────────
-  alleLadders.filter(l => l.id !== activeLadderId).forEach(ladder => {
-    _vasteListeners.push(onSnapshot(doc(db, 'ladders', ladder.id), (snap) => {
-      if (!snap.exists() || !huidigeBruiker) return;
-      const idx = alleLadders.findIndex(l => l.id === ladder.id);
-      if (idx >= 0) {
-        alleLadders[idx].spelerIds = snap.data().spelerIds || [];
-        alleLadders[idx].data      = snap.data();
-      }
-      const ap = document.querySelector('.page.active')?.id?.replace('page-', '');
-      if (ap === 'ladder')  renderLadder();
-      if (ap === 'admin')   renderAdmin();
-      if (ap === 'profiel') renderProfiel();
       updateSiteTitel();
     }));
   });
@@ -666,17 +651,12 @@ async function initFirestore() {
   });
 }
 
-async function wisselLadder(ladderId) {
-  try {
-    if (ladderId === activeLadderId) return;
-    const snap = await getDoc(doc(db, 'ladders', ladderId));
-    if (!snap.exists()) return;
-    store.activeLadderId = ladderId;
-    store.state          = snap.data();
-    if (!state.actievePartijen) state.actievePartijen = [];
-    renderLadder();
-    renderUitslagen();
-  } catch(e) { console.error('wisselLadder mislukt:', e); }
+function wisselLadder(ladderId) {
+  // activeLadderId is nu een puur UI-hint — beïnvloedt geen data.
+  // Alle ladder-data zit in alleLadders[] en wordt live bijgehouden via onSnapshot.
+  if (ladderId === activeLadderId) return;
+  store.activeLadderId = ladderId;
+  renderLadder();
 }
 
 function toonLaadOverlay(toon) {
@@ -981,8 +961,9 @@ async function getLadderData(ladderId, forceFresh = false) {
   } catch(e) { console.error('getLadderData mislukt:', e); return { exists: false, data: null }; }
 }
 
-function getLadderConfig() {
-  return state.config || alleLadders.find(l => l.id === activeLadderId)?.config || DEFAULT_LADDER_CONFIG;
+function getLadderConfig(ladderId) {
+  const id = ladderId || activeLadderId;
+  return alleLadders.find(l => l.id === id)?.config || DEFAULT_LADDER_CONFIG;
 }
 
 function isCoordinatorRol() {
@@ -1046,7 +1027,7 @@ export {
   loginSubmit, loginMetGoogle,
   openWachtwoordVergeten, sluitResetWrap, stuurResetEmail,
   openWachtwoordWijzigen, wijzigWachtwoord,
-  slaState, wisselLadder, toonLaadOverlay,
+  wisselLadder, toonLaadOverlay,
   getUsers, saveUsers, getLadderData, getLadderConfig,
   updateSiteTitel, toonLoginFout,
   genereerInviteLink, kopieerInviteLink, checkInviteLink,

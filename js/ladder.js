@@ -2,8 +2,8 @@
 //  ladder.js — Ladder rendering, ranking weergave
 // ============================================================
 import { db, LADDERS_COL, esc, escAttr } from './config.js';
-import { store, state, alleLadders, activeLadderId, huidigeBruiker, uitdagingenData, DEFAULT_LADDER_CONFIG } from './store.js';
-import { slaState, getLadderConfig, getLadderData, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
+import { store, alleLadders, activeLadderId, huidigeBruiker, uitdagingenData, DEFAULT_LADDER_CONFIG } from './store.js';
+import { getLadderConfig, getLadderData, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { stuurUitdaging } from './archief.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { renderKnockoutLadderKaart } from './knockout.js';
@@ -69,11 +69,10 @@ async function renderLadder() {
   // Render elke ladder als inklapbare kaart
   // Gebruik gecachede data waar mogelijk, anders getDoc
   const ladderData = await Promise.all(mijnLadders.map(async l => {
-    if (l.id === activeLadderId) return { ...l, data: state };
-    if (l.data) return l; // gebruik cache
+    if (l.data) return l; // gebruik cache (gevuld via onSnapshot)
     const snap = await getDoc(doc(db, 'ladders', l.id));
-    const data = snap.exists() ? snap.data() : { spelers: [] };
-    l.data = data; // cache voor volgende keer
+    const data = snap.exists() ? snap.data() : {};
+    l.data = data;
     return { ...l, data };
   }));
 

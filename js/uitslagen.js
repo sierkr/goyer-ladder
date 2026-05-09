@@ -2,9 +2,10 @@
 //  uitslagen.js
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
-import { store, state, alleLadders, activeLadderId, _beheerPartijId, _beheerWinnaars } from './store.js';
-import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+import { store, alleLadders, activeLadderId, _beheerPartijId, _beheerWinnaars } from './store.js';
+import { slaActievePartijenOp, slaUitslagenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { mijnPartij } from './partij.js';
+import { getLadderSpelers } from './ladder-view.js';
 import { renderLadder } from './ladder.js';
 import { renderRonde, showLadderChanges, syncStandenNaBevestigUitslag, verwijderPartijMetRetry } from './ronde.js';
 import { slaSnapshotOp } from './beheer.js';
@@ -95,7 +96,8 @@ function toonScorekaartModal(data) {
 
 function renderUitslagen() {
   const isBeheerder = isCoordinatorRol();
-  const actief = state.actievePartijen || [];
+  // Aggregeer actieve partijen van alle ladders
+  const actief = alleLadders.flatMap(l => l.actievePartijen || []);
 
   // Actieve partijen
   document.getElementById('actief-count').textContent = actief.length;
@@ -131,12 +133,13 @@ function renderUitslagen() {
 
   // Gespeelde partijen
   const list = document.getElementById('uitslagen-list');
-  document.getElementById('uitslagen-count').textContent = state.uitslagen.length;
-  if (state.uitslagen.length === 0) {
+  const alleUitslagen = alleLadders.flatMap(l => l.data?.uitslagen || []).sort((a, b) => (b.scoreTs || 0) - (a.scoreTs || 0));
+  document.getElementById('uitslagen-count').textContent = alleUitslagen.length;
+  if (alleUitslagen.length === 0) {
     list.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><p>Nog geen uitslagen.</p></div>';
     return;
   }
-  list.innerHTML = state.uitslagen.map((u, idx) => {
+  list.innerHTML = alleUitslagen.map((u, idx) => {
     const heeftScorekaart = !!u.scoreTs;
     const ouderDan30Dagen = u.scoreTs && (Date.now() - u.scoreTs > 30 * 24 * 60 * 60 * 1000);
     return `
@@ -157,7 +160,7 @@ function renderUitslagen() {
 }
 
 function openBeheerPartij(partijId) {
-  const p = (state.actievePartijen || []).find(ap => ap.partijId === partijId);
+  const p = alleLadders.flatMap(l => l.actievePartijen || []).find(ap => ap.partijId === partijId);
   if (!p) return;
   store._beheerPartijId = partijId;
 
@@ -213,7 +216,7 @@ function setBeheerWinnaar(idx, kant) {
 async function bevestigBeheerUitslag() {
 
   try {
-  const p = (state.actievePartijen || []).find(ap => ap.partijId === _beheerPartijId);
+  const p = alleLadders.flatMap(l => l.actievePartijen || []).find(ap => ap.partijId === _beheerPartijId);
   if (!p) return;
   // v3.0.0-11.5: null = geen keuze gemaakt (blokkeert). 'SKIP' = bewust overgeslagen (ok).
   if (_beheerWinnaars.some(w => w === null)) {
@@ -223,25 +226,24 @@ async function bevestigBeheerUitslag() {
 
   closeModal('modal-beheer-partij');
 
+  const rankSpelers = getLadderSpelers(p.ladderId).map(s => ({ ...s }));
+  rankSpelers.forEach(s => { s.prevRank = s.rank; });
   const changes = [];
-  state.spelers.forEach(s => { s.prevRank = s.rank; });
 
   p.matchups.forEach((m, idx) => {
     const kant = _beheerWinnaars[idx];
-    // v3.0.0-11.5: overgeslagen matchups tellen niet mee voor ladder
     if (kant === 'SKIP') return;
     const winnaar = kant === 'A' ? m.spelerA : m.spelerB;
     const verliezer = kant === 'A' ? m.spelerB : m.spelerA;
-    // uid-match — enige sleutel, geen naam-fallback
-    const sw = state.spelers.find(s => s.uid === winnaar.uid);
-    const sv = state.spelers.find(s => s.uid === verliezer.uid);
+    const sw = rankSpelers.find(s => s.uid === winnaar.uid);
+    const sv = rankSpelers.find(s => s.uid === verliezer.uid);
     if (!sw || !sv) { return; }
     const oldWrank = sw.rank, oldVrank = sv.rank;
     sw.partijen++; sv.partijen++; sw.gewonnen++;
     let newWrank, newVrank;
     const swRank = sw.rank;
     const svRank = sv.rank;
-    const cfg2 = getLadderConfig();
+    const cfg2 = getLadderConfig(p.ladderId);
     if (swRank > svRank) {
       newWrank = Math.max(1, swRank - cfg2.laagStijg);
       const verschil2 = swRank - svRank;
@@ -250,17 +252,15 @@ async function bevestigBeheerUitslag() {
       } else {
         newVrank = svRank + cfg2.laagZak;
       }
-      // v3.0.0-11.23: zelfde fix als ronde.js — oude `if (newWrank >= newVrank)`
-      // check verwijderd want die kapotte daling tot bij de winnaar.
     } else {
       newWrank = Math.max(1, swRank - cfg2.hoogStijg);
       newVrank = svRank + cfg2.hoogZak;
     }
-    const n2 = state.spelers.length;
+    const n2 = rankSpelers.length;
     const gereserveerd2 = new Set([newWrank, newVrank]);
     const beschikbaar2 = [];
     for (let r = 1; r <= n2; r++) { if (!gereserveerd2.has(r)) beschikbaar2.push(r); }
-    const anderen2 = state.spelers
+    const anderen2 = rankSpelers
       .filter(s => s.uid !== sw.uid && s.uid !== sv.uid)
       .sort((a, b) => a.rank - b.rank);
     anderen2.forEach((s, i) => { s.rank = beschikbaar2[i]; });
@@ -268,9 +268,9 @@ async function bevestigBeheerUitslag() {
     sw.rank = newWrank; sv.rank = newVrank;
   });
 
-  [...state.spelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
+  [...rankSpelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
 
-  state.uitslagen.unshift({
+  const uitslag = {
     datum: new Date().toLocaleDateString('nl-NL'),
     baan: p.baan,
     spelers: p.spelers.map(s => s.naam),
@@ -281,16 +281,19 @@ async function bevestigBeheerUitslag() {
         a: m.spelerA.naam, b: m.spelerB.naam,
         winnaar: kant === 'A' ? m.spelerA.naam : m.spelerB.naam
       }))
-  });
-
-  state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== _beheerPartijId);
-
-  await slaState();
-  // v3.0.0-11.24: verifieer dat de partij echt weg is (race-conditie protection)
-  await verwijderPartijMetRetry(activeLadderId, _beheerPartijId);
-  // v3.0.0-11.8: sync naar standen/{uid} subcollectie zodat ladder-view update
-  await syncStandenNaBevestigUitslag(activeLadderId);
-  slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam.split(' ')[0]).join(' vs ')}`);
+  };
+  const lIdx = alleLadders.findIndex(l => l.id === p.ladderId);
+  if (lIdx >= 0) {
+    if (!alleLadders[lIdx].data) alleLadders[lIdx].data = {};
+    if (!alleLadders[lIdx].data.uitslagen) alleLadders[lIdx].data.uitslagen = [];
+    alleLadders[lIdx].data.uitslagen.unshift(uitslag);
+    await slaUitslagenOp(p.ladderId);
+    alleLadders[lIdx].actievePartijen = (alleLadders[lIdx].actievePartijen || [])
+      .filter(ap => ap.partijId !== _beheerPartijId);
+  }
+  await verwijderPartijMetRetry(p.ladderId, _beheerPartijId);
+  await syncStandenNaBevestigUitslag(p.ladderId, rankSpelers);
+  slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam.split(' ')[0]).join(' vs ')}`, p.ladderId);
   showLadderChanges(changes);
   } catch(e) { console.error('bevestigBeheerUitslag mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
@@ -302,20 +305,14 @@ async function annuleerEigenPartij() {
   const p = mijnPartij();
   if (!p) return;
 
-  // Verwijder uit de juiste ladder (kan afwijken van activeLadderId)
-  const ladderId = p.ladderId || activeLadderId;
-  if (ladderId !== activeLadderId) {
-    const snap = await getDoc(doc(db, 'ladders', ladderId));
-    if (snap.exists()) {
-      const filtered = (snap.data().actievePartijen || []).filter(ap => ap.partijId !== p.partijId);
-      await setDoc(doc(db, 'ladders', ladderId), { actievePartijen: filtered }, { merge: true });
-      const idx = alleLadders.findIndex(l => l.id === ladderId);
-      if (idx >= 0) { alleLadders[idx].actievePartijen = filtered; if (alleLadders[idx].data) alleLadders[idx].data.actievePartijen = filtered; }
-    }
-  } else {
-    state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== p.partijId);
-    await slaState();
+  // Verwijder altijd op p.ladderId — geen activeLadderId conditie nodig
+  const ladderId = p.ladderId;
+  const idx = alleLadders.findIndex(l => l.id === ladderId);
+  if (idx >= 0) {
+    alleLadders[idx].actievePartijen = (alleLadders[idx].actievePartijen || [])
+      .filter(ap => ap.partijId !== p.partijId);
   }
+  await setDoc(doc(db, 'ladders', ladderId), { actievePartijen: alleLadders[idx >= 0 ? idx : 0]?.actievePartijen || [] }, { merge: true });
 
   closeModal('modal-uitslag');
   renderRonde();
@@ -333,8 +330,15 @@ async function verwijderActievePartij() {
 
   try {
   if (!confirm('Partij verwijderen? Dit kan niet ongedaan worden.')) return;
-  state.actievePartijen = (state.actievePartijen || []).filter(ap => ap.partijId !== _beheerPartijId);
-  await slaState();
+  const ladderMetPartij = alleLadders.find(l =>
+    (l.actievePartijen || []).some(ap => ap.partijId === _beheerPartijId)
+  );
+  if (ladderMetPartij) {
+    const i2 = alleLadders.indexOf(ladderMetPartij);
+    alleLadders[i2].actievePartijen = alleLadders[i2].actievePartijen
+      .filter(ap => ap.partijId !== _beheerPartijId);
+    await setDoc(doc(db, 'ladders', ladderMetPartij.id), { actievePartijen: alleLadders[i2].actievePartijen }, { merge: true });
+  }
   closeModal('modal-beheer-partij');
   renderUitslagen();
   toast('Partij verwijderd');
@@ -359,12 +363,9 @@ async function verversLiveScoreBord() {
   if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
   try {
     const { getLadderData } = await import('./auth.js');
-    await getLadderData(activeLadderId, true);
     for (const l of alleLadders) {
-      if (l.id !== activeLadderId) {
-        const snap = await getDoc(doc(db, 'ladders', l.id));
-        if (snap.exists()) { l.data = snap.data(); l.actievePartijen = snap.data().actievePartijen || []; }
-      }
+      const snap = await getDoc(doc(db, 'ladders', l.id));
+      if (snap.exists()) { l.data = snap.data(); l.actievePartijen = snap.data().actievePartijen || []; }
     }
     renderLiveScoreBord();
   } catch(e) {
@@ -377,12 +378,10 @@ async function verversLiveScoreBord() {
 
 function renderLiveScoreBord() {
   // Zoek de partij in alle ladders
-  let p = (state.actievePartijen || []).find(ap => ap.partijId === _livePartijId);
-  if (!p) {
-    for (const l of alleLadders) {
-      p = (l.actievePartijen || l.data?.actievePartijen || []).find(ap => ap.partijId === _livePartijId);
-      if (p) break;
-    }
+  let p = null;
+  for (const l of alleLadders) {
+    p = (l.actievePartijen || []).find(ap => ap.partijId === _livePartijId);
+    if (p) break;
   }
 
   const tijdEl = document.getElementById('live-scorebord-tijd');

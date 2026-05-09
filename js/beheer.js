@@ -2,8 +2,8 @@
 //  beheer.js
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
-import { store, state, alleLadders, activeLadderId, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG } from './store.js';
-import { slaState, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+import { store, alleLadders, activeLadderId, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG } from './store.js';
+import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { laadInviteStatus } from './auth.js';
 import { renderLadder } from './ladder.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -137,7 +137,7 @@ async function slaLadderInstellingenOp() {
   // Update cache
   const idx = alleLadders.findIndex(l => l.id === ladderId);
   if (idx >= 0) alleLadders[idx].config = config;
-  if (ladderId === activeLadderId) state.config = config;
+  // config zit in alleLadders[idx].config — geen state singleton meer
 
   closeModal('modal-ladder-instellingen');
   toast('Instellingen opgeslagen ✓');
@@ -207,7 +207,6 @@ async function verwijderLadder(ladderId) {
   store.alleLadders = alleLadders.filter(l => l.id !== ladderId);
   if (ladderId === activeLadderId) {
     store.activeLadderId = alleLadders[0]?.id || null;
-    store.state = alleLadders[0] || state;
   }
   renderAdminLadders();
   toast('Ladder verwijderd');
@@ -340,19 +339,20 @@ function openSnapshotsModal() {
   laadSnapshots();
 }
 
-async function slaSnapshotOp(label) {
+async function slaSnapshotOp(label, ladderId) {
   try {
-    if (!activeLadderId) return;
+    if (!ladderId) ladderId = activeLadderId;
+    if (!ladderId) return;
     // Verwijder snapshots ouder dan 30 dagen
     const dertig = Date.now() - 30 * 24 * 60 * 60 * 1000;
     const oudeSnaps = await getDocs(query(SNAPSHOTS_COL, where('timestamp', '<', dertig)));
     oudeSnaps.forEach(d => deleteDoc(d.ref));
 
-    // Lees actuele standen uit standen/{uid} — niet uit state.spelers
-    const ladder = alleLadders.find(l => l.id === activeLadderId);
+    // Lees actuele standen uit standen/{uid}
+    const ladder = alleLadders.find(l => l.id === ladderId);
     const spelerIds = ladder?.spelerIds || ladder?.data?.spelerIds || [];
     const standenSnaps = await Promise.all(
-      spelerIds.map(uid => getDoc(doc(db, 'ladders', activeLadderId, 'standen', uid)).catch(() => null))
+      spelerIds.map(uid => getDoc(doc(db, 'ladders', ladderId, 'standen', uid)).catch(() => null))
     );
     const spelersSnapshot = spelerIds.map((uid, i) => {
       const d = standenSnaps[i]?.exists() ? standenSnaps[i].data() : {};
@@ -363,8 +363,8 @@ async function slaSnapshotOp(label) {
 
     await addDoc(SNAPSHOTS_COL, {
       label,
-      ladderId: activeLadderId,
-      ladderNaam: ladder?.naam || activeLadderId,
+      ladderId: ladderId,
+      ladderNaam: ladder?.naam || ladderId,
       timestamp: Date.now(),
       datum: new Date().toLocaleString('nl-NL'),
       spelers: spelersSnapshot
@@ -377,7 +377,8 @@ async function laadSnapshots() {
   if (!wrap) return;
   try {
     const snaps = await getDocs(query(SNAPSHOTS_COL, orderBy('timestamp', 'desc')));
-    const relevant = snaps.docs.filter(d => !d.data().ladderId || d.data().ladderId === activeLadderId);
+    const snapLadderId = _standAanpassenLadderId || activeLadderId;
+    const relevant = snaps.docs.filter(d => !d.data().ladderId || d.data().ladderId === snapLadderId);
     if (relevant.length === 0) {
       wrap.innerHTML = '<p style="font-size:13px;color:var(--light);padding:12px 16px">Nog geen snapshots voor deze ladder.</p>';
       return;
@@ -402,13 +403,14 @@ async function herstelSnapshot(snapId) {
     const snapDoc = await getDoc(doc(db, 'snapshots', snapId));
     if (!snapDoc.exists()) { toast('Snapshot niet gevonden'); return; }
     const data = snapDoc.data();
-    const ladderId   = data.ladderId || activeLadderId;
+    const ladderId   = data.ladderId;
+    if (!ladderId) { toast('Snapshot heeft geen ladderId'); return; }
     const ladderNaam = data.ladderNaam || ladderId;
 
     if (!confirm(`Ladderstand van "${ladderNaam}" herstellen naar:\n${data.label} (${data.datum})?\n\nDe huidige stand wordt eerst opgeslagen.`)) return;
 
     // Sla huidige stand op voordat we herstellen
-    await slaSnapshotOp('⚠️ Voor herstel op ' + new Date().toLocaleString('nl-NL'));
+    await slaSnapshotOp('⚠️ Voor herstel op ' + new Date().toLocaleString('nl-NL'), ladderId);
 
     // Schrijf elke speler terug naar standen/{uid}
     const writes = (data.spelers || [])

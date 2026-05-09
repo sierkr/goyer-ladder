@@ -1,26 +1,29 @@
 // ============================================================
 //  store.js — Centrale gedeelde state voor alle modules
 // ============================================================
-import { DEFAULT_STATE } from './config.js';
 
-// ─── Actieve ladder state ────────────────────────────────────
-export let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+
+// ─── Ladders ─────────────────────────────────────────────────
+// alleLadders is de enige bron van waarheid voor ladder-data.
+// Elke ladder heeft: { id, naam, type, spelerIds, actievePartijen, config, data }
+// actievePartijen wordt live bijgehouden via onSnapshot per ladder.
+// state en activeLadderId als singleton-databron zijn verwijderd (v3.0.0-11.57).
 export let alleLadders = [];
+
+// activeLadderId: puur UI-hint — welke ladder is geselecteerd in de UI.
+// Beïnvloedt geen data meer; elke operatie gebruikt p.ladderId of een expliciete parameter.
 export let activeLadderId = null;
 
-// alleSpelersData is in v3.0.0-9c een AFGELEIDE view van _usersCache.
-// Legacy-code die {id, naam, hcp} verwacht werkt door, maar id = uid (string).
-// Directe writes zijn no-ops — het veld wordt automatisch gesynchroniseerd
-// telkens _usersCache verandert.
+// alleSpelersData is een AFGELEIDE view van _usersCache.
 export let alleSpelersData = [];
 
 function _syncAlleSpelersDataFromUsers() {
-  alleSpelersData.length = 0;  // mutate in place zodat import-bindings geldig blijven
+  alleSpelersData.length = 0;
   if (Array.isArray(_usersCache)) {
     for (const u of _usersCache) {
       if (!u || !u.uid) continue;
       alleSpelersData.push({
-        id:    u.uid,           // uid als id (string) — vervangt numeric id
+        id:    u.uid,
         uid:   u.uid,
         naam:  u.naam  || '',
         hcp:   u.hcp   ?? 0,
@@ -84,28 +87,17 @@ export const DEFAULT_LADDER_CONFIG = {
 export let aangepasteBanen = [];
 export let _verwijderdePartijIds = new Set();
 
-// ─── Setters (voor modules die state moeten updaten) ─────────
-// Omdat ES modules geen directe reassignment van geïmporteerde
-// let variabelen ondersteunen, gebruiken we setters.
+// ─── Setters ─────────────────────────────────────────────────
 export const store = {
-  set state(v) { state = v; },
-  get state() { return state; },
   set alleLadders(v) { alleLadders = v; },
   get alleLadders() { return alleLadders; },
   set activeLadderId(v) { activeLadderId = v; },
   get activeLadderId() { return activeLadderId; },
-  set alleSpelersData(v) {
-    // No-op in v3.0.0-9c — alleSpelersData is afgeleid van _usersCache.
-    // Oude code die direct assigned werkt nog, maar de write heeft geen effect.
-    // (Blijft stil om console-spam te vermijden; kan later helemaal weg.)
-  },
+  set alleSpelersData(v) { /* no-op — afgeleid van _usersCache */ },
   get alleSpelersData() { return alleSpelersData; },
   set huidigeBruiker(v) { huidigeBruiker = v; },
   get huidigeBruiker() { return huidigeBruiker; },
-  set _usersCache(v) {
-    _usersCache = v;
-    _syncAlleSpelersDataFromUsers();
-  },
+  set _usersCache(v) { _usersCache = v; _syncAlleSpelersDataFromUsers(); },
   get _usersCache() { return _usersCache; },
   set _bezigMetRegistratie(v) { _bezigMetRegistratie = v; },
   get _bezigMetRegistratie() { return _bezigMetRegistratie; },
@@ -165,6 +157,5 @@ export const store = {
   get aangepasteBanen() { return aangepasteBanen; },
   set _verwijderdePartijIds(v) { _verwijderdePartijIds = v; },
   get _verwijderdePartijIds() { return _verwijderdePartijIds; },
-  set _beheerPartijId(v) { _beheerPartijId = v; },
-  get _beheerPartijId() { return _beheerPartijId; },
 };
+
