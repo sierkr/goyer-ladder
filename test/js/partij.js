@@ -11,8 +11,86 @@ import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, d
 //  PARTIJ SETUP
 // ============================================================
 
-//  PARTIJ SETUP
 // ============================================================
+//  FORMULIER STATE — bewaren voor hard reload (update-detectie)
+// ============================================================
+// v3.0.0-11.33: sla het ingevulde partijformulier op in sessionStorage
+// zodat na een automatische versie-reload de invoer hersteld wordt.
+const PARTIJ_FORM_KEY = 'partijFormulierState';
+
+function slaPartijFormulierOp() {
+  try {
+    const ladderId  = document.getElementById('partij-ladder-select')?.value || '';
+    const baanNaam  = document.getElementById('baan-select')?.value || '';
+    const startHole = document.getElementById('start-hole')?.value || '1';
+    const aantalH   = document.getElementById('aantal-holes')?.value || '18';
+
+    const slots = [];
+    for (let i = 1; i <= 4; i++) {
+      const slot  = document.getElementById('slot-' + i);
+      const input = document.getElementById('player-' + i);
+      const hcpEl = document.getElementById('hcp-' + i);
+      if (!slot || !slot.dataset.spelerId) continue;
+      slots.push({
+        spelerId: slot.dataset.spelerId,
+        naam:     input?.value || '',
+        hcp:      hcpEl?.value || ''
+      });
+    }
+
+    const state = { ladderId, baanNaam, startHole, aantalH, slots };
+    sessionStorage.setItem(PARTIJ_FORM_KEY, JSON.stringify(state));
+  } catch(e) {
+    console.warn('[partij] slaPartijFormulierOp mislukt:', e);
+  }
+}
+
+function herstelPartijFormulier() {
+  try {
+    const raw = sessionStorage.getItem(PARTIJ_FORM_KEY);
+    if (!raw) return;
+    sessionStorage.removeItem(PARTIJ_FORM_KEY);
+    const state = JSON.parse(raw);
+    if (!state) return;
+
+    // Baan herstellen
+    if (state.baanNaam) {
+      const baanSel = document.getElementById('baan-select');
+      if (baanSel) { baanSel.value = state.baanNaam; onBaanSelect(); }
+    }
+    // Start-hole / aantal holes
+    const shEl = document.getElementById('start-hole');
+    const ahEl = document.getElementById('aantal-holes');
+    if (shEl && state.startHole) shEl.value = state.startHole;
+    if (ahEl && state.aantalH)   ahEl.value = state.aantalH;
+
+    // Ladder
+    if (state.ladderId) {
+      const ladderSel = document.getElementById('partij-ladder-select');
+      if (ladderSel) ladderSel.value = state.ladderId;
+    }
+
+    // Spelerslots herstellen — wacht tot spelerslijst beschikbaar is
+    const probeerSlots = (pogingen) => {
+      const spelers = getPartijLadderSpelers();
+      if (spelers.length === 0 && pogingen > 0) {
+        setTimeout(() => probeerSlots(pogingen - 1), 500);
+        return;
+      }
+      (state.slots || []).forEach((s, i) => {
+        const n = i + 1;
+        // Voeg slot toe als het er nog niet is
+        while (store.playerSlotCount < n) addPlayerSlot();
+        selecteerPartijSpeler(n, s.spelerId, s.naam, parseFloat(s.hcp) || 0);
+      });
+    };
+    probeerSlots(10);
+  } catch(e) {
+    console.warn('[partij] herstelPartijFormulier mislukt:', e);
+    sessionStorage.removeItem(PARTIJ_FORM_KEY);
+  }
+}
+
 function alleBANEN() {
   const result = {};
   Object.entries(BANEN_DB).filter(([n]) => n !== 'Handmatig invoeren').forEach(([n,v]) => { result[n] = v; });
@@ -22,6 +100,9 @@ function alleBANEN() {
 }
 
 function initPartijForm() {
+  // v3.0.0-11.33: herstel eventueel opgeslagen formulierstate na versie-reload
+  const heeftOpgeslagen = !!sessionStorage.getItem(PARTIJ_FORM_KEY);
+
   // Vul ladder selector — alleen ladders waar de huidige speler in zit
   const ladderSel = document.getElementById('partij-ladder-select');
   const isBeheerder = isCoordinatorRol();
@@ -57,8 +138,8 @@ function initPartijForm() {
   }
   sel.innerHTML += `<option value="Handmatig invoeren">+ Handmatig invoeren / nieuwe baan</option>`;
 
-  // Selecteer thuisbaan als default
-  sel.value = Object.keys(BANEN_DB)[0];
+  // Selecteer thuisbaan als default (alleen als geen opgeslagen state)
+  if (!heeftOpgeslagen) sel.value = Object.keys(BANEN_DB)[0];
 
   // Player slots
   store.playerSlotCount = 0;
@@ -66,24 +147,36 @@ function initPartijForm() {
   addPlayerSlot();
   addPlayerSlot();
 
-  // Auto-selecteer ingelogde speler in slot 1
-  if (huidigeBruiker) {
-    const uid           = huidigeBruiker.uid;
-    const naam          = huidigeBruiker.gebruikersnaam;
-    const ladderSpelers = getPartijLadderSpelers();
-    // v3.0.0-11.5: primair uid-match, fallback naar naam (backward compat met legacy ladders
-    // waar spelerIds[] nog leeg is of entries zonder uid)
-    let gekoppeld = uid ? ladderSpelers.find(s => s.uid === uid) : null;
-    if (!gekoppeld && naam) {
-      gekoppeld = ladderSpelers.find(s => s.naam?.toLowerCase() === naam.toLowerCase());
-    }
-    console.log('[partij] auto-select slot 1:', gekoppeld ? `${gekoppeld.naam} (${gekoppeld.id})` : 'NIET GEVONDEN',
-      '— ingelogd:', naam, uid, '— ladder heeft', ladderSpelers.length, 'spelers');
-    if (gekoppeld) {
-      selecteerPartijSpeler(1, gekoppeld.id, gekoppeld.naam, gekoppeld.hcp);
-      vulKnockoutTegenstander(gekoppeld.naam);
-    }
+  // v3.0.0-11.33: herstel formulier na versie-reload (heeft eigen slot-logica)
+  if (heeftOpgeslagen) {
+    herstelPartijFormulier();
+    return;
   }
+
+  // Auto-selecteer ingelogde speler in slot 1
+  // v3.0.0-11.33: als spelerslijst nog leeg is (race condition), retry tot 5s
+  const probeerAutoSelect = (pogingen) => {
+    const ladderSpelers = getPartijLadderSpelers();
+    if (ladderSpelers.length === 0 && pogingen > 0) {
+      setTimeout(() => probeerAutoSelect(pogingen - 1), 500);
+      return;
+    }
+    if (huidigeBruiker) {
+      const uidLocal     = huidigeBruiker.uid;
+      const naam         = huidigeBruiker.gebruikersnaam;
+      let gekoppeld = uidLocal ? ladderSpelers.find(s => s.uid === uidLocal) : null;
+      if (!gekoppeld && naam) {
+        gekoppeld = ladderSpelers.find(s => s.naam?.toLowerCase() === naam.toLowerCase());
+      }
+      console.log('[partij] auto-select slot 1:', gekoppeld ? `${gekoppeld.naam} (${gekoppeld.id})` : 'NIET GEVONDEN',
+        '— ingelogd:', naam, uidLocal, '— ladder heeft', ladderSpelers.length, 'spelers');
+      if (gekoppeld) {
+        selecteerPartijSpeler(1, gekoppeld.id, gekoppeld.naam, gekoppeld.hcp);
+        vulKnockoutTegenstander(gekoppeld.naam);
+      }
+    }
+  };
+  probeerAutoSelect(10);
 
   // v11.19: starthole + aantal-holes inputs zijn direct zichtbaar, geen selector meer
 }
@@ -404,24 +497,52 @@ function mijnPartij() {
 async function startPartij() {
 
   try {
+  // ── Validatie 1: baan geselecteerd? ───────────────────────
   const baanNaam = document.getElementById('baan-select').value;
   if (!baanNaam) { toast('Selecteer eerst een baan'); return; }
+
+  // ── Validatie 2: handmatige baan zonder naam? ─────────────
+  if (baanNaam === 'Handmatig invoeren') {
+    const handmatigNaam = document.getElementById('baan-naam-nieuw')?.value?.trim();
+    if (!handmatigNaam) { toast('Geef de handmatige baan een naam'); return; }
+  }
 
   // Bepaal ladder voor deze partij
   const partijLadderId = document.getElementById('partij-ladder-select')?.value || activeLadderId;
   const partijLadderSpelers = getPartijLadderSpelers();
 
-  // Collect players
+  // ── Validatie 3: spelerslijst nog niet geladen (race condition)? ──
+  // spelerIds zijn gevuld maar _usersCache nog leeg → partijLadderSpelers is []
+  const ladder = alleLadders.find(l => l.id === partijLadderId);
+  const heeftSpelerIds = (ladder?.spelerIds || ladder?.data?.spelerIds || []).length > 0;
+  if (heeftSpelerIds && partijLadderSpelers.length === 0) {
+    toast('Spelersdata nog niet geladen, probeer opnieuw');
+    return;
+  }
+
+  // ── Collect players ───────────────────────────────────────
   const spelers = [];
+  const nietHerkend = [];
   for (let i = 1; i <= 4; i++) {
-    const slot = document.getElementById('slot-' + i);
+    const slot  = document.getElementById('slot-' + i);
     const hcpEl = document.getElementById('hcp-' + i);
     if (!slot) continue;
     const spelerId = slot.dataset.spelerId;
     if (!spelerId) continue;
+
+    const isGast = parseInt(spelerId) >= 90000;
     const speler = partijLadderSpelers.find(s => String(s.id) === String(spelerId))
-      || (parseInt(spelerId) >= 90000 ? { id: parseInt(spelerId), naam: document.getElementById('player-' + i)?.value || 'Gast', hcp: parseFloat(hcpEl?.value) || 0, gast: true } : null);
-    if (!speler) continue;
+      || (isGast
+          ? { id: parseInt(spelerId), naam: document.getElementById('player-' + i)?.value || 'Gast', hcp: parseFloat(hcpEl?.value) || 0, gast: true }
+          : null);
+
+    // ── Validatie 5: speler in slot maar niet teruggevonden ──
+    if (!speler) {
+      const invoerNaam = document.getElementById('player-' + i)?.value || `slot ${i}`;
+      nietHerkend.push(invoerNaam);
+      continue;
+    }
+
     const partijHcp = Math.round(parseFloat(hcpEl?.value));
     if (!isNaN(partijHcp) && partijHcp !== speler.hcp) {
       const sv = partijLadderSpelers.find(s => s.id === speler.id);
@@ -430,7 +551,13 @@ async function startPartij() {
     spelers.push({ ...speler, hcp: isNaN(partijHcp) ? speler.hcp : partijHcp, partijHcp: isNaN(partijHcp) ? speler.hcp : partijHcp });
   }
 
-  if (spelers.length < 2) { toast('Minimaal 2 spelers nodig'); return; }
+  if (nietHerkend.length > 0) {
+    toast(`Speler niet herkend, kies opnieuw: ${nietHerkend.join(', ')}`);
+    return;
+  }
+
+  // ── Validatie 4: minimaal 2 spelers geselecteerd? ─────────
+  if (spelers.length < 2) { toast('Selecteer minimaal 2 spelers'); return; }
 
   // v3.0.0-11.24: zit een van deze spelers al in een actieve partij?
   // Check ALLE ladders, niet alleen de actieve. String-vergelijking voor id-types.
@@ -622,4 +749,4 @@ function renderHcpBlok(spelers, holes, hcpPct, containerId) {
 
 // ============================================================
 
-export { addPlayerSlot, alleBANEN, filterPartijSpelers, getPartijLadderSpelers, herlaadPartijSpelers, initPartijForm, kortNaam, kortNaamMap, mijnPartij, onBaanSelect, refreshPlayerSlotOptions, removeSlot, renderHandmatigHoles, renderHcpBlok, selecteerPartijSpeler, selecteerPartijSpelerEl, slaAangepasteBaanOp, sluitSpelerLijst, startPartij, verwijderAangepasteBaan, voegGastSpelerToeAanPartij, vulKnockoutTegenstander, zoekPartijSpeler };
+export { addPlayerSlot, alleBANEN, filterPartijSpelers, getPartijLadderSpelers, herlaadPartijSpelers, initPartijForm, kortNaam, kortNaamMap, mijnPartij, onBaanSelect, refreshPlayerSlotOptions, removeSlot, renderHandmatigHoles, renderHcpBlok, selecteerPartijSpeler, selecteerPartijSpelerEl, slaAangepasteBaanOp, slaPartijFormulierOp, sluitSpelerLijst, startPartij, verwijderAangepasteBaan, voegGastSpelerToeAanPartij, vulKnockoutTegenstander, zoekPartijSpeler };

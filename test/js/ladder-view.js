@@ -49,15 +49,21 @@ export function getLadderSpelers(ladderId) {
     .filter(id => typeof id === 'string' && id.length > 10); // alleen uids
   const standenMap = store._standenCache[ladderId] || {};
 
-  // Gebruik nieuwe view als er spelerIds EN standen gevuld zijn
-  if (spelerIds.length > 0 && Object.keys(standenMap).length > 0) {
+  // v3.0.0-11.33: gebruik nieuwe view zodra spelerIds gevuld zijn EN _usersCache
+  // beschikbaar is — ook als standenMap nog leeg is (race condition bij vroeg laden).
+  // Eerder vereiste conditie Object.keys(standenMap).length > 0 zorgde ervoor dat
+  // getLadderSpelers() [] teruggaf als de standen/-listener nog niet gefired had,
+  // waarna de fallback op lege ladder.spelers[] ook niets opleverde.
+  const usersCache = _usersCache || [];
+  if (spelerIds.length > 0 && usersCache.length > 0) {
     const resultaat = [];
     for (const uid of spelerIds) {
       const profiel = zoekSpeler(uid);
       if (!profiel) continue;
+      // standenMap kan nog leeg zijn (listener nog niet gefired) — gebruik nullsafe defaults
       const stand = standenMap[uid] || { rank: 0, partijen: 0, gewonnen: 0 };
       resultaat.push({
-        id:       profiel.id ?? uid,      // numeric fallback naar uid
+        id:       profiel.id ?? uid,
         uid:      uid,
         naam:     profiel.naam,
         hcp:      profiel.hcp ?? 0,

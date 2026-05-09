@@ -1,6 +1,6 @@
 // Goyer Golf MP Ladder — Service Worker
-const CACHE_VERSION = 'v117';
-// v3.0.0-11.3: detecteer test-omgeving via SW-scope URL.
+const CACHE_VERSION = 'v121';
+// v3.0.0-11.33: detecteer test-omgeving via SW-scope URL.
 // Service worker draaiend onder /test/* → aparte cache, voorkomt conflict met productie.
 const IS_TEST_ENV = self.registration && self.registration.scope.includes('/test/');
 const CACHE_NAME = 'goyer-mp-' + CACHE_VERSION + (IS_TEST_ENV ? '-test' : '');
@@ -25,8 +25,10 @@ const STATIC_ASSETS = [
   './js/knockout.js',
   './handleiding-partij-ronde.html',
   './toernooi-live.html',
+  './icon-180.png',
   './icon-512.png',
-  './manifest.json'
+  './manifest.json',
+  './version.json'
 ];
 
 self.addEventListener('install', event => {
@@ -47,7 +49,16 @@ self.addEventListener('activate', event => {
             .map(key => caches.delete(key))
       )
     ).then(() => self.clients.claim())
-
+      .then(() => {
+        // v3.0.0-11.33: stuur SW_ACTIVATED naar alle open clients zodat ze
+        // weten dat een nieuwe SW actief is en een versie-check kunnen doen.
+        return self.clients.matchAll({ includeUncontrolled: true, type: 'window' })
+          .then(clients => {
+            clients.forEach(client => {
+              client.postMessage({ type: 'SW_ACTIVATED', cacheVersion: CACHE_VERSION });
+            });
+          });
+      })
   );
 });
 
@@ -58,6 +69,16 @@ self.addEventListener('fetch', event => {
   if (url.hostname.includes('firestore.googleapis.com') ||
       url.hostname.includes('identitytoolkit.googleapis.com') ||
       url.hostname.includes('securetoken.googleapis.com')) {
+    return;
+  }
+
+  // version.json — altijd netwerk, nooit cache (update-detectie)
+  if (url.pathname.endsWith('/version.json') || url.pathname === '/version.json') {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-store' }).catch(() => {
+        return new Response('{}', { headers: { 'Content-Type': 'application/json' } });
+      })
+    );
     return;
   }
 

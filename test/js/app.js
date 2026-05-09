@@ -14,7 +14,7 @@ import { renderLadder, toggleLadderKaart } from './ladder.js';
 import { initPartijForm, addPlayerSlot, voegGastSpelerToeAanPartij, removeSlot, onBaanSelect,
   startPartij, zoekPartijSpeler, selecteerPartijSpelerEl,
   sluitSpelerLijst, slaAangepasteBaanOp, verwijderAangepasteBaan,
-  refreshPlayerSlotOptions } from './partij.js';
+  refreshPlayerSlotOptions, slaPartijFormulierOp } from './partij.js';
 import { renderRonde, renderScorecard, updateScore, toggleScorecard,
   openUitslagModal, bevestigUitslag, setWinnaar, skipMatchup,
   editPartijHcp, verwijderSpelerUitRonde, openToevoegenModal,
@@ -201,7 +201,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v3.0.0-11.29';
+  const VERSION = 'v3.0.0-11.33';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -227,7 +227,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 window.openScorekaartDetail = openScorekaartDetail;
-window.openToernooiDetail = openToernooiDetail;
 window.bevestigBeheerUitslag = bevestigBeheerUitslag;
 
 window.annuleerEigenPartij = annuleerEigenPartij;
@@ -237,6 +236,63 @@ window.verwijderActievePartij = verwijderActievePartij;
 
 window.toggleTSpelersLadder = toggleTSpelersLadder;
 window.toggleTRankingLadder = toggleTRankingLadder;
+
+// ─── Versie-check & auto-update ──────────────────────────────
+// v3.0.0-11.33: Vergelijk periodiek de ingebakken versie met version.json op de server.
+// Bij mismatch: sla partijformulier op in sessionStorage → hard reload.
+// Werkt ook als de app uren open staat als PWA zonder herstart.
+(function initVersieCheck() {
+  const LOKALE_VERSIE = 'v3.0.0-11.33';
+  let _versieCheckBezig = false;
+  let _updateGepland    = false;
+
+  async function checkVersie() {
+    if (_versieCheckBezig || _updateGepland) return;
+    _versieCheckBezig = true;
+    try {
+      const resp = await fetch('./version.json', { cache: 'no-store' });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const serverVersie = data && data.version ? String(data.version).trim() : null;
+      if (!serverVersie || serverVersie === LOKALE_VERSIE) return;
+
+      // Nieuwe versie beschikbaar — sla formulierstate op en herlaad
+      console.log(`[versieCheck] update gevonden: ${LOKALE_VERSIE} → ${serverVersie}`);
+      _updateGepland = true;
+
+      // Bewaar ingevuld partijformulier zodat de gebruiker niet opnieuw hoeft in te vullen
+      try { slaPartijFormulierOp(); } catch(e) { /* geen formulier open — geen probleem */ }
+
+      // Kleine vertraging zodat sessionStorage zeker geschreven is
+      setTimeout(() => { location.reload(); }, 300);
+    } catch(e) {
+      // Offline of netwerk fout — stil falen, geen reload
+    } finally {
+      _versieCheckBezig = false;
+    }
+  }
+
+  // a) Check 10s na app-start (geeft Firestore tijd om te laden)
+  setTimeout(checkVersie, 10000);
+
+  // b) Check elke 5 minuten
+  setInterval(checkVersie, 5 * 60 * 1000);
+
+  // c) Check zodra app vanuit achtergrond terugkomt (tab focus / PWA resume)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkVersie();
+  });
+
+  // d) Check na SW_ACTIVATED bericht van nieuwe service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', event => {
+      if (event.data && event.data.type === 'SW_ACTIVATED') {
+        console.log('[versieCheck] SW_ACTIVATED ontvangen, check versie...');
+        checkVersie();
+      }
+    });
+  }
+})();
 
 // ─── Start ────────────────────────────────────────────────────
 try {
