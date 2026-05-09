@@ -27,7 +27,8 @@ import { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer,
   slaProfielHcpOp, renderAdminUsers, openEditUser, saveEditUser,
   openAddUser, saveNewUser, removeUser, verschuifRank, resetData,
   closeModal, kopieerCredentials,
-  vraagResetWachtwoord } from './admin.js';
+  vraagResetWachtwoord,
+  toggleWachtwoordBeheer, slaInitieelWachtwoordOp } from './admin.js';
 import { renderArchief, openArchiefDetail, openNieuwSeizoenModal,
   bevestigNieuwSeizoen, stuurUitdaging, reageerUitdaging,
   verwijderUitdaging, openToernooiDetail, toonUitdagingBadge,
@@ -109,6 +110,8 @@ window.voegAccountToeAlsSpeler = voegAccountToeAlsSpeler;
 window.saveNewPlayer = saveNewPlayer;
 window.kopieerCredentials = kopieerCredentials;
 window.vraagResetWachtwoord = vraagResetWachtwoord;
+window.toggleWachtwoordBeheer = toggleWachtwoordBeheer;
+window.slaInitieelWachtwoordOp = slaInitieelWachtwoordOp;
 window.slaEersteLoginOp = slaEersteLoginOp;
 window.openEditPlayer = openEditPlayer;
 window.saveEditPlayer = saveEditPlayer;
@@ -209,7 +212,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v3.0.0-11.58';
+  const VERSION = 'v3.0.0-11.60';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -250,7 +253,7 @@ window.toggleTRankingLadder = toggleTRankingLadder;
 // Bij mismatch: sla partijformulier op in sessionStorage → hard reload.
 // Werkt ook als de app uren open staat als PWA zonder herstart.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v3.0.0-11.58';
+  const LOKALE_VERSIE = 'v3.0.0-11.60';
   let _versieCheckBezig = false;
   let _updateGepland    = false;
 

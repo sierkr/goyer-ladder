@@ -133,9 +133,31 @@ export const DEFAULT_STATE = {
 // ============================================================
 // Alle nieuwe spelers krijgen auto-gegenereerd email en wachtwoord.
 // Bij eerste login worden ze verplicht om hcp en wachtwoord te kiezen.
-export const EMAIL_SUFFIX      = '@MPladder.stb';
-export const INITIEEL_WACHTWOORD = 'MP2026';
-export const DEFAULT_HCP       = 10;
+export const EMAIL_SUFFIX = '@MPladder.stb';
+export const DEFAULT_HCP  = 10;
+
+// Fallback — alleen gebruikt als Firestore nog niet geladen is.
+// Wordt overschreven door store.initieelWachtwoord zodra initFirestore klaar is.
+const _WACHTWOORD_FALLBACK = 'MP2026';
+
+// v3.0.0-11.60: ladder/config — bron van waarheid voor het initiële wachtwoord.
+export const CONFIG_DOC = doc(db, 'ladder', 'config');
+
+/**
+ * Laad het initiële wachtwoord uit Firestore (ladder/config).
+ * Schrijft het resultaat naar store.initieelWachtwoord.
+ * Als het document of het veld niet bestaat, wordt de fallback behouden.
+ */
+export async function laadInitieelWachtwoord(storeRef) {
+  try {
+    const snap = await getDoc(CONFIG_DOC);
+    const w = snap.exists() ? snap.data().initieelWachtwoord : null;
+    storeRef.initieelWachtwoord = (typeof w === 'string' && w.length > 0) ? w : _WACHTWOORD_FALLBACK;
+  } catch(e) {
+    console.warn('laadInitieelWachtwoord: Firestore read mislukt, fallback gebruikt:', e.code);
+    if (!storeRef.initieelWachtwoord) storeRef.initieelWachtwoord = _WACHTWOORD_FALLBACK;
+  }
+}
 
 /**
  * Genereer emailadres uit voornaam + achternaam.

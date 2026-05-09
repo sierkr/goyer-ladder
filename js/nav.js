@@ -16,11 +16,12 @@ import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, d
 
 //  NAVIGATION
 // ============================================================
-function showPage(name) {
+function showPage(name, evt) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
-  event.currentTarget.classList.add('active');
+  const btn = (evt && evt.currentTarget) || event.currentTarget;
+  btn.classList.add('active');
 
   if (name === 'ladder') renderLadder();
   if (name === 'partij') initPartijForm();
@@ -37,7 +38,7 @@ function showPage(name) {
     renderAdminLadders();
     laadInviteStatus();
   }
-  if (name === 'toernooi') { herlaadToernooien().then(() => renderToernooi()); }
+  if (name === 'toernooi') { herlaadToernooien().then(() => renderToernooi()).catch(() => renderToernooi()); }
   if (name === 'profiel') renderProfiel();
   if (name === 'archief') { renderArchief(); verwijderOudeUitslagen(); }
 }

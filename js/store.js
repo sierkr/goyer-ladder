@@ -36,6 +36,8 @@ function _syncAlleSpelersDataFromUsers() {
 
 // ─── Auth ────────────────────────────────────────────────────
 export let huidigeBruiker = null;
+// v3.0.0-11.60: initieel wachtwoord wordt geladen uit Firestore (ladder/config)
+export let initieelWachtwoord = 'MP2026'; // fallback totdat Firestore geladen is
 export let _usersCache = null;
 export let _bezigMetRegistratie = false;
 export let _firestoreReady = false;
@@ -97,6 +99,8 @@ export const store = {
   get alleSpelersData() { return alleSpelersData; },
   set huidigeBruiker(v) { huidigeBruiker = v; },
   get huidigeBruiker() { return huidigeBruiker; },
+  set initieelWachtwoord(v) { initieelWachtwoord = v; },
+  get initieelWachtwoord() { return initieelWachtwoord; },
   set _usersCache(v) { _usersCache = v; _syncAlleSpelersDataFromUsers(); },
   get _usersCache() { return _usersCache; },
   set _bezigMetRegistratie(v) { _bezigMetRegistratie = v; },

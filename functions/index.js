@@ -11,7 +11,18 @@ const admin = require('firebase-admin');
 
 admin.initializeApp();
 
-const INITIEEL_WACHTWOORD = 'MP2026';
+// v3.0.0-11.60: wachtwoord niet meer hardcoded — wordt geladen uit Firestore (ladder/config).
+// Fallback naar 'MP2026' als het document of veld ontbreekt.
+async function getInitieelWachtwoord() {
+  try {
+    const snap = await admin.firestore().doc('ladder/config').get();
+    const w = snap.exists ? snap.data().initieelWachtwoord : null;
+    return (typeof w === 'string' && w.length > 0) ? w : 'MP2026';
+  } catch(e) {
+    console.warn('getInitieelWachtwoord: Firestore read mislukt, fallback gebruikt:', e);
+    return 'MP2026';
+  }
+}
 
 /**
  * Reset een speler-wachtwoord naar het initiële wachtwoord.
@@ -50,7 +61,8 @@ exports.resetSpelerWachtwoord = onCall(
 
     try {
       // Stap 5: Auth wachtwoord overschrijven
-      await admin.auth().updateUser(targetUid, { password: INITIEEL_WACHTWOORD });
+      const initieelWachtwoord = await getInitieelWachtwoord();
+      await admin.auth().updateUser(targetUid, { password: initieelWachtwoord });
 
       // Stap 6: eersteLogin:true zodat speler verplicht profielflow krijgt
       await admin.firestore().doc(`spelers/${targetUid}`).update({
@@ -59,7 +71,7 @@ exports.resetSpelerWachtwoord = onCall(
 
       return {
         success: true,
-        message: `Wachtwoord van ${target.data().naam} gereset naar ${INITIEEL_WACHTWOORD}`
+        message: `Wachtwoord van ${target.data().naam} gereset naar ${initieelWachtwoord}`
       };
     } catch (err) {
       console.error('resetSpelerWachtwoord fout:', err);

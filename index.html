@@ -1038,15 +1038,15 @@
 </header>
 
 <nav>
-  <button class="active" onclick="showPage('ladder')"><span class="nav-label">Ladder</span></button>
-  <button onclick="showPage('partij')"><span class="nav-label">Partij</span></button>
-  <button onclick="showPage('ronde')"><span class="nav-label">Ronde</span></button>
-  <button onclick="showPage('uitslagen')"><span class="nav-label">Uitslag</span></button>
-  <button onclick="showPage('help')"><span class="nav-label">Help</span></button>
-  <button onclick="showPage('archief')" id="nav-archief-btn" style="display:none"><span class="nav-label">Archief</span></button>
-  <button onclick="showPage('toernooi')" id="nav-toernooi-btn" style="display:none"><span class="nav-label">Toernooi</span></button>
-  <button id="nav-profiel-btn" onclick="showPage('profiel')" style="display:none"><span class="nav-label">Profiel</span></button>
-  <button id="nav-admin-btn" onclick="showPage('admin')" style="display:none"><span class="nav-label">Beheer</span></button>
+  <button class="active" onclick="showPage('ladder', event)"><span class="nav-label">Ladder</span></button>
+  <button onclick="showPage('partij', event)"><span class="nav-label">Partij</span></button>
+  <button onclick="showPage('ronde', event)"><span class="nav-label">Ronde</span></button>
+  <button onclick="showPage('uitslagen', event)"><span class="nav-label">Uitslag</span></button>
+  <button onclick="showPage('help', event)"><span class="nav-label">Help</span></button>
+  <button onclick="showPage('archief', event)" id="nav-archief-btn" style="display:none"><span class="nav-label">Archief</span></button>
+  <button onclick="showPage('toernooi', event)" id="nav-toernooi-btn" style="display:none"><span class="nav-label">Toernooi</span></button>
+  <button id="nav-profiel-btn" onclick="showPage('profiel', event)" style="display:none"><span class="nav-label">Profiel</span></button>
+  <button id="nav-admin-btn" onclick="showPage('admin', event)" style="display:none"><span class="nav-label">Beheer</span></button>
 </nav>
 
 <!-- ==================== LADDER ==================== -->
@@ -1502,6 +1502,28 @@
       <div class="card-body">
         <p style="font-size:13px;color:var(--mid);margin-bottom:14px">Start een nieuw seizoen om de huidige ladder en uitslagen te archiveren. De rankings en statistieken worden gereset.</p>
         <button class="btn btn-gold btn-block" onclick="openNieuwSeizoenModal()">🏆 Nieuw seizoen starten</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- v3.0.0-11.60: Initieel wachtwoord beheer — alleen zichtbaar voor beheerder -->
+  <div class="card" id="admin-sectie-wachtwoord">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+      <h2>Initieel wachtwoord</h2>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">
+          Dit is het tijdelijke wachtwoord dat nieuwe spelers krijgen bij aanmelding of na een reset.
+          Bij eerste login worden ze verplicht het te wijzigen.
+        </p>
+        <button class="btn btn-secondary btn-block" onclick="toggleWachtwoordBeheer()">🔑 Wachtwoord wijzigen</button>
+        <div id="admin-wachtwoord-wrap" style="display:none;margin-top:14px">
+          <label style="font-size:13px;color:var(--mid);display:block;margin-bottom:6px">Nieuw initieel wachtwoord</label>
+          <input id="admin-nieuw-wachtwoord" type="text" class="input" placeholder="minimaal 4 tekens"
+            style="margin-bottom:10px;font-family:'DM Mono',monospace;letter-spacing:1px">
+          <button class="btn btn-primary btn-block" onclick="slaInitieelWachtwoordOp()">✓ Opslaan</button>
+        </div>
       </div>
     </div>
   </div>

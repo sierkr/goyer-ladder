@@ -6,7 +6,7 @@
 import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
   INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB_MIGRATIE, esc, escAttr,
-  EMAIL_SUFFIX, INITIEEL_WACHTWOORD, DEFAULT_HCP,
+  EMAIL_SUFFIX, DEFAULT_HCP, CONFIG_DOC, laadInitieelWachtwoord,
   genereerEmail, loginNaamVan } from './config.js';
 import { store, DEFAULT_LADDER_CONFIG,
   alleLadders, activeLadderId, alleSpelersData, huidigeBruiker,
@@ -170,7 +170,7 @@ async function slaEersteLoginOp() {
   if (isNaN(hcp))            { foutEl.textContent = 'Voer een geldige handicap in'; foutEl.style.display = 'block'; return; }
   if (pass1.length < 6)       { foutEl.textContent = 'Wachtwoord moet minimaal 6 tekens zijn'; foutEl.style.display = 'block'; return; }
   if (pass1 !== pass2)        { foutEl.textContent = 'De wachtwoorden komen niet overeen'; foutEl.style.display = 'block'; return; }
-  if (pass1 === INITIEEL_WACHTWOORD) { foutEl.textContent = 'Kies een ander wachtwoord dan het initiële'; foutEl.style.display = 'block'; return; }
+  if (pass1 === store.initieelWachtwoord) { foutEl.textContent = 'Kies een ander wachtwoord dan het initiële'; foutEl.style.display = 'block'; return; }
 
   try {
     const hcpInt = Math.round(hcp);
@@ -369,7 +369,7 @@ function uitloggen() {
 
 function openWachtwoordVergeten() {
   // v3.0.0-11: geen reset-email meer, speler moet contact opnemen met beheerder.
-  alert('Wachtwoord vergeten? Neem contact op met de beheerder.\n\nDe beheerder kan je wachtwoord resetten naar ' + INITIEEL_WACHTWOORD + ', waarna je bij eerstvolgende inlog een nieuw wachtwoord kiest.');
+  alert('Wachtwoord vergeten? Neem contact op met de beheerder.\n\nDe beheerder kan je wachtwoord resetten naar ' + store.initieelWachtwoord + ', waarna je bij eerstvolgende inlog een nieuw wachtwoord kiest.');
 }
 function sluitResetWrap() {
   // v3.0.0-11: placeholder — reset-UI wordt niet meer gebruikt
@@ -485,6 +485,7 @@ async function initFirestore() {
   }, 3000);
 
   try {
+    // v3.0.0-11.60: laad initieel wachtwoord uit Firestore naast overige docs
     const [baanSnap, archiefSnap, uitdSnap, toernooiSnap, volgordeSnap] =
       await Promise.all([
         getDoc(BANEN_DOC),
@@ -493,6 +494,7 @@ async function initFirestore() {
         getDoc(TOERNOOI_DOC),
         getDoc(doc(db, 'ladder', 'ladderVolgorde'))
       ]);
+    await laadInitieelWachtwoord(store);
 
     store.archiefData     = archiefSnap.exists()  ? (archiefSnap.data().seizoenen  || []) : [];
     store.uitdagingenData = uitdSnap.exists()      ? (uitdSnap.data().lijst         || []) : [];
@@ -521,7 +523,6 @@ async function initFirestore() {
     }
 
     const laddersSnap = await getDocs(LADDERS_COL);
-    console.log('v2.6 debug: ladders geladen:', laddersSnap.docs.length);
 
     const stateSnap = await getDoc(STATE_DOC);
     const mpDoc     = laddersSnap.docs.find(d => d.id === 'mp');
@@ -738,7 +739,7 @@ async function checkInviteLink() {
 }
 
 // Registreer nieuwe speler — v3.0.0-11: uniforme flow met admin-create.
-// Auto-genereert email uit voornaam+achternaam, gebruikt INITIEEL_WACHTWOORD.
+// Auto-genereert email uit voornaam+achternaam, gebruikt store.initieelWachtwoord.
 // Speler wordt bij eerste inlog gedwongen eigen wachtwoord + handicap te kiezen.
 async function registreerSpeler() {
   const voornaam   = document.getElementById('reg-voornaam').value.trim();
@@ -758,7 +759,7 @@ async function registreerSpeler() {
 
   // v3.0.0-11: auto-genereer email + wachtwoord, default hcp
   const email = genereerEmail(voornaam, achternaam);
-  const pass  = INITIEEL_WACHTWOORD;
+  const pass  = store.initieelWachtwoord;
   const hcp   = DEFAULT_HCP;
   const naam  = `${voornaam} ${achternaam}`;
   const targetLadderId = window._inviteLadderId || 'mp';
@@ -824,7 +825,7 @@ async function registreerSpeler() {
         <strong>Je eerste inloggegevens:</strong><br><br>
         <div style="font-family:'DM Mono',monospace;background:var(--card-bg);color:var(--dark);padding:8px 10px;border-radius:6px;border:1px solid var(--border);margin-bottom:6px">
           login: <strong>${esc(loginTxt)}</strong><br>
-          wachtwoord: <strong>${esc(INITIEEL_WACHTWOORD)}</strong>
+          wachtwoord: <strong>${esc(store.initieelWachtwoord)}</strong>
         </div>
         <em style="font-size:12px;color:var(--mid)">Bij eerste inlog kies je een eigen wachtwoord en stel je je handicap in.</em>
       </div>

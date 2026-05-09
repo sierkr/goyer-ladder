@@ -6,11 +6,11 @@
 import { db, auth, firebaseConfig, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL,
   SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC,
   INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr,
-  EMAIL_SUFFIX, INITIEEL_WACHTWOORD, DEFAULT_HCP,
+  EMAIL_SUFFIX, DEFAULT_HCP,
   genereerEmail, loginNaamVan,
   functions, httpsCallable } from './config.js';
 import { store, alleLadders, activeLadderId,
-  huidigeBruiker, uitdagingenData } from './store.js';
+  huidigeBruiker, uitdagingenData, store } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers,
   isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { openNieuweLadderModal, renderAdminLadders } from './beheer.js';
@@ -35,7 +35,7 @@ function renderAdmin() {
   const isBeheerder = isBeheerderRol();
   const isCoord     = isCoordinatorRol();
 
-  ['admin-sectie-spelers','admin-sectie-seizoen'].forEach(id => {
+  ['admin-sectie-spelers','admin-sectie-seizoen','admin-sectie-wachtwoord'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = isBeheerder ? '' : 'none';
   });
@@ -85,7 +85,7 @@ async function renderAdminSpelersEnAccounts() {
     const loginTxt = loginNaamVan(u.email || '');
     const eersteLogin = u.eersteLogin === true;
     const credRegel = u.email
-      ? `<span style="font-size:11px;color:var(--light);font-family:'DM Mono',monospace">${esc(loginTxt)}${eersteLogin ? ` · ${INITIEEL_WACHTWOORD}` : ''}</span>${eersteLogin ? '' : '<span style="font-size:10px;color:var(--light);margin-left:4px">· wachtwoord gewijzigd</span>'}`
+      ? `<span style="font-size:11px;color:var(--light);font-family:'DM Mono',monospace">${esc(loginTxt)}${eersteLogin ? ` · ${store.initieelWachtwoord}` : ''}</span>${eersteLogin ? '' : '<span style="font-size:10px;color:var(--light);margin-left:4px">· wachtwoord gewijzigd</span>'}`
       : `<span style="font-size:11px;color:#ccc">geen account</span>`;
     const hcpTekst = hcp != null
       ? `hcp ${Math.round(hcp)}`
@@ -279,7 +279,7 @@ async function saveNewPlayer() {
 
   // v3.0.0-11: auto-genereer email + wachtwoord
   const email = genereerEmail(voornaam, achternaam);
-  const pass  = INITIEEL_WACHTWOORD;
+  const pass  = store.initieelWachtwoord;
 
   try {
     const users = await getUsers();
@@ -376,7 +376,7 @@ function kopieerCredentials(loginTxt, pass) {
 // ============================================================
 async function vraagResetWachtwoord(uid, naam) {
   const bevestig = confirm(
-    `Wachtwoord van ${naam} resetten naar ${INITIEEL_WACHTWOORD}?\n\n` +
+    `Wachtwoord van ${naam} resetten naar ${store.initieelWachtwoord}?\n\n` +
     `De speler moet bij eerstvolgende inlog een nieuw wachtwoord kiezen en zijn handicap opnieuw instellen.`
   );
   if (!bevestig) return;
@@ -389,7 +389,7 @@ async function vraagResetWachtwoord(uid, naam) {
       renderAdmin();
       // Toon credentials modal zodat beheerder ze kan kopiëren voor de speler
       const loginTxt = loginNaamVan((await getDoc(doc(db, 'spelers', uid))).data()?.email || '');
-      toonCredentialsModal(naam, loginTxt, INITIEEL_WACHTWOORD);
+      toonCredentialsModal(naam, loginTxt, store.initieelWachtwoord);
     } else {
       toast('Reset mislukt: onverwachte respons');
     }
@@ -854,6 +854,42 @@ document.querySelectorAll('.modal-overlay').forEach(o => {
 });
 
 
+
+// ============================================================
+//  INITIEEL WACHTWOORD BEHEER — v3.0.0-11.60
+// ============================================================
+// Toon/verberg het invoerveld om het initiële wachtwoord te wijzigen.
+function toggleWachtwoordBeheer() {
+  const el = document.getElementById('admin-wachtwoord-wrap');
+  if (!el) return;
+  const open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : '';
+  if (!open) {
+    const inp = document.getElementById('admin-nieuw-wachtwoord');
+    if (inp) { inp.value = ''; inp.focus(); }
+  }
+}
+
+// Sla het nieuwe initiële wachtwoord op in Firestore (ladder/config).
+async function slaInitieelWachtwoordOp() {
+  const inp = document.getElementById('admin-nieuw-wachtwoord');
+  if (!inp) return;
+  const nieuw = inp.value.trim();
+  if (nieuw.length < 4) { toast('Wachtwoord moet minimaal 4 tekens zijn'); return; }
+
+  try {
+    const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    await setDoc(doc(db, 'ladder', 'config'), { initieelWachtwoord: nieuw }, { merge: true });
+    store.initieelWachtwoord = nieuw;
+    inp.value = '';
+    document.getElementById('admin-wachtwoord-wrap').style.display = 'none';
+    toast('Initieel wachtwoord bijgewerkt ✓');
+  } catch(e) {
+    console.error('slaInitieelWachtwoordOp mislukt:', e);
+    toast('Opslaan mislukt: ' + (e.message || e.code));
+  }
+}
+
 // ============================================================
 //  EXPORTS
 // ============================================================
@@ -866,4 +902,5 @@ export {
   openAddUser, saveNewUser, removeUser,
   verschuifRank, resetData, closeModal,
   kopieerCredentials, vraagResetWachtwoord,
+  toggleWachtwoordBeheer, slaInitieelWachtwoordOp,
 };

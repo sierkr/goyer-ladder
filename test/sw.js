@@ -1,5 +1,5 @@
 // Goyer Golf MP Ladder — Service Worker
-const CACHE_VERSION = 'v136';
+const CACHE_VERSION = 'v138';
 // v3.0.0-11.33: detecteer test-omgeving via SW-scope URL.
 // Service worker draaiend onder /test/* → aparte cache, voorkomt conflict met productie.
 const IS_TEST_ENV = self.registration && self.registration.scope.includes('/test/');
@@ -26,6 +26,7 @@ const STATIC_ASSETS = [
   './handleiding-partij-ronde.html',
   './toernooi-live.html',
   './icon-180.png',
+  './icon-192.png',
   './icon-512.png',
   './manifest.json',
   './version.json'

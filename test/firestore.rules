@@ -162,6 +162,11 @@ service cloud.firestore {
       // toernooi: legacy singleton — alleen coordinator
       allow write: if doc == 'toernooi' && isCoordinator();
 
+      // config: app-configuratie (o.a. initieelWachtwoord) — alleen beheerder
+      // v3.0.0-11.60: wachtwoord is niet meer hardcoded in broncode
+      allow read:  if doc == 'config' && isBeheerder();
+      allow write: if doc == 'config' && isBeheerder();
+
       // invite_{ladderId}: genereren alleen coordinator; teller ophogen iedere ingelogde
       allow create: if doc.matches('invite_.*') && isCoordinator();
       allow update: if doc.matches('invite_.*') && (
