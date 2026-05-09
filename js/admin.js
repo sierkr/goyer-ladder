@@ -893,6 +893,258 @@ async function slaInitieelWachtwoordOp() {
   }
 }
 
+
+// ============================================================
+//  BULK IMPORT TOERNOOI-SPELERS — v3.0.0-11.67
+// ============================================================
+
+function openBulkImport() {
+  // Reset modal state
+  document.getElementById('bulk-toernooi-naam').value = '';
+  document.getElementById('bulk-import-voortgang').style.display = 'none';
+  document.getElementById('bulk-import-resultaat').style.display = 'none';
+  document.getElementById('bulk-import-start-btn').style.display = '';
+
+  // Render ladder-checkboxes
+  const laddersEl = document.getElementById('bulk-import-ladders');
+  if (laddersEl) {
+    laddersEl.innerHTML = alleLadders.map(l => `
+      <label style="display:flex;align-items:center;gap:6px;padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px">
+        <input type="checkbox" value="${escAttr(l.id)}" style="accent-color:var(--green);width:16px;height:16px">
+        <span>${esc(l.naam)}</span>
+      </label>
+    `).join('');
+  }
+
+  // Start with 5 empty rows
+  const tbody = document.getElementById('bulk-import-rijen');
+  tbody.innerHTML = '';
+  for (let i = 0; i < 5; i++) _voegBulkRijAanToe(tbody);
+
+  document.getElementById('modal-bulk-import').classList.add('open');
+
+  // Paste handler: detect Excel paste (tab-separated columns, newline rows)
+  tbody.addEventListener('paste', _handleBulkPaste, { once: false });
+}
+
+function sluitBulkImport() {
+  const tbody = document.getElementById('bulk-import-rijen');
+  if (tbody) tbody.removeEventListener('paste', _handleBulkPaste);
+  document.getElementById('modal-bulk-import').classList.remove('open');
+}
+
+function _voegBulkRijAanToe(tbody) {
+  const nr = tbody.querySelectorAll('tr').length + 1;
+  const tr = document.createElement('tr');
+  tr.style.borderBottom = '1px solid var(--border)';
+  tr.innerHTML = `
+    <td style="padding:6px 10px;color:var(--light);font-size:12px;width:28px">${nr}</td>
+    <td style="padding:4px 6px"><input type="text" placeholder="Jan" autocomplete="off"
+      style="width:100%;border:1.5px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--input-bg);color:var(--dark)"
+      data-col="voornaam"></td>
+    <td style="padding:4px 6px"><input type="text" placeholder="de Vries" autocomplete="off"
+      style="width:100%;border:1.5px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--input-bg);color:var(--dark)"
+      data-col="achternaam"></td>
+    <td style="padding:4px 6px;width:70px"><input type="number" placeholder="10" min="-10" max="54" inputmode="numeric"
+      style="width:100%;border:1.5px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;text-align:center;font-family:'DM Mono',monospace;background:var(--input-bg);color:var(--dark)"
+      data-col="hcp"></td>
+    <td style="padding:4px 6px;width:28px">
+      <button onclick="this.closest('tr').remove();_herNummerBulkRijen()" title="Verwijder"
+        style="background:none;border:none;color:var(--light);cursor:pointer;font-size:16px;padding:0;line-height:1">×</button>
+    </td>
+  `;
+  tbody.appendChild(tr);
+}
+
+window._herNummerBulkRijen = _herNummerBulkRijen;
+
+function voegBulkRijToe() {
+  const tbody = document.getElementById('bulk-import-rijen');
+  if (tbody) { _voegBulkRijAanToe(tbody); _herNummerBulkRijen(); }
+}
+
+function _herNummerBulkRijen() {
+  const tbody = document.getElementById('bulk-import-rijen');
+  if (!tbody) return;
+  tbody.querySelectorAll('tr').forEach((tr, i) => {
+    const nrTd = tr.querySelector('td:first-child');
+    if (nrTd) nrTd.textContent = i + 1;
+  });
+}
+
+function _handleBulkPaste(e) {
+  const active = document.activeElement;
+  if (!active || !active.closest('#bulk-import-rijen')) return;
+  const tekst = e.clipboardData?.getData('text') || '';
+  if (!tekst.includes('	') && !tekst.includes('
+')) return;
+  e.preventDefault();
+
+  const tbody = document.getElementById('bulk-import-rijen');
+  const regels = tekst.trim().split(/
+?
+/).filter(r => r.trim());
+  const startRij = active.closest('tr');
+  const rijen = Array.from(tbody.querySelectorAll('tr'));
+  let rijIdx = rijen.indexOf(startRij);
+  if (rijIdx < 0) rijIdx = 0;
+
+  regels.forEach((regel, i) => {
+    const cellen = regel.split('	');
+    const voornaam  = (cellen[0] || '').trim();
+    const achternaam = (cellen[1] || '').trim();
+    const hcp       = (cellen[2] || '').trim();
+
+    // Zorg dat er genoeg rijen zijn
+    while (tbody.querySelectorAll('tr').length <= rijIdx + i) {
+      _voegBulkRijAanToe(tbody);
+    }
+    const tr = tbody.querySelectorAll('tr')[rijIdx + i];
+    if (!tr) return;
+    const fnEl = tr.querySelector('[data-col="voornaam"]');
+    const anEl = tr.querySelector('[data-col="achternaam"]');
+    const hcEl = tr.querySelector('[data-col="hcp"]');
+    if (fnEl) fnEl.value = voornaam;
+    if (anEl) anEl.value = achternaam;
+    if (hcEl && hcp !== '') hcEl.value = hcp;
+  });
+  _herNummerBulkRijen();
+}
+
+async function startBulkImport() {
+  const toernooiNaam = document.getElementById('bulk-toernooi-naam').value.trim();
+  if (!toernooiNaam) { toast('Voer een toernooijnaam in'); return; }
+
+  const geselecteerdeLadders = Array.from(
+    document.querySelectorAll('#bulk-import-ladders input[type=checkbox]:checked')
+  ).map(cb => cb.value);
+
+  // Verzamel rijen met inhoud
+  const tbody = document.getElementById('bulk-import-rijen');
+  const rijen = Array.from(tbody.querySelectorAll('tr')).map(tr => ({
+    voornaam:  tr.querySelector('[data-col="voornaam"]')?.value.trim() || '',
+    achternaam: tr.querySelector('[data-col="achternaam"]')?.value.trim() || '',
+    hcp:       parseFloat(tr.querySelector('[data-col="hcp"]')?.value) || 0,
+    tr
+  })).filter(r => r.voornaam && r.achternaam);
+
+  if (rijen.length === 0) { toast('Voer minimaal één speler in'); return; }
+
+  document.getElementById('bulk-import-start-btn').style.display = 'none';
+  document.getElementById('bulk-import-voortgang').style.display = '';
+  document.getElementById('bulk-import-resultaat').style.display = 'none';
+
+  const pass = store.initieelWachtwoord;
+  const credentials = [];
+  let succes = 0;
+
+  for (let i = 0; i < rijen.length; i++) {
+    const { voornaam, achternaam, hcp, tr } = rijen[i];
+    const naam  = `${voornaam} ${achternaam}`;
+    const email = genereerEmail(voornaam, achternaam);
+    const loginTxt = loginNaamVan(email);
+
+    // Voortgang tonen
+    document.getElementById('bulk-import-status').textContent =
+      `Bezig met ${i + 1} van ${rijen.length}: ${naam}…`;
+    document.getElementById('bulk-import-balk').style.width =
+      `${Math.round((i / rijen.length) * 100)}%`;
+
+    // Visuele feedback per rij
+    const markeerRij = (ok, tekst) => {
+      tr.style.background = ok ? 'var(--green-pale)' : '#fde8e8';
+      const nrTd = tr.querySelector('td:first-child');
+      if (nrTd) nrTd.textContent = ok ? '✓' : '✗';
+      if (!ok) {
+        const errSpan = document.createElement('span');
+        errSpan.style.cssText = 'font-size:11px;color:var(--red);display:block;padding:2px 6px';
+        errSpan.textContent = tekst;
+        tr.querySelector('td:nth-child(3)').appendChild(errSpan);
+      }
+    };
+
+    try {
+      // Controleer dubbele naam
+      const users = await getUsers();
+      if (users.find(u => u.email === email)) {
+        markeerRij(false, 'Naam al in gebruik');
+        continue;
+      }
+
+      // Maak Firebase Auth account via tijdelijke secundaire app
+      let uid = null;
+      try {
+        const { initializeApp: init2, deleteApp } =
+          await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+        const { getAuth: getAuth2, createUserWithEmailAndPassword: createUser } =
+          await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+        const tijdApp  = init2(firebaseConfig, `bulk_${Date.now()}_${i}`);
+        const tijdAuth = getAuth2(tijdApp);
+        const cred     = await createUser(tijdAuth, email, pass);
+        uid = cred.user.uid;
+        try { await deleteApp(tijdApp); } catch(e) {}
+      } catch(authErr) {
+        if (authErr.code === 'auth/email-already-in-use') {
+          markeerRij(false, 'Account bestaat al');
+        } else {
+          markeerRij(false, authErr.message);
+        }
+        continue;
+      }
+
+      // spelers/{uid} aanmaken met toernooiSpeler-vlag en toernooiNaam
+      await setDoc(doc(db, 'spelers', uid), {
+        uid, naam, email, rol: 'speler', hcp: Math.round(hcp),
+        eersteLogin: true,
+        toernooiSpeler: true,
+        toernooiNaam
+      });
+
+      // Toevoegen aan geselecteerde ladders
+      if (geselecteerdeLadders.length > 0) {
+        await voegSpelerToeAanLadders(geselecteerdeLadders, { naam, hcp: Math.round(hcp) }, uid);
+      }
+
+      markeerRij(true);
+      credentials.push(`${naam.padEnd(25)} ${loginTxt.padEnd(25)} ${pass}`);
+      succes++;
+    } catch(e) {
+      console.error('Bulk import fout voor', naam, e);
+      markeerRij(false, e.message || 'Onbekende fout');
+    }
+
+    // Korte pauze tegen Firebase Auth rate limiting
+    await new Promise(r => setTimeout(r, 350));
+  }
+
+  // Afronden
+  document.getElementById('bulk-import-balk').style.width = '100%';
+  document.getElementById('bulk-import-status').textContent =
+    `Klaar — ${succes} van ${rijen.length} spelers aangemaakt`;
+
+  if (credentials.length > 0) {
+    document.getElementById('bulk-import-resultaat').style.display = '';
+    document.getElementById('bulk-import-credentials').value =
+      `Toernooi: ${toernooiNaam}\n` +
+      `Wachtwoord (tijdelijk): ${pass}\n\n` +
+      credentials.join('\n');
+  }
+
+  renderAdmin();
+}
+
+function kopieerBulkCredentials() {
+  const el = document.getElementById('bulk-import-credentials');
+  if (!el) return;
+  navigator.clipboard.writeText(el.value)
+    .then(() => toast('Gekopieerd ✓'))
+    .catch(() => {
+      el.select();
+      document.execCommand('copy');
+      toast('Gekopieerd ✓');
+    });
+}
+
 // ============================================================
 //  EXPORTS
 // ============================================================
@@ -906,4 +1158,5 @@ export {
   verschuifRank, resetData, closeModal,
   kopieerCredentials, vraagResetWachtwoord,
   toggleWachtwoordBeheer, slaInitieelWachtwoordOp,
+  openBulkImport, sluitBulkImport, voegBulkRijToe, startBulkImport, kopieerBulkCredentials,
 };

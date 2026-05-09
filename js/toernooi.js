@@ -101,7 +101,7 @@ function renderToernooi() {
 }
 
 // ============================================================
-//  SPELER LIVE SCORE OPSLAAN — v3.0.0-11.66
+//  SPELER LIVE SCORE OPSLAAN — v3.0.0-11.67
 // ============================================================
 // Spelers mogen het hoofddocument (toernooien/{id}) niet schrijven.
 // Ze schrijven hun eigen scores naar de subcollectie toernooien/{id}/live/{uid}.
@@ -183,7 +183,7 @@ async function herlaadToernooien() {
     _toernooiListeners.forEach(unsub => unsub());
     store._toernooiListeners = [];
 
-    // v3.0.0-11.66: als coordinator — luister naar live/{uid} subcollecties per toernooi.
+    // v3.0.0-11.67: als coordinator — luister naar live/{uid} subcollecties per toernooi.
     // Elke keer dat een speler een score opslaat, mergen we die in het hoofddocument.
     if (isCoordinatorRol()) {
       alleToernooien.forEach(t => {
@@ -1125,7 +1125,7 @@ async function verwijderToernooiSpeler(spelerId) {
 // ============================================================
 //  SCORES VOLLEDIG CHECK
 // ============================================================
-// v3.0.0-11.66: Geeft true als het toernooi nog geen enkele score heeft
+// v3.0.0-11.67: Geeft true als het toernooi nog geen enkele score heeft
 // en geen dag is afgerond. Gebruikt om "terug naar aanmaakscherm" toe te staan.
 function heeftGeenScores(t) {
   if (!t || !t.dagen) return true;
@@ -1509,7 +1509,7 @@ function selecteerFlightTab(fi) {
 // ============================================================
 function updateTScoreAndAdvance(spelerId, holeIdx, tabIdx, val) {
   updateTScore(spelerId, holeIdx, val);
-  // v3.0.0-11.66: auto-advance voor zowel coordinator als speler
+  // v3.0.0-11.67: auto-advance voor zowel coordinator als speler
   if (val.length > 0) {
     setTimeout(() => {
       const next = document.querySelector(`input[tabindex="${tabIdx + 1}"]`);
@@ -1553,7 +1553,7 @@ function updateTScore(spelerId, holeIdx, val) {
     btn.onclick = alles ? toonToernooiUitslag : null;
   }
 
-  // v3.0.0-11.66: coordinator schrijft het hoofddocument, speler schrijft
+  // v3.0.0-11.67: coordinator schrijft het hoofddocument, speler schrijft
   // alleen zijn eigen scores naar de live/{uid} subcollectie.
   if (isBeheerder) {
     slaToernooiOp(800);
@@ -2027,6 +2027,18 @@ async function bevestigToernooiAfsluiten() {
       const idx = alleToernooien.findIndex(x => x.id === actieveToernooiId);
       if (idx >= 0) alleToernooien[idx].status = 'afgerond';
       await setDoc(doc(db, 'toernooien', actieveToernooiId), t);
+
+      // v3.0.0-11.67: reset toernooiSpeler-vlag voor batch-import deelnemers
+      const spelerUids = (t.spelers || []).filter(s => !s.gast).map(s => s.uid);
+      await Promise.all(spelerUids.map(uid =>
+        getDoc(doc(db, 'spelers', uid)).then(snap => {
+          if (snap.exists() && snap.data().toernooiSpeler === true) {
+            return setDoc(doc(db, 'spelers', uid),
+              { ...snap.data(), toernooiSpeler: false, toernooiNaam: null });
+          }
+        }).catch(e => console.warn('toernooiSpeler reset mislukt voor', uid, e.code))
+      ));
+
       store.alleToernooien = alleToernooien.filter(x => x.id !== actieveToernooiId);
       store.toernooiData = store.alleToernooien.length > 0 ? store.alleToernooien[0] : null;
       store.actieveToernooiId = store.toernooiData?.id || null;
@@ -2132,6 +2144,23 @@ async function bevestigToernooiAfsluiten() {
     await setDoc(ARCHIEF_DOC, archief);
 
     if (actieveToernooiId) await setDoc(doc(db, 'toernooien', actieveToernooiId), { ...toernooiData, status: 'afgerond' });
+
+    // v3.0.0-11.67: reset toernooiSpeler-vlag voor alle deelnemers die via batch-import
+    // zijn aangemaakt. Ze kunnen de app daarna als gewone speler gebruiken.
+    const toernooiSpelerUids = (t.spelers || [])
+      .filter(s => !s.gast)
+      .map(s => s.uid);
+    if (toernooiSpelerUids.length > 0) {
+      await Promise.all(toernooiSpelerUids.map(uid =>
+        getDoc(doc(db, 'spelers', uid)).then(snap => {
+          if (snap.exists() && snap.data().toernooiSpeler === true) {
+            return setDoc(doc(db, 'spelers', uid),
+              { ...snap.data(), toernooiSpeler: false, toernooiNaam: null });
+          }
+        }).catch(e => console.warn('toernooiSpeler reset mislukt voor', uid, e.code))
+      ));
+    }
+
     store.alleToernooien = alleToernooien.filter(t => t.id !== actieveToernooiId);
     store.toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
     store.actieveToernooiId = toernooiData?.id || null;
@@ -2144,7 +2173,7 @@ async function bevestigToernooiAfsluiten() {
 }
 
 // ============================================================
-//  BEWERK TOERNOOI — v3.0.0-11.66
+//  BEWERK TOERNOOI — v3.0.0-11.67
 // ============================================================
 // Verwijdert het actieve toernooi uit Firestore (alleen als er geen scores zijn
 // en geen dag is afgerond) en herlaadt het aanmaakscherm met alle instellingen

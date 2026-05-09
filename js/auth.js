@@ -79,6 +79,8 @@ function setIngelogdVanafProfiel(firebaseUser, profiel) {
     rol:            profiel.rol  || 'speler',
     spelerId:       firebaseUser.uid,
     eersteLogin:    profiel.eersteLogin === true, // v3.0.0-11
+    toernooiSpeler: profiel.toernooiSpeler === true, // v3.0.0-11.67
+    toernooiNaam:   profiel.toernooiNaam   || null,  // v3.0.0-11.67
   };
 
   vervolgIngelogd();
@@ -90,17 +92,29 @@ function updateSiteTitel() {
   const h1Second = document.getElementById('h1-second');
   if (!h1Second) return;
 
-  // Toernooi-modus heeft prioriteit: verberg prefix, toon alleen toernooinaam
-  const actief = getActiefToernooiMetModus();
-  if (actief) {
-    if (h1First)  h1First.style.display  = 'none';
-    h1Second.textContent = `🏌️ ${actief.naam}`;
+  // v3.0.0-11.67: toernooiSpeler-vlag op profiel heeft prioriteit — toont de toernooijnaam
+  // die bij aanmaken is meegegeven. Onafhankelijk van de globale toernooi-modus checkbox,
+  // zodat andere ladder-spelers de normale titelbalk zien.
+  if (huidigeBruiker.toernooiSpeler && huidigeBruiker.toernooiNaam) {
+    if (h1First) h1First.style.display = 'none';
+    h1Second.textContent = `🏌️ ${huidigeBruiker.toernooiNaam}`;
     h1Second.style.paddingLeft = '0';
     return;
   }
 
+  // Coordinator/beheerder in toernooi-modus: toon toernooinaam uit actief toernooi
+  if (isCoordinatorRol()) {
+    const actief = getActiefToernooiMetModus();
+    if (actief) {
+      if (h1First) h1First.style.display = 'none';
+      h1Second.textContent = `🏌️ ${actief.naam}`;
+      h1Second.style.paddingLeft = '0';
+      return;
+    }
+  }
+
   // Herstel normale staat
-  if (h1First)  { h1First.style.display = ''; }
+  if (h1First) { h1First.style.display = ''; }
   h1Second.style.paddingLeft = '';
 
   const uid = huidigeBruiker.uid;
@@ -222,16 +236,16 @@ function pasToernooiModusNavToe() {
   if (!huidigeBruiker) return;
   if (isBeheerderRol() || isCoordinatorRol()) return; // beheerders altijd volledig zicht
 
+  // v3.0.0-11.67: twee paden — toernooiSpeler-vlag op profiel (batch-import)
+  // of deelnemer van een actief toernooi met toernooiModus aan.
+  const isToernooiSpeler = huidigeBruiker.toernooiSpeler === true;
   const actief = getActiefToernooiMetModus();
-  if (!actief) return; // geen actief toernooi-modus toernooi — niets doen
+  const isDeelnemerViaToernooiModus = actief &&
+    (actief.spelers || []).some(s => s.uid === huidigeBruiker.uid);
 
-  const uid = huidigeBruiker.uid;
-  const isDeelnemer = (actief.spelers || []).some(s => s.uid === uid);
-  if (!isDeelnemer) return; // speler zit niet in dit toernooi — niets doen
+  if (!isToernooiSpeler && !isDeelnemerViaToernooiModus) return;
 
-  // v3.0.0-11.65: verberg alle tabs behalve Toernooi en Uitslag.
-  // Ronde verbergen: een speler mag geen ladderpartij en toernooi gelijktijdig spelen.
-  // Alle nav-knoppen hebben nu een id zodat de selector niet breekt bij wijzigingen in showPage().
+  // Verberg alle tabs behalve Toernooi en Uitslag
   const verbergTabs = ['ladder', 'partij', 'ronde', 'help', 'archief', 'profiel', 'admin'];
   verbergTabs.forEach(tab => {
     const idBtn = document.getElementById(`nav-${tab}-btn`);
@@ -273,7 +287,9 @@ function vervolgIngelogd() {
     const mijnToernooien = alleToernooien.filter(t =>
       (t.spelers || []).some(s => uid && s.uid === uid)
     );
-    if (mijnToernooien.length > 0) {
+    // v3.0.0-11.67: toernooiSpeler-vlag toont ook de toernooi-tab, ook als nog
+    // niet in een toernooispelers-lijst staat (toernooi nog niet aangemaakt).
+    if (mijnToernooien.length > 0 || huidigeBruiker.toernooiSpeler) {
       document.getElementById('nav-toernooi-btn').style.display = '';
     }
   }
@@ -483,7 +499,7 @@ async function initFirestore() {
   }, 3000);
 
   try {
-    // v3.0.0-11.65: laad initieel wachtwoord parallel met overige docs
+    // v3.0.0-11.67: laad initieel wachtwoord parallel met overige docs
     const [baanSnap, archiefSnap, uitdSnap, toernooiSnap, volgordeSnap] =
       await Promise.all([
         getDoc(BANEN_DOC),

@@ -28,7 +28,8 @@ import { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer,
   openAddUser, saveNewUser, removeUser, verschuifRank, resetData,
   closeModal, kopieerCredentials,
   vraagResetWachtwoord,
-  toggleWachtwoordBeheer, slaInitieelWachtwoordOp } from './admin.js';
+  toggleWachtwoordBeheer, slaInitieelWachtwoordOp,
+  openBulkImport, sluitBulkImport, voegBulkRijToe, startBulkImport, kopieerBulkCredentials } from './admin.js';
 import { renderArchief, openArchiefDetail, openNieuwSeizoenModal,
   bevestigNieuwSeizoen, stuurUitdaging, reageerUitdaging,
   verwijderUitdaging, openToernooiDetail, toonUitdagingBadge,
@@ -112,6 +113,11 @@ window.kopieerCredentials = kopieerCredentials;
 window.vraagResetWachtwoord = vraagResetWachtwoord;
 window.toggleWachtwoordBeheer = toggleWachtwoordBeheer;
 window.slaInitieelWachtwoordOp = slaInitieelWachtwoordOp;
+window.openBulkImport = openBulkImport;
+window.sluitBulkImport = sluitBulkImport;
+window.voegBulkRijToe = voegBulkRijToe;
+window.startBulkImport = startBulkImport;
+window.kopieerBulkCredentials = kopieerBulkCredentials;
 window.slaEersteLoginOp = slaEersteLoginOp;
 window.openEditPlayer = openEditPlayer;
 window.saveEditPlayer = saveEditPlayer;
@@ -212,7 +218,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v3.0.0-11.66';
+  const VERSION = 'v3.0.0-11.67';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -253,7 +259,7 @@ window.toggleTRankingLadder = toggleTRankingLadder;
 // Bij mismatch: sla partijformulier op in sessionStorage → hard reload.
 // Werkt ook als de app uren open staat als PWA zonder herstart.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v3.0.0-11.66';
+  const LOKALE_VERSIE = 'v3.0.0-11.67';
   let _versieCheckBezig = false;
   let _updateGepland    = false;
 

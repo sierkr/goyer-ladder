@@ -1438,6 +1438,7 @@
       <h2>Spelers & accounts</h2>
       <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
         <button class="btn btn-sm btn-primary" onclick="openAddPlayer()">+ Speler</button>
+        <button class="btn btn-sm btn-ghost" onclick="openBulkImport()">⬆ Bulk import</button>
       </div>
     </div>
     <div class="card-collapse ingeklapt">
@@ -1621,6 +1622,56 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-add-player')">Annuleren</button>
       <button class="btn btn-primary" style="flex:2" id="add-player-save-btn" onclick="saveNewPlayer()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== BULK IMPORT MODAL ==================== -->
+<div class="modal-overlay" id="modal-bulk-import">
+  <div class="modal" style="max-width:520px">
+    <h3>Bulk import toernooi-spelers</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:14px">
+      Vul voornaam, achternaam en hcp in per speler. Plak vanuit Excel (3 kolommen).
+      Alle spelers krijgen het initiële wachtwoord en worden bij eerste inlog gevraagd een eigen wachtwoord te kiezen.
+    </p>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Toernooijnaam (zichtbaar in titelbalk voor deze spelers)</label>
+      <input type="text" id="bulk-toernooi-naam" placeholder="bijv. Clubkampioenschap 2026" autocomplete="off">
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Ladder toewijzen</label>
+      <div id="bulk-import-ladders" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div>
+    </div>
+    <div style="overflow-x:auto;margin-bottom:12px">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:var(--green);color:white">
+            <th style="padding:8px 10px;text-align:left;font-weight:600;border-radius:6px 0 0 0">#</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:600">Voornaam</th>
+            <th style="padding:8px 10px;text-align:left;font-weight:600">Achternaam</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:600;border-radius:0 6px 0 0">HCP</th>
+            <th style="padding:8px 6px;border-radius:0 6px 0 0"></th>
+          </tr>
+        </thead>
+        <tbody id="bulk-import-rijen"></tbody>
+      </table>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="voegBulkRijToe()" style="margin-bottom:14px">+ Rij toevoegen</button>
+    <div id="bulk-import-voortgang" style="display:none;margin-bottom:12px">
+      <div style="font-size:13px;color:var(--mid);margin-bottom:6px" id="bulk-import-status">Bezig...</div>
+      <div style="background:var(--border);border-radius:4px;height:6px">
+        <div id="bulk-import-balk" style="background:var(--green);height:6px;border-radius:4px;width:0%;transition:width 0.3s"></div>
+      </div>
+    </div>
+    <div id="bulk-import-resultaat" style="display:none;margin-bottom:12px">
+      <div style="font-size:13px;font-weight:600;color:var(--green);margin-bottom:8px">✓ Import voltooid — kopieer voor WhatsApp:</div>
+      <textarea id="bulk-import-credentials" readonly
+        style="width:100%;font-family:'DM Mono',monospace;font-size:12px;border:1.5px solid var(--border);border-radius:8px;padding:10px;background:var(--card-bg);color:var(--dark);resize:vertical;min-height:120px"></textarea>
+      <button class="btn btn-primary btn-block" onclick="kopieerBulkCredentials()" style="margin-top:8px">📋 Alles kopiëren voor WhatsApp</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="sluitBulkImport()">Sluiten</button>
+      <button class="btn btn-primary" style="flex:2" id="bulk-import-start-btn" onclick="startBulkImport()">Aanmaken</button>
     </div>
   </div>
 </div>
