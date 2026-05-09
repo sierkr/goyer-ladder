@@ -293,7 +293,7 @@ async function bevestigBeheerUitslag() {
   }
   await verwijderPartijMetRetry(p.ladderId, _beheerPartijId);
   await syncStandenNaBevestigUitslag(p.ladderId, rankSpelers);
-  slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam.split(' ')[0]).join(' vs ')}`);
+  slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam.split(' ')[0]).join(' vs ')}`, p.ladderId);
   showLadderChanges(changes);
   } catch(e) { console.error('bevestigBeheerUitslag mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }

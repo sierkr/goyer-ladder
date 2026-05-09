@@ -339,19 +339,20 @@ function openSnapshotsModal() {
   laadSnapshots();
 }
 
-async function slaSnapshotOp(label) {
+async function slaSnapshotOp(label, ladderId) {
   try {
-    if (!activeLadderId) return;
+    if (!ladderId) ladderId = activeLadderId;
+    if (!ladderId) return;
     // Verwijder snapshots ouder dan 30 dagen
     const dertig = Date.now() - 30 * 24 * 60 * 60 * 1000;
     const oudeSnaps = await getDocs(query(SNAPSHOTS_COL, where('timestamp', '<', dertig)));
     oudeSnaps.forEach(d => deleteDoc(d.ref));
 
-    // Lees actuele standen uit standen/{uid} — niet uit state.spelers
-    const ladder = alleLadders.find(l => l.id === activeLadderId);
+    // Lees actuele standen uit standen/{uid}
+    const ladder = alleLadders.find(l => l.id === ladderId);
     const spelerIds = ladder?.spelerIds || ladder?.data?.spelerIds || [];
     const standenSnaps = await Promise.all(
-      spelerIds.map(uid => getDoc(doc(db, 'ladders', activeLadderId, 'standen', uid)).catch(() => null))
+      spelerIds.map(uid => getDoc(doc(db, 'ladders', ladderId, 'standen', uid)).catch(() => null))
     );
     const spelersSnapshot = spelerIds.map((uid, i) => {
       const d = standenSnaps[i]?.exists() ? standenSnaps[i].data() : {};
@@ -409,7 +410,7 @@ async function herstelSnapshot(snapId) {
     if (!confirm(`Ladderstand van "${ladderNaam}" herstellen naar:\n${data.label} (${data.datum})?\n\nDe huidige stand wordt eerst opgeslagen.`)) return;
 
     // Sla huidige stand op voordat we herstellen
-    await slaSnapshotOp('⚠️ Voor herstel op ' + new Date().toLocaleString('nl-NL'));
+    await slaSnapshotOp('⚠️ Voor herstel op ' + new Date().toLocaleString('nl-NL'), ladderId);
 
     // Schrijf elke speler terug naar standen/{uid}
     const writes = (data.spelers || [])

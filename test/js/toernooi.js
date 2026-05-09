@@ -2011,9 +2011,7 @@ async function bevestigToernooiAfsluiten() {
           });
           await Promise.all(standenWrites);
 
-          if (ladderId === activeLadderId) {
-            await slaSnapshotOp(`🏅 Na toernooi: ${t.naam}`);
-          }
+          await slaSnapshotOp(`🏅 Na toernooi: ${t.naam}`, ladderId);
         }
       }
     }

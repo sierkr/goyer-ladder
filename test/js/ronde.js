@@ -619,7 +619,7 @@ async function bevestigUitslag() {
   await verwijderPartijMetRetry(p.ladderId, p.partijId);
   // Sync rankSpelers naar standen/{uid}
   await syncStandenNaBevestigUitslag(p.ladderId, rankSpelers);
-  slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam).join(' vs ')}`);
+  slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam).join(' vs ')}`, p.ladderId);
 
   // Update knockout bracket als dit een knockout ladder is
   await verwerkKnockoutUitslag(p);
