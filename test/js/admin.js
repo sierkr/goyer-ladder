@@ -494,18 +494,21 @@ async function removePlayer(uid) {
 
       if (!(data.spelerIds || []).includes(uid)) continue;
 
-      data.spelerIds       = (data.spelerIds       || []).filter(id => id !== uid);
-      data.actievePartijen = (data.actievePartijen || []).filter(p =>
+      const nieuweSpelerIds    = (data.spelerIds       || []).filter(id => id !== uid);
+      const nieuweActievePartijen = (data.actievePartijen || []).filter(p =>
         !p.spelers?.some(s => s.uid === uid)
       );
-      await setDoc(doc(db, 'ladders', ladder.id), data);
+      await setDoc(doc(db, 'ladders', ladder.id), {
+        spelerIds: nieuweSpelerIds,
+        actievePartijen: nieuweActievePartijen,
+      }, { merge: true });
 
       // Verwijder standen/{uid}
       try { await deleteDoc(doc(db, 'ladders', ladder.id, 'standen', uid)); } catch(e) {}
 
-      ladder.spelerIds = data.spelerIds;
+      ladder.spelerIds = nieuweSpelerIds;
       if (ladder.id === activeLadderId) {
-        state.actievePartijen = data.actievePartijen;
+        state.actievePartijen = nieuweActievePartijen;
       }
     }
 
@@ -803,13 +806,10 @@ async function removeUser(uid) {
     // Verwijder uit alle ladders op uid
     for (const ladder of alleLadders) {
       if (!(ladder.spelerIds || []).includes(uid)) continue;
-      const ladderSnap = await getDoc(doc(db, 'ladders', ladder.id));
-      if (!ladderSnap.exists()) continue;
-      const data = ladderSnap.data();
-      data.spelerIds = (data.spelerIds || []).filter(id => id !== uid);
-      await setDoc(doc(db, 'ladders', ladder.id), data);
+      const nieuweSpelerIds = (ladder.spelerIds || []).filter(id => id !== uid);
+      await setDoc(doc(db, 'ladders', ladder.id), { spelerIds: nieuweSpelerIds }, { merge: true });
       try { await deleteDoc(doc(db, 'ladders', ladder.id, 'standen', uid)); } catch(e) {}
-      ladder.spelerIds = data.spelerIds;
+      ladder.spelerIds = nieuweSpelerIds;
     }
 
     renderAdmin();

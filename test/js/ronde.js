@@ -675,7 +675,7 @@ async function verwijderPartijMetRetry(ladderId, partijId, maxPogingen = 3) {
         // Partij is al weg, klaar
         return;
       }
-      await setDoc(ladderRef, { ...data, actievePartijen: filtered });
+      await setDoc(ladderRef, { actievePartijen: filtered }, { merge: true });
       // v3.0.0-11.32: markeer als verwijderd zodat onSnapshot-guard hem herkent
       _verwijderdePartijIds.add(partijId);
       // Verifieer
@@ -738,11 +738,10 @@ async function annuleerEigenPartij() {
   if (ladderId !== activeLadderId) {
     const snap = await getDoc(doc(db, 'ladders', ladderId));
     if (snap.exists()) {
-      const data = snap.data();
-      data.actievePartijen = (data.actievePartijen || []).filter(ap => ap.partijId !== p.partijId);
-      await setDoc(doc(db, 'ladders', ladderId), data);
+      const filtered = (snap.data().actievePartijen || []).filter(ap => ap.partijId !== p.partijId);
+      await setDoc(doc(db, 'ladders', ladderId), { actievePartijen: filtered }, { merge: true });
       const idx = alleLadders.findIndex(l => l.id === ladderId);
-      if (idx >= 0) { alleLadders[idx].actievePartijen = data.actievePartijen; if (alleLadders[idx].data) alleLadders[idx].data.actievePartijen = data.actievePartijen; }
+      if (idx >= 0) { alleLadders[idx].actievePartijen = filtered; if (alleLadders[idx].data) alleLadders[idx].data.actievePartijen = filtered; }
     }
   } else {
     state.actievePartijen = state.actievePartijen.filter(ap => ap.partijId !== p.partijId);

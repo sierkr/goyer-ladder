@@ -823,11 +823,11 @@ async function registreerSpeler() {
       await setDoc(doc(db, 'ladders', targetLadderId, 'standen', uid),
         { rank: newRank, partijen: 0, gewonnen: 0 });
 
-      // Stap 5: spelerIds bijwerken
+      // Stap 5: spelerIds bijwerken via merge — nooit heel document herschrijven
       if (!ladderData.spelerIds.includes(uid)) {
         ladderData.spelerIds = [...ladderData.spelerIds, uid];
       }
-      await setDoc(doc(db, 'ladders', targetLadderId), ladderData);
+      await setDoc(doc(db, 'ladders', targetLadderId), { spelerIds: ladderData.spelerIds }, { merge: true });
     } catch(ladderErr) {
       console.warn('Ladder toewijzing mislukt, account is aangemaakt:', ladderErr.code);
     }

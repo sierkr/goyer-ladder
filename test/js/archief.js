@@ -118,12 +118,11 @@ async function bevestigNieuwSeizoen() {
           ? [...standenData].reverse()
           : standenData;
 
-        // 4) Reset ladder-doc: wis uitslagen[] + actievePartijen[] (geen spelers[] meer)
+        // 4) Reset ladder-doc: wis uitslagen[] + actievePartijen[] via merge
         await setDoc(doc(db, 'ladders', ladderId), {
-          ...data,
           uitslagen: [],
           actievePartijen: [],
-        });
+        }, { merge: true });
 
         // 5) Reset standen/{uid} met nieuwe ranks en 0-statistieken
         const resetPromises = nieuweVolgorde.map((s, i) =>

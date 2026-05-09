@@ -131,12 +131,8 @@ async function slaLadderInstellingenOp() {
   };
 
   
-  // Sla op in Firestore
-  const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
-  if (snapExists) {
-    data.config = config;
-    await setDoc(doc(db, 'ladders', ladderId), data);
-  }
+  // Sla op in Firestore — alleen config aanraken via merge
+  await setDoc(doc(db, 'ladders', ladderId), { config }, { merge: true });
 
   // Update cache
   const idx = alleLadders.findIndex(l => l.id === ladderId);
@@ -289,10 +285,8 @@ async function slaLadderSpelersOp() {
         .catch(e => console.warn('standen delete mislukt voor', uid, e.code))
     ));
 
-    // Sla alleen spelerIds op — geen spelers[] meer
-    const updatedData = { ...ladderData, spelerIds: geselecteerdeUids };
-    delete updatedData.spelers; // expliciet weghalen als het er nog in zit
-    await setDoc(doc(db, 'ladders', ladderId), updatedData);
+    // Sla alleen spelerIds op via merge — nooit het hele document herschrijven
+    await setDoc(doc(db, 'ladders', ladderId), { spelerIds: geselecteerdeUids }, { merge: true });
 
     const idx = alleLadders.findIndex(l => l.id === ladderId);
     if (idx >= 0) {

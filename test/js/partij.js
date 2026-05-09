@@ -641,8 +641,11 @@ async function startPartij() {
     const bestaandePartijen = snap.exists() ? (snap.data().actievePartijen || []) : [];
     bestaandePartijen.push(nieuwePartij);
     await setDoc(doc(db, 'ladders', partijLadderId), { actievePartijen: bestaandePartijen }, { merge: true });
-    // Wissel naar die ladder zodat de ronde zichtbaar is
+    // Wissel ladder en update lokale state zodat renderRonde direct de juiste partij heeft
     store.activeLadderId = partijLadderId;
+    store.state.actievePartijen = bestaandePartijen;
+    const ladderIdx = store.alleLadders.findIndex(l => l.id === partijLadderId);
+    if (ladderIdx >= 0) store.alleLadders[ladderIdx].actievePartijen = bestaandePartijen;
   } else {
     state.actievePartijen.push(nieuwePartij);
     await slaState();

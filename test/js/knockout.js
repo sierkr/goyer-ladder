@@ -354,7 +354,7 @@ async function bevestigKnockoutIndeling() {
     // Verwerk byes en genereer volgende rondes indien nodig
     const bijgewerkt = verwerkKnockoutVoortgang(rondes, namen.length);
 
-    await setDoc(doc(db, 'ladders', _koLadderId), { ...data, rondes: rondesNaarObj(bijgewerkt) });
+    await setDoc(doc(db, 'ladders', _koLadderId), { rondes: rondesNaarObj(bijgewerkt) }, { merge: true });
     closeModal('modal-knockout-indeling');
     renderLadder();
     toast('Indeling opgeslagen ✓');
@@ -487,7 +487,7 @@ async function slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar, resu
 
     // Verwerk voortgang
     const bijgewerkt = verwerkKnockoutVoortgang(rondes, (data.spelers || []).length);
-    await setDoc(doc(db, 'ladders', ladderId), { ...data, rondes: rondesNaarObj(bijgewerkt) });
+    await setDoc(doc(db, 'ladders', ladderId), { rondes: rondesNaarObj(bijgewerkt) }, { merge: true });
 
     // Update cache
     const idx = alleLadders.findIndex(l => l.id === ladderId);
@@ -505,7 +505,7 @@ async function nieuwKnockoutSeizoen(ladderId) {
     const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
     if (!snapExists) return;
     const data = snapData;
-    await setDoc(doc(db, 'ladders', ladderId), { ...data, rondes: rondesNaarObj([]) });
+    await setDoc(doc(db, 'ladders', ladderId), { rondes: rondesNaarObj([]) }, { merge: true });
     const idx = alleLadders.findIndex(l => l.id === ladderId);
     if (idx >= 0) alleLadders[idx].data = { ...data, rondes: [] };
     await openKnockoutIndeling(ladderId);
