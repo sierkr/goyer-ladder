@@ -189,7 +189,13 @@ window.doLogin = async function() {
   try {
     await signInWithEmailAndPassword(auth, email, pass);
     setStatus('login-status', 'ok', `Ingelogd als ${email}`);
-    await laadData();
+    try {
+      await laadData();
+    } catch(e2) {
+      setStatus('analyse-status', 'error', 'Data laden mislukt: ' + (e2.message || e2.code || String(e2)));
+      document.getElementById('stap-analyse').style.display = '';
+      console.error('laadData fout:', e2);
+    }
   } catch(e) {
     setStatus('login-status', 'error', 'Inloggen mislukt: ' + (e.message || e.code));
   }
@@ -197,11 +203,16 @@ window.doLogin = async function() {
 
 // ── Data laden ───────────────────────────────────────────────
 async function laadData() {
-  setStatus('analyse-status', 'info', 'Bezig met laden…');
+  setStatus('analyse-status', 'info', 'Bezig met laden van accounts…');
   document.getElementById('stap-analyse').style.display = '';
 
   // Laad alle accounts uit spelers/{uid}
-  const spelersSnap = await getDocs(collection(db, 'spelers'));
+  let spelersSnap;
+  try {
+    spelersSnap = await getDocs(collection(db, 'spelers'));
+  } catch(e) {
+    throw new Error('spelers/ collectie laden mislukt: ' + (e.message || e.code));
+  }
   alleAccounts = spelersSnap.docs.map(d => ({
     uid:   d.id,
     naam:  d.data().naam  || '',
@@ -209,15 +220,22 @@ async function laadData() {
     hcp:   d.data().hcp   ?? null,
     rol:   d.data().rol   || 'speler',
   }));
+  setStatus('analyse-status', 'info', `${alleAccounts.length} accounts geladen. Ladders laden…`);
 
   // Laad alle ladders
-  const laddersSnap = await getDocs(collection(db, 'ladders'));
+  let laddersSnap;
+  try {
+    laddersSnap = await getDocs(collection(db, 'ladders'));
+  } catch(e) {
+    throw new Error('ladders/ collectie laden mislukt: ' + (e.message || e.code));
+  }
   alleLadders = laddersSnap.docs.map(d => ({
-    id:       d.id,
-    naam:     d.data().naam || d.id,
-    spelers:  d.data().spelers || [],
+    id:        d.id,
+    naam:      d.data().naam || d.id,
+    spelers:   d.data().spelers || [],
     spelerIds: d.data().spelerIds || [],
   }));
+  setStatus('analyse-status', 'info', `${alleLadders.length} ladders geladen. Analyseren…`);
 
   analyseer();
 }
