@@ -106,10 +106,12 @@ service cloud.firestore {
       allow read:  if true;
       allow write: if isCoordinator();
 
-      // Optioneel: live-scores subcollectie voor spelers om eigen scores te schrijven
-      // (nu nog niet in gebruik — structuur voor fase 14)
+      // v3.0.0-11.65: live-scores subcollectie — spelers schrijven eigen scores hier.
+      // Coordinator leest via onSnapshot en mergt in het hoofddocument.
+      // Speler mag alleen zijn eigen doc schrijven (request.auth.uid == uid).
+      // Read open zodat coordinator alle docs kan lezen.
       match /live/{uid} {
-        allow read:  if true;
+        allow read:  if isIngelogd();
         allow write: if isIngelogd() && request.auth.uid == uid;
       }
     }

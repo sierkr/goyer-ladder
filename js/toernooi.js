@@ -101,6 +101,28 @@ function renderToernooi() {
 }
 
 // ============================================================
+//  SPELER LIVE SCORE OPSLAAN — v3.0.0-11.65
+// ============================================================
+// Spelers mogen het hoofddocument (toernooien/{id}) niet schrijven.
+// Ze schrijven hun eigen scores naar de subcollectie toernooien/{id}/live/{uid}.
+// De coordinator-onSnapshot listener pikt dit op en mergt de scores
+// in het hoofddocument.
+async function slaSpelerScoreOp(uid, dagNr, scores) {
+  if (!actieveToernooiId || !uid) return;
+  clearTimeout(window._tSpelerSaveTimer);
+  window._tSpelerSaveTimer = setTimeout(async () => {
+    try {
+      await setDoc(
+        doc(db, 'toernooien', actieveToernooiId, 'live', uid),
+        { dagNr, scores, timestamp: Date.now() }
+      );
+    } catch(e) {
+      console.error('Speler score opslaan mislukt:', e);
+    }
+  }, 800);
+}
+
+// ============================================================
 //  BAAN SELECTOR IN TOERNOOI SETUP
 // ============================================================
 
@@ -160,6 +182,51 @@ async function herlaadToernooien() {
 
     _toernooiListeners.forEach(unsub => unsub());
     store._toernooiListeners = [];
+
+    // v3.0.0-11.65: als coordinator — luister naar live/{uid} subcollecties per toernooi.
+    // Elke keer dat een speler een score opslaat, mergen we die in het hoofddocument.
+    if (isCoordinatorRol()) {
+      alleToernooien.forEach(t => {
+        const liveUnsub = onSnapshot(
+          collection(db, 'toernooien', t.id, 'live'),
+          (liveSnap) => {
+            if (!toernooiData || actieveToernooiId !== t.id) return;
+            const dag = actieveDag(toernooiData);
+            if (!dag || dag.afgerond) return;
+            let gewijzigd = false;
+            liveSnap.docs.forEach(liveDoc => {
+              const { dagNr, scores } = liveDoc.data();
+              if (dagNr !== toernooiData.actiefDagNr) return;
+              const uid = liveDoc.id;
+              if (!dag.scores) dag.scores = {};
+              const huidig = JSON.stringify(dag.scores[uid] || []);
+              const nieuw  = JSON.stringify(scores || []);
+              if (huidig !== nieuw) {
+                dag.scores[uid] = scores;
+                gewijzigd = true;
+              }
+            });
+            if (gewijzigd) {
+              updateTTotaalRijInline();
+              renderTMatrix();
+              const btn = document.getElementById('t-refresh-btn');
+              if (btn) btn.style.display = '';
+              // Debounced wegschrijven naar hoofddocument
+              clearTimeout(window._tLiveMergeTimer);
+              window._tLiveMergeTimer = setTimeout(async () => {
+                try {
+                  await setDoc(doc(db, 'toernooien', actieveToernooiId),
+                    JSON.parse(JSON.stringify(toernooiData)));
+                } catch(e) { console.error('Live merge opslaan mislukt:', e); }
+              }, 2000);
+            }
+          },
+          (err) => { console.warn('live/ listener error:', err.code); }
+        );
+        store._toernooiListeners.push(liveUnsub);
+      });
+    }
+
     alleToernooien.forEach(t => {
       const unsub = onSnapshot(doc(db, 'toernooien', t.id), (snap) => {
         if (!snap.exists()) return;
@@ -1231,7 +1298,7 @@ function renderToernooiActief() {
             ${t.toernooiModus ? 'checked' : ''}
             onchange="toggleToernooiModus(this.checked)"
             style="accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
-          <span><strong>Toernooi-modus</strong><br><span style="font-size:11px;color:var(--mid)">Deelnemers zien alleen Ronde &amp; Uitslag. Titelbalk toont toernooinaam.</span></span>
+          <span><strong>Toernooi-modus</strong><br><span style="font-size:11px;color:var(--mid)">Deelnemers zien alleen Toernooi &amp; Uitslag. Titelbalk toont toernooinaam.</span></span>
         </label>
       </div>
       <button class="btn btn-ghost btn-block" onclick="annuleerToernooi()" style="margin-bottom:8px;color:var(--red)">
@@ -1424,7 +1491,8 @@ function selecteerFlightTab(fi) {
 // ============================================================
 function updateTScoreAndAdvance(spelerId, holeIdx, tabIdx, val) {
   updateTScore(spelerId, holeIdx, val);
-  if (val.length > 0 && isCoordinatorRol()) {
+  // v3.0.0-11.65: auto-advance voor zowel coordinator als speler
+  if (val.length > 0) {
     setTimeout(() => {
       const next = document.querySelector(`input[tabindex="${tabIdx + 1}"]`);
       if (next) { next.focus(); next.select(); }
@@ -1467,7 +1535,14 @@ function updateTScore(spelerId, holeIdx, val) {
     btn.onclick = alles ? toonToernooiUitslag : null;
   }
 
-  slaToernooiOp(800);
+  // v3.0.0-11.65: coordinator schrijft het hoofddocument, speler schrijft
+  // alleen zijn eigen scores naar de live/{uid} subcollectie.
+  if (isBeheerder) {
+    slaToernooiOp(800);
+  } else {
+    const dagNr = toernooiData.actiefDagNr || 1;
+    slaSpelerScoreOp(spelerId, dagNr, dag.scores[String(spelerId)] || []);
+  }
 }
 
 function updateTTotaalRijInline() {

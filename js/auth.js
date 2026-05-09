@@ -229,25 +229,23 @@ function pasToernooiModusNavToe() {
   const isDeelnemer = (actief.spelers || []).some(s => s.uid === uid);
   if (!isDeelnemer) return; // speler zit niet in dit toernooi — niets doen
 
-  // Verberg alle tabs behalve Ronde en Uitslag
-  const verbergTabs = ['ladder', 'partij', 'help', 'archief', 'toernooi', 'profiel', 'admin'];
+  // v3.0.0-11.65: verberg alle tabs behalve Toernooi en Uitslag.
+  // Ronde verbergen: een speler mag geen ladderpartij en toernooi gelijktijdig spelen.
+  // Alle nav-knoppen hebben nu een id zodat de selector niet breekt bij wijzigingen in showPage().
+  const verbergTabs = ['ladder', 'partij', 'ronde', 'help', 'archief', 'profiel', 'admin'];
   verbergTabs.forEach(tab => {
-    // Tabs zonder id: selecteer via onclick attribuut
-    const btn = document.querySelector(`nav button[onclick="showPage('${tab}')"]`);
-    if (btn) btn.style.display = 'none';
-    // Tabs met een id-knop
     const idBtn = document.getElementById(`nav-${tab}-btn`);
     if (idBtn) idBtn.style.display = 'none';
   });
 
-  // Zorg dat Ronde actief is als huidige pagina verborgen wordt
+  // Zorg dat Toernooi actief is als huidige pagina verborgen wordt
   const actievePagina = document.querySelector('.page.active');
   const actieveId = actievePagina?.id?.replace('page-', '');
   if (actieveId && verbergTabs.includes(actieveId)) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-    document.getElementById('page-ronde')?.classList.add('active');
-    document.querySelector('nav button[onclick="showPage(\'ronde\')"]')?.classList.add('active');
+    document.getElementById('page-toernooi')?.classList.add('active');
+    document.getElementById('nav-toernooi-btn')?.classList.add('active');
   }
 }
 
@@ -485,7 +483,7 @@ async function initFirestore() {
   }, 3000);
 
   try {
-    // v3.0.0-11.62: laad initieel wachtwoord parallel met overige docs
+    // v3.0.0-11.65: laad initieel wachtwoord parallel met overige docs
     const [baanSnap, archiefSnap, uitdSnap, toernooiSnap, volgordeSnap] =
       await Promise.all([
         getDoc(BANEN_DOC),
