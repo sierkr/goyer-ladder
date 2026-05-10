@@ -557,6 +557,7 @@
     margin-bottom: 12px;
     display: none;
   }
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -1658,19 +1659,31 @@
     </div>
     <button class="btn btn-ghost btn-sm" onclick="voegBulkRijToe()" style="margin-bottom:14px">+ Rij toevoegen</button>
     <div id="bulk-import-voortgang" style="display:none;margin-bottom:12px">
-      <div style="font-size:13px;color:var(--mid);margin-bottom:6px" id="bulk-import-status">Bezig...</div>
-      <div style="background:var(--border);border-radius:4px;height:6px">
-        <div id="bulk-import-balk" style="background:var(--green);height:6px;border-radius:4px;width:0%;transition:width 0.3s"></div>
+      <div style="background:var(--green-pale);border:1.5px solid var(--green);border-radius:10px;padding:14px 16px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div id="bulk-import-spinner" style="width:18px;height:18px;border:3px solid var(--green);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0"></div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--green)" id="bulk-import-status">Bezig...</div>
+            <div style="font-size:11px;color:var(--mid);margin-top:2px">Sluit dit venster niet — dit kan enkele minuten duren</div>
+          </div>
+        </div>
+        <div style="background:rgba(0,0,0,0.08);border-radius:4px;height:8px;margin-bottom:8px">
+          <div id="bulk-import-balk" style="background:var(--green);height:8px;border-radius:4px;width:0%;transition:width 0.5s"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--mid)">
+          <span id="bulk-import-teller">0 / 0 verwerkt</span>
+          <span id="bulk-import-tijd"></span>
+        </div>
       </div>
     </div>
     <div id="bulk-import-resultaat" style="display:none;margin-bottom:12px">
-      <div style="font-size:13px;font-weight:600;color:var(--green);margin-bottom:8px">✓ Import voltooid — kopieer voor WhatsApp:</div>
+      <div id="bulk-import-samenvatting" style="font-size:13px;font-weight:600;margin-bottom:8px"></div>
       <textarea id="bulk-import-credentials" readonly
         style="width:100%;font-family:'DM Mono',monospace;font-size:12px;border:1.5px solid var(--border);border-radius:8px;padding:10px;background:var(--card-bg);color:var(--dark);resize:vertical;min-height:120px"></textarea>
       <button class="btn btn-primary btn-block" onclick="kopieerBulkCredentials()" style="margin-top:8px">📋 Alles kopiëren voor WhatsApp</button>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" style="flex:1" onclick="sluitBulkImport()">Sluiten</button>
+      <button class="btn btn-ghost" style="flex:1" id="bulk-import-sluit-btn" onclick="sluitBulkImport()">Sluiten</button>
       <button class="btn btn-primary" style="flex:2" id="bulk-import-start-btn" onclick="startBulkImport()">Aanmaken</button>
     </div>
   </div>

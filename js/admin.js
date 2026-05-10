@@ -1018,97 +1018,240 @@ async function startBulkImport() {
 
   if (rijen.length === 0) { toast('Voer minimaal één speler in'); return; }
 
+  // UI: start-knop weg, sluiten geblokkeerd, voortgang zichtbaar
   document.getElementById('bulk-import-start-btn').style.display = 'none';
+  document.getElementById('bulk-import-sluit-btn').disabled = true;
+  document.getElementById('bulk-import-sluit-btn').style.opacity = '0.4';
   document.getElementById('bulk-import-voortgang').style.display = '';
   document.getElementById('bulk-import-resultaat').style.display = 'none';
+  document.getElementById('bulk-import-balk').style.width = '0%';
+  document.getElementById('bulk-import-teller').textContent = '0 / ' + rijen.length + ' verwerkt';
 
   const pass = store.initieelWachtwoord;
+  if (!pass) {
+    toast('Initieel wachtwoord niet geladen — stel dit in via het beheerscherm');
+    document.getElementById('bulk-import-start-btn').style.display = '';
+    document.getElementById('bulk-import-sluit-btn').disabled = false;
+    document.getElementById('bulk-import-sluit-btn').style.opacity = '';
+    document.getElementById('bulk-import-voortgang').style.display = 'none';
+    return;
+  }
+
   const credentials = [];
+  const mislukt = [];
   let succes = 0;
+  const startTijd = Date.now();
+
+  // Laad imports eenmalig buiten de loop
+  let init2, deleteApp, getAuth2, createUser;
+  try {
+    const appMod  = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+    const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+    init2      = appMod.initializeApp;
+    deleteApp  = appMod.deleteApp;
+    getAuth2   = authMod.getAuth;
+    createUser = authMod.createUserWithEmailAndPassword;
+  } catch(e) {
+    toast('Firebase modules laden mislukt: ' + e.message);
+    document.getElementById('bulk-import-start-btn').style.display = '';
+    document.getElementById('bulk-import-sluit-btn').disabled = false;
+    document.getElementById('bulk-import-sluit-btn').style.opacity = '';
+    return;
+  }
+
+  const setStatus = (tekst) => {
+    document.getElementById('bulk-import-status').textContent = tekst;
+  };
+  const setTijd = () => {
+    const secs = Math.round((Date.now() - startTijd) / 1000);
+    const min  = Math.floor(secs / 60);
+    const sec  = secs % 60;
+    document.getElementById('bulk-import-tijd').textContent =
+      min > 0 ? `${min}m ${sec}s` : `${sec}s`;
+  };
+  const tijdInterval = setInterval(setTijd, 1000);
+
+  const markeerRij = (tr, ok, tekst) => {
+    tr.style.background = ok ? 'var(--green-pale)' : '#fde8e8';
+    const nrTd = tr.querySelector('td:first-child');
+    if (nrTd) nrTd.textContent = ok ? '✓' : '✗';
+    if (!ok && tekst) {
+      // Verwijder eventuele eerdere foutmelding
+      tr.querySelectorAll('.bulk-err').forEach(el => el.remove());
+      const errSpan = document.createElement('span');
+      errSpan.className = 'bulk-err';
+      errSpan.style.cssText = 'font-size:11px;color:var(--red);display:block;padding:2px 6px';
+      errSpan.textContent = tekst;
+      const td = tr.querySelector('td:nth-child(3)');
+      if (td) td.appendChild(errSpan);
+    }
+  };
 
   for (let i = 0; i < rijen.length; i++) {
     const { voornaam, achternaam, hcp, tr } = rijen[i];
-    const naam     = `${voornaam} ${achternaam}`;
+    const naam     = voornaam + ' ' + achternaam;
     const email    = genereerEmail(voornaam, achternaam);
     const loginTxt = loginNaamVan(email);
 
-    document.getElementById('bulk-import-status').textContent =
-      `Bezig met ${i + 1} van ${rijen.length}: ${naam}…`;
-    document.getElementById('bulk-import-balk').style.width =
-      `${Math.round((i / rijen.length) * 100)}%`;
+    // Voortgang bijwerken
+    const pct = Math.round((i / rijen.length) * 100);
+    document.getElementById('bulk-import-balk').style.width = pct + '%';
+    document.getElementById('bulk-import-teller').textContent =
+      i + ' / ' + rijen.length + ' verwerkt';
+    setStatus('Bezig met ' + (i + 1) + ' van ' + rijen.length + ': ' + naam + '\u2026');
 
-    const markeerRij = (ok, tekst) => {
-      tr.style.background = ok ? 'var(--green-pale)' : '#fde8e8';
-      const nrTd = tr.querySelector('td:first-child');
-      if (nrTd) nrTd.textContent = ok ? '✓' : '✗';
-      if (!ok && tekst) {
-        const errSpan = document.createElement('span');
-        errSpan.style.cssText = 'font-size:11px;color:var(--red);display:block;padding:2px 6px';
-        errSpan.textContent = tekst;
-        const td = tr.querySelector('td:nth-child(3)');
-        if (td) td.appendChild(errSpan);
-      }
-    };
+    // Markeer rij als actief
+    tr.style.background = '#fff9e6';
+    const nrTd = tr.querySelector('td:first-child');
+    if (nrTd) nrTd.textContent = '\u23f3';
 
     try {
-      const users = await getUsers();
+      // Check duplicaat
+      const users = await getUsers(true); // forceFresh=true
       if (users.find(u => u.email === email)) {
-        markeerRij(false, 'Naam al in gebruik'); continue;
-      }
-
-      let uid = null;
-      try {
-        const { initializeApp: init2, deleteApp } =
-          await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-        const { getAuth: getAuth2, createUserWithEmailAndPassword: createUser } =
-          await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-        const tijdApp  = init2(firebaseConfig, `bulk_${Date.now()}_${i}`);
-        const tijdAuth = getAuth2(tijdApp);
-        const cred     = await createUser(tijdAuth, email, pass);
-        uid = cred.user.uid;
-        try { await deleteApp(tijdApp); } catch(e) {}
-      } catch(authErr) {
-        markeerRij(false, authErr.code === 'auth/email-already-in-use'
-          ? 'Account bestaat al' : authErr.message);
+        markeerRij(tr, false, 'Naam al in gebruik — overgeslagen');
+        mislukt.push(naam + ' (naam al in gebruik)');
+        await new Promise(r => setTimeout(r, 1500));
         continue;
       }
 
-      await setDoc(doc(db, 'spelers', uid), {
-        uid, naam, email, rol: 'speler', hcp: Math.round(hcp),
-        eersteLogin: true,
-        toernooiSpeler: true,
-        toernooiNaam
-      });
-
-      if (geselecteerdeLadders.length > 0) {
-        await voegSpelerToeAanLadders(geselecteerdeLadders, { naam, hcp: Math.round(hcp) }, uid);
+      // Maak Auth-account — met retry bij rate limiting
+      let uid = null;
+      let authPogingen = 0;
+      while (uid === null && authPogingen < 3) {
+        authPogingen++;
+        let tijdApp = null;
+        try {
+          tijdApp = init2(firebaseConfig, 'bulk_' + Date.now() + '_' + i + '_' + authPogingen);
+          const tijdAuth = getAuth2(tijdApp);
+          const cred = await createUser(tijdAuth, email, pass);
+          uid = cred.user.uid;
+        } catch(authErr) {
+          if (tijdApp) { try { await deleteApp(tijdApp); } catch(e) {} }
+          if (authErr.code === 'auth/email-already-in-use') {
+            markeerRij(tr, false, 'Account bestaat al in Firebase Auth');
+            mislukt.push(naam + ' (account bestaat al)');
+            uid = null;
+            break;
+          } else if (authErr.code === 'auth/too-many-requests' || authErr.message?.includes('QUOTA')) {
+            if (authPogingen < 3) {
+              setStatus('Rate limit bereikt — even wachten (' + authPogingen + '/3)\u2026');
+              await new Promise(r => setTimeout(r, 8000 * authPogingen));
+            } else {
+              markeerRij(tr, false, 'Rate limit — probeer later opnieuw');
+              mislukt.push(naam + ' (rate limit)');
+              uid = null;
+            }
+          } else {
+            markeerRij(tr, false, authErr.message || 'Auth mislukt');
+            mislukt.push(naam + ' (' + (authErr.code || authErr.message) + ')');
+            uid = null;
+            break;
+          }
+        }
+        if (tijdApp && uid !== null) {
+          try { await deleteApp(tijdApp); } catch(e) {}
+        }
       }
 
-      markeerRij(true);
-      credentials.push(`${naam.padEnd(25)} ${loginTxt.padEnd(25)} ${pass}`);
+      if (!uid) {
+        await new Promise(r => setTimeout(r, 1500));
+        continue;
+      }
+
+      // Schrijf spelers/{uid} — apart try/catch zodat een Auth-account nooit
+      // zonder Firestore-profiel blijft (ghost account)
+      try {
+        await setDoc(doc(db, 'spelers', uid), {
+          uid, naam, email, rol: 'speler', hcp: Math.round(hcp),
+          eersteLogin: true,
+          toernooiSpeler: true,
+          toernooiNaam
+        });
+      } catch(fsErr) {
+        // Profiel aanmaken mislukt — probeer Auth-account te verwijderen
+        console.error('Firestore profiel mislukt voor', naam, fsErr);
+        markeerRij(tr, false, 'Profiel opslaan mislukt — account verwijderd');
+        mislukt.push(naam + ' (Firestore mislukt)');
+        try {
+          // Kan alleen via Admin SDK — log voor handmatige opruiming
+          console.warn('Handmatig verwijderen in Firebase Console → Authentication:', email);
+        } catch(e) {}
+        await new Promise(r => setTimeout(r, 1500));
+        continue;
+      }
+
+      // Toevoegen aan ladder(s)
+      if (geselecteerdeLadders.length > 0) {
+        try {
+          await voegSpelerToeAanLadders(geselecteerdeLadders, { naam, hcp: Math.round(hcp) }, uid);
+        } catch(ladderErr) {
+          // Niet fataal — speler is aangemaakt, ladder-koppeling kan later
+          console.warn('Ladder koppeling mislukt voor', naam, ladderErr);
+        }
+      }
+
+      markeerRij(tr, true);
+      credentials.push(naam.padEnd(25) + ' ' + loginTxt.padEnd(25) + ' ' + pass);
       succes++;
+
     } catch(e) {
-      console.error('Bulk import fout voor', naam, e);
-      markeerRij(false, e.message || 'Onbekende fout');
+      console.error('Onverwachte fout voor', naam, e);
+      markeerRij(tr, false, e.message || 'Onbekende fout');
+      mislukt.push(naam + ' (onbekende fout)');
     }
 
-    // Pauze tegen Firebase Auth rate limiting
-    await new Promise(r => setTimeout(r, 350));
+    // Verplichte pauze: 2 seconden per speler — voorkomt rate limiting
+    await new Promise(r => setTimeout(r, 2000));
   }
 
+  clearInterval(tijdInterval);
+  setTijd();
+
+  // Afronden
   document.getElementById('bulk-import-balk').style.width = '100%';
-  document.getElementById('bulk-import-status').textContent =
-    `Klaar — ${succes} van ${rijen.length} spelers aangemaakt`;
+  document.getElementById('bulk-import-teller').textContent =
+    rijen.length + ' / ' + rijen.length + ' verwerkt';
+  document.getElementById('bulk-import-spinner').style.borderTopColor = 'transparent';
+  document.getElementById('bulk-import-spinner').style.animation = 'none';
+  document.getElementById('bulk-import-spinner').style.borderColor = 'var(--green)';
+  document.getElementById('bulk-import-spinner').textContent = '\u2713';
+  document.getElementById('bulk-import-spinner').style.cssText =
+    'width:18px;height:18px;display:flex;align-items:center;justify-content:center;' +
+    'background:var(--green);color:white;border-radius:50%;font-size:12px;font-weight:700;flex-shrink:0';
+
+  const allesOk = mislukt.length === 0;
+  setStatus(
+    allesOk
+      ? '\u2713 Alle ' + succes + ' spelers aangemaakt!'
+      : succes + ' van ' + rijen.length + ' aangemaakt — ' + mislukt.length + ' mislukt (zie rode rijen)'
+  );
+
+  // Sluitknop weer inschakelen
+  document.getElementById('bulk-import-sluit-btn').disabled = false;
+  document.getElementById('bulk-import-sluit-btn').style.opacity = '';
+
+  // Resultaten tonen
+  document.getElementById('bulk-import-resultaat').style.display = '';
+  const samenvattingEl = document.getElementById('bulk-import-samenvatting');
 
   if (credentials.length > 0) {
-    document.getElementById('bulk-import-resultaat').style.display = '';
+    samenvattingEl.style.color = 'var(--green)';
+    samenvattingEl.textContent = '\u2713 Aangemaakt — kopieer voor WhatsApp:';
     document.getElementById('bulk-import-credentials').value =
-      `Toernooi: ${toernooiNaam}\nWachtwoord (tijdelijk): ${pass}\n\n` +
-      credentials.join('\n');
+      'Toernooi: ' + toernooiNaam + '\n' +
+      'Wachtwoord (tijdelijk): ' + pass + '\n\n' +
+      credentials.join('\n') +
+      (mislukt.length > 0 ? '\n\nNIET aangemaakt:\n' + mislukt.join('\n') : '');
+  } else {
+    samenvattingEl.style.color = 'var(--red)';
+    samenvattingEl.textContent = '\u2717 Geen spelers aangemaakt — controleer de rode rijen';
+    document.getElementById('bulk-import-credentials').style.display = 'none';
   }
 
   renderAdmin();
 }
+
 
 function kopieerBulkCredentials() {
   const el = document.getElementById('bulk-import-credentials');
