@@ -94,7 +94,7 @@ function renderToernooi() {
     if (isBeheerder) {
       initToernooiSetup();
     } else {
-      // v3.0.0-11.71: wachtmelding voor spelers zonder actief toernooi
+      // v3.0.0-11.72: wachtmelding voor spelers zonder actief toernooi
       const bestaand = document.getElementById('toernooi-leeg-melding');
       if (bestaand) bestaand.remove();
       const emptyDiv = document.createElement('div');
@@ -112,7 +112,7 @@ function renderToernooi() {
 }
 
 // ============================================================
-//  SPELER LIVE SCORE OPSLAAN — v3.0.0-11.71
+//  SPELER LIVE SCORE OPSLAAN — v3.0.0-11.72
 // ============================================================
 // Spelers mogen het hoofddocument (toernooien/{id}) niet schrijven.
 // Ze schrijven hun eigen scores naar de subcollectie toernooien/{id}/live/{uid}.
@@ -191,130 +191,137 @@ async function herlaadToernooien() {
     }
     if (toernooiData) store.actieveToernooiId = toernooiData.id;
 
-    _toernooiListeners.forEach(unsub => unsub());
-    store._toernooiListeners = [];
+    herlaadToernooiListeners();
 
-    // v3.0.0-11.71: als coordinator — luister naar live/{uid} subcollecties per toernooi.
-    // Elke keer dat een speler een score opslaat, mergen we die in het hoofddocument.
-    if (isCoordinatorRol()) {
-      alleToernooien.forEach(t => {
-        const liveUnsub = onSnapshot(
-          collection(db, 'toernooien', t.id, 'live'),
-          (liveSnap) => {
-            if (!toernooiData || actieveToernooiId !== t.id) return;
-            const dag = actieveDag(toernooiData);
-            if (!dag || dag.afgerond) return;
-            let gewijzigd = false;
-            liveSnap.docs.forEach(liveDoc => {
-              const { dagNr, scores } = liveDoc.data();
-              if (dagNr !== toernooiData.actiefDagNr) return;
-              const uid = liveDoc.id;
-              if (!dag.scores) dag.scores = {};
-              const huidig = JSON.stringify(dag.scores[uid] || []);
-              const nieuw  = JSON.stringify(scores || []);
-              if (huidig !== nieuw) {
-                dag.scores[uid] = scores;
-                gewijzigd = true;
-              }
-            });
-            if (gewijzigd) {
-              updateTTotaalRijInline();
-              renderTMatrix();
-              const btn = document.getElementById('t-refresh-btn');
-              if (btn) btn.style.display = '';
-              // Debounced wegschrijven naar hoofddocument
-              clearTimeout(window._tLiveMergeTimer);
-              window._tLiveMergeTimer = setTimeout(async () => {
-                try {
-                  await setDoc(doc(db, 'toernooien', actieveToernooiId),
-                    JSON.parse(JSON.stringify(toernooiData)));
-                } catch(e) { console.error('Live merge opslaan mislukt:', e); }
-              }, 2000);
-            }
-          },
-          (err) => { console.warn('live/ listener error:', err.code); }
-        );
-        store._toernooiListeners.push(liveUnsub);
-      });
-    }
+    herlaadToernooiListeners();
+  } catch(e) { console.error('Toernooien laden mislukt:', e); }
+}
 
-    alleToernooien.forEach(t => {
-      const unsub = onSnapshot(doc(db, 'toernooien', t.id), (snap) => {
-        if (!snap.exists()) return;
-        const nieuweData = { id: snap.id, ...snap.data() };
-        const idx = alleToernooien.findIndex(x => x.id === snap.id);
-        if (idx >= 0) alleToernooien[idx] = nieuweData;
-        if (actieveToernooiId === snap.id) {
-          const isBeheerder = isCoordinatorRol();
-          const detail = document.getElementById('toernooi-detail');
-          if (detail) {
-            const dag = actieveDag(nieuweData);
-            if (isBeheerder) {
-              const oudScores = JSON.stringify(actieveDag(toernooiData)?.scores || {});
-              const nieuwScores = JSON.stringify(dag?.scores || {});
-              store.toernooiData = nieuweData;
-              if (oudScores !== nieuwScores) {
-                const btn = document.getElementById('t-refresh-btn');
-                if (btn) btn.style.display = '';
-                renderTMatrix();
-              }
-              const dagUitslag = dag?.afgerond || nieuweData.uitslagZichtbaar;
-              if (dagUitslag || nieuweData.modus === 'strokeplay') renderTRanglijst();
-            } else {
-              const oudeMatrixIngeklapt  = toernooiData?.matrixIngeklapt;
-              const oudeUitslagZichtbaar = toernooiData?.uitslagZichtbaar;
-              const oudeScoresVerborgen  = toernooiData?.scoresVerborgen;
-              const oudeStatus           = toernooiData?.status;
-              const oudeToernooiModus    = toernooiData?.toernooiModus;
-              store.toernooiData = nieuweData;
+// v3.0.0-11.72: Per-document onSnapshot listeners voor actieve toernooien.
+// Wordt aangeroepen vanuit herlaadToernooien() en vanuit de collectie-onSnapshot
+// in auth.js zodat listeners altijd actueel zijn.
+function herlaadToernooiListeners() {
+  _toernooiListeners.forEach(unsub => unsub());
+  store._toernooiListeners = [];
 
-              // v3.0.0-11.71: reageer op status- en toernooiModus-wijzigingen real-time
-              // zodat spelers niet hoeven te navigeren om de nieuwe toestand te zien.
+if (isCoordinatorRol()) {
+  alleToernooien.forEach(t => {
+    const liveUnsub = onSnapshot(
+      collection(db, 'toernooien', t.id, 'live'),
+      (liveSnap) => {
+        if (!toernooiData || actieveToernooiId !== t.id) return;
+        const dag = actieveDag(toernooiData);
+        if (!dag || dag.afgerond) return;
+        let gewijzigd = false;
+        liveSnap.docs.forEach(liveDoc => {
+          const { dagNr, scores } = liveDoc.data();
+          if (dagNr !== toernooiData.actiefDagNr) return;
+          const uid = liveDoc.id;
+          if (!dag.scores) dag.scores = {};
+          const huidig = JSON.stringify(dag.scores[uid] || []);
+          const nieuw  = JSON.stringify(scores || []);
+          if (huidig !== nieuw) {
+            dag.scores[uid] = scores;
+            gewijzigd = true;
+          }
+        });
+        if (gewijzigd) {
+          updateTTotaalRijInline();
+          renderTMatrix();
+          const btn = document.getElementById('t-refresh-btn');
+          if (btn) btn.style.display = '';
+          // Debounced wegschrijven naar hoofddocument
+          clearTimeout(window._tLiveMergeTimer);
+          window._tLiveMergeTimer = setTimeout(async () => {
+            try {
+              await setDoc(doc(db, 'toernooien', actieveToernooiId),
+                JSON.parse(JSON.stringify(toernooiData)));
+            } catch(e) { console.error('Live merge opslaan mislukt:', e); }
+          }, 2000);
+        }
+      },
+      (err) => { console.warn('live/ listener error:', err.code); }
+    );
+    store._toernooiListeners.push(liveUnsub);
+  });
+}
 
-              // Toernooi afgesloten of geannuleerd — verwijder uit lokale lijst en herrender
-              if (nieuweData.status !== 'actief' && oudeStatus === 'actief') {
-                store.alleToernooien = alleToernooien.filter(x => x.id !== snap.id);
-                store.toernooiData   = alleToernooien.length > 0 ? alleToernooien[0] : null;
-                store.actieveToernooiId = store.toernooiData?.id || null;
-                renderToernooi();
-                window.dispatchEvent(new CustomEvent('toernooiModusGewijzigd'));
-                return;
-              }
+alleToernooien.forEach(t => {
+  const unsub = onSnapshot(doc(db, 'toernooien', t.id), (snap) => {
+    if (!snap.exists()) return;
+    const nieuweData = { id: snap.id, ...snap.data() };
+    const idx = alleToernooien.findIndex(x => x.id === snap.id);
+    if (idx >= 0) alleToernooien[idx] = nieuweData;
+    if (actieveToernooiId === snap.id) {
+      const isBeheerder = isCoordinatorRol();
+      const detail = document.getElementById('toernooi-detail');
+      if (detail) {
+        const dag = actieveDag(nieuweData);
+        if (isBeheerder) {
+          const oudScores = JSON.stringify(actieveDag(toernooiData)?.scores || {});
+          const nieuwScores = JSON.stringify(dag?.scores || {});
+          store.toernooiData = nieuweData;
+          if (oudScores !== nieuwScores) {
+            const btn = document.getElementById('t-refresh-btn');
+            if (btn) btn.style.display = '';
+            renderTMatrix();
+          }
+          const dagUitslag = dag?.afgerond || nieuweData.uitslagZichtbaar;
+          if (dagUitslag || nieuweData.modus === 'strokeplay') renderTRanglijst();
+        } else {
+          const oudeMatrixIngeklapt  = toernooiData?.matrixIngeklapt;
+          const oudeUitslagZichtbaar = toernooiData?.uitslagZichtbaar;
+          const oudeScoresVerborgen  = toernooiData?.scoresVerborgen;
+          const oudeStatus           = toernooiData?.status;
+          const oudeToernooiModus    = toernooiData?.toernooiModus;
+          store.toernooiData = nieuweData;
 
-              // Toernooi-modus aan/uit gezet door beheerder
-              if (nieuweData.toernooiModus !== oudeToernooiModus) {
-                window.dispatchEvent(new CustomEvent('toernooiModusGewijzigd'));
-              }
+          // v3.0.0-11.72: reageer op status- en toernooiModus-wijzigingen real-time
+          // zodat spelers niet hoeven te navigeren om de nieuwe toestand te zien.
 
-              // Scores verborgen/zichtbaar gezet
-              if (nieuweData.scoresVerborgen !== oudeScoresVerborgen) {
-                renderTScorecard();
-              }
+          // Toernooi afgesloten of geannuleerd — verwijder uit lokale lijst en herrender
+          if (nieuweData.status !== 'actief' && oudeStatus === 'actief') {
+            store.alleToernooien = alleToernooien.filter(x => x.id !== snap.id);
+            store.toernooiData   = alleToernooien.length > 0 ? alleToernooien[0] : null;
+            store.actieveToernooiId = store.toernooiData?.id || null;
+            renderToernooi();
+            window.dispatchEvent(new CustomEvent('toernooiModusGewijzigd'));
+            return;
+          }
 
-              if (nieuweData.matrixIngeklapt !== oudeMatrixIngeklapt) {
-                const collapse = document.getElementById('t-matrix-collapse');
-                const header = collapse?.previousElementSibling;
-                if (collapse) collapse.classList.toggle('ingeklapt', !!nieuweData.matrixIngeklapt);
-                if (header) header.classList.toggle('ingeklapt', !!nieuweData.matrixIngeklapt);
-              }
+          // Toernooi-modus aan/uit gezet door beheerder
+          if (nieuweData.toernooiModus !== oudeToernooiModus) {
+            window.dispatchEvent(new CustomEvent('toernooiModusGewijzigd'));
+          }
 
-              clearTimeout(window._matrixUpdateTimer);
-              window._matrixUpdateTimer = setTimeout(() => renderTMatrix(), 2000);
+          // Scores verborgen/zichtbaar gezet
+          if (nieuweData.scoresVerborgen !== oudeScoresVerborgen) {
+            renderTScorecard();
+          }
 
-              if (nieuweData.uitslagZichtbaar && !oudeUitslagZichtbaar) {
-                renderTScorecard();
-                renderTMatrix();
-                renderTRanglijst();
-              } else if (nieuweData.uitslagZichtbaar) {
-                renderTRanglijst();
-              }
-            }
+          if (nieuweData.matrixIngeklapt !== oudeMatrixIngeklapt) {
+            const collapse = document.getElementById('t-matrix-collapse');
+            const header = collapse?.previousElementSibling;
+            if (collapse) collapse.classList.toggle('ingeklapt', !!nieuweData.matrixIngeklapt);
+            if (header) header.classList.toggle('ingeklapt', !!nieuweData.matrixIngeklapt);
+          }
+
+          clearTimeout(window._matrixUpdateTimer);
+          window._matrixUpdateTimer = setTimeout(() => renderTMatrix(), 2000);
+
+          if (nieuweData.uitslagZichtbaar && !oudeUitslagZichtbaar) {
+            renderTScorecard();
+            renderTMatrix();
+            renderTRanglijst();
+          } else if (nieuweData.uitslagZichtbaar) {
+            renderTRanglijst();
           }
         }
-      });
-      _toernooiListeners.push(unsub);
-    });
-  } catch(e) { console.error('Toernooien laden mislukt:', e); }
+      }
+    }
+  });
+  _toernooiListeners.push(unsub);
+});
 }
 
 function selecteerToernooi(id) {
@@ -1162,7 +1169,7 @@ async function verwijderToernooiSpeler(spelerId) {
 // ============================================================
 //  SCORES VOLLEDIG CHECK
 // ============================================================
-// v3.0.0-11.71: Geeft true als het toernooi nog geen enkele score heeft
+// v3.0.0-11.72: Geeft true als het toernooi nog geen enkele score heeft
 // en geen dag is afgerond. Gebruikt om "terug naar aanmaakscherm" toe te staan.
 function heeftGeenScores(t) {
   if (!t || !t.dagen) return true;
@@ -1506,7 +1513,7 @@ function renderTScorecard() {
       if (dagAfgerond) {
         html += `<td style="text-align:center;font-family:'DM Mono',monospace;font-size:14px">${val !== null && val !== undefined ? val : '—'}</td>`;
       } else if (!isBeheerder && t.scoresVerborgen && s.uid !== mijnUid2) {
-        // v3.0.0-11.71: scores van andere spelers verbergen als beheerder dit heeft ingesteld
+        // v3.0.0-11.72: scores van andere spelers verbergen als beheerder dit heeft ingesteld
         html += `<td style="text-align:center;color:var(--light);font-size:14px">•</td>`;
       } else {
         html += `<td><input type="number" min="1" max="12" inputmode="numeric" value="${val !== null && val !== undefined ? val : ''}"
@@ -1520,7 +1527,7 @@ function renderTScorecard() {
 
   html += '<tr class="t-totaal-rij" style="background:var(--green-pale)"><td class="player-col" style="font-weight:700">Tot</td>';
   spelers.forEach(s => {
-    // v3.0.0-11.71: verberg totaal van anderen als scoresVerborgen aan staat
+    // v3.0.0-11.72: verberg totaal van anderen als scoresVerborgen aan staat
     if (!isBeheerder && t.scoresVerborgen && s.uid !== mijnUid2) {
       html += `<td data-speler-id="${s.uid}" style="text-align:center;color:var(--light)">•</td>`;
     } else {
@@ -1563,7 +1570,7 @@ function selecteerFlightTab(fi) {
 // ============================================================
 function updateTScoreAndAdvance(spelerId, holeIdx, tabIdx, val) {
   updateTScore(spelerId, holeIdx, val);
-  // v3.0.0-11.71: auto-advance voor zowel coordinator als speler
+  // v3.0.0-11.72: auto-advance voor zowel coordinator als speler
   if (val.length > 0) {
     setTimeout(() => {
       const next = document.querySelector(`input[tabindex="${tabIdx + 1}"]`);
@@ -1607,7 +1614,7 @@ function updateTScore(spelerId, holeIdx, val) {
     btn.onclick = alles ? toonToernooiUitslag : null;
   }
 
-  // v3.0.0-11.71: coordinator schrijft het hoofddocument, speler schrijft
+  // v3.0.0-11.72: coordinator schrijft het hoofddocument, speler schrijft
   // alleen zijn eigen scores naar de live/{uid} subcollectie.
   if (isBeheerder) {
     slaToernooiOp(800);
@@ -2082,7 +2089,7 @@ async function bevestigToernooiAfsluiten() {
       if (idx >= 0) alleToernooien[idx].status = 'afgerond';
       await setDoc(doc(db, 'toernooien', actieveToernooiId), t);
 
-      // v3.0.0-11.71: reset toernooiSpeler-vlag voor batch-import deelnemers
+      // v3.0.0-11.72: reset toernooiSpeler-vlag voor batch-import deelnemers
       const spelerUids = (t.spelers || []).filter(s => !s.gast).map(s => s.uid);
       await Promise.all(spelerUids.map(uid =>
         getDoc(doc(db, 'spelers', uid)).then(snap => {
@@ -2199,7 +2206,7 @@ async function bevestigToernooiAfsluiten() {
 
     if (actieveToernooiId) await setDoc(doc(db, 'toernooien', actieveToernooiId), { ...toernooiData, status: 'afgerond' });
 
-    // v3.0.0-11.71: reset toernooiSpeler-vlag voor alle deelnemers die via batch-import
+    // v3.0.0-11.72: reset toernooiSpeler-vlag voor alle deelnemers die via batch-import
     // zijn aangemaakt. Ze kunnen de app daarna als gewone speler gebruiken.
     const toernooiSpelerUids = (t.spelers || [])
       .filter(s => !s.gast)
@@ -2227,7 +2234,7 @@ async function bevestigToernooiAfsluiten() {
 }
 
 // ============================================================
-//  BEWERK TOERNOOI — v3.0.0-11.71
+//  BEWERK TOERNOOI — v3.0.0-11.72
 // ============================================================
 // Verwijdert het actieve toernooi uit Firestore (alleen als er geen scores zijn
 // en geen dag is afgerond) en herlaadt het aanmaakscherm met alle instellingen
@@ -2445,4 +2452,4 @@ export function getActiefToernooiMetModus() {
 }
 
 
-export { alleScoresIngevuld, annuleerToernooi, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarLadderTab, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, toggleTRankingLadder, toggleTScorecard, toggleTSpeler, toggleTSpelersLadder, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpeler, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
+export { alleScoresIngevuld, annuleerToernooi, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarLadderTab, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, herlaadToernooiListeners, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, toggleTRankingLadder, toggleTScorecard, toggleTSpeler, toggleTSpelersLadder, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpeler, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
