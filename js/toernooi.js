@@ -61,12 +61,9 @@ function renderToernooi() {
   const wrap = document.getElementById('toernooi-actief-wrap');
   const setup = document.getElementById('toernooi-setup-wrap');
 
-  if (isBeheerder) {
-    setup.style.display = 'block';
-    initToernooiSetup();
-  } else {
-    setup.style.display = 'none';
-  }
+  // v3.0.0-11.73: setup altijd expliciet zetten in elk pad — nooit afhankelijk van vorige render
+  setup.style.display = isBeheerder ? 'block' : 'none';
+  if (isBeheerder) initToernooiSetup();
 
   if (mijnToernooien.length > 0) {
     wrap.style.display = 'block';
@@ -94,7 +91,7 @@ function renderToernooi() {
     if (isBeheerder) {
       initToernooiSetup();
     } else {
-      // v3.0.0-11.72: wachtmelding voor spelers zonder actief toernooi
+      // v3.0.0-11.73: wachtmelding voor spelers zonder actief toernooi
       const bestaand = document.getElementById('toernooi-leeg-melding');
       if (bestaand) bestaand.remove();
       const emptyDiv = document.createElement('div');
@@ -112,7 +109,7 @@ function renderToernooi() {
 }
 
 // ============================================================
-//  SPELER LIVE SCORE OPSLAAN — v3.0.0-11.72
+//  SPELER LIVE SCORE OPSLAAN — v3.0.0-11.73
 // ============================================================
 // Spelers mogen het hoofddocument (toernooien/{id}) niet schrijven.
 // Ze schrijven hun eigen scores naar de subcollectie toernooien/{id}/live/{uid}.
@@ -197,7 +194,7 @@ async function herlaadToernooien() {
   } catch(e) { console.error('Toernooien laden mislukt:', e); }
 }
 
-// v3.0.0-11.72: Per-document onSnapshot listeners voor actieve toernooien.
+// v3.0.0-11.73: Per-document onSnapshot listeners voor actieve toernooien.
 // Wordt aangeroepen vanuit herlaadToernooien() en vanuit de collectie-onSnapshot
 // in auth.js zodat listeners altijd actueel zijn.
 function herlaadToernooiListeners() {
@@ -276,7 +273,7 @@ alleToernooien.forEach(t => {
           const oudeToernooiModus    = toernooiData?.toernooiModus;
           store.toernooiData = nieuweData;
 
-          // v3.0.0-11.72: reageer op status- en toernooiModus-wijzigingen real-time
+          // v3.0.0-11.73: reageer op status- en toernooiModus-wijzigingen real-time
           // zodat spelers niet hoeven te navigeren om de nieuwe toestand te zien.
 
           // Toernooi afgesloten of geannuleerd — verwijder uit lokale lijst en herrender
@@ -1169,7 +1166,7 @@ async function verwijderToernooiSpeler(spelerId) {
 // ============================================================
 //  SCORES VOLLEDIG CHECK
 // ============================================================
-// v3.0.0-11.72: Geeft true als het toernooi nog geen enkele score heeft
+// v3.0.0-11.73: Geeft true als het toernooi nog geen enkele score heeft
 // en geen dag is afgerond. Gebruikt om "terug naar aanmaakscherm" toe te staan.
 function heeftGeenScores(t) {
   if (!t || !t.dagen) return true;
@@ -1513,7 +1510,7 @@ function renderTScorecard() {
       if (dagAfgerond) {
         html += `<td style="text-align:center;font-family:'DM Mono',monospace;font-size:14px">${val !== null && val !== undefined ? val : '—'}</td>`;
       } else if (!isBeheerder && t.scoresVerborgen && s.uid !== mijnUid2) {
-        // v3.0.0-11.72: scores van andere spelers verbergen als beheerder dit heeft ingesteld
+        // v3.0.0-11.73: scores van andere spelers verbergen als beheerder dit heeft ingesteld
         html += `<td style="text-align:center;color:var(--light);font-size:14px">•</td>`;
       } else {
         html += `<td><input type="number" min="1" max="12" inputmode="numeric" value="${val !== null && val !== undefined ? val : ''}"
@@ -1527,7 +1524,7 @@ function renderTScorecard() {
 
   html += '<tr class="t-totaal-rij" style="background:var(--green-pale)"><td class="player-col" style="font-weight:700">Tot</td>';
   spelers.forEach(s => {
-    // v3.0.0-11.72: verberg totaal van anderen als scoresVerborgen aan staat
+    // v3.0.0-11.73: verberg totaal van anderen als scoresVerborgen aan staat
     if (!isBeheerder && t.scoresVerborgen && s.uid !== mijnUid2) {
       html += `<td data-speler-id="${s.uid}" style="text-align:center;color:var(--light)">•</td>`;
     } else {
@@ -1570,7 +1567,7 @@ function selecteerFlightTab(fi) {
 // ============================================================
 function updateTScoreAndAdvance(spelerId, holeIdx, tabIdx, val) {
   updateTScore(spelerId, holeIdx, val);
-  // v3.0.0-11.72: auto-advance voor zowel coordinator als speler
+  // v3.0.0-11.73: auto-advance voor zowel coordinator als speler
   if (val.length > 0) {
     setTimeout(() => {
       const next = document.querySelector(`input[tabindex="${tabIdx + 1}"]`);
@@ -1614,7 +1611,7 @@ function updateTScore(spelerId, holeIdx, val) {
     btn.onclick = alles ? toonToernooiUitslag : null;
   }
 
-  // v3.0.0-11.72: coordinator schrijft het hoofddocument, speler schrijft
+  // v3.0.0-11.73: coordinator schrijft het hoofddocument, speler schrijft
   // alleen zijn eigen scores naar de live/{uid} subcollectie.
   if (isBeheerder) {
     slaToernooiOp(800);
@@ -2089,7 +2086,7 @@ async function bevestigToernooiAfsluiten() {
       if (idx >= 0) alleToernooien[idx].status = 'afgerond';
       await setDoc(doc(db, 'toernooien', actieveToernooiId), t);
 
-      // v3.0.0-11.72: reset toernooiSpeler-vlag voor batch-import deelnemers
+      // v3.0.0-11.73: reset toernooiSpeler-vlag voor batch-import deelnemers
       const spelerUids = (t.spelers || []).filter(s => !s.gast).map(s => s.uid);
       await Promise.all(spelerUids.map(uid =>
         getDoc(doc(db, 'spelers', uid)).then(snap => {
@@ -2206,7 +2203,7 @@ async function bevestigToernooiAfsluiten() {
 
     if (actieveToernooiId) await setDoc(doc(db, 'toernooien', actieveToernooiId), { ...toernooiData, status: 'afgerond' });
 
-    // v3.0.0-11.72: reset toernooiSpeler-vlag voor alle deelnemers die via batch-import
+    // v3.0.0-11.73: reset toernooiSpeler-vlag voor alle deelnemers die via batch-import
     // zijn aangemaakt. Ze kunnen de app daarna als gewone speler gebruiken.
     const toernooiSpelerUids = (t.spelers || [])
       .filter(s => !s.gast)
@@ -2234,7 +2231,7 @@ async function bevestigToernooiAfsluiten() {
 }
 
 // ============================================================
-//  BEWERK TOERNOOI — v3.0.0-11.72
+//  BEWERK TOERNOOI — v3.0.0-11.73
 // ============================================================
 // Verwijdert het actieve toernooi uit Firestore (alleen als er geen scores zijn
 // en geen dag is afgerond) en herlaadt het aanmaakscherm met alle instellingen
