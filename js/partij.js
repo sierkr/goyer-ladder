@@ -660,7 +660,22 @@ async function startPartij() {
   if (ladderIdx >= 0) {
     alleLadders[ladderIdx].actievePartijen = [...(alleLadders[ladderIdx].actievePartijen || []), nieuwePartij];
   }
-  await slaActievePartijenOp(partijLadderId);
+
+  // v3.0.0-11.75: vang write-fouten op (bijv. Firestore-rechten). Als de write
+  // mislukt, verwijder de lokaal toegevoegde partij weer zodat de staat
+  // consistent blijft, en toon een foutmelding in plaats van naar een lege ronde te navigeren.
+  try {
+    await slaActievePartijenOp(partijLadderId);
+  } catch(e) {
+    // Draai lokale toevoeging terug
+    if (ladderIdx >= 0) {
+      alleLadders[ladderIdx].actievePartijen = (alleLadders[ladderIdx].actievePartijen || [])
+        .filter(p => p.partijId !== nieuwePartij.partijId);
+    }
+    console.error('[startPartij] slaActievePartijenOp mislukt:', e);
+    toast('Partij kon niet worden opgeslagen — controleer je verbinding of rechten');
+    return;
+  }
 
   toast('Partij gestart! ⛳');
   document.querySelectorAll('nav button')[2].click();
