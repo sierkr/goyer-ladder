@@ -1,5 +1,5 @@
 rules_version = '2';
-// Goyer Golf MP Ladder — Firestore security rules v3.0.0-10 (fase 10 V-2)
+// Goyer Golf MP Ladder - Firestore security rules v3.0.0-10 (fase 10 V-2)
 // Wijzigingen t.o.v. v2:
 //  - ladder/{doc}: write gesplitst per doc-type. Coordinator-only voor archief,
 //    uitdagingen, ladderVolgorde, banen, state. Elke speler mag eigen uitdaging-entry
@@ -10,18 +10,18 @@ rules_version = '2';
 //  - toernooien/{doc}: read blijft publiek (live meekijken), write alleen coordinator.
 //    Subcollectie live scores blijft open.
 //  - snapshots/{doc}: read alleen coordinator (bevat volledige ladderstanden +
-//    speler-identiteit — niet gedeeld met iedere speler).
+//    speler-identiteit - niet gedeeld met iedere speler).
 //  - ladders/{id}/standen/{uid}: write door elke ingelogde speler die in de ladder
 //    zit (nodig voor syncStandenNaBevestigUitslag). Delete blijft coordinator.
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ─── Helpers ─────────────────────────────────────────────
+    // --- Helpers ---------------------------------------------
     function isIngelogd() {
       return request.auth != null;
     }
-    // Lees spelers/{uid} robuust — null als doc niet bestaat
+    // Lees spelers/{uid} robuust - null als doc niet bestaat
     function getSpelerData(uid) {
       return exists(/databases/$(database)/documents/spelers/$(uid))
         ? get(/databases/$(database)/documents/spelers/$(uid)).data
@@ -41,7 +41,7 @@ service cloud.firestore {
     function onlyHcp() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hcp']);
     }
-    // v3.0.0-11: eerste login flow — speler mag hcp + eersteLogin flag samen zetten.
+    // v3.0.0-11: eerste login flow - speler mag hcp + eersteLogin flag samen zetten.
     // Alleen toegestaan als eersteLogin op false wordt gezet (nooit terug naar true).
     function isEersteLoginVoltooien() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hcp', 'eersteLogin'])
@@ -67,7 +67,7 @@ service cloud.firestore {
           && request.resource.data.gebruik == resource.data.get('gebruik', 0) + 1;
     }
 
-    // ─── spelers ──────────────────────────────────────────────
+    // --- spelers ----------------------------------------------
     // Bron van waarheid voor speler-identiteit
     match /spelers/{uid} {
       allow read:   if isIngelogd();
@@ -78,11 +78,16 @@ service cloud.firestore {
       allow delete: if isBeheerder();
     }
 
-    // ─── ladders ──────────────────────────────────────────────
-    // Ladder documenten: coordinator beheert, speler mag zich aanmelden via invite
+    // --- ladders ----------------------------------------------
+    // Ladder documenten: coordinator beheert, speler mag actieve partijen schrijven
     match /ladders/{ladderId} {
       allow read:  if isIngelogd();
+      // v3.0.0-11.75: spelers die lid zijn van de ladder mogen ook schrijven
+      // (nodig voor startPartij / bevestigUitslag). Eerder alleen coordinator,
+      // waardoor schrijfpogingen van gewone spelers door Firestore werden
+      // afgewezen en de partij nooit in de ronde verscheen.
       allow write: if isCoordinator()
+                   || (isIngelogd() && isInLadder(ladderId))
                    || (isIngelogd() && heeftGeldigeInvite(ladderId));
 
       // Stand per speler in deze ladder
@@ -100,31 +105,33 @@ service cloud.firestore {
       }
     }
 
-    // ─── toernooien ───────────────────────────────────────────
+    // --- toernooien -------------------------------------------
     // Read publiek voor live meekijken; write alleen coordinator
     match /toernooien/{doc} {
       allow read:  if true;
       allow write: if isCoordinator();
 
-      // Optioneel: live-scores subcollectie voor spelers om eigen scores te schrijven
-      // (nu nog niet in gebruik — structuur voor fase 14)
+      // v3.0.0-11.65: live-scores subcollectie - spelers schrijven eigen scores hier.
+      // Coordinator leest via onSnapshot en mergt in het hoofddocument.
+      // Speler mag alleen zijn eigen doc schrijven (request.auth.uid == uid).
+      // Read open zodat coordinator alle docs kan lezen.
       match /live/{uid} {
-        allow read:  if true;
+        allow read:  if isIngelogd();
         allow write: if isIngelogd() && request.auth.uid == uid;
       }
     }
 
-    // ─── uitslagen ────────────────────────────────────────────
+    // --- uitslagen --------------------------------------------
     // Scorekaarten van afgelopen partijen (30 dagen bewaard)
     match /uitslagen/{doc} {
       allow read:   if isIngelogd();
       allow create: if isIngelogd();
-      // Update/delete alleen coordinator — voorkomt dat speler andermans uitslag overschrijft
+      // Update/delete alleen coordinator - voorkomt dat speler andermans uitslag overschrijft
       allow update, delete: if isCoordinator();
     }
 
-    // ─── snapshots ────────────────────────────────────────────
-    // Volledige ladderdump voor recovery — bevat speler-identiteit.
+    // --- snapshots --------------------------------------------
+    // Volledige ladderdump voor recovery - bevat speler-identiteit.
     // Read alleen coord (bevat veel speler-data). Write mag iedere ingelogde speler
     // (auto-snapshot na partij-bevestiging wordt door de speler getriggerd).
     match /snapshots/{doc} {
@@ -133,36 +140,36 @@ service cloud.firestore {
       allow update, delete: if isCoordinator();
     }
 
-    // ─── ladder/{doc} ─────────────────────────────────────────
-    // Meerdere singleton-documents onder /ladder — splitsen per doc-type
+    // --- ladder/{doc} -----------------------------------------
+    // Meerdere singleton-documents onder /ladder - splitsen per doc-type
     match /ladder/{doc} {
       // Read: ingelogde spelers voor alle app-data; invite-docs mogen ongeauthenticeerd
-      // gelezen worden (checkInviteLink doet dit vóór login)
+      // gelezen worden (checkInviteLink doet dit voor login)
       allow read: if isIngelogd() || doc.matches('invite_.*');
 
-      // archief: seizoen-historiek — alleen coordinator schrijft
+      // archief: seizoen-historiek - alleen coordinator schrijft
       allow write: if doc == 'archief' && isCoordinator();
 
-      // uitdagingen: lijst met uitdagingen — iedere ingelogde speler mag wijzigen
+      // uitdagingen: lijst met uitdagingen - iedere ingelogde speler mag wijzigen
       // (eigen uitdagingen sturen, accepteren, weigeren, verwijderen)
       allow write: if doc == 'uitdagingen' && isIngelogd();
 
-      // ladderVolgorde: display-volgorde van ladders — alleen coordinator
+      // ladderVolgorde: display-volgorde van ladders - alleen coordinator
       allow write: if doc == 'ladderVolgorde' && isCoordinator();
 
-      // banen: custom banen — iedere ingelogde speler mag toevoegen/verwijderen
+      // banen: custom banen - iedere ingelogde speler mag toevoegen/verwijderen
       allow write: if doc == 'banen' && isIngelogd();
 
-      // state: legacy main-state doc — alleen coordinator (wordt uitgefaseerd)
+      // state: legacy main-state doc - alleen coordinator (wordt uitgefaseerd)
       allow write: if doc == 'state' && isCoordinator();
 
-      // users: legacy users doc — read-only voor backward compat (wordt uitgefaseerd)
+      // users: legacy users doc - read-only voor backward compat (wordt uitgefaseerd)
       allow write: if doc == 'users' && isCoordinator();
 
-      // toernooi: legacy singleton — alleen coordinator
+      // toernooi: legacy singleton - alleen coordinator
       allow write: if doc == 'toernooi' && isCoordinator();
 
-      // config: app-configuratie (o.a. initieelWachtwoord) — alleen beheerder
+      // config: app-configuratie (o.a. initieelWachtwoord) - alleen beheerder
       // v3.0.0-11.60: wachtwoord is niet meer hardcoded in broncode
       allow read:  if doc == 'config' && isBeheerder();
       allow write: if doc == 'config' && isBeheerder();
@@ -176,7 +183,7 @@ service cloud.firestore {
       allow delete: if doc.matches('invite_.*') && isCoordinator();
     }
 
-    // ─── Alle overige paden: dicht ────────────────────────────
+    // --- Alle overige paden: dicht ----------------------------
     match /{document=**} {
       allow read, write: if false;
     }

@@ -2,7 +2,7 @@
 //  partij.js — Partij aanmaken, banen, naam helpers
 // ============================================================
 import { db, BANEN_DOC, LADDERS_COL, DEFAULT_STATE, esc, escAttr } from './config.js';
-import { store, alleLadders, activeLadderId, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
+import { store, alleLadders, activeLadderId, alleToernooien, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
 import { slaActievePartijenOp, getLadderData, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { objNaarRondes } from './knockout.js';
 import { getLadderSpelers, isInLadder } from './ladder-view.js';
@@ -577,6 +577,37 @@ async function startPartij() {
     return;
   }
 
+  // v3.0.0-11.64: zit een van deze spelers live in een toernooi vandaag?
+  // Een speler is "live" als: toernooi status='actief', dag.datum===vandaag,
+  // dag.afgerond===false, en de speler in een flight van die dag zit.
+  // Puur ingeschreven zijn voor een toekomstige dag blokkeert NIET.
+  const vandaag = new Date().toISOString().split('T')[0];
+  const toernooiBezet = spelers.find(s => {
+    if (s.uid?.startsWith('gast_')) return false;
+    return alleToernooien.some(t => {
+      if (t.status !== 'actief') return false;
+      return (t.dagen || []).some(dag => {
+        if (dag.datum !== vandaag) return false;
+        if (dag.afgerond) return false;
+        // Speler zit in een flight van deze dag
+        return (dag.flights || []).some(f =>
+          (f.spelerIds || []).includes(s.uid)
+        );
+      });
+    });
+  });
+  if (toernooiBezet) {
+    const toernooi = alleToernooien.find(t =>
+      t.status === 'actief' &&
+      (t.dagen || []).some(dag =>
+        dag.datum === vandaag && !dag.afgerond &&
+        (dag.flights || []).some(f => (f.spelerIds || []).includes(toernooiBezet.uid))
+      )
+    );
+    toast(`${toernooiBezet.naam} speelt vandaag live in toernooi "${toernooi?.naam || ''}"`);
+    return;
+  }
+
   // Baan holes
   let holes = [];
   const banen = alleBANEN();
@@ -629,7 +660,22 @@ async function startPartij() {
   if (ladderIdx >= 0) {
     alleLadders[ladderIdx].actievePartijen = [...(alleLadders[ladderIdx].actievePartijen || []), nieuwePartij];
   }
-  await slaActievePartijenOp(partijLadderId);
+
+  // v3.0.0-11.75: vang write-fouten op (bijv. Firestore-rechten). Als de write
+  // mislukt, verwijder de lokaal toegevoegde partij weer zodat de staat
+  // consistent blijft, en toon een foutmelding in plaats van naar een lege ronde te navigeren.
+  try {
+    await slaActievePartijenOp(partijLadderId);
+  } catch(e) {
+    // Draai lokale toevoeging terug
+    if (ladderIdx >= 0) {
+      alleLadders[ladderIdx].actievePartijen = (alleLadders[ladderIdx].actievePartijen || [])
+        .filter(p => p.partijId !== nieuwePartij.partijId);
+    }
+    console.error('[startPartij] slaActievePartijenOp mislukt:', e);
+    toast('Partij kon niet worden opgeslagen — controleer je verbinding of rechten');
+    return;
+  }
 
   toast('Partij gestart! ⛳');
   document.querySelectorAll('nav button')[2].click();

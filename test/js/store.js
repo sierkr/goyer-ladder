@@ -36,8 +36,9 @@ function _syncAlleSpelersDataFromUsers() {
 
 // ─── Auth ────────────────────────────────────────────────────
 export let huidigeBruiker = null;
-// v3.0.0-11.60: initieel wachtwoord wordt geladen uit Firestore (ladder/config)
-export let initieelWachtwoord = 'MP2026'; // fallback totdat Firestore geladen is
+// v3.0.0-11.62: initieel wachtwoord wordt geladen uit Firestore (ladder/config)
+// Geen hardcoded waarde — null totdat initFirestore() laadInitieelWachtwoord() heeft aangeroepen
+export let initieelWachtwoord = null;
 export let _usersCache = null;
 export let _bezigMetRegistratie = false;
 export let _firestoreReady = false;
@@ -81,8 +82,16 @@ export let _toernooiListeners = [];
 
 // ─── Ladder config ───────────────────────────────────────────
 export const DEFAULT_LADDER_CONFIG = {
+  // Basis ranking
   laagStijg: 4, laagZak: 2, hoogStijg: 1, hoogZak: 1,
-  verliezerNaarWinnaar: false, drempel: 4
+  verliezerNaarWinnaar: false, drempel: 4,
+  // Activiteitssysteem
+  inactiviteitAan: true,
+  inactiviteitDrempelWeken: 3,      // pas na hoeveel weken begint decay
+  frequentieBonusAan: true,
+  frequentieBonusPartijen: 3,       // min. partijen/maand voor +1 plek bonus
+  diversiteitsBonusAan: true,
+  icoonAan: true,
 };
 
 // ─── Aangepaste banen ───────────────────────────────────────

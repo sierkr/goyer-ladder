@@ -125,6 +125,23 @@ function renderLadderRij(s, ladderId) {
     deltaHtml = `<span style="font-size:11px;color:var(--light)">—</span>`;
   }
 
+  // Activiteitsicoontje
+  const cfg = getLadderConfig(ladderId);
+  let icoonHtml = '';
+  if (cfg.icoonAan !== false) {
+    const drempel = cfg.inactiviteitDrempelWeken ?? 3;
+    const minPartijen = cfg.frequentieBonusPartijen ?? 3;
+    const weken = s.inactieveWeken;
+    const maandP = s.maandPartijen || 0;
+    if (maandP >= minPartijen) {
+      icoonHtml = `<span title="Actief — ${maandP} partijen deze maand" style="font-size:15px;line-height:1">🔥</span>`;
+    } else if (weken !== null && weken >= drempel) {
+      icoonHtml = `<span title="Inactief — ${weken} weken zonder partij" style="font-size:15px;line-height:1">⬇️</span>`;
+    } else if (weken !== null && weken >= drempel - 1) {
+      icoonHtml = `<span title="Let op — bijna inactiviteitszone" style="font-size:15px;line-height:1">⏳</span>`;
+    }
+  }
+
   const uid = huidigeBruiker?.uid;
   // v3.0.0-9c: isZelf alleen via uid. Entries uit view-laag hebben s.uid.
   const isZelf = huidigeBruiker && uid && s.uid === uid;
@@ -140,7 +157,7 @@ function renderLadderRij(s, ladderId) {
 
   return `<div class="ladder-item" style="${isZelf ? 'background:var(--green-pale);border-left:3px solid var(--green);margin-left:-3px;' : ''}">
     <div class="rank-badge ${s.rank <= 3 ? 'top3' : isZelf ? 'zelf' : ''}">${s.rank}</div>
-    <div class="player-name" style="${isZelf ? 'font-weight:700;color:var(--green);' : ''}">${esc(s.naam)}</div>
+    <div class="player-name" style="${isZelf ? 'font-weight:700;color:var(--green);' : ''}">${esc(s.naam)}${icoonHtml ? '&nbsp;' + icoonHtml : ''}</div>
     <div style="min-width:30px;text-align:center">${deltaHtml}</div>
     <div class="player-stats" style="text-align:right;min-width:52px">${s.partijen}P ${s.gewonnen}W<br>${winpct}%</div>
     <div style="width:42px;text-align:center;flex-shrink:0">${uitdagingBtnHtml}</div>
