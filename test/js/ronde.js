@@ -847,4 +847,82 @@ async function syncStandenNaBevestigUitslag(ladderId, rankSpelers, partijInfo = 
   } catch(e) { console.warn('syncStandenNaBevestigUitslag:', e); }
 }
 
-export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij, syncStandenNaBevestigUitslag, verwijderPartijMetRetry };
+// ============================================================
+//  WATCH PIN — v3.0.0-11.77
+//  Genereert een 4-cijferige PIN gekoppeld aan het account
+//  van de ingelogde speler. Sla op in ladder/watchPins.
+//  watch.html leest dit document (publieke leesregel in rules).
+// ============================================================
+async function genereerWatchPin() {
+  if (!huidigeBruiker?.uid) { toast('Je moet ingelogd zijn'); return; }
+
+  try {
+    // Laad bestaande pins
+    const pinsRef = doc(db, 'ladder', 'watchPins');
+    const pinsSnap = await getDoc(pinsRef);
+    const pins = pinsSnap.exists() ? { ...pinsSnap.data() } : {};
+
+    // Verwijder verlopen pins en eventuele oude pin van deze gebruiker
+    const nu = Date.now();
+    Object.keys(pins).forEach(k => {
+      if (pins[k].expires < nu || pins[k].uid === huidigeBruiker.uid) delete pins[k];
+    });
+
+    // Genereer nieuwe unieke 4-cijferige PIN
+    let nieuwePIN;
+    let pogingen = 0;
+    do {
+      nieuwePIN = String(Math.floor(1000 + Math.random() * 9000));
+      pogingen++;
+    } while (pins[nieuwePIN] && pogingen < 20);
+
+    // Sla op — geldig voor 24 uur
+    pins[nieuwePIN] = {
+      uid:     huidigeBruiker.uid,
+      naam:    huidigeBruiker.gebruikersnaam,
+      email:   huidigeBruiker.email,
+      expires: nu + 24 * 60 * 60 * 1000
+    };
+
+    await setDoc(pinsRef, pins);
+
+    // Toon PIN in een modal
+    const watchUrl = location.href.replace(/index\.html.*$/, '').replace(/\?.*$/, '') + 'watch.html';
+
+    const bestaand = document.getElementById('watch-pin-modal');
+    if (bestaand) bestaand.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'watch-pin-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:16px;padding:28px 24px;max-width:340px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.18);text-align:center">
+        <div style="font-size:36px;margin-bottom:8px">⌚</div>
+        <h3 style="font-size:18px;font-weight:700;margin-bottom:4px">Watch PIN</h3>
+        <p style="font-size:13px;color:#888;margin-bottom:20px">Geldig 24 uur · voor jou persoonlijk</p>
+
+        <div style="font-size:48px;font-weight:900;letter-spacing:10px;font-family:'DM Mono',monospace;color:#2d6a4f;background:#d8f3dc;padding:16px;border-radius:12px;margin-bottom:20px">${nieuwePIN}</div>
+
+        <p style="font-size:13px;color:#555;margin-bottom:16px;line-height:1.5">
+          Open op je Apple Watch of telefoon:<br>
+          <a href="${watchUrl}" style="color:#2d6a4f;word-break:break-all">${watchUrl}</a>
+        </p>
+
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button onclick="navigator.clipboard?.writeText('${nieuwePIN}').then(()=>toast('PIN gekopieerd'))" style="height:44px;border:1.5px solid #e0ddd4;border-radius:10px;background:#f5f3ee;font-size:15px;cursor:pointer">📋 PIN kopiëren</button>
+          <button onclick="navigator.clipboard?.writeText('${watchUrl}').then(()=>toast('Link gekopieerd'))" style="height:44px;border:1.5px solid #e0ddd4;border-radius:10px;background:#f5f3ee;font-size:15px;cursor:pointer">🔗 Link kopiëren</button>
+          <button onclick="document.getElementById('watch-pin-modal').remove()" style="height:44px;border:none;border-radius:10px;background:#2d6a4f;color:#fff;font-size:15px;font-weight:600;cursor:pointer">Sluiten</button>
+        </div>
+      </div>`;
+
+    // Klik buiten sluit modal
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+
+  } catch (e) {
+    console.error('genereerWatchPin mislukt:', e);
+    toast('Kon PIN niet aanmaken. Probeer opnieuw.');
+  }
+}
+
+export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij, syncStandenNaBevestigUitslag, verwijderPartijMetRetry, genereerWatchPin };

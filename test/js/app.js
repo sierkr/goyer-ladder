@@ -19,7 +19,7 @@ import { renderRonde, renderScorecard, updateScore, toggleScorecard,
   openUitslagModal, bevestigUitslag, setWinnaar, skipMatchup,
   editPartijHcp, verwijderSpelerUitRonde, openToevoegenModal,
   bevestigToevoegenRonde, sluitUitslagEnGaNaarLadder, showLadderChanges,
-  annuleerEigenPartij, verwijderActievePartij } from './ronde.js';
+  annuleerEigenPartij, verwijderActievePartij, genereerWatchPin } from './ronde.js';
 import { renderUitslagen, openScorekaartDetail, bevestigBeheerUitslag } from './uitslagen.js';
 import { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer,
   toggleHandmatigToevoegen, voegAccountToeAlsSpeler, saveNewPlayer,
@@ -248,7 +248,7 @@ window.bevestigBeheerUitslag = bevestigBeheerUitslag;
 
 window.annuleerEigenPartij = annuleerEigenPartij;
 window.verwijderActievePartij = verwijderActievePartij;
-
+window.genereerWatchPin = genereerWatchPin; // v3.0.0-11.77
 
 
 window.toggleTSpelersLadder = toggleTSpelersLadder;
