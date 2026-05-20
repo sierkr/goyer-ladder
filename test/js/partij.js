@@ -641,9 +641,6 @@ async function startPartij() {
     }
   }
 
-  // Genereer unieke 4-cijferige Watch-code (1000-9999)
-  const partijCode = String(Math.floor(1000 + Math.random() * 9000));
-
   const nieuwePartij = {
     partijId: `p_${Date.now()}`,
     ladderId: partijLadderId,
@@ -653,8 +650,7 @@ async function startPartij() {
     spelers,
     matchups,
     scores: {},
-    timestamp: Date.now(),
-    partijCode,
+    timestamp: Date.now()
   };
 
   spelers.forEach(s => { nieuwePartij.scores[s.uid] = Array(activeHoles.length).fill(null); });

@@ -32,16 +32,6 @@ function renderRonde() {
   document.getElementById('ronde-baan-naam').textContent = p.baan;
   const ladderNaam = alleLadders.find(l => l.id === p.ladderId)?.naam || '';
   document.getElementById('ronde-holes-badge').textContent = p.holes.length + ' holes' + (ladderNaam ? ' · ' + ladderNaam : '');
-  // Watch-code badge
-  const codeBadge = document.getElementById('ronde-code-badge');
-  if (codeBadge) {
-    if (p.partijCode) {
-      codeBadge.textContent = p.partijCode;
-      codeBadge.style.display = '';
-    } else {
-      codeBadge.style.display = 'none';
-    }
-  }
   renderScorecard();
   renderMatchOverview();
   // HCP slagen blok — gebruik partijHcp als die beschikbaar is
