@@ -40,6 +40,7 @@
     background:#000;
   }
   .fixed-hdr{position:relative}
+  .hole-label{font-size:13px;font-weight:700;color:#fff;margin-left:8px}
   .hole-badge{position:absolute;left:50%;transform:translateX(-50%);background:#1a5c38;color:#fff;font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;white-space:nowrap;pointer-events:none}
   .hdr-btn{background:#2c2c2e;color:#fff;border:none;border-radius:10px;font-size:11px;font-weight:600;padding:5px 10px;cursor:pointer;white-space:nowrap;min-width:58px}
   .hdr-btn:active{opacity:.7}
@@ -47,14 +48,14 @@
   .hdr-spacer{min-width:58px}
 
   /* ── Scroll-body ── */
-  .scroll-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 10px 10px}
+  .scroll-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 8px 8px;width:100%;box-sizing:border-box}
 
   /* ── Speler rijen ── */
   .player-row{display:flex;align-items:center;background:#1c1c1e;border-radius:14px;padding:9px 10px;gap:8px;border:1.5px solid transparent;margin-bottom:7px}
   .player-row.filled{border-color:#1a5c38}
   .av{width:30px;height:30px;border-radius:50%;background:#2c2c2e;display:flex;align-items:center;justify-content:center;font-size:10px;color:#8e8e93;font-weight:700;flex-shrink:0}
   .av.done{background:#1a5c38;color:#fff}
-  .pname{flex:1;font-size:14px;color:#8e8e93;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72px}
+  .pname{flex:1;font-size:14px;color:#8e8e93;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .pname.done{color:#fff}
   .score-ctrl{display:flex;align-items:center;gap:6px;flex-shrink:0}
   .sc-btn{width:38px;height:38px;border-radius:50%;background:#3a3a3c;border:none;color:#fff;font-size:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1}
@@ -66,6 +67,8 @@
   .nav-row{display:flex;gap:7px;padding:6px 10px 10px;flex-shrink:0;background:#000}
   .nav-btn{flex:1;padding:11px 0;border-radius:12px;border:none;font-size:12px;font-weight:700;cursor:pointer;background:#2c2c2e;color:#8e8e93}
   .nav-btn.primary{background:#1a5c38;color:#fff}
+  .nav-btn.secondary{background:#2c2c2e;color:#8e8e93}
+  .nav-btn.small{flex:0 0 52px;font-size:18px;font-weight:700}
   .nav-btn:active{opacity:.7}
 
   /* ── Stand scherm ── */
@@ -107,13 +110,14 @@
   <!-- Score scherm -->
   <div id="screen-score" class="hidden" style="display:flex;flex-direction:column;height:100%">
     <div class="fixed-hdr">
-      <button class="hdr-btn" id="btn-prev-hdr" onclick="vorigeHole()">← Terug</button>
-      <span class="hole-badge">Hole <span id="w-hn">1</span></span>
-      <button class="hdr-btn primary" onclick="toonStand()">Stand ↗</button>
+      <button class="hdr-btn" id="btn-prev-hdr" onclick="vorigeHole()">✕</button>
+      <span class="hole-label">Hole <span id="w-hn">1</span></span>
+      <span class="hdr-spacer"></span>
     </div>
     <div class="scroll-body" id="w-spelers"></div>
     <div class="nav-row">
-      <button class="nav-btn primary" onclick="volgendeHole()">Verder →</button>
+      <button class="nav-btn secondary" onclick="toonStand()">Stand ↗</button>
+      <button class="nav-btn primary small" onclick="volgendeHole()">→</button>
     </div>
   </div>
 
@@ -135,7 +139,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, signInAnonymously }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, collection, getDocs, onSnapshot, doc, setDoc, getDoc }
+import { getFirestore, collection, getDocs, onSnapshot, doc, setDoc, updateDoc }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -154,17 +158,30 @@ const db   = getFirestore(app);
 signInAnonymously(auth).catch(e => console.warn('anon:', e));
 
 // ── State ──────────────────────────────────────────────────
-let actievePartij = null;
-let ladderId      = null;
-let holeIdx       = 0;
-let ladderUnsub   = null;
+let actievePartij    = null;
+let ladderId         = null;
+let holeIdx          = 0;
+let ladderUnsub      = null;
+const alleLadderPartijen = new Map(); // ladderId → actievePartijen array
 
 // ── Helpers ────────────────────────────────────────────────
+function voornaam(naam) {
+  if (!naam) return '?';
+  return naam.trim().split(/\s+/)[0];
+}
+function kortNaamUniek(naam, alleNamen) {
+  if (!naam) return '?';
+  const d = naam.trim().split(/\s+/);
+  const vn = d[0];
+  // Alleen achternaamletter toevoegen als voornaam niet uniek is
+  const duplicaat = alleNamen.filter(n => n && n.trim().split(/\s+/)[0] === vn).length > 1;
+  if (d.length === 1 || !duplicaat) return vn;
+  return vn + ' ' + d[d.length - 1][0].toUpperCase() + '.';
+}
 function kortNaam(naam) {
   if (!naam) return '?';
   const d = naam.trim().split(/\s+/);
-  if (d.length === 1) return d[0];
-  return d[0] + ' ' + d[d.length - 1][0].toUpperCase() + '.';
+  return d[0];
 }
 function initialen(naam) {
   if (!naam) return '?';
@@ -242,13 +259,21 @@ function startCodeListener(code) {
       const lid = d.id;
       const unsub = onSnapshot(doc(db, 'ladders', lid), s => {
         if (!s.exists()) return;
-        const match = (s.data().actievePartijen || []).find(p => p.partijCode === code);
+        const partijen = s.data().actievePartijen || [];
+        alleLadderPartijen.set(lid, partijen); // altijd bijhouden
+        const match = partijen.find(p => p.partijCode === code);
         if (match) {
           actievePartij = match; ladderId = lid;
           if (!document.getElementById('screen-score').classList.contains('hidden')) renderScoreScherm();
-        } else if (ladderId === lid) {
-          sessionStorage.removeItem('watchCode'); actievePartij = null; ladderId = null;
-          toon('screen-leeg');
+        } else {
+          // Alleen resetten als code in GEEN enkele ladder meer bestaat
+          const nogErgens = Array.from(alleLadderPartijen.values())
+            .some(ps => ps.some(p => p.partijCode === code));
+          if (!nogErgens) {
+            sessionStorage.removeItem('watchCode');
+            actievePartij = null; ladderId = null;
+            toon('screen-leeg');
+          }
         }
       });
       unsubscribers.push(unsub);
@@ -273,6 +298,7 @@ function renderScoreScherm() {
   const container = document.getElementById('w-spelers');
   container.innerHTML = '';
 
+  const alleNamen = p.spelers.map(s => s.naam);
   p.spelers.forEach(s => {
     const scores = Array.isArray(p.scores?.[s.uid]) ? p.scores[s.uid] : [];
     const val    = scores[holeIdx] ?? null;
@@ -282,7 +308,7 @@ function renderScoreScherm() {
     row.className = 'player-row' + (filled ? ' filled' : '');
     row.innerHTML = `
       <div class="av${filled ? ' done' : ''}">${esc(initialen(s.naam))}</div>
-      <span class="pname${filled ? ' done' : ''}">${esc(kortNaam(s.naam))}</span>
+      <span class="pname${filled ? ' done' : ''}">${esc(kortNaamUniek(s.naam, alleNamen))}</span>
       <div class="score-ctrl">
         <button class="sc-btn" data-uid="${esc(s.uid)}" data-dir="-1">−</button>
         <span class="sc-num${filled ? ' done' : ''}">${filled ? val : '—'}</span>
@@ -310,14 +336,13 @@ async function wijzigScore(uid, delta) {
     ? hole.par
     : Math.max(1, Math.min(12, huidig + delta));
   renderScoreScherm();
+  // Schrijf direct terug — geen getDoc nodig, we hebben actievePartijen al lokaal
   try {
-    const ladderRef  = doc(db, 'ladders', ladderId);
-    const ladderSnap = await getDoc(ladderRef);
-    const data       = ladderSnap.data();
-    const partijen   = (data.actievePartijen || []).map(ap =>
+    const ladder = alleLadderPartijen.get(ladderId) || [];
+    const partijen = ladder.map(ap =>
       ap.partijId === p.partijId ? { ...ap, scores: p.scores } : ap
     );
-    await setDoc(ladderRef, { actievePartijen: partijen }, { merge: true });
+    await setDoc(doc(db, 'ladders', ladderId), { actievePartijen: partijen }, { merge: true });
   } catch(e) { console.warn('Score opslaan mislukt:', e); }
 }
 
@@ -353,8 +378,9 @@ function renderStandScherm() {
       else if (sB < sA) standA--;
     }
 
-    const nA = kortNaam(m.spelerA.naam);
-    const nB = kortNaam(m.spelerB.naam);
+    const alleNamenStand = (actievePartij?.spelers || []).map(s => s.naam);
+    const nA = kortNaamUniek(m.spelerA.naam, alleNamenStand);
+    const nB = kortNaamUniek(m.spelerB.naam, alleNamenStand);
     const up = Math.abs(standA);
 
     // Tekst altijd vanuit perspectief speler A:
