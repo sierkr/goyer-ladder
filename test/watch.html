@@ -85,6 +85,7 @@
   #screen-loading{flex:1;display:flex;align-items:center;justify-content:center;color:#8e8e93;font-size:13px}
 
   .hidden{display:none!important}
+  .screen-flex{display:flex;flex-direction:column;height:100%}
 </style>
 </head>
 <body>
@@ -109,7 +110,7 @@
   </div>
 
   <!-- Score scherm -->
-  <div id="screen-score" class="hidden" style="display:flex;flex-direction:column;height:100%">
+  <div id="screen-score" class="hidden screen-flex">
     <div class="fixed-hdr">
       <button class="hdr-btn" id="btn-prev" onclick="vorigeHole()">← Terug</button>
       <span class="hole-badge">Hole <span id="w-hn">1</span></span>
@@ -122,10 +123,11 @@
   </div>
 
   <!-- Stand scherm -->
-  <div id="screen-stand" class="hidden" style="display:flex;flex-direction:column;height:100%">
+  <div id="screen-stand" class="hidden screen-flex">
     <div class="fixed-hdr">
-      <span class="hole-badge">Stand</span>
       <button class="hdr-btn" onclick="toonScore()">← Scores</button>
+      <span class="hole-badge">Stand</span>
+      <span style="width:60px;display:inline-block"></span>
     </div>
     <div class="scroll-body">
       <div class="stand-sub-label" id="w-stand-sub">na hole 0</div>
