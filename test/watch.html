@@ -210,13 +210,12 @@
     }
     .score-naam {
       flex: 1;
-      font-size: 15px;
+      font-size: 17px;
       font-weight: 600;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .score-naam-sub { font-size: 11px; color: var(--licht); font-weight: 400; }
     .score-controls {
       display: flex;
       align-items: center;
@@ -480,7 +479,7 @@
 
 <script>
 // ══════════════════════════════════════════════════════════════
-//  WATCH SCORE — v3.0.0-11.85
+//  WATCH SCORE — v3.0.0-11.86
 //  Geen Firebase SDK — alleen fetch() naar REST API.
 //  Werkt op Apple Watch browser en alle andere browsers.
 // ══════════════════════════════════════════════════════════════
@@ -742,6 +741,9 @@ function renderHole() {
   document.getElementById('btn-vorige').disabled     = huidigHole === 0;
   document.getElementById('btn-volgende').disabled   = huidigHole === aantalHoles - 1;
 
+  // Unieke namen genereren voor alle spelers
+  const naamMap = maakNaamMap(partij.spelers || []);
+
   // Score rijen
   let html = '';
   (partij.spelers || []).forEach(s => {
@@ -753,10 +755,7 @@ function renderHole() {
       : `<span class="leeg">—</span>`;
     html += `
     <div class="score-rij">
-      <div class="score-naam">
-        ${esc(korteNaam(s.naam || s.uid))}
-        <div class="score-naam-sub">hcp ${Math.round(s.partijHcp ?? s.hcp ?? 0)}</div>
-      </div>
+      <div class="score-naam">${esc(naamMap[s.uid] || korteNaam(s.naam || s.uid))}</div>
       <div class="score-controls">
         <button class="score-btn score-btn-min" onclick="pasScore('${s.uid}',-1)">−</button>
         <div class="score-waarde${val === null ? ' leeg' : ''}">${waardeHtml}</div>
@@ -773,7 +772,7 @@ function renderHole() {
     const totaal   = scoreArr.reduce((som, v) => (v !== null && v !== undefined ? som + v : som), 0);
     const ingevuld = scoreArr.filter(v => v !== null && v !== undefined).length;
     totHtml += `<div class="totaal-cel">
-      <div class="totaal-naam">${esc(korteNaam(s.naam || ''))}</div>
+      <div class="totaal-naam">${esc(naamMap[s.uid] || korteNaam(s.naam || ''))}</div>
       <div class="totaal-getal">${ingevuld > 0 ? totaal : '—'}</div>
     </div>`;
   });
@@ -928,8 +927,39 @@ function korteNaam(naam) {
 }
 
 function maakNaamMap(spelers) {
+  // Stap 1: splits naam in voornaam + achternaam
+  const parsed = spelers.map(s => {
+    const delen = (s.naam || '').trim().split(/\s+/);
+    return {
+      uid:       s.uid,
+      voornaam:  delen[0] || '?',
+      achternaam: delen.slice(1).join('') // tussenvoegsel + achternaam aaneengesloten
+    };
+  });
+
+  // Stap 2: begin met alleen voornaam
+  let namen = parsed.map(p => ({ uid: p.uid, naam: p.voornaam, ...p }));
+
+  // Stap 3: iteratief meer achternaam-letters toevoegen zolang er duplicaten zijn
+  for (let letters = 1; letters <= 6; letters++) {
+    const telling = {};
+    namen.forEach(n => { telling[n.naam] = (telling[n.naam] || 0) + 1; });
+    if (Object.values(telling).every(t => t === 1)) break;
+
+    namen = namen.map(n => {
+      if (telling[n.naam] > 1 && n.achternaam) {
+        const suffix = n.achternaam.substring(0, letters);
+        return { ...n, naam: n.voornaam + ' ' + suffix + '.' };
+      }
+      return n;
+    });
+  }
+
+  // Stap 4: afkorten op max 10 tekens
   const map = {};
-  spelers.forEach(s => { map[s.uid] = korteNaam(s.naam || ''); });
+  namen.forEach(n => {
+    map[n.uid] = n.naam.length > 10 ? n.naam.substring(0, 9) + '.' : n.naam;
+  });
   return map;
 }
 
