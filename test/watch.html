@@ -10,11 +10,15 @@
 <title>Golf Score</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-  html,body{height:100%;background:#000;color:#fff;font-family:-apple-system,sans-serif;font-size:16px}
-  #app{height:100%;display:flex;flex-direction:column;overflow:hidden}
+  html,body{height:100%;background:#000;color:#fff;font-family:-apple-system,sans-serif}
+  #app{height:100%;display:flex;flex-direction:column}
+
+  /* Alle schermen: flex-child van #app */
+  .screen{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  .hidden{display:none!important}
 
   /* ── Login ── */
-  #screen-login{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px;padding:20px;overflow-y:auto}
+  #screen-login{justify-content:center;align-items:center;gap:14px;padding:20px;overflow-y:auto}
   #screen-login h1{font-size:18px;font-weight:600}
   #screen-login p{font-size:12px;color:#8e8e93;text-align:center}
   .w-input{background:#1c1c1e;border:1px solid #3a3a3c;border-radius:10px;color:#fff;font-size:15px;padding:12px 14px;width:100%;outline:none}
@@ -25,49 +29,40 @@
   #login-error{font-size:12px;color:#ff453a;text-align:center;min-height:16px}
 
   /* ── Geen partij ── */
-  #screen-leeg{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:12px;padding:20px;text-align:center}
+  #screen-leeg{justify-content:center;align-items:center;gap:12px;padding:20px;text-align:center}
   #screen-leeg h2{font-size:16px;font-weight:500}
   #screen-leeg p{font-size:12px;color:#8e8e93}
 
-  /* ── Vaste header (beide schermen) ── */
-  .fixed-hdr{
-    flex-shrink:0;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    padding:10px 10px 6px;
-    gap:6px;
-    background:#000;
-    position:relative;
-  }
-  .hole-badge{
-    position:absolute;left:50%;transform:translateX(-50%);
-    background:#1a5c38;color:#fff;font-size:12px;font-weight:700;
-    padding:4px 12px;border-radius:20px;white-space:nowrap;pointer-events:none;
-  }
-  .hdr-btn{background:#2c2c2e;color:#fff;border:none;border-radius:10px;font-size:11px;font-weight:600;padding:5px 10px;cursor:pointer;white-space:nowrap}
+  /* ── Loading ── */
+  #screen-loading{justify-content:center;align-items:center;color:#8e8e93;font-size:13px}
+
+  /* ── Vaste header ── */
+  .fixed-hdr{flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:10px 10px 6px;background:#000;position:relative}
+  .hole-badge{position:absolute;left:50%;transform:translateX(-50%);background:#1a5c38;color:#fff;font-size:12px;font-weight:700;padding:4px 12px;border-radius:20px;white-space:nowrap;pointer-events:none}
+  .hdr-btn{background:#2c2c2e;color:#fff;border:none;border-radius:10px;font-size:11px;font-weight:600;padding:6px 11px;cursor:pointer;white-space:nowrap;min-width:60px}
   .hdr-btn:active{opacity:.7}
   .hdr-btn.primary{background:#1a5c38}
+  .hdr-spacer{min-width:60px}
 
   /* ── Scroll-body ── */
-  .scroll-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 10px 10px}
+  .scroll-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:6px 10px 6px}
 
   /* ── Speler rijen ── */
   .player-row{display:flex;align-items:center;background:#1c1c1e;border-radius:14px;padding:9px 10px;gap:8px;border:1.5px solid transparent;margin-bottom:7px}
   .player-row.filled{border-color:#1a5c38}
   .av{width:30px;height:30px;border-radius:50%;background:#2c2c2e;display:flex;align-items:center;justify-content:center;font-size:10px;color:#8e8e93;font-weight:700;flex-shrink:0}
   .av.done{background:#1a5c38;color:#fff}
-  .pname{flex:1;font-size:14px;color:#8e8e93;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72px}
+  .pname{flex:1;font-size:14px;color:#8e8e93;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .pname.done{color:#fff}
   .score-ctrl{display:flex;align-items:center;gap:6px;flex-shrink:0}
-  .sc-btn{width:38px;height:38px;border-radius:50%;background:#3a3a3c;border:none;color:#fff;font-size:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1}
+  .sc-btn{width:38px;height:38px;border-radius:50%;background:#3a3a3c;border:none;color:#fff;font-size:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1;flex-shrink:0}
   .sc-btn:active{background:#666}
   .sc-num{font-size:20px;font-weight:700;min-width:26px;text-align:center;color:#636366}
   .sc-num.done{color:#fff}
 
-  /* ── Nav onderaan score ── */
-  .nav-row{display:flex;gap:7px;padding:6px 10px 10px;flex-shrink:0;background:#000}
-  .nav-btn{flex:1;padding:11px 0;border-radius:12px;border:none;font-size:12px;font-weight:700;cursor:pointer;background:#2c2c2e;color:#8e8e93}
+  /* ── Nav onderaan ── */
+  .nav-row{flex-shrink:0;display:flex;gap:7px;padding:6px 10px 10px;background:#000}
+  .nav-btn{flex:1;padding:11px 0;border-radius:12px;border:none;font-size:13px;font-weight:700;cursor:pointer;background:#2c2c2e;color:#8e8e93}
   .nav-btn.primary{background:#1a5c38;color:#fff}
   .nav-btn:active{opacity:.7}
 
@@ -80,20 +75,14 @@
   .m-score{font-size:12px;font-weight:700;padding:3px 8px;border-radius:8px;background:#2c2c2e;color:#fff;white-space:nowrap;flex-shrink:0}
   .m-sub{font-size:10px;color:#636366;text-align:center}
   .stand-sub-label{font-size:11px;color:#8e8e93;text-align:center;padding:2px 0 8px}
-
-  /* ── Loading ── */
-  #screen-loading{flex:1;display:flex;align-items:center;justify-content:center;color:#8e8e93;font-size:13px}
-
-  .hidden{display:none!important}
-  .screen-flex{display:flex;flex-direction:column;height:100%}
 </style>
 </head>
 <body>
 <div id="app">
-  <div id="screen-loading">Laden…</div>
 
-  <!-- Login -->
-  <div id="screen-login" class="hidden">
+  <div id="screen-loading" class="screen">Laden…</div>
+
+  <div id="screen-login" class="screen hidden">
     <h1>⛳ Golf Score</h1>
     <p>Log in om je scores in te vullen</p>
     <input class="w-input" id="inp-user" type="text" placeholder="Gebruikersnaam" autocomplete="username" autocapitalize="none">
@@ -102,15 +91,13 @@
     <button class="w-btn" onclick="doLogin()">Inloggen</button>
   </div>
 
-  <!-- Geen partij -->
-  <div id="screen-leeg" class="hidden">
+  <div id="screen-leeg" class="screen hidden">
     <h2>Geen actieve partij</h2>
     <p>Start een partij via de app op je telefoon.</p>
     <button class="w-btn secondary" style="margin-top:8px" onclick="doLogout()">Uitloggen</button>
   </div>
 
-  <!-- Score scherm -->
-  <div id="screen-score" class="hidden screen-flex">
+  <div id="screen-score" class="screen hidden">
     <div class="fixed-hdr">
       <button class="hdr-btn" id="btn-prev" onclick="vorigeHole()">← Terug</button>
       <span class="hole-badge">Hole <span id="w-hn">1</span></span>
@@ -122,20 +109,19 @@
     </div>
   </div>
 
-  <!-- Stand scherm -->
-  <div id="screen-stand" class="hidden screen-flex">
+  <div id="screen-stand" class="screen hidden">
     <div class="fixed-hdr">
       <button class="hdr-btn" onclick="toonScore()">← Scores</button>
       <span class="hole-badge">Stand</span>
-      <span style="width:60px;display:inline-block"></span>
+      <span class="hdr-spacer"></span>
     </div>
     <div class="scroll-body">
       <div class="stand-sub-label" id="w-stand-sub">na hole 0</div>
       <div id="w-matches"></div>
     </div>
   </div>
-</div>
 
+</div>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut }
@@ -148,243 +134,205 @@ const firebaseConfig = {
   authDomain: "goyer-golf-mp-ladder.firebaseapp.com",
   projectId: "goyer-golf-mp-ladder",
   storageBucket: "goyer-golf-mp-ladder.firebasestorage.app",
-  messagingSenderId: "124116031878",
+  messagingSenderId: "124116031872",
   appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
 };
 const EMAIL_SUFFIX = '@MPladder.stb';
-
 const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db   = getFirestore(app);
 
-// ── State ──────────────────────────────────────────────────
-let huidigUid    = null;
-let actievePartij = null;
-let ladderId      = null;
-let holeIdx       = 0;
-let ladderUnsub   = null;
+let huidigUid = null, actievePartij = null, ladderId = null;
+let holeIdx = 0, ladderUnsub = null;
 
-// ── Helpers ────────────────────────────────────────────────
 function kortNaam(naam) {
   if (!naam) return '?';
   const d = naam.trim().split(/\s+/);
-  if (d.length === 1) return d[0];
-  return d[0] + ' ' + d[d.length - 1][0].toUpperCase() + '.';
+  return d.length === 1 ? d[0] : d[0] + ' ' + d[d.length-1][0].toUpperCase() + '.';
 }
 function initialen(naam) {
   if (!naam) return '?';
   const d = naam.trim().split(/\s+/);
-  if (d.length === 1) return d[0][0].toUpperCase();
-  return (d[0][0] + d[d.length - 1][0]).toUpperCase();
+  return d.length === 1 ? d[0][0].toUpperCase() : (d[0][0]+d[d.length-1][0]).toUpperCase();
 }
 function esc(s) {
-  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// ── Schermen ───────────────────────────────────────────────
+const screens = ['screen-loading','screen-login','screen-leeg','screen-score','screen-stand'];
 function toon(id) {
-  ['screen-loading','screen-login','screen-leeg','screen-score','screen-stand']
-    .forEach(s => {
-      const el = document.getElementById(s);
-      if (s === id) { el.classList.remove('hidden'); }
-      else          { el.classList.add('hidden'); }
-    });
+  screens.forEach(s => {
+    const el = document.getElementById(s);
+    s === id ? el.classList.remove('hidden') : el.classList.add('hidden');
+  });
 }
 function toonScore() { toon('screen-score'); renderScoreScherm(); }
 function toonStand() { toon('screen-stand'); renderStandScherm(); }
 
-// ── Login / Logout ─────────────────────────────────────────
 window.doLogin = async function() {
-  const user  = document.getElementById('inp-user').value.trim();
-  const pass  = document.getElementById('inp-pass').value;
+  const user = document.getElementById('inp-user').value.trim();
+  const pass = document.getElementById('inp-pass').value;
   const errEl = document.getElementById('login-error');
   errEl.textContent = '';
-  if (!user || !pass) { errEl.textContent = 'Vul gebruikersnaam en wachtwoord in'; return; }
-  const email = user.includes('@') ? user : user + EMAIL_SUFFIX;
+  if (!user||!pass) { errEl.textContent='Vul gebruikersnaam en wachtwoord in'; return; }
+  const email = user.includes('@') ? user : user+EMAIL_SUFFIX;
   try { await signInWithEmailAndPassword(auth, email, pass); }
-  catch(e) { errEl.textContent = 'Inloggen mislukt — controleer je gegevens'; }
+  catch(e) { errEl.textContent='Inloggen mislukt — controleer je gegevens'; }
 };
 window.doLogout = async function() {
-  if (ladderUnsub) { ladderUnsub(); ladderUnsub = null; }
+  if (ladderUnsub) { ladderUnsub(); ladderUnsub=null; }
   await signOut(auth);
 };
 
-// ── Auth listener ──────────────────────────────────────────
-onAuthStateChanged(auth, async (user) => {
+onAuthStateChanged(auth, async user => {
   if (!user) {
-    huidigUid = null; actievePartij = null;
-    if (ladderUnsub) { ladderUnsub(); ladderUnsub = null; }
-    toon('screen-login');
-    return;
+    huidigUid=null; actievePartij=null;
+    if (ladderUnsub) { ladderUnsub(); ladderUnsub=null; }
+    toon('screen-login'); return;
   }
   huidigUid = user.uid;
   startLadderListener();
 });
 
-// ── Ladder listener ────────────────────────────────────────
 async function startLadderListener() {
   toon('screen-loading');
-  if (ladderUnsub) { ladderUnsub(); ladderUnsub = null; }
-
-  const snap = await getDocs(collection(db, 'ladders'));
-  const ladderIds = snap.docs.map(d => d.id);
-  const unsubscribers = [];
+  if (ladderUnsub) { ladderUnsub(); ladderUnsub=null; }
+  const snap = await getDocs(collection(db,'ladders'));
+  const ladderIds = snap.docs.map(d=>d.id);
   const partijMap = new Map();
+  const unsubscribers = [];
 
   function evalueer() {
-    let gevPartij = null, gevLid = null;
-    for (const [lid, partijen] of partijMap.entries()) {
-      const match = partijen.find(p => (p.spelers || []).some(s => s.uid === huidigUid));
-      if (match) { gevPartij = match; gevLid = lid; break; }
+    let gevPartij=null, gevLid=null;
+    for (const [lid,partijen] of partijMap.entries()) {
+      const match = partijen.find(p=>(p.spelers||[]).some(s=>s.uid===huidigUid));
+      if (match) { gevPartij=match; gevLid=lid; break; }
     }
     if (gevPartij) {
       const wasLeeg = !actievePartij;
-      actievePartij = gevPartij; ladderId = gevLid;
-      if (wasLeeg) holeIdx = 0;
+      actievePartij=gevPartij; ladderId=gevLid;
+      if (wasLeeg) holeIdx=0;
       toonScore();
     } else {
-      actievePartij = null; ladderId = null;
+      actievePartij=null; ladderId=null;
       toon('screen-leeg');
     }
   }
 
   for (const lid of ladderIds) {
-    const unsub = onSnapshot(doc(db, 'ladders', lid), (s) => {
+    const unsub = onSnapshot(doc(db,'ladders',lid), s => {
       if (!s.exists()) return;
-      partijMap.set(lid, s.data().actievePartijen || []);
+      partijMap.set(lid, s.data().actievePartijen||[]);
       evalueer();
     });
     unsubscribers.push(unsub);
   }
-  ladderUnsub = () => unsubscribers.forEach(u => u());
+  ladderUnsub = () => unsubscribers.forEach(u=>u());
 }
 
-// ── Score scherm renderen ──────────────────────────────────
 function renderScoreScherm() {
   if (!actievePartij) { toon('screen-leeg'); return; }
-  const p    = actievePartij;
+  const p = actievePartij;
   const hole = p.holes[holeIdx];
   if (!hole) return;
 
-  document.getElementById('w-hn').textContent  = ((p.startHole - 1 + holeIdx) % 18) + 1;
-  document.getElementById('w-par').textContent = hole.par;
-  document.getElementById('w-si').textContent  = hole.si;
-  document.getElementById('btn-prev').style.visibility = holeIdx > 0 ? 'visible' : 'hidden';
-  document.getElementById('btn-prev').style.pointerEvents = holeIdx > 0 ? 'auto' : 'none';
+  document.getElementById('w-hn').textContent = ((p.startHole-1+holeIdx)%18)+1;
+  const prev = document.getElementById('btn-prev');
+  prev.style.visibility = holeIdx>0 ? 'visible' : 'hidden';
+  prev.style.pointerEvents = holeIdx>0 ? 'auto' : 'none';
 
   const container = document.getElementById('w-spelers');
   container.innerHTML = '';
-
   p.spelers.forEach(s => {
     const scores = Array.isArray(p.scores?.[s.uid]) ? p.scores[s.uid] : [];
-    const val    = scores[holeIdx] ?? null;
-    const filled = val !== null;
-
+    const val = scores[holeIdx]??null;
+    const filled = val!==null;
     const row = document.createElement('div');
-    row.className = 'player-row' + (filled ? ' filled' : '');
+    row.className = 'player-row'+(filled?' filled':'');
     row.innerHTML = `
-      <div class="av${filled ? ' done' : ''}">${esc(initialen(s.naam))}</div>
-      <span class="pname${filled ? ' done' : ''}">${esc(kortNaam(s.naam))}</span>
+      <div class="av${filled?' done':''}">${esc(initialen(s.naam))}</div>
+      <span class="pname${filled?' done':''}">${esc(kortNaam(s.naam))}</span>
       <div class="score-ctrl">
         <button class="sc-btn" data-uid="${esc(s.uid)}" data-dir="-1">−</button>
-        <span class="sc-num${filled ? ' done' : ''}">${filled ? val : '—'}</span>
+        <span class="sc-num${filled?' done':''}">${filled?val:'—'}</span>
         <button class="sc-btn" data-uid="${esc(s.uid)}" data-dir="1">+</button>
       </div>`;
     container.appendChild(row);
   });
-
   container.querySelectorAll('.sc-btn').forEach(btn => {
-    btn.addEventListener('click', () => wijzigScore(btn.dataset.uid, parseInt(btn.dataset.dir)));
+    btn.addEventListener('click', ()=>wijzigScore(btn.dataset.uid, parseInt(btn.dataset.dir)));
   });
 }
 
-// ── Score wijzigen ─────────────────────────────────────────
 async function wijzigScore(uid, delta) {
-  if (!actievePartij || !ladderId) return;
-  const p    = actievePartij;
+  if (!actievePartij||!ladderId) return;
+  const p = actievePartij;
   const hole = p.holes[holeIdx];
   if (!hole) return;
-  if (!p.scores) p.scores = {};
-  if (!Array.isArray(p.scores[uid])) p.scores[uid] = Array(p.holes.length).fill(null);
+  if (!p.scores) p.scores={};
+  if (!Array.isArray(p.scores[uid])) p.scores[uid]=Array(p.holes.length).fill(null);
   const huidig = p.scores[uid][holeIdx];
-  // Eerste klik: stel par in zonder delta toe te passen
-  // Tweede klik en verder: pas delta toe
-  p.scores[uid][holeIdx] = huidig === null
-    ? hole.par
-    : Math.max(1, Math.min(12, huidig + delta));
+  // Eerste klik: toon par. Daarna: pas delta toe.
+  p.scores[uid][holeIdx] = huidig===null ? hole.par : Math.max(1,Math.min(12,huidig+delta));
   renderScoreScherm();
   try {
-    const ladderRef  = doc(db, 'ladders', ladderId);
+    const ladderRef = doc(db,'ladders',ladderId);
     const ladderSnap = await getDoc(ladderRef);
-    const data       = ladderSnap.data();
-    const partijen   = (data.actievePartijen || []).map(ap =>
-      ap.partijId === p.partijId ? { ...ap, scores: p.scores } : ap
+    const partijen = (ladderSnap.data().actievePartijen||[]).map(ap=>
+      ap.partijId===p.partijId ? {...ap, scores:p.scores} : ap
     );
-    await setDoc(ladderRef, { actievePartijen: partijen }, { merge: true });
-  } catch(e) { console.warn('Score opslaan mislukt:', e); }
+    await setDoc(ladderRef, {actievePartijen:partijen}, {merge:true});
+  } catch(e) { console.warn('Score opslaan mislukt:',e); }
 }
 
-// ── Hole navigatie ─────────────────────────────────────────
 window.volgendeHole = function() {
   if (!actievePartij) return;
-  if (holeIdx < actievePartij.holes.length - 1) { holeIdx++; renderScoreScherm(); }
+  if (holeIdx<actievePartij.holes.length-1) { holeIdx++; renderScoreScherm(); }
 };
 window.vorigeHole = function() {
-  if (holeIdx > 0) { holeIdx--; renderScoreScherm(); }
+  if (holeIdx>0) { holeIdx--; renderScoreScherm(); }
 };
 
-// ── Stand scherm ───────────────────────────────────────────
 function renderStandScherm() {
   if (!actievePartij) return;
-  const p         = actievePartij;
-  const resterend = p.holes.length - (holeIdx + 1);
-  document.getElementById('w-stand-sub').textContent = `na hole ${holeIdx + 1}`;
-
+  const p = actievePartij;
+  const resterend = p.holes.length-(holeIdx+1);
+  document.getElementById('w-stand-sub').textContent = `na hole ${holeIdx+1}`;
   const container = document.getElementById('w-matches');
   container.innerHTML = '';
-
-  (p.matchups || []).forEach(m => {
+  (p.matchups||[]).forEach(m => {
     const scoresA = Array.isArray(p.scores?.[m.spelerA.uid]) ? p.scores[m.spelerA.uid] : [];
     const scoresB = Array.isArray(p.scores?.[m.spelerB.uid]) ? p.scores[m.spelerB.uid] : [];
-
-    let standA = 0, gespeeld = 0;
-    for (let i = 0; i <= holeIdx; i++) {
-      const sA = scoresA[i], sB = scoresB[i];
-      if (sA == null || sB == null) continue;
+    let standA=0, gespeeld=0;
+    for (let i=0;i<=holeIdx;i++) {
+      const sA=scoresA[i], sB=scoresB[i];
+      if (sA==null||sB==null) continue;
       gespeeld++;
-      if (sA < sB) standA++;
-      else if (sB < sA) standA--;
+      if (sA<sB) standA++; else if (sB<sA) standA--;
     }
-
     const nA = kortNaam(m.spelerA.naam);
     const nB = kortNaam(m.spelerB.naam);
     const up = Math.abs(standA);
-
-    // Tekst altijd vanuit perspectief speler A:
-    // standA > 0 = A leidt → "X UP"
-    // standA < 0 = A staat achter → "X DOWN"
-    // standA = 0 = gelijk → "AS"
     let scoreText, sub;
-    if (standA === 0) {
-      scoreText = gespeeld === 0 ? '—' : 'AS';
-      sub       = resterend > 0 ? `${resterend} te gaan` : 'Gelijkspel';
-    } else if (standA > 0) {
-      scoreText = up > resterend ? `${up}&${resterend}` : `${up} UP`;
+    if (standA===0) {
+      scoreText = gespeeld===0?'—':'AS';
+      sub = resterend>0?`${resterend} te gaan`:'Gelijkspel';
+    } else if (standA>0) {
+      scoreText = up>resterend?`${up}&${resterend}`:`${up} UP`;
       const leader = nA.split(' ')[0];
-      sub = up > resterend ? `${leader} wint` : `${leader} · ${resterend} te gaan`;
+      sub = up>resterend?`${leader} wint`:`${leader} · ${resterend} te gaan`;
     } else {
-      scoreText = up > resterend ? `${up}&${resterend}` : `${up} DOWN`;
+      scoreText = up>resterend?`${up}&${resterend}`:`${up} DOWN`;
       const leader = nB.split(' ')[0];
-      sub = up > resterend ? `${leader} wint` : `${leader} · ${resterend} te gaan`;
+      sub = up>resterend?`${leader} wint`:`${leader} · ${resterend} te gaan`;
     }
-
     const card = document.createElement('div');
     card.className = 'match-card';
     card.innerHTML = `
       <div class="match-top">
-        <span class="m-name${standA > 0 ? ' win' : ''}">${esc(nA)}</span>
+        <span class="m-name${standA>0?' win':''}">${esc(nA)}</span>
         <span class="m-score">${esc(scoreText)}</span>
-        <span class="m-name right${standA < 0 ? ' win' : ''}">${esc(nB)}</span>
+        <span class="m-name right${standA<0?' win':''}">${esc(nB)}</span>
       </div>
       <div class="m-sub">${esc(sub)}</div>`;
     container.appendChild(card);
