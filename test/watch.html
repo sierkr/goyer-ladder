@@ -486,38 +486,66 @@
   <button class="uitloggen-btn" onclick="uitloggen()">Uitloggen</button>
 </div>
 
-<!-- Firebase SDK (compat versie — werkt in alle browsers incl. Watch) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
 <script>
 // ══════════════════════════════════════════════════════════════
-//  CONFIG — zelfde Firebase project als de ladder app
+//  WATCH SCORE — v3.0.0-11.82
+//  Geen Firebase SDK — alleen fetch() naar REST API.
+//  Werkt op Apple Watch browser en alle andere browsers.
 // ══════════════════════════════════════════════════════════════
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
-  authDomain: "goyer-golf-mp-ladder.firebaseapp.com",
-  projectId: "goyer-golf-mp-ladder",
-  storageBucket: "goyer-golf-mp-ladder.firebasestorage.app",
-  messagingSenderId: "124116031878",
-  appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
-};
 
-firebase.initializeApp(FIREBASE_CONFIG);
-const auth = firebase.auth();
-const db   = firebase.firestore();
+const API_KEY   = 'AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens';
+const PROJECT   = 'goyer-golf-mp-ladder';
+const FS        = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`;
+const AUTH_URL  = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`;
+const TOKEN_URL = `https://securetoken.googleapis.com/v1/token?key=${API_KEY}`;
+
+// ── STATE ────────────────────────────────────────────────────
+let idToken      = null;
+let refreshToken = null;
+let uid          = null;
+let partij       = null;
+let ladderId     = null;
+let allePartijen = [];
+let huidigHole   = 0;
+let gevondenPin  = null;
+let pinWaarde    = '';
+let pollingTimer = null;
 
 // ══════════════════════════════════════════════════════════════
-//  STATE
+//  FIRESTORE WAARDE CONVERTERS
 // ══════════════════════════════════════════════════════════════
-let pinWaarde   = '';
-let gevondenPin = null;   // { email, naam, uid } na PIN-lookup
-let partij      = null;   // actieve partij object
-let huidigHole  = 0;      // 0-gebaseerde index
-let ladderId    = null;
-let allePartijen = [];    // actievePartijen array van de ladder
-let unsubscribe = null;   // Firestore listener
+function fsVal(v) {
+  if (v === null || v === undefined) return { nullValue: null };
+  if (typeof v === 'string')  return { stringValue: v };
+  if (typeof v === 'boolean') return { booleanValue: v };
+  if (typeof v === 'number')  return Number.isInteger(v)
+    ? { integerValue: String(v) }
+    : { doubleValue: v };
+  if (Array.isArray(v)) return { arrayValue: { values: v.map(fsVal) } };
+  if (typeof v === 'object') return {
+    mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k, val]) => [k, fsVal(val)])) }
+  };
+  return { nullValue: null };
+}
+
+function fromFsVal(v) {
+  if (!v) return null;
+  if ('stringValue'  in v) return v.stringValue;
+  if ('integerValue' in v) return parseInt(v.integerValue);
+  if ('doubleValue'  in v) return v.doubleValue;
+  if ('booleanValue' in v) return v.booleanValue;
+  if ('nullValue'    in v) return null;
+  if ('arrayValue'   in v) return (v.arrayValue.values || []).map(fromFsVal);
+  if ('mapValue'     in v) return fromFsMap(v.mapValue.fields || {});
+  return null;
+}
+
+function fromFsMap(fields) {
+  const obj = {};
+  for (const [k, v] of Object.entries(fields || {})) obj[k] = fromFsVal(v);
+  return obj;
+}
 
 // ══════════════════════════════════════════════════════════════
 //  SCHERM NAVIGATIE
@@ -534,9 +562,7 @@ function pinTik(cijfer) {
   if (pinWaarde.length >= 4) return;
   pinWaarde += cijfer;
   pinDisplay();
-  if (pinWaarde.length === 4) {
-    setTimeout(controleerPin, 120);
-  }
+  if (pinWaarde.length === 4) setTimeout(controleerPin, 120);
 }
 
 function pinWis() {
@@ -560,25 +586,26 @@ function pinDisplay() {
   }
 }
 
+function pinFout(tekst) {
+  document.getElementById('pin-fout').textContent = tekst;
+  pinWaarde = '';
+  pinDisplay();
+}
+
 async function controleerPin() {
   document.getElementById('pin-fout').textContent = '';
   try {
-    const snap = await db.collection('ladder').doc('watchPins').get();
-    if (!snap.exists()) {
-      pinFout('Ongeldige PIN. Genereer een nieuwe via de app.');
-      return;
-    }
-    const data = snap.data();
-    const sessie = data[pinWaarde];
-    if (!sessie) {
-      pinFout('Ongeldige PIN. Probeer opnieuw.');
-      return;
-    }
-    if (sessie.expires < Date.now()) {
-      pinFout('PIN is verlopen. Genereer een nieuwe via de app.');
-      return;
-    }
-    // PIN geldig — ga naar wachtwoord scherm
+    // Publieke read — geen auth token nodig
+    const resp = await fetch(`${FS}/ladder/watchPins?key=${API_KEY}`);
+    const data = await resp.json();
+    if (!resp.ok) { pinFout('Kon PIN niet controleren. Probeer opnieuw.'); return; }
+
+    const pins = fromFsMap(data.fields || {});
+    const sessie = pins[pinWaarde];
+
+    if (!sessie) { pinFout('Ongeldige PIN. Probeer opnieuw.'); return; }
+    if (sessie.expires < Date.now()) { pinFout('PIN verlopen. Genereer een nieuwe via de app.'); return; }
+
     gevondenPin = sessie;
     document.getElementById('welkom-naam').textContent = 'Hoi ' + (sessie.naam || 'speler') + '! 👋';
     document.getElementById('ww-input').value = '';
@@ -586,125 +613,118 @@ async function controleerPin() {
     toonScherm('scherm-ww');
     setTimeout(() => document.getElementById('ww-input').focus(), 300);
   } catch (e) {
-    console.error(e);
-    pinFout('Kon PIN niet controleren. Probeer opnieuw.');
+    console.error('PIN check fout:', e);
+    pinFout('Verbindingsfout. Probeer opnieuw.');
   }
 }
 
-function pinFout(tekst) {
-  document.getElementById('pin-fout').textContent = tekst;
-  pinWaarde = '';
-  pinDisplay();
-}
-
 // ══════════════════════════════════════════════════════════════
-//  INLOGGEN
+//  INLOGGEN VIA FIREBASE AUTH REST
 // ══════════════════════════════════════════════════════════════
 async function inloggen() {
   const ww = document.getElementById('ww-input').value;
   if (!ww) { document.getElementById('ww-fout').textContent = 'Voer je wachtwoord in.'; return; }
-  document.getElementById('ww-fout').textContent = '';
+  document.getElementById('ww-fout').textContent = 'Inloggen…';
+
   try {
-    await auth.signInWithEmailAndPassword(gevondenPin.email, ww);
-    // onAuthStateChanged handelt de rest af
+    const resp = await fetch(AUTH_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: gevondenPin.email, password: ww, returnSecureToken: true })
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      const msg = data.error?.message || '';
+      document.getElementById('ww-fout').textContent =
+        msg.includes('INVALID_LOGIN_CREDENTIALS') || msg.includes('WRONG_PASSWORD') || msg.includes('INVALID_PASSWORD')
+          ? 'Onjuist wachtwoord.'
+          : msg.includes('TOO_MANY_ATTEMPTS')
+          ? 'Te veel pogingen. Wacht even.'
+          : 'Inloggen mislukt. Probeer opnieuw.';
+      return;
+    }
+
+    idToken      = data.idToken;
+    refreshToken = data.refreshToken;
+    uid          = data.localId;
+
+    // Vernieuw token elke 55 minuten (token verloopt na 60 min)
+    setInterval(vernieuwToken, 55 * 60 * 1000);
+
+    document.getElementById('ww-fout').textContent = '';
+    toonScherm('scherm-score');
+    laadPartij();
   } catch (e) {
-    const fout = e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential'
-      ? 'Onjuist wachtwoord.'
-      : e.code === 'auth/too-many-requests'
-      ? 'Te veel pogingen. Wacht even.'
-      : 'Inloggen mislukt. Probeer opnieuw.';
-    document.getElementById('ww-fout').textContent = fout;
+    document.getElementById('ww-fout').textContent = 'Verbindingsfout. Probeer opnieuw.';
   }
 }
 
+async function vernieuwToken() {
+  try {
+    const resp = await fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`
+    });
+    const data = await resp.json();
+    if (resp.ok) { idToken = data.id_token; refreshToken = data.refresh_token; }
+  } catch (e) { console.error('Token vernieuwen mislukt:', e); }
+}
+
 function uitloggen() {
-  if (unsubscribe) unsubscribe();
-  auth.signOut();
+  if (pollingTimer) clearInterval(pollingTimer);
+  idToken = refreshToken = uid = partij = null;
+  huidigHole = 0;
   pinReset();
   toonScherm('scherm-pin');
 }
 
 // ══════════════════════════════════════════════════════════════
-//  AUTH STATE LISTENER
+//  PARTIJ LADEN VIA FIRESTORE REST
 // ══════════════════════════════════════════════════════════════
-auth.onAuthStateChanged(user => {
-  if (user) {
-    toonScherm('scherm-score');
-    laadPartij(user.uid);
-  } else {
-    if (unsubscribe) { unsubscribe(); unsubscribe = null; }
-    partij = null;
-  }
-});
-
-// ══════════════════════════════════════════════════════════════
-//  PARTIJ LADEN (real-time listener op alle ladders)
-// ══════════════════════════════════════════════════════════════
-function laadPartij(uid) {
+async function laadPartij() {
   toonLaad(true);
-
-  // Luister op alle ladders tegelijk
-  if (unsubscribe) unsubscribe();
-  unsubscribe = db.collection('ladders').onSnapshot(snap => {
-    let gevonden = null;
-    let gevondenLadderId = null;
-    let gevondenAllePartijen = [];
-
-    snap.forEach(ldoc => {
-      const data = ldoc.data();
-      const actief = data.actievePartijen || [];
-      const match = actief.find(p =>
-        (p.spelers || []).some(s => s.uid === uid)
-      );
-      if (match && !gevonden) {
-        gevonden = match;
-        gevondenLadderId = ldoc.id;
-        gevondenAllePartijen = actief;
-      }
-    });
-
-    if (gevonden) {
-      partij = gevonden;
-      ladderId = gevondenLadderId;
-      allePartijen = gevondenAllePartijen;
-      toonLaad(false);
-      // Ga naar eerste hole zonder score (of hole 0)
-      if (huidigHole === 0) huidigHole = eersteLegeHole();
-      renderHole();
-    } else {
-      toonLaad(false);
-      toonGeenPartij(true);
-    }
-  }, err => {
-    console.error('Listener fout:', err);
-    toonLaad(false);
+  const gevonden = await haalPartijOp();
+  toonLaad(false);
+  if (gevonden) {
+    if (huidigHole === 0) huidigHole = eersteLegeHole();
+    renderHole();
+    startPolling();
+  } else {
     toonGeenPartij(true);
-  });
-}
-
-function eersteLegeHole() {
-  if (!partij) return 0;
-  const uids = (partij.spelers || []).map(s => s.uid);
-  for (let i = 0; i < partij.holes.length; i++) {
-    const allemaalIngevuld = uids.every(uid => {
-      const arr = partij.scores?.[uid];
-      return Array.isArray(arr) && arr[i] !== null && arr[i] !== undefined;
-    });
-    if (!allemaalIngevuld) return i;
   }
-  return partij.holes.length - 1;
 }
 
-function toonLaad(j) {
-  document.getElementById('laad-scherm').style.display = j ? 'flex' : 'none';
-  document.getElementById('score-lijst').style.display = j ? 'none' : '';
+async function haalPartijOp() {
+  try {
+    const resp = await fetch(`${FS}/ladders?pageSize=50&key=${API_KEY}`, {
+      headers: { 'Authorization': `Bearer ${idToken}` }
+    });
+    const data = await resp.json();
+    if (!resp.ok) return false;
+
+    for (const ldoc of (data.documents || [])) {
+      const fields = fromFsMap(ldoc.fields || {});
+      const actief = fields.actievePartijen || [];
+      const match  = actief.find(p => (p.spelers || []).some(s => s.uid === uid));
+      if (match) {
+        partij       = match;
+        ladderId     = ldoc.name.split('/').pop();
+        allePartijen = actief;
+        return true;
+      }
+    }
+    return false;
+  } catch (e) { console.error('haalPartijOp fout:', e); return false; }
 }
 
-function toonGeenPartij(j) {
-  document.getElementById('geen-partij').style.display = j ? 'block' : 'none';
-  document.getElementById('score-lijst').style.display = j ? 'none' : '';
-  document.getElementById('totaal-balk').style.display = j ? 'none' : '';
-  document.querySelector('.stand-sectie').style.display = j ? 'none' : '';
+function startPolling() {
+  if (pollingTimer) clearInterval(pollingTimer);
+  pollingTimer = setInterval(async () => {
+    const gevonden = await haalPartijOp();
+    if (gevonden) renderHole();
+  }, 10000);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -717,6 +737,19 @@ function gaNaarHole(idx) {
   renderHole();
 }
 
+function eersteLegeHole() {
+  if (!partij) return 0;
+  const uids = (partij.spelers || []).map(s => s.uid);
+  for (let i = 0; i < partij.holes.length; i++) {
+    const vol = uids.every(u => {
+      const arr = partij.scores?.[u];
+      return Array.isArray(arr) && arr[i] !== null && arr[i] !== undefined;
+    });
+    if (!vol) return i;
+  }
+  return partij.holes.length - 1;
+}
+
 // ══════════════════════════════════════════════════════════════
 //  RENDER HOLE
 // ══════════════════════════════════════════════════════════════
@@ -726,14 +759,11 @@ function renderHole() {
   const holeNum = ((partij.startHole - 1 + huidigHole) % 18) + 1;
   const aantalHoles = partij.holes.length;
 
-  // Header
   document.getElementById('hole-nummer').textContent = 'Hole ' + holeNum;
   document.getElementById('hole-meta').textContent   = 'Par ' + hole.par + '  ·  SI ' + hole.si;
   document.getElementById('swipe-hint').textContent  = (huidigHole + 1) + ' / ' + aantalHoles;
-
-  // Navigatie knoppen
-  document.getElementById('btn-vorige').disabled  = huidigHole === 0;
-  document.getElementById('btn-volgende').disabled = huidigHole === aantalHoles - 1;
+  document.getElementById('btn-vorige').disabled     = huidigHole === 0;
+  document.getElementById('btn-volgende').disabled   = huidigHole === aantalHoles - 1;
 
   // Score rijen
   let html = '';
@@ -744,20 +774,16 @@ function renderHole() {
     const waardeHtml = val !== null
       ? `<span class="${kleur}">${val}</span>`
       : `<span class="leeg">—</span>`;
-
-    // Korte naam
-    const naam = korteNaam(s.naam || s.uid);
-
     html += `
     <div class="score-rij">
       <div class="score-naam">
-        ${esc(naam)}
+        ${esc(korteNaam(s.naam || s.uid))}
         <div class="score-naam-sub">hcp ${Math.round(s.partijHcp ?? s.hcp ?? 0)}</div>
       </div>
       <div class="score-controls">
-        <button class="score-btn score-btn-min" onclick="pasScore('${s.uid}', -1)">−</button>
+        <button class="score-btn score-btn-min" onclick="pasScore('${s.uid}',-1)">−</button>
         <div class="score-waarde${val === null ? ' leeg' : ''}">${waardeHtml}</div>
-        <button class="score-btn score-btn-plus" onclick="pasScore('${s.uid}', +1)">+</button>
+        <button class="score-btn score-btn-plus" onclick="pasScore('${s.uid}',+1)">+</button>
       </div>
     </div>`;
   });
@@ -767,72 +793,66 @@ function renderHole() {
   let totHtml = '';
   (partij.spelers || []).forEach(s => {
     const scoreArr = Array.isArray(partij.scores?.[s.uid]) ? partij.scores[s.uid] : [];
-    const totaal   = scoreArr.reduce((som, v) => v !== null && v !== undefined ? som + v : som, 0);
+    const totaal   = scoreArr.reduce((som, v) => (v !== null && v !== undefined ? som + v : som), 0);
     const ingevuld = scoreArr.filter(v => v !== null && v !== undefined).length;
-    totHtml += `
-    <div class="totaal-cel">
+    totHtml += `<div class="totaal-cel">
       <div class="totaal-naam">${esc(korteNaam(s.naam || ''))}</div>
       <div class="totaal-getal">${ingevuld > 0 ? totaal : '—'}</div>
     </div>`;
   });
   document.getElementById('totaal-balk').innerHTML = totHtml;
 
-  // Onderlinge stand
   renderStand();
 }
 
 // ══════════════════════════════════════════════════════════════
-//  SCORE AANPASSEN
+//  SCORE AANPASSEN + OPSLAAN VIA REST
 // ══════════════════════════════════════════════════════════════
-async function pasScore(uid, delta) {
+async function pasScore(spelerId, delta) {
   if (!partij || !ladderId) return;
-  if (!partij.scores[uid]) partij.scores[uid] = new Array(partij.holes.length).fill(null);
+  if (!partij.scores[spelerId]) partij.scores[spelerId] = new Array(partij.holes.length).fill(null);
 
-  const huidig = partij.scores[uid][huidigHole];
+  const huidig = partij.scores[spelerId][huidigHole];
   let nieuw;
   if (huidig === null || huidig === undefined) {
-    // Eerste invoer: delta +1 start op par, delta -1 start op par-1
     const par = partij.holes[huidigHole].par;
     nieuw = delta > 0 ? par : par - 1;
   } else {
     nieuw = huidig + delta;
   }
-  // Grenzen: 1 t/m 12
-  if (nieuw < 1) nieuw = 1;
+  if (nieuw < 1)  nieuw = 1;
   if (nieuw > 12) nieuw = 12;
 
-  partij.scores[uid][huidigHole] = nieuw;
+  partij.scores[spelerId][huidigHole] = nieuw;
 
-  // Update de allePartijen array en sla op
   const idx = allePartijen.findIndex(p =>
-    (p.spelers || []).some(s => s.uid === uid) &&
-    p.baan === partij.baan
+    (p.spelers || []).some(s => s.uid === spelerId) && p.baan === partij.baan
   );
   if (idx !== -1) allePartijen[idx] = partij;
 
-  // Re-render lokaal (snel)
-  renderHole();
+  renderHole(); // Direct lokaal
 
-  // Sla op in Firestore
   try {
-    await db.collection('ladders').doc(ladderId).set(
-      { actievePartijen: allePartijen },
-      { merge: true }
+    await fetch(
+      `${FS}/ladders/${ladderId}?updateMask.fieldPaths=actievePartijen&key=${API_KEY}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ fields: { actievePartijen: fsVal(allePartijen) } })
+      }
     );
-  } catch (e) {
-    console.error('Score opslaan mislukt:', e);
-  }
+  } catch (e) { console.error('Score opslaan mislukt:', e); }
 }
 
 // ══════════════════════════════════════════════════════════════
-//  ONDERLINGE STAND BEREKENING (zelfde logica als ronde.js)
+//  ONDERLINGE STAND (zelfde logica als ronde.js)
 // ══════════════════════════════════════════════════════════════
 function berekenMatchStand(matchup) {
-  if (!partij || !partij.holes || !partij.scores) {
-    return { standA: 0, gespeeld: 0, resterend: 0, status: 'lopend' };
-  }
-  let standA = 0, gespeeld = 0;
-  let beslissingsStand = null, beslissingsGespeeld = null;
+  if (!partij?.holes || !partij?.scores) return { standA: 0, gespeeld: 0, resterend: 0, status: 'lopend' };
+  let standA = 0, gespeeld = 0, beslissingsStand = null, beslissingsGespeeld = null;
 
   for (let i = 0; i < partij.holes.length; i++) {
     const sA = partij.scores[matchup.spelerA.uid]?.[i];
@@ -840,131 +860,110 @@ function berekenMatchStand(matchup) {
     if (sA === null || sA === undefined || sB === null || sB === undefined) continue;
     gespeeld++;
 
-    const hole      = partij.holes[i];
-    const aantalH   = partij.holes.length;
-    const diff      = matchup.hcpSlagen;
-    const hcpOpHole = (hole.si <= Math.min(diff, aantalH) ? 1 : 0) +
-                      (hole.si <= Math.max(0, diff - aantalH) ? 1 : 0);
+    const hole    = partij.holes[i];
+    const diff    = matchup.hcpSlagen;
+    const aantalH = partij.holes.length;
+    const slag    = (hole.si <= Math.min(diff, aantalH) ? 1 : 0) + (hole.si <= Math.max(0, diff - aantalH) ? 1 : 0);
+    const slagA   = matchup.hcpOntvanger === matchup.spelerA.uid ? slag : 0;
+    const slagB   = matchup.hcpOntvanger === matchup.spelerB.uid ? slag : 0;
 
-    const slagA = matchup.hcpOntvanger === matchup.spelerA.uid ? hcpOpHole : 0;
-    const slagB = matchup.hcpOntvanger === matchup.spelerB.uid ? hcpOpHole : 0;
-    const nettoA = sA - slagA;
-    const nettoB = sB - slagB;
+    if (sA - slagA < sB - slagB)      standA++;
+    else if (sB - slagB < sA - slagA) standA--;
 
-    if (nettoA < nettoB)      standA++;
-    else if (nettoB < nettoA) standA--;
-
-    const resterendNa = partij.holes.length - gespeeld;
-    if (beslissingsStand === null && Math.abs(standA) > resterendNa) {
-      beslissingsStand    = standA;
-      beslissingsGespeeld = gespeeld;
+    if (beslissingsStand === null && Math.abs(standA) > partij.holes.length - gespeeld) {
+      beslissingsStand = standA; beslissingsGespeeld = gespeeld;
     }
   }
 
   const resterend = partij.holes.length - gespeeld;
   const klaar     = gespeeld === partij.holes.length;
   const beslist   = beslissingsStand !== null;
-  const effectief = beslist ? beslissingsStand : standA;
-  const restBeslissing = beslist ? (partij.holes.length - beslissingsGespeeld) : resterend;
-
   return {
-    standA: effectief, gespeeld, resterend: restBeslissing,
-    status: klaar && !beslist ? 'klaar' : beslist ? 'beslist' : 'lopend'
+    standA:    beslist ? beslissingsStand : standA,
+    gespeeld,
+    resterend: beslist ? (partij.holes.length - beslissingsGespeeld) : resterend,
+    status:    klaar && !beslist ? 'klaar' : beslist ? 'beslist' : 'lopend'
   };
 }
 
 function renderStand() {
-  if (!partij || !partij.matchups) {
+  if (!partij?.matchups?.length) {
     document.getElementById('stand-container').innerHTML =
-      '<div style="color:var(--licht);font-size:13px;text-align:center;padding:8px">Geen matchups</div>';
+      '<div style="color:var(--licht);font-size:13px;text-align:center;padding:8px">Voer scores in om de stand te zien</div>';
     return;
   }
-
   const naamMap = maakNaamMap(partij.spelers || []);
   let html = '';
-
   (partij.matchups || []).forEach(m => {
     const { standA, resterend, status } = berekenMatchStand(m);
     const nA = naamMap[m.spelerA.uid] || '?';
     const nB = naamMap[m.spelerB.uid] || '?';
-
-    let badgeTekst, leidt;
+    let badge, leidt;
     if (status === 'beslist') {
-      const up = Math.abs(standA);
-      badgeTekst = (standA > 0 ? nA : nB) + ' ' + up + '&' + resterend;
-      leidt = true;
+      badge = (standA > 0 ? nA : nB) + ' ' + Math.abs(standA) + '&' + resterend; leidt = true;
     } else if (status === 'klaar') {
-      badgeTekst = standA === 0 ? 'TIED' : (standA > 0 ? nA : nB) + ' wint';
-      leidt = standA !== 0;
+      badge = standA === 0 ? 'TIED' : (standA > 0 ? nA : nB) + ' wint'; leidt = standA !== 0;
     } else if (standA === 0) {
-      badgeTekst = 'TIED'; leidt = false;
+      badge = 'TIED'; leidt = false;
     } else {
-      badgeTekst = (standA > 0 ? nA : nB) + ' ' + Math.abs(standA) + ' UP';
-      leidt = true;
+      badge = (standA > 0 ? nA : nB) + ' ' + Math.abs(standA) + ' UP'; leidt = true;
     }
-
-    let subTekst = '';
-    if (status === 'lopend') subTekst = resterend + ' te gaan';
-    else if (status === 'beslist') subTekst = 'Beslist';
-    else subTekst = 'Klaar';
-
-    html += `
-    <div class="matchup-kaart">
+    const sub = status === 'lopend' ? resterend + ' te gaan' : status === 'beslist' ? 'Beslist' : 'Klaar';
+    html += `<div class="matchup-kaart">
       <div class="matchup-speler${standA > 0 ? ' winnaar' : ''}">${esc(nA)}</div>
       <div class="matchup-score">
-        <div class="matchup-badge${leidt ? ' leidt' : ''}">${esc(badgeTekst)}</div>
-        <div class="matchup-sub">${esc(subTekst)}</div>
+        <div class="matchup-badge${leidt ? ' leidt' : ''}">${esc(badge)}</div>
+        <div class="matchup-sub">${esc(sub)}</div>
       </div>
       <div class="matchup-speler${standA < 0 ? ' winnaar' : ''}" style="text-align:right">${esc(nB)}</div>
     </div>`;
   });
-
-  if (!html) html = '<div style="color:var(--licht);font-size:13px;text-align:center;padding:8px">Voer scores in om de stand te zien</div>';
   document.getElementById('stand-container').innerHTML = html;
 }
 
 // ══════════════════════════════════════════════════════════════
-//  HULP-FUNCTIES
+//  HULPFUNCTIES
 // ══════════════════════════════════════════════════════════════
 function scoreKleur(score, par) {
-  const diff = score - par;
-  if (diff <= -2) return 'score-eagle';
-  if (diff === -1) return 'score-birdie';
-  if (diff === 0)  return 'score-par';
-  if (diff === 1)  return 'score-bogey';
+  const d = score - par;
+  if (d <= -2) return 'score-eagle';
+  if (d === -1) return 'score-birdie';
+  if (d === 0)  return 'score-par';
+  if (d === 1)  return 'score-bogey';
   return 'score-dubbel';
 }
 
 function esc(str) {
   if (str == null) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 function korteNaam(naam) {
   if (!naam) return '?';
-  const delen = naam.trim().split(/\s+/);
-  if (delen.length === 1) return delen[0];
-  // "Jan de Vries" → "Jan V."
-  const voornaam = delen[0];
-  const achternaam = delen[delen.length - 1];
-  return voornaam + ' ' + achternaam[0] + '.';
+  const d = naam.trim().split(/\s+/);
+  return d.length === 1 ? d[0] : d[0] + ' ' + d[d.length - 1][0] + '.';
 }
 
 function maakNaamMap(spelers) {
-  // Geeft korte namen terug, uniek per speler
-  const namen = spelers.map(s => korteNaam(s.naam || ''));
   const map = {};
-  spelers.forEach((s, i) => { map[s.uid] = namen[i]; });
+  spelers.forEach(s => { map[s.uid] = korteNaam(s.naam || ''); });
   return map;
 }
 
+function toonLaad(j) {
+  document.getElementById('laad-scherm').style.display  = j ? 'flex' : 'none';
+  document.getElementById('score-lijst').style.display  = j ? 'none' : '';
+}
+
+function toonGeenPartij(j) {
+  document.getElementById('geen-partij').style.display          = j ? 'block' : 'none';
+  document.getElementById('score-lijst').style.display          = j ? 'none' : '';
+  document.getElementById('totaal-balk').style.display          = j ? 'none' : '';
+  document.querySelector('.stand-sectie').style.display         = j ? 'none' : '';
+}
+
 // ══════════════════════════════════════════════════════════════
-//  SWIPE NAVIGATIE (links/rechts voor hole wisselen)
+//  SWIPE NAVIGATIE
 // ══════════════════════════════════════════════════════════════
 let swipeStartX = 0;
 document.getElementById('scherm-score').addEventListener('touchstart', e => {
@@ -972,10 +971,7 @@ document.getElementById('scherm-score').addEventListener('touchstart', e => {
 }, { passive: true });
 document.getElementById('scherm-score').addEventListener('touchend', e => {
   const dx = e.changedTouches[0].clientX - swipeStartX;
-  if (Math.abs(dx) > 50) {
-    if (dx < 0) gaNaarHole(huidigHole + 1); // swipe links → volgende hole
-    else        gaNaarHole(huidigHole - 1); // swipe rechts → vorige hole
-  }
+  if (Math.abs(dx) > 50) dx < 0 ? gaNaarHole(huidigHole + 1) : gaNaarHole(huidigHole - 1);
 }, { passive: true });
 </script>
 </body>
