@@ -877,7 +877,11 @@ async function renderWatchPin() {
     });
 
     if (bestaandePIN) {
-      // Bestaande PIN tonen — geen write nodig
+      // Bestaande PIN tonen — update token als dat nog ontbreekt (v3.0.0-11.84)
+      if (!pins[bestaandePIN].refreshToken) {
+        pins[bestaandePIN].refreshToken = auth.currentUser?.refreshToken || '';
+        await setDoc(pinsRef, pins);
+      }
       badge.textContent = '⌚ ' + bestaandePIN;
       badge.style.display = '';
       return;
