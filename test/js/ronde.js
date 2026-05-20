@@ -857,7 +857,7 @@ async function syncStandenNaBevestigUitslag(ladderId, rankSpelers, partijInfo = 
 let _watchPinBezig = false; // debounce — voorkom dubbele Firestore writes
 
 async function renderWatchPin() {
-  if (!huidigeBruiker?.uid) return;
+  if (!store.huidigeBruiker?.uid) return;
   if (_watchPinBezig) return;
 
   const badge = document.getElementById('ronde-watch-pin');
@@ -873,7 +873,7 @@ async function renderWatchPin() {
     // Zoek bestaande geldige PIN voor deze gebruiker
     let bestaandePIN = null;
     Object.entries(pins).forEach(([k, v]) => {
-      if (v.uid === huidigeBruiker.uid && v.expires > nu) bestaandePIN = k;
+      if (v.uid === store.huidigeBruiker.uid && v.expires > nu) bestaandePIN = k;
     });
 
     if (bestaandePIN) {
@@ -885,7 +885,7 @@ async function renderWatchPin() {
 
     // Geen geldige PIN — verwijder verlopen en genereer nieuw
     Object.keys(pins).forEach(k => {
-      if (pins[k].expires < nu || pins[k].uid === huidigeBruiker.uid) delete pins[k];
+      if (pins[k].expires < nu || pins[k].uid === store.huidigeBruiker.uid) delete pins[k];
     });
 
     let nieuwePIN;
@@ -896,9 +896,9 @@ async function renderWatchPin() {
     } while (pins[nieuwePIN] && pogingen < 20);
 
     pins[nieuwePIN] = {
-      uid:     huidigeBruiker.uid,
-      naam:    huidigeBruiker.gebruikersnaam,
-      email:   huidigeBruiker.email,
+      uid:     store.huidigeBruiker.uid,
+      naam:    store.huidigeBruiker.gebruikersnaam,
+      email:   store.huidigeBruiker.email,
       expires: nu + 24 * 60 * 60 * 1000
     };
 
