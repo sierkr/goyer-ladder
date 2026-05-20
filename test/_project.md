@@ -10,7 +10,7 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v3.0.0-11.84**
+Huidige versie: **v3.0.0-11.85**
 
 ## Firebase
 - Project: `goyer-golf-mp-ladder`
