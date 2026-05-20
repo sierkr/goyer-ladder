@@ -10,12 +10,12 @@
 <title>Golf Score</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-  html,body{height:100%;background:#000;color:#fff;font-family:-apple-system,sans-serif;font-size:16px;overflow:hidden}
-  #app{height:100%;display:flex;flex-direction:column}
+  html,body{height:100%;background:#000;color:#fff;font-family:-apple-system,sans-serif;font-size:16px}
+  #app{height:100%;display:flex;flex-direction:column;overflow:hidden}
 
   /* ── Login ── */
-  #screen-login{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px;padding:20px}
-  #screen-login h1{font-size:18px;font-weight:600;color:#fff}
+  #screen-login{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px;padding:20px;overflow-y:auto}
+  #screen-login h1{font-size:18px;font-weight:600}
   #screen-login p{font-size:12px;color:#8e8e93;text-align:center}
   .w-input{background:#1c1c1e;border:1px solid #3a3a3c;border-radius:10px;color:#fff;font-size:15px;padding:12px 14px;width:100%;outline:none}
   .w-input::placeholder{color:#636366}
@@ -29,43 +29,57 @@
   #screen-leeg h2{font-size:16px;font-weight:500}
   #screen-leeg p{font-size:12px;color:#8e8e93}
 
-  /* ── Score scherm ── */
-  #screen-score{flex:1;display:flex;flex-direction:column;padding:10px 10px 6px;gap:7px;overflow:hidden}
-  .hdr{display:flex;justify-content:space-between;align-items:center}
-  .hole-badge{background:#1a5c38;color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px}
-  .par-info{font-size:11px;color:#8e8e93}
-  .player-row{display:flex;align-items:center;background:#1c1c1e;border-radius:12px;padding:7px 9px;gap:8px;border:1.5px solid transparent;transition:border-color .15s}
+  /* ── Vaste header (beide schermen) ── */
+  .fixed-hdr{
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 10px 6px;
+    gap:6px;
+    background:#000;
+    position:relative;
+  }
+  .hole-badge{
+    position:absolute;left:50%;transform:translateX(-50%);
+    background:#1a5c38;color:#fff;font-size:12px;font-weight:700;
+    padding:4px 12px;border-radius:20px;white-space:nowrap;pointer-events:none;
+  }
+  .hdr-btn{background:#2c2c2e;color:#fff;border:none;border-radius:10px;font-size:11px;font-weight:600;padding:5px 10px;cursor:pointer;white-space:nowrap}
+  .hdr-btn:active{opacity:.7}
+  .hdr-btn.primary{background:#1a5c38}
+
+  /* ── Scroll-body ── */
+  .scroll-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 10px 10px}
+
+  /* ── Speler rijen ── */
+  .player-row{display:flex;align-items:center;background:#1c1c1e;border-radius:14px;padding:9px 10px;gap:8px;border:1.5px solid transparent;margin-bottom:7px}
   .player-row.filled{border-color:#1a5c38}
-  .av{width:28px;height:28px;border-radius:50%;background:#2c2c2e;display:flex;align-items:center;justify-content:center;font-size:10px;color:#8e8e93;font-weight:600;flex-shrink:0}
+  .av{width:30px;height:30px;border-radius:50%;background:#2c2c2e;display:flex;align-items:center;justify-content:center;font-size:10px;color:#8e8e93;font-weight:700;flex-shrink:0}
   .av.done{background:#1a5c38;color:#fff}
-  .pname{flex:1;font-size:13px;color:#8e8e93;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pname{flex:1;font-size:14px;color:#8e8e93;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72px}
   .pname.done{color:#fff}
-  .score-ctrl{display:flex;align-items:center;gap:5px;flex-shrink:0}
-  .sc-btn{width:34px;height:34px;border-radius:50%;background:#3a3a3c;border:none;color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1}
-  .sc-btn:active{background:#555}
-  .sc-num{font-size:17px;font-weight:600;min-width:22px;text-align:center;color:#636366}
-  .sc-num.done{color:#30d158}
-  .nav-row{display:flex;gap:7px;margin-top:2px}
-  .nav-btn{flex:1;padding:10px 0;border-radius:12px;border:none;font-size:12px;font-weight:600;cursor:pointer;background:#2c2c2e;color:#8e8e93}
+  .score-ctrl{display:flex;align-items:center;gap:6px;flex-shrink:0}
+  .sc-btn{width:38px;height:38px;border-radius:50%;background:#3a3a3c;border:none;color:#fff;font-size:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1}
+  .sc-btn:active{background:#666}
+  .sc-num{font-size:20px;font-weight:700;min-width:26px;text-align:center;color:#636366}
+  .sc-num.done{color:#fff}
+
+  /* ── Nav onderaan score ── */
+  .nav-row{display:flex;gap:7px;padding:6px 10px 10px;flex-shrink:0;background:#000}
+  .nav-btn{flex:1;padding:11px 0;border-radius:12px;border:none;font-size:12px;font-weight:700;cursor:pointer;background:#2c2c2e;color:#8e8e93}
   .nav-btn.primary{background:#1a5c38;color:#fff}
   .nav-btn:active{opacity:.7}
 
   /* ── Stand scherm ── */
-  #screen-stand{flex:1;display:flex;flex-direction:column;padding:10px 10px 6px;gap:7px;overflow:hidden}
-  .stand-hdr{display:flex;justify-content:space-between;align-items:center}
-  .stand-title{font-size:14px;font-weight:600}
-  .stand-sub{font-size:11px;color:#8e8e93}
-  .match-card{background:#1c1c1e;border-radius:12px;padding:9px 10px;display:flex;flex-direction:column;gap:5px}
+  .match-card{background:#1c1c1e;border-radius:14px;padding:10px 11px;display:flex;flex-direction:column;gap:5px;margin-bottom:7px}
   .match-top{display:flex;justify-content:space-between;align-items:center;gap:6px}
   .m-name{font-size:12px;color:#fff;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .m-name.win{color:#30d158;font-weight:600}
+  .m-name.win{font-weight:700}
   .m-name.right{text-align:right}
-  .m-score{font-size:12px;font-weight:600;padding:3px 7px;border-radius:8px;background:#2c2c2e;color:#fff;white-space:nowrap;flex-shrink:0}
-  .m-score.up{background:#0f3d22;color:#30d158}
-  .m-score.down{background:#3d1a1a;color:#ff453a}
+  .m-score{font-size:12px;font-weight:700;padding:3px 8px;border-radius:8px;background:#2c2c2e;color:#fff;white-space:nowrap;flex-shrink:0}
   .m-sub{font-size:10px;color:#636366;text-align:center}
-  .back-btn{background:#2c2c2e;color:#8e8e93;border:none;border-radius:12px;padding:10px;font-size:12px;font-weight:600;cursor:pointer;width:100%;margin-top:2px}
-  .back-btn:active{opacity:.7}
+  .stand-sub-label{font-size:11px;color:#8e8e93;text-align:center;padding:2px 0 8px}
 
   /* ── Loading ── */
   #screen-loading{flex:1;display:flex;align-items:center;justify-content:center;color:#8e8e93;font-size:13px}
@@ -77,6 +91,7 @@
 <div id="app">
   <div id="screen-loading">Laden…</div>
 
+  <!-- Login -->
   <div id="screen-login" class="hidden">
     <h1>⛳ Golf Score</h1>
     <p>Log in om je scores in te vullen</p>
@@ -86,32 +101,36 @@
     <button class="w-btn" onclick="doLogin()">Inloggen</button>
   </div>
 
+  <!-- Geen partij -->
   <div id="screen-leeg" class="hidden">
     <h2>Geen actieve partij</h2>
     <p>Start een partij via de app op je telefoon.</p>
     <button class="w-btn secondary" style="margin-top:8px" onclick="doLogout()">Uitloggen</button>
   </div>
 
-  <div id="screen-score" class="hidden">
-    <div class="hdr">
+  <!-- Score scherm -->
+  <div id="screen-score" class="hidden" style="display:flex;flex-direction:column;height:100%">
+    <div class="fixed-hdr">
+      <button class="hdr-btn" id="btn-prev" onclick="vorigeHole()">← Terug</button>
       <span class="hole-badge">Hole <span id="w-hn">1</span></span>
-      <span class="par-info">Par <span id="w-par">4</span> · SI <span id="w-si">1</span></span>
+      <button class="hdr-btn primary" onclick="toonStand()">Stand ↗</button>
     </div>
-    <div id="w-spelers"></div>
+    <div class="scroll-body" id="w-spelers"></div>
     <div class="nav-row">
-      <button class="nav-btn" id="btn-stand" onclick="toonStand()">Stand ↗</button>
-      <button class="nav-btn" id="btn-prev" onclick="vorigeHole()">← Terug</button>
-      <button class="nav-btn primary" id="btn-next" onclick="volgendeHole()">Verder →</button>
+      <button class="nav-btn primary" onclick="volgendeHole()">Verder →</button>
     </div>
   </div>
 
-  <div id="screen-stand" class="hidden">
-    <div class="stand-hdr">
-      <span class="stand-title">Onderlinge stand</span>
-      <span class="stand-sub" id="w-stand-sub">na hole 0</span>
+  <!-- Stand scherm -->
+  <div id="screen-stand" class="hidden" style="display:flex;flex-direction:column;height:100%">
+    <div class="fixed-hdr">
+      <span class="hole-badge">Stand</span>
+      <button class="hdr-btn" onclick="toonScore()">← Scores</button>
     </div>
-    <div id="w-matches"></div>
-    <button class="back-btn" onclick="toonScore()">← Terug naar scores</button>
+    <div class="scroll-body">
+      <div class="stand-sub-label" id="w-stand-sub">na hole 0</div>
+      <div id="w-matches"></div>
+    </div>
   </div>
 </div>
 
@@ -119,7 +138,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, collection, getDocs, onSnapshot, doc, setDoc }
+import { getFirestore, collection, getDocs, onSnapshot, doc, setDoc, getDoc }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -132,70 +151,66 @@ const firebaseConfig = {
 };
 const EMAIL_SUFFIX = '@MPladder.stb';
 
-const app = initializeApp(firebaseConfig);
+const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db   = getFirestore(app);
 
-// ── State ─────────────────────────────────────────────────
+// ── State ──────────────────────────────────────────────────
 let huidigUid    = null;
 let actievePartij = null;
 let ladderId      = null;
 let holeIdx       = 0;
 let ladderUnsub   = null;
 
-// ── Helpers ───────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────
 function kortNaam(naam) {
   if (!naam) return '?';
   const d = naam.trim().split(/\s+/);
   if (d.length === 1) return d[0];
   return d[0] + ' ' + d[d.length - 1][0].toUpperCase() + '.';
 }
-
 function initialen(naam) {
   if (!naam) return '?';
   const d = naam.trim().split(/\s+/);
   if (d.length === 1) return d[0][0].toUpperCase();
   return (d[0][0] + d[d.length - 1][0]).toUpperCase();
 }
-
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// ── Schermen ──────────────────────────────────────────────
+// ── Schermen ───────────────────────────────────────────────
 function toon(id) {
   ['screen-loading','screen-login','screen-leeg','screen-score','screen-stand']
-    .forEach(s => document.getElementById(s).classList.toggle('hidden', s !== id));
+    .forEach(s => {
+      const el = document.getElementById(s);
+      if (s === id) { el.classList.remove('hidden'); }
+      else          { el.classList.add('hidden'); }
+    });
 }
-
 function toonScore() { toon('screen-score'); renderScoreScherm(); }
 function toonStand() { toon('screen-stand'); renderStandScherm(); }
 
-// ── Login / Logout ────────────────────────────────────────
+// ── Login / Logout ─────────────────────────────────────────
 window.doLogin = async function() {
-  const user = document.getElementById('inp-user').value.trim();
-  const pass = document.getElementById('inp-pass').value;
+  const user  = document.getElementById('inp-user').value.trim();
+  const pass  = document.getElementById('inp-pass').value;
   const errEl = document.getElementById('login-error');
   errEl.textContent = '';
   if (!user || !pass) { errEl.textContent = 'Vul gebruikersnaam en wachtwoord in'; return; }
   const email = user.includes('@') ? user : user + EMAIL_SUFFIX;
-  try {
-    await signInWithEmailAndPassword(auth, email, pass);
-  } catch(e) {
-    errEl.textContent = 'Inloggen mislukt — controleer je gegevens';
-  }
+  try { await signInWithEmailAndPassword(auth, email, pass); }
+  catch(e) { errEl.textContent = 'Inloggen mislukt — controleer je gegevens'; }
 };
-
 window.doLogout = async function() {
   if (ladderUnsub) { ladderUnsub(); ladderUnsub = null; }
   await signOut(auth);
 };
 
-// ── Auth listener ─────────────────────────────────────────
+// ── Auth listener ──────────────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
-    huidigUid = null;
-    actievePartij = null;
+    huidigUid = null; actievePartij = null;
     if (ladderUnsub) { ladderUnsub(); ladderUnsub = null; }
     toon('screen-login');
     return;
@@ -204,66 +219,56 @@ onAuthStateChanged(auth, async (user) => {
   startLadderListener();
 });
 
-// ── Ladder listener ───────────────────────────────────────
+// ── Ladder listener ────────────────────────────────────────
 async function startLadderListener() {
   toon('screen-loading');
   if (ladderUnsub) { ladderUnsub(); ladderUnsub = null; }
 
-  // Zoek in ALLE ladders naar een actieve partij voor deze speler
   const snap = await getDocs(collection(db, 'ladders'));
   const ladderIds = snap.docs.map(d => d.id);
   const unsubscribers = [];
+  const partijMap = new Map();
 
-  function evalueerAllePartijen(updates) {
-    // updates = Map van ladderId → actievePartijen array
-    let gevondenPartij = null;
-    let gevondenLadderId = null;
-    for (const [lid, partijen] of updates.entries()) {
-      const match = partijen.find(p =>
-        (p.spelers || []).some(s => s.uid === huidigUid)
-      );
-      if (match) { gevondenPartij = match; gevondenLadderId = lid; break; }
+  function evalueer() {
+    let gevPartij = null, gevLid = null;
+    for (const [lid, partijen] of partijMap.entries()) {
+      const match = partijen.find(p => (p.spelers || []).some(s => s.uid === huidigUid));
+      if (match) { gevPartij = match; gevLid = lid; break; }
     }
-    if (gevondenPartij) {
+    if (gevPartij) {
       const wasLeeg = !actievePartij;
-      actievePartij = gevondenPartij;
-      ladderId = gevondenLadderId;
+      actievePartij = gevPartij; ladderId = gevLid;
       if (wasLeeg) holeIdx = 0;
       toonScore();
     } else {
-      actievePartij = null;
-      ladderId = null;
+      actievePartij = null; ladderId = null;
       toon('screen-leeg');
     }
   }
 
-  const partijMap = new Map();
-
   for (const lid of ladderIds) {
-    const ref = doc(db, 'ladders', lid);
-    const unsub = onSnapshot(ref, (ladderSnap) => {
-      if (!ladderSnap.exists()) return;
-      partijMap.set(lid, ladderSnap.data().actievePartijen || []);
-      evalueerAllePartijen(partijMap);
+    const unsub = onSnapshot(doc(db, 'ladders', lid), (s) => {
+      if (!s.exists()) return;
+      partijMap.set(lid, s.data().actievePartijen || []);
+      evalueer();
     });
     unsubscribers.push(unsub);
   }
-
   ladderUnsub = () => unsubscribers.forEach(u => u());
 }
 
-// ── Score scherm renderen ─────────────────────────────────
+// ── Score scherm renderen ──────────────────────────────────
 function renderScoreScherm() {
   if (!actievePartij) { toon('screen-leeg'); return; }
-  const p = actievePartij;
+  const p    = actievePartij;
   const hole = p.holes[holeIdx];
   if (!hole) return;
 
   document.getElementById('w-hn').textContent  = ((p.startHole - 1 + holeIdx) % 18) + 1;
   document.getElementById('w-par').textContent = hole.par;
   document.getElementById('w-si').textContent  = hole.si;
-
-  document.getElementById('btn-prev').style.display = holeIdx > 0 ? '' : 'none';
+  document.getElementById('btn-prev').style.visibility = holeIdx > 0 ? 'visible' : 'hidden';
+  document.getElementById('btn-prev').style.pointerEvents = holeIdx > 0 ? 'auto' : 'none';
 
   const container = document.getElementById('w-spelers');
   container.innerHTML = '';
@@ -272,14 +277,12 @@ function renderScoreScherm() {
     const scores = Array.isArray(p.scores?.[s.uid]) ? p.scores[s.uid] : [];
     const val    = scores[holeIdx] ?? null;
     const filled = val !== null;
-    const init   = initialen(s.naam);
-    const naam   = esc(kortNaam(s.naam));
 
     const row = document.createElement('div');
     row.className = 'player-row' + (filled ? ' filled' : '');
     row.innerHTML = `
-      <div class="av${filled ? ' done' : ''}">${esc(init)}</div>
-      <span class="pname${filled ? ' done' : ''}">${naam}</span>
+      <div class="av${filled ? ' done' : ''}">${esc(initialen(s.naam))}</div>
+      <span class="pname${filled ? ' done' : ''}">${esc(kortNaam(s.naam))}</span>
       <div class="score-ctrl">
         <button class="sc-btn" data-uid="${esc(s.uid)}" data-dir="-1">−</button>
         <span class="sc-num${filled ? ' done' : ''}">${filled ? val : '—'}</span>
@@ -288,70 +291,52 @@ function renderScoreScherm() {
     container.appendChild(row);
   });
 
-  // Tap handlers
   container.querySelectorAll('.sc-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const uid = btn.dataset.uid;
-      const dir = parseInt(btn.dataset.dir);
-      wijzigScore(uid, dir);
-    });
+    btn.addEventListener('click', () => wijzigScore(btn.dataset.uid, parseInt(btn.dataset.dir)));
   });
 }
 
-// ── Score wijzigen ────────────────────────────────────────
+// ── Score wijzigen ─────────────────────────────────────────
 async function wijzigScore(uid, delta) {
   if (!actievePartij || !ladderId) return;
-  const p = actievePartij;
+  const p    = actievePartij;
   const hole = p.holes[holeIdx];
   if (!hole) return;
-
   if (!p.scores) p.scores = {};
   if (!Array.isArray(p.scores[uid])) p.scores[uid] = Array(p.holes.length).fill(null);
-
   const huidig = p.scores[uid][holeIdx];
-  const nieuw  = huidig === null ? hole.par + delta : Math.max(1, Math.min(12, huidig + delta));
-  p.scores[uid][holeIdx] = nieuw;
-
+  // Eerste klik: stel par in zonder delta toe te passen
+  // Tweede klik en verder: pas delta toe
+  p.scores[uid][holeIdx] = huidig === null
+    ? hole.par
+    : Math.max(1, Math.min(12, huidig + delta));
   renderScoreScherm();
-
-  // Schrijf terug naar Firestore
   try {
-    const ladderRef = doc(db, 'ladders', ladderId);
-    const ladderSnap = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js")
-      .then(m => m.getDoc(ladderRef));
-    const data = ladderSnap.data();
-    const partijen = (data.actievePartijen || []).map(ap => {
-      if (ap.partijId === p.partijId) return { ...ap, scores: p.scores };
-      return ap;
-    });
+    const ladderRef  = doc(db, 'ladders', ladderId);
+    const ladderSnap = await getDoc(ladderRef);
+    const data       = ladderSnap.data();
+    const partijen   = (data.actievePartijen || []).map(ap =>
+      ap.partijId === p.partijId ? { ...ap, scores: p.scores } : ap
+    );
     await setDoc(ladderRef, { actievePartijen: partijen }, { merge: true });
-  } catch(e) {
-    console.warn('Score opslaan mislukt:', e);
-  }
+  } catch(e) { console.warn('Score opslaan mislukt:', e); }
 }
 
-// ── Hole navigatie ────────────────────────────────────────
+// ── Hole navigatie ─────────────────────────────────────────
 window.volgendeHole = function() {
   if (!actievePartij) return;
-  if (holeIdx < actievePartij.holes.length - 1) {
-    holeIdx++;
-    renderScoreScherm();
-  }
+  if (holeIdx < actievePartij.holes.length - 1) { holeIdx++; renderScoreScherm(); }
 };
-
 window.vorigeHole = function() {
   if (holeIdx > 0) { holeIdx--; renderScoreScherm(); }
 };
 
-// ── Stand scherm ──────────────────────────────────────────
+// ── Stand scherm ───────────────────────────────────────────
 function renderStandScherm() {
   if (!actievePartij) return;
-  const p = actievePartij;
-
-  // Bereken gespeelde holes
-  const gespeeld = holeIdx + 1;
-  const resterend = p.holes.length - gespeeld;
-  document.getElementById('w-stand-sub').textContent = `na hole ${gespeeld}`;
+  const p         = actievePartij;
+  const resterend = p.holes.length - (holeIdx + 1);
+  document.getElementById('w-stand-sub').textContent = `na hole ${holeIdx + 1}`;
 
   const container = document.getElementById('w-matches');
   container.innerHTML = '';
@@ -360,13 +345,11 @@ function renderStandScherm() {
     const scoresA = Array.isArray(p.scores?.[m.spelerA.uid]) ? p.scores[m.spelerA.uid] : [];
     const scoresB = Array.isArray(p.scores?.[m.spelerB.uid]) ? p.scores[m.spelerB.uid] : [];
 
-    // Bereken matchstand
-    let standA = 0, holesGespeeld = 0;
+    let standA = 0, gespeeld = 0;
     for (let i = 0; i <= holeIdx; i++) {
       const sA = scoresA[i], sB = scoresB[i];
       if (sA == null || sB == null) continue;
-      holesGespeeld++;
-      // Eenvoudige vergelijking zonder HCP voor Watch (compact)
+      gespeeld++;
       if (sA < sB) standA++;
       else if (sB < sA) standA--;
     }
@@ -374,18 +357,22 @@ function renderStandScherm() {
     const nA = kortNaam(m.spelerA.naam);
     const nB = kortNaam(m.spelerB.naam);
     const up = Math.abs(standA);
-    const leaderA = standA > 0;
-    const leaderB = standA < 0;
 
-    let scoreText, scoreCls, sub;
+    // Tekst altijd vanuit perspectief speler A:
+    // standA > 0 = A leidt → "X UP"
+    // standA < 0 = A staat achter → "X DOWN"
+    // standA = 0 = gelijk → "AS"
+    let scoreText, sub;
     if (standA === 0) {
-      scoreText = holesGespeeld === 0 ? '—' : 'AS';
-      scoreCls  = '';
-      sub       = resterend > 0 ? resterend + ' te gaan' : 'Gelijkspel';
-    } else {
+      scoreText = gespeeld === 0 ? '—' : 'AS';
+      sub       = resterend > 0 ? `${resterend} te gaan` : 'Gelijkspel';
+    } else if (standA > 0) {
       scoreText = up > resterend ? `${up}&${resterend}` : `${up} UP`;
-      scoreCls  = leaderA ? 'up' : 'down';
-      const leader = leaderA ? nA.split(' ')[0] : nB.split(' ')[0];
+      const leader = nA.split(' ')[0];
+      sub = up > resterend ? `${leader} wint` : `${leader} · ${resterend} te gaan`;
+    } else {
+      scoreText = up > resterend ? `${up}&${resterend}` : `${up} DOWN`;
+      const leader = nB.split(' ')[0];
       sub = up > resterend ? `${leader} wint` : `${leader} · ${resterend} te gaan`;
     }
 
@@ -393,9 +380,9 @@ function renderStandScherm() {
     card.className = 'match-card';
     card.innerHTML = `
       <div class="match-top">
-        <span class="m-name${leaderA ? ' win' : ''}">${esc(nA)}</span>
-        <span class="m-score ${scoreCls}">${esc(scoreText)}</span>
-        <span class="m-name right${leaderB ? ' win' : ''}">${esc(nB)}</span>
+        <span class="m-name${standA > 0 ? ' win' : ''}">${esc(nA)}</span>
+        <span class="m-score">${esc(scoreText)}</span>
+        <span class="m-name right${standA < 0 ? ' win' : ''}">${esc(nB)}</span>
       </div>
       <div class="m-sub">${esc(sub)}</div>`;
     container.appendChild(card);
@@ -404,10 +391,6 @@ function renderStandScherm() {
 
 window.toonScore = toonScore;
 window.toonStand = toonStand;
-window.vorigeHole = window.vorigeHole;
-window.volgendeHole = window.volgendeHole;
-window.doLogin = window.doLogin;
-window.doLogout = window.doLogout;
 </script>
 </body>
 </html>
