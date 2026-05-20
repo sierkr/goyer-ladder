@@ -209,35 +209,47 @@ async function startLadderListener() {
   toon('screen-loading');
   if (ladderUnsub) { ladderUnsub(); ladderUnsub = null; }
 
-  // Zoek alle ladders
+  // Zoek in ALLE ladders naar een actieve partij voor deze speler
   const snap = await getDocs(collection(db, 'ladders'));
   const ladderIds = snap.docs.map(d => d.id);
+  const unsubscribers = [];
 
-  let gevonden = false;
+  function evalueerAllePartijen(updates) {
+    // updates = Map van ladderId → actievePartijen array
+    let gevondenPartij = null;
+    let gevondenLadderId = null;
+    for (const [lid, partijen] of updates.entries()) {
+      const match = partijen.find(p =>
+        (p.spelers || []).some(s => s.uid === huidigUid)
+      );
+      if (match) { gevondenPartij = match; gevondenLadderId = lid; break; }
+    }
+    if (gevondenPartij) {
+      const wasLeeg = !actievePartij;
+      actievePartij = gevondenPartij;
+      ladderId = gevondenLadderId;
+      if (wasLeeg) holeIdx = 0;
+      toonScore();
+    } else {
+      actievePartij = null;
+      ladderId = null;
+      toon('screen-leeg');
+    }
+  }
+
+  const partijMap = new Map();
 
   for (const lid of ladderIds) {
     const ref = doc(db, 'ladders', lid);
-    ladderUnsub = onSnapshot(ref, (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data();
-      const partijen = data.actievePartijen || [];
-      const mijnPartij = partijen.find(p =>
-        (p.spelers || []).some(s => s.uid === huidigUid)
-      );
-      if (mijnPartij) {
-        gevonden = true;
-        actievePartij = mijnPartij;
-        ladderId = lid;
-        // Bewaar holeIdx als we al bezig waren
-        toonScore();
-      } else if (!gevonden) {
-        actievePartij = null;
-        toon('screen-leeg');
-      }
+    const unsub = onSnapshot(ref, (ladderSnap) => {
+      if (!ladderSnap.exists()) return;
+      partijMap.set(lid, ladderSnap.data().actievePartijen || []);
+      evalueerAllePartijen(partijMap);
     });
-    // Stop bij eerste listener (simpele implementatie)
-    break;
+    unsubscribers.push(unsub);
   }
+
+  ladderUnsub = () => unsubscribers.forEach(u => u());
 }
 
 // ── Score scherm renderen ─────────────────────────────────
