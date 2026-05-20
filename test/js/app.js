@@ -19,7 +19,7 @@ import { renderRonde, renderScorecard, updateScore, toggleScorecard,
   openUitslagModal, bevestigUitslag, setWinnaar, skipMatchup,
   editPartijHcp, verwijderSpelerUitRonde, openToevoegenModal,
   bevestigToevoegenRonde, sluitUitslagEnGaNaarLadder, showLadderChanges,
-  annuleerEigenPartij, verwijderActievePartij, genereerWatchPin } from './ronde.js';
+  annuleerEigenPartij, verwijderActievePartij } from './ronde.js';
 import { renderUitslagen, openScorekaartDetail, bevestigBeheerUitslag } from './uitslagen.js';
 import { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer,
   toggleHandmatigToevoegen, voegAccountToeAlsSpeler, saveNewPlayer,
@@ -218,7 +218,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v3.0.0-11.77';
+  const VERSION = 'v3.0.0-11.79';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -248,7 +248,6 @@ window.bevestigBeheerUitslag = bevestigBeheerUitslag;
 
 window.annuleerEigenPartij = annuleerEigenPartij;
 window.verwijderActievePartij = verwijderActievePartij;
-window.genereerWatchPin = genereerWatchPin; // v3.0.0-11.77
 
 
 window.toggleTSpelersLadder = toggleTSpelersLadder;
@@ -259,7 +258,7 @@ window.toggleTRankingLadder = toggleTRankingLadder;
 // Bij mismatch: sla partijformulier op in sessionStorage → hard reload.
 // Werkt ook als de app uren open staat als PWA zonder herstart.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v3.0.0-11.77';
+  const LOKALE_VERSIE = 'v3.0.0-11.79';
   let _versieCheckBezig = false;
   let _updateGepland    = false;
 
