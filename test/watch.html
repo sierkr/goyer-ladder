@@ -17,16 +17,15 @@
   .screen{flex:1;display:flex;flex-direction:column;overflow:hidden}
   .hidden{display:none!important}
 
-  /* ── Login ── */
-  #screen-login{justify-content:center;align-items:center;gap:14px;padding:20px;overflow-y:auto}
-  #screen-login h1{font-size:18px;font-weight:600}
-  #screen-login p{font-size:12px;color:#8e8e93;text-align:center}
-  .w-input{background:#1c1c1e;border:1px solid #3a3a3c;border-radius:10px;color:#fff;font-size:15px;padding:12px 14px;width:100%;outline:none}
-  .w-input::placeholder{color:#636366}
+  /* ── Code invoer ── */
+  #screen-login{justify-content:center;align-items:center;gap:16px;padding:20px}
+  #screen-login h1{font-size:16px;font-weight:600;text-align:center}
+  #screen-login p{font-size:11px;color:#8e8e93;text-align:center}
+  .code-input{background:#1c1c1e;border:2px solid #3a3a3c;border-radius:14px;color:#fff;font-size:32px;font-weight:700;letter-spacing:8px;padding:14px 10px;width:100%;outline:none;text-align:center;font-family:-apple-system,monospace}
+  .code-input:focus{border-color:#1a5c38}
   .w-btn{background:#1a5c38;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;padding:13px;width:100%;cursor:pointer}
   .w-btn:active{opacity:.75}
-  .w-btn.secondary{background:#2c2c2e;color:#8e8e93}
-  #login-error{font-size:12px;color:#ff453a;text-align:center;min-height:16px}
+  #login-error{font-size:11px;color:#ff453a;text-align:center;min-height:16px}
 
   /* ── Geen partij ── */
   #screen-leeg{justify-content:center;align-items:center;gap:12px;padding:20px;text-align:center}
@@ -84,11 +83,10 @@
 
   <div id="screen-login" class="screen hidden">
     <h1>⛳ Golf Score</h1>
-    <p>Log in om je scores in te vullen</p>
-    <input class="w-input" id="inp-user" type="text" placeholder="Gebruikersnaam" autocomplete="username" autocapitalize="none">
-    <input class="w-input" id="inp-pass" type="password" placeholder="Wachtwoord" autocomplete="current-password">
+    <p>Vul de 4-cijferige code in<br>die je ziet in de Ronde tab</p>
+    <input class="code-input" id="inp-code" type="number" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="0000" autocomplete="off">
     <div id="login-error"></div>
-    <button class="w-btn" onclick="doLogin()">Inloggen</button>
+    <button class="w-btn" onclick="doLogin()">Ga naar partij</button>
   </div>
 
   <div id="screen-leeg" class="screen hidden">
@@ -124,8 +122,6 @@
 </div>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut }
-  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, getDocs, onSnapshot, doc, setDoc, getDoc }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
@@ -137,12 +133,10 @@ const firebaseConfig = {
   messagingSenderId: "124116031872",
   appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
 };
-const EMAIL_SUFFIX = '@MPladder.stb';
-const app  = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db   = getFirestore(app);
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
 
-let huidigUid = null, actievePartij = null, ladderId = null;
+let actievePartij = null, ladderId = null;
 let holeIdx = 0, ladderUnsub = null;
 
 function kortNaam(naam) {
@@ -170,64 +164,72 @@ function toonScore() { toon('screen-score'); renderScoreScherm(); }
 function toonStand() { toon('screen-stand'); renderStandScherm(); }
 
 window.doLogin = async function() {
-  const user = document.getElementById('inp-user').value.trim();
-  const pass = document.getElementById('inp-pass').value;
+  const code = String(document.getElementById('inp-code').value).trim();
   const errEl = document.getElementById('login-error');
   errEl.textContent = '';
-  if (!user||!pass) { errEl.textContent='Vul gebruikersnaam en wachtwoord in'; return; }
-  const email = user.includes('@') ? user : user+EMAIL_SUFFIX;
-  try { await signInWithEmailAndPassword(auth, email, pass); }
-  catch(e) { errEl.textContent='Inloggen mislukt — controleer je gegevens'; }
-};
-window.doLogout = async function() {
-  if (ladderUnsub) { ladderUnsub(); ladderUnsub=null; }
-  await signOut(auth);
-};
-
-onAuthStateChanged(auth, async user => {
-  if (!user) {
-    huidigUid=null; actievePartij=null;
-    if (ladderUnsub) { ladderUnsub(); ladderUnsub=null; }
-    toon('screen-login'); return;
-  }
-  huidigUid = user.uid;
-  startLadderListener();
-});
-
-async function startLadderListener() {
-  toon('screen-loading');
-  if (ladderUnsub) { ladderUnsub(); ladderUnsub=null; }
+  if (code.length !== 4 || isNaN(code)) { errEl.textContent='Vul een 4-cijferige code in'; return; }
+  // Zoek partij met deze code in alle ladders
   const snap = await getDocs(collection(db,'ladders'));
-  const ladderIds = snap.docs.map(d=>d.id);
-  const partijMap = new Map();
+  let gevonden = null, gevondenLid = null;
+  for (const ladderDoc of snap.docs) {
+    const partijen = ladderDoc.data().actievePartijen || [];
+    const match = partijen.find(p => p.partijCode === code);
+    if (match) { gevonden = match; gevondenLid = ladderDoc.id; break; }
+  }
+  if (!gevonden) { errEl.textContent='Code niet gevonden — controleer de Ronde tab'; return; }
+  // Sla op in sessionStorage zodat refresh werkt
+  sessionStorage.setItem('watchCode', code);
+  actievePartij = gevonden;
+  ladderId = gevondenLid;
+  holeIdx = 0;
+  startCodeListener(code);
+  toonScore();
+};
+
+// Herstel sessie bij refresh
+const opgeslagenCode = sessionStorage.getItem('watchCode');
+if (opgeslagenCode) {
+  toon('screen-loading');
+  // Zoek partij opnieuw op basis van opgeslagen code
+  getDocs(collection(db,'ladders')).then(snap => {
+    let gevonden=null, gevLid=null;
+    for (const d of snap.docs) {
+      const match=(d.data().actievePartijen||[]).find(p=>p.partijCode===opgeslagenCode);
+      if(match){gevonden=match;gevLid=d.id;break;}
+    }
+    if(gevonden){actievePartij=gevonden;ladderId=gevLid;startCodeListener(opgeslagenCode);toonScore();}
+    else{sessionStorage.removeItem('watchCode');toon('screen-login');}
+  }).catch(()=>toon('screen-login'));
+} else {
+  toon('screen-login');
+}
+
+function startCodeListener(code) {
+  if (ladderUnsub) { ladderUnsub(); ladderUnsub=null; }
   const unsubscribers = [];
-
-  function evalueer() {
-    let gevPartij=null, gevLid=null;
-    for (const [lid,partijen] of partijMap.entries()) {
-      const match = partijen.find(p=>(p.spelers||[]).some(s=>s.uid===huidigUid));
-      if (match) { gevPartij=match; gevLid=lid; break; }
+  getDocs(collection(db,'ladders')).then(snap => {
+    for (const d of snap.docs) {
+      const lid = d.id;
+      const unsub = onSnapshot(doc(db,'ladders',lid), s => {
+        if (!s.exists()) return;
+        const partijen = s.data().actievePartijen || [];
+        const match = partijen.find(p => p.partijCode === code);
+        if (match) {
+          actievePartij = match; ladderId = lid;
+          const actief = document.getElementById('screen-score');
+          if (!actief || actief.classList.contains('hidden')) toonScore();
+          else renderScoreScherm();
+        } else if (ladderId === lid) {
+          // Partij afgelopen
+          sessionStorage.removeItem('watchCode');
+          actievePartij = null; ladderId = null;
+          toon('screen-leeg');
+        }
+      });
+      unsubscribers.push(unsub);
     }
-    if (gevPartij) {
-      const wasLeeg = !actievePartij;
-      actievePartij=gevPartij; ladderId=gevLid;
-      if (wasLeeg) holeIdx=0;
-      toonScore();
-    } else {
-      actievePartij=null; ladderId=null;
-      toon('screen-leeg');
-    }
-  }
-
-  for (const lid of ladderIds) {
-    const unsub = onSnapshot(doc(db,'ladders',lid), s => {
-      if (!s.exists()) return;
-      partijMap.set(lid, s.data().actievePartijen||[]);
-      evalueer();
-    });
-    unsubscribers.push(unsub);
-  }
-  ladderUnsub = () => unsubscribers.forEach(u=>u());
+    ladderUnsub = () => unsubscribers.forEach(u=>u());
+  });
 }
 
 function renderScoreScherm() {
@@ -339,6 +341,12 @@ function renderStandScherm() {
   });
 }
 
+window.doLogout = function() {
+  if (ladderUnsub) { ladderUnsub(); ladderUnsub=null; }
+  sessionStorage.removeItem('watchCode');
+  actievePartij=null; ladderId=null;
+  toon('screen-login');
+};
 window.toonScore = toonScore;
 window.toonStand = toonStand;
 </script>
