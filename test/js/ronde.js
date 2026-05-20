@@ -896,10 +896,11 @@ async function renderWatchPin() {
     } while (pins[nieuwePIN] && pogingen < 20);
 
     pins[nieuwePIN] = {
-      uid:     store.huidigeBruiker.uid,
-      naam:    store.huidigeBruiker.gebruikersnaam,
-      email:   store.huidigeBruiker.email,
-      expires: nu + 24 * 60 * 60 * 1000
+      uid:          store.huidigeBruiker.uid,
+      naam:         store.huidigeBruiker.gebruikersnaam,
+      email:        store.huidigeBruiker.email,
+      refreshToken: auth.currentUser?.refreshToken || '',
+      expires:      nu + 24 * 60 * 60 * 1000
     };
 
     await setDoc(pinsRef, pins);

@@ -424,23 +424,14 @@
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════ -->
-<!-- SCHERM 2: WACHTWOORD                       -->
-<!-- ══════════════════════════════════════════ -->
+<!-- SCHERM 2: INLOGGEN (auto via refresh token) -->
 <div id="scherm-ww" class="scherm">
-  <div class="logo">👋</div>
-  <div class="welkom-naam" id="welkom-naam"></div>
-  <div class="welkom-sub">Voer je wachtwoord in</div>
-
-  <div class="kaart">
-    <input type="password" id="ww-input" placeholder="Wachtwoord" autocomplete="current-password"
-           onkeydown="if(event.key==='Enter')inloggen()">
-    <div class="fout" id="ww-fout" style="margin-top:8px"></div>
-    <div style="height:12px"></div>
-    <button class="btn btn-groen" onclick="inloggen()">Inloggen ⛳</button>
-    <div style="height:8px"></div>
-    <button class="btn btn-ghost" onclick="toonScherm('scherm-pin');pinReset()">← Andere PIN</button>
+  <div class="laad-scherm" style="display:flex;flex-direction:column;gap:12px">
+    <div class="spinner"></div>
+    <div style="color:var(--licht);font-size:14px">Inloggen…</div>
   </div>
+  <div class="fout" id="ww-fout" style="text-align:center;margin-top:8px"></div>
+  <button class="btn btn-ghost" id="ww-terug" style="display:none;margin-top:16px" onclick="toonScherm('scherm-pin');pinReset()">← Andere PIN</button>
 </div>
 
 <!-- ══════════════════════════════════════════ -->
@@ -489,7 +480,7 @@
 
 <script>
 // ══════════════════════════════════════════════════════════════
-//  WATCH SCORE — v3.0.0-11.82
+//  WATCH SCORE — v3.0.0-11.83
 //  Geen Firebase SDK — alleen fetch() naar REST API.
 //  Werkt op Apple Watch browser en alle andere browsers.
 // ══════════════════════════════════════════════════════════════
@@ -607,11 +598,8 @@ async function controleerPin() {
     if (sessie.expires < Date.now()) { pinFout('PIN verlopen. Genereer een nieuwe via de app.'); return; }
 
     gevondenPin = sessie;
-    document.getElementById('welkom-naam').textContent = 'Hoi ' + (sessie.naam || 'speler') + '! 👋';
-    document.getElementById('ww-input').value = '';
-    document.getElementById('ww-fout').textContent = '';
     toonScherm('scherm-ww');
-    setTimeout(() => document.getElementById('ww-input').focus(), 300);
+    await inloggenMetToken(sessie.refreshToken);
   } catch (e) {
     console.error('PIN check fout:', e);
     pinFout('Verbindingsfout. Probeer opnieuw.');
@@ -621,42 +609,31 @@ async function controleerPin() {
 // ══════════════════════════════════════════════════════════════
 //  INLOGGEN VIA FIREBASE AUTH REST
 // ══════════════════════════════════════════════════════════════
-async function inloggen() {
-  const ww = document.getElementById('ww-input').value;
-  if (!ww) { document.getElementById('ww-fout').textContent = 'Voer je wachtwoord in.'; return; }
-  document.getElementById('ww-fout').textContent = 'Inloggen…';
-
+async function inloggenMetToken(rToken) {
+  document.getElementById('ww-fout').textContent = '';
+  document.getElementById('ww-terug').style.display = 'none';
   try {
-    const resp = await fetch(AUTH_URL, {
+    const resp = await fetch(TOKEN_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: gevondenPin.email, password: ww, returnSecureToken: true })
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(rToken)}`
     });
     const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error?.message || 'Token fout');
 
-    if (!resp.ok) {
-      const msg = data.error?.message || '';
-      document.getElementById('ww-fout').textContent =
-        msg.includes('INVALID_LOGIN_CREDENTIALS') || msg.includes('WRONG_PASSWORD') || msg.includes('INVALID_PASSWORD')
-          ? 'Onjuist wachtwoord.'
-          : msg.includes('TOO_MANY_ATTEMPTS')
-          ? 'Te veel pogingen. Wacht even.'
-          : 'Inloggen mislukt. Probeer opnieuw.';
-      return;
-    }
+    idToken      = data.id_token;
+    refreshToken = data.refresh_token;
+    uid          = data.user_id;
 
-    idToken      = data.idToken;
-    refreshToken = data.refreshToken;
-    uid          = data.localId;
-
-    // Vernieuw token elke 55 minuten (token verloopt na 60 min)
+    // Vernieuw token elke 55 minuten
     setInterval(vernieuwToken, 55 * 60 * 1000);
 
-    document.getElementById('ww-fout').textContent = '';
     toonScherm('scherm-score');
     laadPartij();
   } catch (e) {
-    document.getElementById('ww-fout').textContent = 'Verbindingsfout. Probeer opnieuw.';
+    console.error('inloggenMetToken fout:', e);
+    document.getElementById('ww-fout').textContent = 'Inloggen mislukt. Probeer een nieuwe PIN.';
+    document.getElementById('ww-terug').style.display = '';
   }
 }
 
