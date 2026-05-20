@@ -18,10 +18,10 @@
   .hidden{display:none!important}
 
   /* ── Code invoer ── */
-  #screen-login{justify-content:center;align-items:center;gap:16px;padding:20px}
+  #screen-login{justify-content:center;align-items:center;gap:12px;padding:16px 20px}
   #screen-login h1{font-size:16px;font-weight:600;text-align:center}
   #screen-login p{font-size:11px;color:#8e8e93;text-align:center}
-  .code-input{background:#1c1c1e;border:2px solid #3a3a3c;border-radius:14px;color:#fff;font-size:32px;font-weight:700;letter-spacing:8px;padding:14px 10px;width:100%;outline:none;text-align:center;font-family:-apple-system,monospace}
+  .code-input{background:#1c1c1e;border:2px solid #3a3a3c;border-radius:14px;color:#fff;font-size:28px;font-weight:700;letter-spacing:6px;padding:10px 8px;width:100%;outline:none;text-align:center;font-family:-apple-system,monospace}
   .code-input:focus{border-color:#1a5c38}
   .w-btn{background:#1a5c38;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;padding:13px;width:100%;cursor:pointer}
   .w-btn:active{opacity:.75}
@@ -122,6 +122,8 @@
 </div>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, signInAnonymously }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, collection, getDocs, onSnapshot, doc, setDoc, getDoc }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
@@ -133,11 +135,15 @@ const firebaseConfig = {
   messagingSenderId: "124116031872",
   appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
 };
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
+const app  = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db   = getFirestore(app);
 
 let actievePartij = null, ladderId = null;
 let holeIdx = 0, ladderUnsub = null;
+
+// Anoniem inloggen zodat Firestore leesbaar is
+signInAnonymously(auth).catch(e => console.warn('anon auth:', e));
 
 function kortNaam(naam) {
   if (!naam) return '?';
@@ -169,7 +175,14 @@ window.doLogin = async function() {
   errEl.textContent = '';
   if (code.length !== 4 || isNaN(code)) { errEl.textContent='Vul een 4-cijferige code in'; return; }
   // Zoek partij met deze code in alle ladders
-  const snap = await getDocs(collection(db,'ladders'));
+  let snap;
+  try {
+    snap = await getDocs(collection(db,'ladders'));
+  } catch(e) {
+    errEl.textContent='Verbindingsfout — probeer opnieuw';
+    console.warn('getDocs fout:', e);
+    return;
+  }
   let gevonden = null, gevondenLid = null;
   for (const ladderDoc of snap.docs) {
     const partijen = ladderDoc.data().actievePartijen || [];
