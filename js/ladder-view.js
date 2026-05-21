@@ -63,14 +63,19 @@ export function getLadderSpelers(ladderId) {
       // standenMap kan nog leeg zijn (listener nog niet gefired) — gebruik nullsafe defaults
       const stand = standenMap[uid] || { rank: 0, partijen: 0, gewonnen: 0 };
       resultaat.push({
-        id:       profiel.id ?? uid,
-        uid:      uid,
-        naam:     profiel.naam,
-        hcp:      profiel.hcp ?? 0,
-        rank:     stand.rank     || 0,
-        partijen: stand.partijen || 0,
-        gewonnen: stand.gewonnen || 0,
-        prevRank: stand.prevRank ?? null,
+        id:                    profiel.id ?? uid,
+        uid:                   uid,
+        naam:                  profiel.naam,
+        hcp:                   profiel.hcp ?? 0,
+        rank:                  stand.rank     || 0,
+        partijen:              stand.partijen || 0,
+        gewonnen:              stand.gewonnen || 0,
+        prevRank:              stand.prevRank ?? null,
+        // Activiteitsvelden
+        inactieveWeken:        stand.inactieveWeken ?? null,
+        maandPartijen:         stand.maandPartijen  ?? 0,
+        uniekeTegenstanderIds: stand.uniekeTegenstanderIds ?? [],
+        laatstGespeeld:        stand.laatstGespeeld ?? null,
       });
     }
     return resultaat.sort((a, b) => (a.rank || 999) - (b.rank || 999));

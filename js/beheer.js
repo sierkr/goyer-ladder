@@ -112,6 +112,26 @@ function openLadderInstellingen(ladderId) {
     document.getElementById('cfg-drempel-wrap').style.display = this.checked ? 'block' : 'none';
   };
 
+  // Activiteitssysteem
+  const inactiviteitAan = cfg.inactiviteitAan ?? true;
+  document.getElementById('cfg-inactiviteit-aan').checked = inactiviteitAan;
+  document.getElementById('cfg-inactiviteit-wrap').style.display = inactiviteitAan ? 'block' : 'none';
+  document.getElementById('cfg-inactiviteit-drempel').value = cfg.inactiviteitDrempelWeken ?? 3;
+  document.getElementById('cfg-inactiviteit-aan').onchange = function() {
+    document.getElementById('cfg-inactiviteit-wrap').style.display = this.checked ? 'block' : 'none';
+  };
+
+  const frequentieAan = cfg.frequentieBonusAan ?? true;
+  document.getElementById('cfg-frequentie-aan').checked = frequentieAan;
+  document.getElementById('cfg-frequentie-wrap').style.display = frequentieAan ? 'block' : 'none';
+  document.getElementById('cfg-frequentie-partijen').value = cfg.frequentieBonusPartijen ?? 3;
+  document.getElementById('cfg-frequentie-aan').onchange = function() {
+    document.getElementById('cfg-frequentie-wrap').style.display = this.checked ? 'block' : 'none';
+  };
+
+  document.getElementById('cfg-diversiteit-aan').checked = cfg.diversiteitsBonusAan ?? true;
+  document.getElementById('cfg-icoon-aan').checked = cfg.icoonAan ?? true;
+
   document.getElementById('modal-ladder-instellingen').classList.add('open');
 }
 
@@ -127,7 +147,14 @@ async function slaLadderInstellingenOp() {
     hoogStijg: parseInt(document.getElementById('cfg-hoog-stijg').value) || 1,
     hoogZak: parseInt(document.getElementById('cfg-hoog-zak').value) || 1,
     verliezerNaarWinnaar: document.getElementById('cfg-verliezer-naar-winnaar').checked,
-    drempel: parseInt(document.getElementById('cfg-drempel').value) || 4
+    drempel: parseInt(document.getElementById('cfg-drempel').value) || 4,
+    // Activiteitssysteem
+    inactiviteitAan: document.getElementById('cfg-inactiviteit-aan').checked,
+    inactiviteitDrempelWeken: parseInt(document.getElementById('cfg-inactiviteit-drempel').value) || 3,
+    frequentieBonusAan: document.getElementById('cfg-frequentie-aan').checked,
+    frequentieBonusPartijen: parseInt(document.getElementById('cfg-frequentie-partijen').value) || 3,
+    diversiteitsBonusAan: document.getElementById('cfg-diversiteit-aan').checked,
+    icoonAan: document.getElementById('cfg-icoon-aan').checked,
   };
 
   

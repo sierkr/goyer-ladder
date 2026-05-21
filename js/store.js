@@ -82,8 +82,16 @@ export let _toernooiListeners = [];
 
 // ─── Ladder config ───────────────────────────────────────────
 export const DEFAULT_LADDER_CONFIG = {
+  // Basis ranking
   laagStijg: 4, laagZak: 2, hoogStijg: 1, hoogZak: 1,
-  verliezerNaarWinnaar: false, drempel: 4
+  verliezerNaarWinnaar: false, drempel: 4,
+  // Activiteitssysteem
+  inactiviteitAan: true,
+  inactiviteitDrempelWeken: 3,      // pas na hoeveel weken begint decay
+  frequentieBonusAan: true,
+  frequentieBonusPartijen: 3,       // min. partijen/maand voor +1 plek bonus
+  diversiteitsBonusAan: true,
+  icoonAan: true,
 };
 
 // ─── Aangepaste banen ───────────────────────────────────────

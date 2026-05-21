@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Watch Score">
+  <title>⛳ Watch Score</title>
+  <style>
+    :root {
+      --groen: #2d6a4f;
+      --groen-licht: #40916c;
+      --groen-pale: #d8f3dc;
+      --rood: #c0392b;
+      --bg: #f5f3ee;
+      --wit: #ffffff;
+      --donker: #1a1a1a;
+      --mid: #555;
+      --licht: #999;
+      --rand: #e0ddd4;
+      --radius: 14px;
+      --shadow: 0 2px 12px rgba(0,0,0,0.10);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      font-family: -apple-system, 'SF Pro Display', sans-serif;
+      color: var(--donker);
+      overscroll-behavior: none;
+    }
+
+    /* ── Schermen ─────────────────────────────── */
+    .scherm {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100dvh;
+      padding: 20px 16px;
+      gap: 16px;
+    }
+    .scherm.actief { display: flex; }
+
+    /* ── Logo / header ────────────────────────── */
+    .logo { font-size: 40px; margin-bottom: 4px; }
+    .app-titel { font-size: 22px; font-weight: 700; color: var(--groen); letter-spacing: -0.5px; }
+    .app-sub { font-size: 13px; color: var(--licht); }
+
+    /* ── Kaart ────────────────────────────────── */
+    .kaart {
+      background: var(--wit);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px;
+      width: 100%;
+      max-width: 340px;
+    }
+    .kaart-titel { font-size: 13px; font-weight: 600; color: var(--licht); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+
+    /* ── PIN display ──────────────────────────── */
+    .pin-display {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .pin-dot {
+      width: 52px;
+      height: 60px;
+      border: 2px solid var(--rand);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      font-weight: 700;
+      font-family: 'SF Mono', monospace;
+      color: var(--groen);
+      background: var(--bg);
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .pin-dot.actief { border-color: var(--groen); background: var(--groen-pale); }
+
+    /* ── Numpad ───────────────────────────────── */
+    .numpad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .num-btn {
+      height: 60px;
+      border: none;
+      border-radius: 12px;
+      background: var(--bg);
+      font-size: 22px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.1s, transform 0.1s;
+      color: var(--donker);
+      border: 1.5px solid var(--rand);
+    }
+    .num-btn:active { background: var(--groen-pale); transform: scale(0.95); border-color: var(--groen); }
+    .num-btn.nul { grid-column: 2; }
+    .num-btn.wis { background: #fef3f2; border-color: #fca5a5; color: var(--rood); }
+    .num-btn.wis:active { background: #fee2e2; }
+
+    /* ── Foutmelding ──────────────────────────── */
+    .fout {
+      font-size: 13px;
+      color: var(--rood);
+      text-align: center;
+      min-height: 18px;
+      font-weight: 500;
+    }
+
+    /* ── Wachtwoord inlog ─────────────────────── */
+    .welkom-naam {
+      font-size: 20px;
+      font-weight: 700;
+      text-align: center;
+      color: var(--groen);
+    }
+    .welkom-sub { font-size: 13px; color: var(--licht); text-align: center; margin-bottom: 4px; }
+
+    input[type="password"], input[type="text"], input[type="number"] {
+      width: 100%;
+      height: 52px;
+      border: 2px solid var(--rand);
+      border-radius: 10px;
+      font-size: 18px;
+      padding: 0 14px;
+      background: var(--bg);
+      color: var(--donker);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus { border-color: var(--groen); }
+
+    /* ── Knoppen ──────────────────────────────── */
+    .btn {
+      width: 100%;
+      height: 54px;
+      border: none;
+      border-radius: 12px;
+      font-size: 17px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:active { opacity: 0.8; transform: scale(0.98); }
+    .btn-groen { background: var(--groen); color: #fff; }
+    .btn-ghost { background: transparent; color: var(--licht); font-size: 14px; height: 40px; }
+    .btn-grijs { background: var(--rand); color: var(--mid); }
+
+    /* ── Score scherm header ──────────────────── */
+    .score-header {
+      background: var(--groen);
+      color: #fff;
+      padding: 14px 16px 12px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .hole-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .hole-nav-btn {
+      width: 44px;
+      height: 44px;
+      border: none;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+      font-size: 22px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.1s;
+    }
+    .hole-nav-btn:active { background: rgba(255,255,255,0.35); }
+    .hole-nav-btn:disabled { opacity: 0.25; cursor: default; }
+    .hole-info { text-align: center; flex: 1; }
+    .hole-nummer { font-size: 26px; font-weight: 800; line-height: 1; }
+    .hole-meta { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+
+    /* ── Score rijen ──────────────────────────── */
+    .score-lijst {
+      padding: 12px 12px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .score-rij {
+      background: var(--wit);
+      border-radius: 12px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .score-naam {
+      flex: 1;
+      font-size: 17px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .score-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .score-btn {
+      width: 42px;
+      height: 42px;
+      border: none;
+      border-radius: 10px;
+      font-size: 22px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.1s, transform 0.1s;
+      user-select: none;
+    }
+    .score-btn:active { transform: scale(0.92); }
+    .score-btn-min { background: #fef3f2; color: var(--rood); border: 1.5px solid #fca5a5; }
+    .score-btn-min:active { background: #fee2e2; }
+    .score-btn-plus { background: var(--groen-pale); color: var(--groen); border: 1.5px solid #95d5b2; }
+    .score-btn-plus:active { background: #b7e4c7; }
+    .score-waarde {
+      width: 38px;
+      text-align: center;
+      font-size: 22px;
+      font-weight: 800;
+      font-family: 'SF Mono', monospace;
+      color: var(--donker);
+    }
+    .score-waarde.leeg { color: var(--licht); font-size: 18px; }
+
+    /* Kleuren per score t.o.v. par */
+    .score-eagle { color: #d4a017; }
+    .score-birdie { color: var(--groen); }
+    .score-par { color: var(--donker); }
+    .score-bogey { color: #e67e22; }
+    .score-dubbel { color: var(--rood); }
+
+    /* ── Stand sectie ─────────────────────────── */
+    .stand-sectie {
+      padding: 12px;
+    }
+    .stand-titel {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--licht);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      padding-left: 2px;
+    }
+    .matchup-kaart {
+      background: var(--wit);
+      border-radius: 12px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      margin-bottom: 6px;
+    }
+    .matchup-speler {
+      flex: 1;
+      font-size: 14px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .matchup-speler.winnaar { font-weight: 700; color: var(--groen); }
+    .matchup-score {
+      flex-shrink: 0;
+      text-align: center;
+      min-width: 70px;
+    }
+    .matchup-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      background: var(--bg);
+      color: var(--mid);
+    }
+    .matchup-badge.leidt { background: var(--groen-pale); color: var(--groen); }
+    .matchup-sub { font-size: 10px; color: var(--licht); margin-top: 2px; }
+
+    /* ── Totaal balk ──────────────────────────── */
+    .totaal-balk {
+      background: var(--wit);
+      border-radius: 12px;
+      margin: 0 12px 12px;
+      padding: 10px 14px;
+      display: flex;
+      gap: 0;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .totaal-cel {
+      flex: 1;
+      text-align: center;
+      padding: 4px 0;
+    }
+    .totaal-naam { font-size: 10px; color: var(--licht); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; }
+    .totaal-getal { font-size: 18px; font-weight: 800; font-family: 'SF Mono', monospace; color: var(--donker); }
+    .totaal-cel + .totaal-cel { border-left: 1px solid var(--rand); }
+
+    /* ── Afmelden btn ─────────────────────────── */
+    .uitloggen-btn {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      background: var(--wit);
+      border: 1.5px solid var(--rand);
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 12px;
+      color: var(--licht);
+      cursor: pointer;
+      box-shadow: var(--shadow);
+    }
+    .uitloggen-btn:active { background: var(--bg); }
+
+    /* ── Laadindicator ────────────────────────── */
+    .laad-scherm {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 40px;
+    }
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid var(--rand);
+      border-top-color: var(--groen);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Geen partij ──────────────────────────── */
+    .geen-partij {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--licht);
+    }
+    .geen-partij .icon { font-size: 48px; margin-bottom: 12px; }
+    .geen-partij p { font-size: 15px; line-height: 1.5; }
+
+    /* ── Score scherm wrapper ─────────────────── */
+    #scherm-score {
+      display: none;
+      flex-direction: column;
+      min-height: 100dvh;
+      padding-bottom: 60px;
+    }
+    #scherm-score.actief { display: flex; }
+
+    /* Touch swipe hint */
+    .swipe-hint {
+      text-align: center;
+      font-size: 11px;
+      color: var(--licht);
+      padding: 6px 0 2px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- SCHERM 1: PIN INVOER                       -->
+<!-- ══════════════════════════════════════════ -->
+<div id="scherm-pin" class="scherm actief">
+  <div class="logo">⛳</div>
+  <div class="app-titel">Watch Score</div>
+  <div class="app-sub">Voer je 4-cijferige PIN in</div>
+
+  <div class="kaart">
+    <div class="pin-display">
+      <div class="pin-dot" id="dot-0"></div>
+      <div class="pin-dot" id="dot-1"></div>
+      <div class="pin-dot" id="dot-2"></div>
+      <div class="pin-dot" id="dot-3"></div>
+    </div>
+
+    <div class="numpad">
+      <button class="num-btn" onclick="pinTik('1')">1</button>
+      <button class="num-btn" onclick="pinTik('2')">2</button>
+      <button class="num-btn" onclick="pinTik('3')">3</button>
+      <button class="num-btn" onclick="pinTik('4')">4</button>
+      <button class="num-btn" onclick="pinTik('5')">5</button>
+      <button class="num-btn" onclick="pinTik('6')">6</button>
+      <button class="num-btn" onclick="pinTik('7')">7</button>
+      <button class="num-btn" onclick="pinTik('8')">8</button>
+      <button class="num-btn" onclick="pinTik('9')">9</button>
+      <button class="num-btn nul" onclick="pinTik('0')">0</button>
+      <button class="num-btn wis" onclick="pinWis()">⌫</button>
+    </div>
+
+    <div class="fout" id="pin-fout"></div>
+  </div>
+</div>
+
+<!-- SCHERM 2: INLOGGEN (auto via refresh token) -->
+<div id="scherm-ww" class="scherm">
+  <div class="laad-scherm" style="display:flex;flex-direction:column;gap:12px">
+    <div class="spinner"></div>
+    <div style="color:var(--licht);font-size:14px">Inloggen…</div>
+  </div>
+  <div class="fout" id="ww-fout" style="text-align:center;margin-top:8px"></div>
+  <button class="btn btn-ghost" id="ww-terug" style="display:none;margin-top:16px" onclick="toonScherm('scherm-pin');pinReset()">← Andere PIN</button>
+</div>
+
+<!-- ══════════════════════════════════════════ -->
+<!-- SCHERM 3: SCORE (hole-voor-hole)           -->
+<!-- ══════════════════════════════════════════ -->
+<div id="scherm-score">
+  <!-- Sticky header met hole navigatie -->
+  <div class="score-header">
+    <div class="hole-nav">
+      <button class="hole-nav-btn" id="btn-vorige" onclick="gaNaarHole(huidigHole - 1)">‹</button>
+      <div class="hole-info">
+        <div class="hole-nummer" id="hole-nummer">—</div>
+        <div class="hole-meta" id="hole-meta">—</div>
+      </div>
+      <button class="hole-nav-btn" id="btn-volgende" onclick="gaNaarHole(huidigHole + 1)">›</button>
+    </div>
+    <div class="swipe-hint" id="swipe-hint"></div>
+  </div>
+
+  <!-- Scores per speler -->
+  <div class="score-lijst" id="score-lijst"></div>
+
+  <!-- Totalen -->
+  <div style="padding: 10px 12px 4px; font-size:11px; color:var(--licht); text-transform:uppercase; letter-spacing:0.5px; font-weight:600;">Totaal</div>
+  <div class="totaal-balk" id="totaal-balk"></div>
+
+  <!-- Onderlinge stand -->
+  <div class="stand-sectie">
+    <div class="stand-titel">Onderlinge stand</div>
+    <div id="stand-container"></div>
+  </div>
+
+  <!-- Laad/geen partij -->
+  <div class="laad-scherm" id="laad-scherm" style="display:none">
+    <div class="spinner"></div>
+    <div style="color:var(--licht);font-size:14px">Partij laden…</div>
+  </div>
+  <div class="geen-partij" id="geen-partij" style="display:none">
+    <div class="icon">🏌️</div>
+    <p>Je hebt geen actieve partij.<br>Start een partij via de ladder app.</p>
+  </div>
+
+  <button class="uitloggen-btn" onclick="uitloggen()">Uitloggen</button>
+</div>
+
+
+<script>
+// ══════════════════════════════════════════════════════════════
+//  WATCH SCORE — v3.0.0-11.86
+//  Geen Firebase SDK — alleen fetch() naar REST API.
+//  Werkt op Apple Watch browser en alle andere browsers.
+// ══════════════════════════════════════════════════════════════
+
+const API_KEY   = 'AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens';
+const PROJECT   = 'goyer-golf-mp-ladder';
+const FS        = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`;
+const AUTH_URL  = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`;
+const TOKEN_URL = `https://securetoken.googleapis.com/v1/token?key=${API_KEY}`;
+
+// ── STATE ────────────────────────────────────────────────────
+let idToken      = null;
+let refreshToken = null;
+let uid          = null;
+let partij       = null;
+let ladderId     = null;
+let allePartijen = [];
+let huidigHole   = 0;
+let gevondenPin  = null;
+let pinWaarde    = '';
+let pollingTimer = null;
+
+// ══════════════════════════════════════════════════════════════
+//  FIRESTORE WAARDE CONVERTERS
+// ══════════════════════════════════════════════════════════════
+function fsVal(v) {
+  if (v === null || v === undefined) return { nullValue: null };
+  if (typeof v === 'string')  return { stringValue: v };
+  if (typeof v === 'boolean') return { booleanValue: v };
+  if (typeof v === 'number')  return Number.isInteger(v)
+    ? { integerValue: String(v) }
+    : { doubleValue: v };
+  if (Array.isArray(v)) return { arrayValue: { values: v.map(fsVal) } };
+  if (typeof v === 'object') return {
+    mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k, val]) => [k, fsVal(val)])) }
+  };
+  return { nullValue: null };
+}
+
+function fromFsVal(v) {
+  if (!v) return null;
+  if ('stringValue'  in v) return v.stringValue;
+  if ('integerValue' in v) return parseInt(v.integerValue);
+  if ('doubleValue'  in v) return v.doubleValue;
+  if ('booleanValue' in v) return v.booleanValue;
+  if ('nullValue'    in v) return null;
+  if ('arrayValue'   in v) return (v.arrayValue.values || []).map(fromFsVal);
+  if ('mapValue'     in v) return fromFsMap(v.mapValue.fields || {});
+  return null;
+}
+
+function fromFsMap(fields) {
+  const obj = {};
+  for (const [k, v] of Object.entries(fields || {})) obj[k] = fromFsVal(v);
+  return obj;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SCHERM NAVIGATIE
+// ══════════════════════════════════════════════════════════════
+function toonScherm(id) {
+  document.querySelectorAll('.scherm, #scherm-score').forEach(s => s.classList.remove('actief'));
+  document.getElementById(id).classList.add('actief');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  PIN LOGICA
+// ══════════════════════════════════════════════════════════════
+function pinTik(cijfer) {
+  if (pinWaarde.length >= 4) return;
+  pinWaarde += cijfer;
+  pinDisplay();
+  if (pinWaarde.length === 4) setTimeout(controleerPin, 120);
+}
+
+function pinWis() {
+  if (pinWaarde.length === 0) return;
+  pinWaarde = pinWaarde.slice(0, -1);
+  pinDisplay();
+  document.getElementById('pin-fout').textContent = '';
+}
+
+function pinReset() {
+  pinWaarde = '';
+  pinDisplay();
+  document.getElementById('pin-fout').textContent = '';
+}
+
+function pinDisplay() {
+  for (let i = 0; i < 4; i++) {
+    const dot = document.getElementById('dot-' + i);
+    dot.textContent = pinWaarde[i] || '';
+    dot.classList.toggle('actief', i < pinWaarde.length);
+  }
+}
+
+function pinFout(tekst) {
+  document.getElementById('pin-fout').textContent = tekst;
+  pinWaarde = '';
+  pinDisplay();
+}
+
+async function controleerPin() {
+  document.getElementById('pin-fout').textContent = '';
+  try {
+    // Publieke read — geen auth token nodig
+    const resp = await fetch(`${FS}/ladder/watchPins?key=${API_KEY}`);
+    const data = await resp.json();
+    if (!resp.ok) { pinFout('Kon PIN niet controleren. Probeer opnieuw.'); return; }
+
+    const pins = fromFsMap(data.fields || {});
+    const sessie = pins[pinWaarde];
+
+    if (!sessie) { pinFout('Ongeldige PIN. Probeer opnieuw.'); return; }
+    if (sessie.expires < Date.now()) { pinFout('PIN verlopen. Genereer een nieuwe via de app.'); return; }
+
+    gevondenPin = sessie;
+    toonScherm('scherm-ww');
+    await inloggenMetToken(sessie.refreshToken);
+  } catch (e) {
+    console.error('PIN check fout:', e);
+    pinFout('Verbindingsfout. Probeer opnieuw.');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  INLOGGEN VIA FIREBASE AUTH REST
+// ══════════════════════════════════════════════════════════════
+async function inloggenMetToken(rToken) {
+  document.getElementById('ww-fout').textContent = '';
+  document.getElementById('ww-terug').style.display = 'none';
+  try {
+    const resp = await fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(rToken)}`
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error?.message || 'Token fout');
+
+    idToken      = data.id_token;
+    refreshToken = data.refresh_token;
+    uid          = data.user_id;
+
+    // Vernieuw token elke 55 minuten
+    setInterval(vernieuwToken, 55 * 60 * 1000);
+
+    toonScherm('scherm-score');
+    laadPartij();
+  } catch (e) {
+    console.error('inloggenMetToken fout:', e);
+    document.getElementById('ww-fout').textContent = 'Inloggen mislukt. Probeer een nieuwe PIN.';
+    document.getElementById('ww-terug').style.display = '';
+  }
+}
+
+async function vernieuwToken() {
+  try {
+    const resp = await fetch(TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`
+    });
+    const data = await resp.json();
+    if (resp.ok) { idToken = data.id_token; refreshToken = data.refresh_token; }
+  } catch (e) { console.error('Token vernieuwen mislukt:', e); }
+}
+
+function uitloggen() {
+  if (pollingTimer) clearInterval(pollingTimer);
+  idToken = refreshToken = uid = partij = null;
+  huidigHole = 0;
+  pinReset();
+  toonScherm('scherm-pin');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  PARTIJ LADEN VIA FIRESTORE REST
+// ══════════════════════════════════════════════════════════════
+async function laadPartij() {
+  toonLaad(true);
+  const gevonden = await haalPartijOp();
+  toonLaad(false);
+  if (gevonden) {
+    if (huidigHole === 0) huidigHole = eersteLegeHole();
+    renderHole();
+    startPolling();
+  } else {
+    toonGeenPartij(true);
+  }
+}
+
+async function haalPartijOp() {
+  try {
+    const resp = await fetch(`${FS}/ladders?pageSize=50&key=${API_KEY}`, {
+      headers: { 'Authorization': `Bearer ${idToken}` }
+    });
+    const data = await resp.json();
+    if (!resp.ok) return false;
+
+    for (const ldoc of (data.documents || [])) {
+      const fields = fromFsMap(ldoc.fields || {});
+      const actief = fields.actievePartijen || [];
+      const match  = actief.find(p => (p.spelers || []).some(s => s.uid === uid));
+      if (match) {
+        partij       = match;
+        ladderId     = ldoc.name.split('/').pop();
+        allePartijen = actief;
+        return true;
+      }
+    }
+    return false;
+  } catch (e) { console.error('haalPartijOp fout:', e); return false; }
+}
+
+function startPolling() {
+  if (pollingTimer) clearInterval(pollingTimer);
+  pollingTimer = setInterval(async () => {
+    const gevonden = await haalPartijOp();
+    if (gevonden) renderHole();
+  }, 10000);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  HOLE NAVIGATIE
+// ══════════════════════════════════════════════════════════════
+function gaNaarHole(idx) {
+  if (!partij) return;
+  if (idx < 0 || idx >= partij.holes.length) return;
+  huidigHole = idx;
+  renderHole();
+}
+
+function eersteLegeHole() {
+  if (!partij) return 0;
+  const uids = (partij.spelers || []).map(s => s.uid);
+  for (let i = 0; i < partij.holes.length; i++) {
+    const vol = uids.every(u => {
+      const arr = partij.scores?.[u];
+      return Array.isArray(arr) && arr[i] !== null && arr[i] !== undefined;
+    });
+    if (!vol) return i;
+  }
+  return partij.holes.length - 1;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  RENDER HOLE
+// ══════════════════════════════════════════════════════════════
+function renderHole() {
+  if (!partij) return;
+  const hole    = partij.holes[huidigHole];
+  const holeNum = ((partij.startHole - 1 + huidigHole) % 18) + 1;
+  const aantalHoles = partij.holes.length;
+
+  document.getElementById('hole-nummer').textContent = 'Hole ' + holeNum;
+  document.getElementById('hole-meta').textContent   = 'Par ' + hole.par + '  ·  SI ' + hole.si;
+  document.getElementById('swipe-hint').textContent  = (huidigHole + 1) + ' / ' + aantalHoles;
+  document.getElementById('btn-vorige').disabled     = huidigHole === 0;
+  document.getElementById('btn-volgende').disabled   = huidigHole === aantalHoles - 1;
+
+  // Unieke namen genereren voor alle spelers
+  const naamMap = maakNaamMap(partij.spelers || []);
+
+  // Score rijen
+  let html = '';
+  (partij.spelers || []).forEach(s => {
+    const scoreArr = Array.isArray(partij.scores?.[s.uid]) ? partij.scores[s.uid] : [];
+    const val      = scoreArr[huidigHole] ?? null;
+    const kleur    = val !== null ? scoreKleur(val, hole.par) : '';
+    const waardeHtml = val !== null
+      ? `<span class="${kleur}">${val}</span>`
+      : `<span class="leeg">—</span>`;
+    html += `
+    <div class="score-rij">
+      <div class="score-naam">${esc(naamMap[s.uid] || korteNaam(s.naam || s.uid))}</div>
+      <div class="score-controls">
+        <button class="score-btn score-btn-min" onclick="pasScore('${s.uid}',-1)">−</button>
+        <div class="score-waarde${val === null ? ' leeg' : ''}">${waardeHtml}</div>
+        <button class="score-btn score-btn-plus" onclick="pasScore('${s.uid}',+1)">+</button>
+      </div>
+    </div>`;
+  });
+  document.getElementById('score-lijst').innerHTML = html;
+
+  // Totalen
+  let totHtml = '';
+  (partij.spelers || []).forEach(s => {
+    const scoreArr = Array.isArray(partij.scores?.[s.uid]) ? partij.scores[s.uid] : [];
+    const totaal   = scoreArr.reduce((som, v) => (v !== null && v !== undefined ? som + v : som), 0);
+    const ingevuld = scoreArr.filter(v => v !== null && v !== undefined).length;
+    totHtml += `<div class="totaal-cel">
+      <div class="totaal-naam">${esc(naamMap[s.uid] || korteNaam(s.naam || ''))}</div>
+      <div class="totaal-getal">${ingevuld > 0 ? totaal : '—'}</div>
+    </div>`;
+  });
+  document.getElementById('totaal-balk').innerHTML = totHtml;
+
+  renderStand();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SCORE AANPASSEN + OPSLAAN VIA REST
+// ══════════════════════════════════════════════════════════════
+async function pasScore(spelerId, delta) {
+  if (!partij || !ladderId) return;
+  if (!partij.scores[spelerId]) partij.scores[spelerId] = new Array(partij.holes.length).fill(null);
+
+  const huidig = partij.scores[spelerId][huidigHole];
+  let nieuw;
+  if (huidig === null || huidig === undefined) {
+    const par = partij.holes[huidigHole].par;
+    nieuw = delta > 0 ? par : par - 1;
+  } else {
+    nieuw = huidig + delta;
+  }
+  if (nieuw < 1)  nieuw = 1;
+  if (nieuw > 12) nieuw = 12;
+
+  partij.scores[spelerId][huidigHole] = nieuw;
+
+  const idx = allePartijen.findIndex(p =>
+    (p.spelers || []).some(s => s.uid === spelerId) && p.baan === partij.baan
+  );
+  if (idx !== -1) allePartijen[idx] = partij;
+
+  renderHole(); // Direct lokaal
+
+  try {
+    await fetch(
+      `${FS}/ladders/${ladderId}?updateMask.fieldPaths=actievePartijen&key=${API_KEY}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ fields: { actievePartijen: fsVal(allePartijen) } })
+      }
+    );
+  } catch (e) { console.error('Score opslaan mislukt:', e); }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ONDERLINGE STAND (zelfde logica als ronde.js)
+// ══════════════════════════════════════════════════════════════
+function berekenMatchStand(matchup) {
+  if (!partij?.holes || !partij?.scores) return { standA: 0, gespeeld: 0, resterend: 0, status: 'lopend' };
+  let standA = 0, gespeeld = 0, beslissingsStand = null, beslissingsGespeeld = null;
+
+  for (let i = 0; i < partij.holes.length; i++) {
+    const sA = partij.scores[matchup.spelerA.uid]?.[i];
+    const sB = partij.scores[matchup.spelerB.uid]?.[i];
+    if (sA === null || sA === undefined || sB === null || sB === undefined) continue;
+    gespeeld++;
+
+    const hole    = partij.holes[i];
+    const diff    = matchup.hcpSlagen;
+    const aantalH = partij.holes.length;
+    const slag    = (hole.si <= Math.min(diff, aantalH) ? 1 : 0) + (hole.si <= Math.max(0, diff - aantalH) ? 1 : 0);
+    const slagA   = matchup.hcpOntvanger === matchup.spelerA.uid ? slag : 0;
+    const slagB   = matchup.hcpOntvanger === matchup.spelerB.uid ? slag : 0;
+
+    if (sA - slagA < sB - slagB)      standA++;
+    else if (sB - slagB < sA - slagA) standA--;
+
+    if (beslissingsStand === null && Math.abs(standA) > partij.holes.length - gespeeld) {
+      beslissingsStand = standA; beslissingsGespeeld = gespeeld;
+    }
+  }
+
+  const resterend = partij.holes.length - gespeeld;
+  const klaar     = gespeeld === partij.holes.length;
+  const beslist   = beslissingsStand !== null;
+  return {
+    standA:    beslist ? beslissingsStand : standA,
+    gespeeld,
+    resterend: beslist ? (partij.holes.length - beslissingsGespeeld) : resterend,
+    status:    klaar && !beslist ? 'klaar' : beslist ? 'beslist' : 'lopend'
+  };
+}
+
+function renderStand() {
+  if (!partij?.matchups?.length) {
+    document.getElementById('stand-container').innerHTML =
+      '<div style="color:var(--licht);font-size:13px;text-align:center;padding:8px">Voer scores in om de stand te zien</div>';
+    return;
+  }
+  const naamMap = maakNaamMap(partij.spelers || []);
+  let html = '';
+  (partij.matchups || []).forEach(m => {
+    const { standA, resterend, status } = berekenMatchStand(m);
+    const nA = naamMap[m.spelerA.uid] || '?';
+    const nB = naamMap[m.spelerB.uid] || '?';
+    // Badge altijd vanuit perspectief linker speler (spelerA): UP / TIED / DOWN
+    let badge, leidt;
+    if (status === 'beslist') {
+      badge = standA > 0
+        ? Math.abs(standA) + '&' + resterend + ' UP'
+        : Math.abs(standA) + '&' + resterend + ' DOWN';
+      leidt = true;
+    } else if (status === 'klaar') {
+      badge = standA === 0 ? 'TIED' : standA > 0 ? Math.abs(standA) + '&0 UP' : Math.abs(standA) + '&0 DOWN';
+      leidt = standA !== 0;
+    } else if (standA === 0) {
+      badge = 'TIED'; leidt = false;
+    } else {
+      badge = standA > 0 ? Math.abs(standA) + ' UP' : Math.abs(standA) + ' DOWN';
+      leidt = true;
+    }
+    const sub = status === 'lopend' ? resterend + ' te gaan' : status === 'beslist' ? 'Beslist' : 'Klaar';
+    html += `<div class="matchup-kaart">
+      <div class="matchup-speler${standA > 0 ? ' winnaar' : ''}">${esc(nA)}</div>
+      <div class="matchup-score">
+        <div class="matchup-badge${leidt ? ' leidt' : ''}">${esc(badge)}</div>
+        <div class="matchup-sub">${esc(sub)}</div>
+      </div>
+      <div class="matchup-speler${standA < 0 ? ' winnaar' : ''}" style="text-align:right">${esc(nB)}</div>
+    </div>`;
+  });
+  document.getElementById('stand-container').innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  HULPFUNCTIES
+// ══════════════════════════════════════════════════════════════
+function scoreKleur(score, par) {
+  const d = score - par;
+  if (d <= -2) return 'score-eagle';
+  if (d === -1) return 'score-birdie';
+  if (d === 0)  return 'score-par';
+  if (d === 1)  return 'score-bogey';
+  return 'score-dubbel';
+}
+
+function esc(str) {
+  if (str == null) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function korteNaam(naam) {
+  if (!naam) return '?';
+  const d = naam.trim().split(/\s+/);
+  return d.length === 1 ? d[0] : d[0] + ' ' + d[d.length - 1][0] + '.';
+}
+
+function maakNaamMap(spelers) {
+  // Stap 1: splits naam in voornaam + achternaam
+  const parsed = spelers.map(s => {
+    const delen = (s.naam || '').trim().split(/\s+/);
+    return {
+      uid:       s.uid,
+      voornaam:  delen[0] || '?',
+      achternaam: delen.slice(1).join('') // tussenvoegsel + achternaam aaneengesloten
+    };
+  });
+
+  // Stap 2: begin met alleen voornaam
+  let namen = parsed.map(p => ({ uid: p.uid, naam: p.voornaam, ...p }));
+
+  // Stap 3: iteratief meer achternaam-letters toevoegen zolang er duplicaten zijn
+  for (let letters = 1; letters <= 6; letters++) {
+    const telling = {};
+    namen.forEach(n => { telling[n.naam] = (telling[n.naam] || 0) + 1; });
+    if (Object.values(telling).every(t => t === 1)) break;
+
+    namen = namen.map(n => {
+      if (telling[n.naam] > 1 && n.achternaam) {
+        const suffix = n.achternaam.substring(0, letters);
+        return { ...n, naam: n.voornaam + ' ' + suffix + '.' };
+      }
+      return n;
+    });
+  }
+
+  // Stap 4: afkorten op max 10 tekens
+  const map = {};
+  namen.forEach(n => {
+    map[n.uid] = n.naam.length > 10 ? n.naam.substring(0, 9) + '.' : n.naam;
+  });
+  return map;
+}
+
+function toonLaad(j) {
+  document.getElementById('laad-scherm').style.display  = j ? 'flex' : 'none';
+  document.getElementById('score-lijst').style.display  = j ? 'none' : '';
+}
+
+function toonGeenPartij(j) {
+  document.getElementById('geen-partij').style.display          = j ? 'block' : 'none';
+  document.getElementById('score-lijst').style.display          = j ? 'none' : '';
+  document.getElementById('totaal-balk').style.display          = j ? 'none' : '';
+  document.querySelector('.stand-sectie').style.display         = j ? 'none' : '';
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SWIPE NAVIGATIE
+// ══════════════════════════════════════════════════════════════
+let swipeStartX = 0;
+document.getElementById('scherm-score').addEventListener('touchstart', e => {
+  swipeStartX = e.touches[0].clientX;
+}, { passive: true });
+document.getElementById('scherm-score').addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - swipeStartX;
+  if (Math.abs(dx) > 50) dx < 0 ? gaNaarHole(huidigHole + 1) : gaNaarHole(huidigHole - 1);
+}, { passive: true });
+</script>
+</body>
+</html>

@@ -34,6 +34,7 @@ function renderRonde() {
   document.getElementById('ronde-holes-badge').textContent = p.holes.length + ' holes' + (ladderNaam ? ' · ' + ladderNaam : '');
   renderScorecard();
   renderMatchOverview();
+  renderWatchPin(); // v3.0.0-11.79: auto PIN in gele badge
   // HCP slagen blok — gebruik partijHcp als die beschikbaar is
   if (p.spelers && p.holes) {
     const hcpSpelers = p.spelers.map(s => ({ ...s, hcp: s.partijHcp ?? s.hcp }));
@@ -618,7 +619,12 @@ async function bevestigUitslag() {
   // Verifieer dat de partij echt weg is (race-conditie protection)
   await verwijderPartijMetRetry(p.ladderId, p.partijId);
   // Sync rankSpelers naar standen/{uid}
-  await syncStandenNaBevestigUitslag(p.ladderId, rankSpelers);
+  await syncStandenNaBevestigUitslag(p.ladderId, rankSpelers, {
+    matchups: p.matchups,
+    winnaars: p._modalWinnaars,
+    skipped: p._modalSkipped,
+    spelers: p.spelers,
+  });
   slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam).join(' vs ')}`, p.ladderId);
 
   // Update knockout bracket als dit een knockout ladder is
@@ -774,7 +780,7 @@ window.editMatchupSlagen = editMatchupSlagen;
 // Na elke bevestigUitslag schrijven we naast ladders.spelers[] ook
 // naar de standen/{uid} subcollectie zodat de view-laag up-to-date is.
 // Sync standen/{uid} na bevestigUitslag — uid staat nu direct op speler
-async function syncStandenNaBevestigUitslag(ladderId, rankSpelers) {
+async function syncStandenNaBevestigUitslag(ladderId, rankSpelers, partijInfo = null) {
   try {
     const ladder = alleLadders.find(l => l.id === ladderId);
     if (!ladder) return;
@@ -782,6 +788,26 @@ async function syncStandenNaBevestigUitslag(ladderId, rankSpelers) {
       (ladder.spelerIds || ladder.data?.spelerIds || []).filter(id => typeof id === 'string' && id.length > 10)
     );
     if (spelerIdSet.size === 0) return;
+
+    const now = Date.now();
+    const maandKey = `${new Date().getFullYear()}-${new Date().getMonth()}`;
+
+    // Bouw map: uid → set van unieke tegenstanders in deze partij
+    const tegenstandersInPartij = {};
+    if (partijInfo?.matchups) {
+      partijInfo.matchups.forEach((m, idx) => {
+        if (partijInfo.skipped?.[idx]) return;
+        const uidA = m.spelerA.uid;
+        const uidB = m.spelerB.uid;
+        if (!tegenstandersInPartij[uidA]) tegenstandersInPartij[uidA] = new Set();
+        if (!tegenstandersInPartij[uidB]) tegenstandersInPartij[uidB] = new Set();
+        tegenstandersInPartij[uidA].add(uidB);
+        tegenstandersInPartij[uidB].add(uidA);
+      });
+    }
+
+    // Spelers die actief waren in deze partij
+    const actieveUids = new Set(Object.keys(tegenstandersInPartij));
 
     const writes = [];
     (rankSpelers || []).forEach(s => {
@@ -793,6 +819,26 @@ async function syncStandenNaBevestigUitslag(ladderId, rankSpelers) {
         gewonnen: s.gewonnen || 0,
       };
       if (s.prevRank != null) payload.prevRank = s.prevRank;
+
+      // Activiteitsvelden alleen bijwerken voor spelers die in deze partij speelden
+      if (actieveUids.has(uid)) {
+        payload.laatstGespeeld = now;
+        payload.inactieveWeken = 0;
+        // maandPartijen: gebruik Firestore FieldValue.increment via een aparte write
+        // (hier doen we het simpel: ophogen via huidige cache)
+        const huidigStand = store._standenCache?.[ladderId]?.[uid] || {};
+        const huidigMaandKey = huidigStand.maandKey;
+        const huidigPartijen = huidigMaandKey === maandKey ? (huidigStand.maandPartijen || 0) : 0;
+        payload.maandPartijen = huidigPartijen + 1;
+        payload.maandKey = maandKey;
+
+        // Unieke tegenstanders dit seizoen samenvoegen
+        const bestaand = huidigStand.uniekeTegenstanderIds || [];
+        const nieuw = Array.from(tegenstandersInPartij[uid] || []);
+        const samengevoegd = Array.from(new Set([...bestaand, ...nieuw]));
+        payload.uniekeTegenstanderIds = samengevoegd;
+      }
+
       writes.push(
         setDoc(doc(db, 'ladders', ladderId, 'standen', uid), payload)
           .catch(err => console.warn('standen sync mislukt voor', uid, err.code))
@@ -800,6 +846,78 @@ async function syncStandenNaBevestigUitslag(ladderId, rankSpelers) {
     });
     await Promise.all(writes);
   } catch(e) { console.warn('syncStandenNaBevestigUitslag:', e); }
+}
+
+// ============================================================
+//  WATCH PIN — v3.0.0-11.79
+//  Auto: wordt aangeroepen vanuit renderRonde().
+//  Hergebruikt bestaande geldige PIN; genereert alleen nieuw
+//  als er geen of verlopen PIN is. Toont PIN in gele badge.
+// ============================================================
+let _watchPinBezig = false; // debounce — voorkom dubbele Firestore writes
+
+async function renderWatchPin() {
+  if (!store.huidigeBruiker?.uid) return;
+  if (_watchPinBezig) return;
+
+  const badge = document.getElementById('ronde-watch-pin');
+  if (!badge) return;
+
+  _watchPinBezig = true;
+  try {
+    const pinsRef = doc(db, 'ladder', 'watchPins');
+    const pinsSnap = await getDoc(pinsRef);
+    const pins = pinsSnap.exists() ? { ...pinsSnap.data() } : {};
+    const nu = Date.now();
+
+    // Zoek bestaande geldige PIN voor deze gebruiker
+    let bestaandePIN = null;
+    Object.entries(pins).forEach(([k, v]) => {
+      if (v.uid === store.huidigeBruiker.uid && v.expires > nu) bestaandePIN = k;
+    });
+
+    if (bestaandePIN) {
+      // Bestaande PIN tonen — update token als dat nog ontbreekt (v3.0.0-11.84)
+      if (!pins[bestaandePIN].refreshToken) {
+        pins[bestaandePIN].refreshToken = auth.currentUser?.refreshToken || '';
+        await setDoc(pinsRef, pins);
+      }
+      badge.textContent = '⌚ ' + bestaandePIN;
+      badge.style.display = '';
+      return;
+    }
+
+    // Geen geldige PIN — verwijder verlopen en genereer nieuw
+    Object.keys(pins).forEach(k => {
+      if (pins[k].expires < nu || pins[k].uid === store.huidigeBruiker.uid) delete pins[k];
+    });
+
+    let nieuwePIN;
+    let pogingen = 0;
+    do {
+      nieuwePIN = String(Math.floor(1000 + Math.random() * 9000));
+      pogingen++;
+    } while (pins[nieuwePIN] && pogingen < 20);
+
+    pins[nieuwePIN] = {
+      uid:          store.huidigeBruiker.uid,
+      naam:         store.huidigeBruiker.gebruikersnaam,
+      email:        store.huidigeBruiker.email,
+      refreshToken: auth.currentUser?.refreshToken || '',
+      expires:      nu + 24 * 60 * 60 * 1000
+    };
+
+    await setDoc(pinsRef, pins);
+
+    badge.textContent = '⌚ ' + nieuwePIN;
+    badge.style.display = '';
+
+  } catch (e) {
+    console.error('renderWatchPin mislukt:', e);
+    // Badge verbergen bij fout — geen toast, want renderRonde wordt vaker aangeroepen
+  } finally {
+    _watchPinBezig = false;
+  }
 }
 
 export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij, syncStandenNaBevestigUitslag, verwijderPartijMetRetry };
