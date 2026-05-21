@@ -84,7 +84,7 @@
       display:flex; align-items:center; justify-content:center;
       border:2px solid transparent; cursor:pointer;
       transition:border-color 0.15s, background 0.15s;
-      user-select:none; -webkit-user-select:none; touch-action:none;
+      user-select:none; -webkit-user-select:none; touch-action:manipulation;
     }
     .score-blok.actief { border-color:var(--groen-dark); background:var(--kaart2); }
     .score-blok.leeg-blok { border:1.5px dashed var(--rand); cursor:default; background:rgba(255,255,255,0.03); }
@@ -219,7 +219,7 @@
 
 <script>
 // ══════════════════════════════════════════════════════════════
-//  WATCH SCORE — v3.0.0-11.90
+//  WATCH SCORE — v3.0.0-11.91
 //  Geen Firebase SDK — alleen fetch() naar REST API.
 // ══════════════════════════════════════════════════════════════
 
@@ -241,12 +241,10 @@ let gevondenPin  = null;
 let pinWaarde    = '';
 let pollingTimer = null;
 
-// Touch/scroll state voor score blokken
-let actieveUid      = null;
-let touchStartX     = 0;
-let touchStartScore = 0;
-let touchLiveScore  = 0;
-let wasLeeg         = false; // was het blok leeg bij touchstart?
+// Tap-state voor score blokken
+let actieveUid = null;
+let tapStartX  = 0;
+let tapStartY  = 0;
 
 // ══════════════════════════════════════════════════════════════
 //  FIRESTORE CONVERTERS
@@ -348,7 +346,7 @@ async function vernieuwToken() {
 function uitloggen() {
   if (pollingTimer) clearInterval(pollingTimer);
   idToken = refreshToken = uid = partij = null;
-  huidigHole = 0; actieveUid = null; wasLeeg = false;
+  huidigHole = 0; actieveUid = null;
   pinReset(); toonScherm('scherm-pin');
 }
 
@@ -449,80 +447,71 @@ function renderHole() {
 // ══════════════════════════════════════════════════════════════
 const grid = document.getElementById('score-grid');
 
-// ── DRUM-WHEEL SCORE INVOER ─────────────────────────────────
-// Elke 25px swipe = 1 scorepunt. Links = hoger, rechts = lager.
-// wasLeeg: leeg blok aantikken of swipen spaart altijd par op.
+// ── TAP-GEBASEERDE SCORE INVOER ─────────────────────────────
+// Linkerhelft blok = −1 · rechterhelft blok = +1
+// Eerste tik op leeg blok = par (ongeacht links/rechts)
 
 grid.addEventListener('touchstart', e => {
   const blok = e.target.closest('.score-blok');
   if (!blok || blok.classList.contains('leeg-blok')) return;
-  e.preventDefault(); // voorkom native scroll/zoom tijdens score-invoer
-
-  const nieuweUid = blok.dataset.uid;
-  const par       = parseInt(blok.dataset.par);
-
-  actieveUid = nieuweUid;
+  // Activeer blok (groene rand) en bewaar tappositie
   document.querySelectorAll('.score-blok').forEach(b => b.classList.remove('actief'));
   blok.classList.add('actief');
+  actieveUid = blok.dataset.uid;
+  tapStartX  = e.touches[0].clientX;
+  tapStartY  = e.touches[0].clientY;
+}, { passive: true });
 
-  touchStartX = e.touches[0].clientX;
+grid.addEventListener('touchend', e => {
+  const blok = e.target.closest('.score-blok');
+  if (!blok || blok.classList.contains('leeg-blok')) return;
 
-  const arr   = Array.isArray(partij?.scores?.[nieuweUid]) ? partij.scores[nieuweUid] : [];
+  // Negeer swipes (alleen echte taps verwerken)
+  const dx = Math.abs(e.changedTouches[0].clientX - tapStartX);
+  const dy = Math.abs(e.changedTouches[0].clientY - tapStartY);
+  if (dx > 15 || dy > 15) return;
+
+  const uid2 = blok.dataset.uid;
+  const par  = parseInt(blok.dataset.par);
+  const arr  = Array.isArray(partij?.scores?.[uid2]) ? partij.scores[uid2] : [];
   const huidig = arr[huidigHole];
-  wasLeeg      = (huidig === null || huidig === undefined);
-  touchStartScore = wasLeeg ? par : huidig;
-  touchLiveScore  = touchStartScore;
-}, { passive: false }); // passive:false zodat preventDefault() werkt
+  const leeg   = (huidig === null || huidig === undefined);
 
-grid.addEventListener('touchmove', e => {
-  if (!actieveUid) return;
-  e.preventDefault(); // voorkom paginascroll tijdens score-invoer
-
-  const dx      = e.touches[0].clientX - touchStartX;
-  const stap    = 25; // px per scorepunt
-  // Links (dx<0) = hoger score, rechts (dx>0) = lager score
-  const preview = Math.max(1, Math.min(12, touchStartScore - Math.round(dx / stap)));
-
-  if (preview !== touchLiveScore) {
-    touchLiveScore = preview;
-    const blok = document.querySelector(`.score-blok[data-uid="${actieveUid}"]`);
-    if (blok) {
-      const hole = partij.holes[huidigHole];
-      blok.innerHTML = `<span class="score-getal ${scoreKleur(preview, hole.par)}">${preview}</span>`;
-      blok.classList.add('actief');
-    }
+  let nieuw;
+  if (leeg) {
+    // Eerste tik: altijd par — ongeacht links of rechts
+    nieuw = par;
+  } else {
+    // Bepaal linker- of rechterhelft
+    const rect  = blok.getBoundingClientRect();
+    const links = e.changedTouches[0].clientX < rect.left + rect.width / 2;
+    nieuw = links ? Math.max(1, huidig - 1) : Math.min(12, huidig + 1);
   }
-}, { passive: false });
 
-grid.addEventListener('touchend', async () => {
-  if (!actieveUid) return;
+  if (nieuw === huidig) return; // geen wijziging
 
-  // Sla op als: score veranderd ÓFTEWEL blok was leeg (tik = par invoeren)
-  const gewijzigd = touchLiveScore !== touchStartScore;
-  if (!gewijzigd && !wasLeeg) return;
-
-  const uid2  = actieveUid;
-  const score = touchLiveScore;
-
-  // Lokaal bijwerken (synchroon, zodat volgend gebaar direct klopt)
-  if (!partij.scores)           partij.scores = {};
-  if (!partij.scores[uid2])     partij.scores[uid2] = new Array(partij.holes.length).fill(null);
-  partij.scores[uid2][huidigHole] = score;
-
+  // Lokaal opslaan (synchroon)
+  if (!partij.scores)       partij.scores = {};
+  if (!partij.scores[uid2]) partij.scores[uid2] = new Array(partij.holes.length).fill(null);
+  partij.scores[uid2][huidigHole] = nieuw;
   const idx = allePartijen.findIndex(p => (p.spelers||[]).some(s => s.uid === uid2) && p.baan === partij.baan);
   if (idx !== -1) allePartijen[idx] = partij;
 
-  // Stand + totaal direct bijwerken
+  // Blok direct bijwerken
+  blok.innerHTML = `<span class="score-getal ${scoreKleur(nieuw, par)}">${nieuw}</span>`;
+  blok.classList.add('actief');
+
+  // Stand + totaal bijwerken
   const naamMap = maakNaamMap(partij.spelers||[]);
   renderStand();
   renderTotaal(naamMap, partij.spelers||[]);
 
-  // Firestore opslaan (fire-and-forget — geen blokkerende vlag)
+  // Firestore (fire-and-forget)
   fetch(`${FS}/ladders/${ladderId}?updateMask.fieldPaths=actievePartijen&key=${API_KEY}`, {
-    method:'PATCH',
-    headers:{'Authorization':`Bearer ${idToken}`,'Content-Type':'application/json'},
-    body: JSON.stringify({ fields:{ actievePartijen: fsVal(allePartijen) } })
-  }).catch(e => console.error('Score opslaan mislukt:', e));
+    method: 'PATCH',
+    headers: {'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json'},
+    body: JSON.stringify({ fields: { actievePartijen: fsVal(allePartijen) } })
+  }).catch(err => console.error('Score opslaan mislukt:', err));
 });
 
 // ══════════════════════════════════════════════════════════════
