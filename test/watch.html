@@ -2,7 +2,7 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Watch Score">
@@ -65,7 +65,7 @@
     .btn-ghost { background:transparent; color:var(--licht); font-size:14px; height:40px; border:none; }
 
     /* ── HEADER (hole navigatie) ──────────────────────── */
-    .score-header { background:var(--groen-dark); color:#fff; padding:14px 16px 12px; position:sticky; top:0; z-index:10; }
+    .score-header { background:var(--groen-dark); color:#fff; padding:14px 16px 12px; padding-top:max(14px,env(safe-area-inset-top)); position:sticky; top:env(safe-area-inset-top,0px); z-index:10; }
     .hole-nav { display:flex; align-items:center; justify-content:space-between; gap:8px; }
     .hole-nav-btn { width:44px; height:44px; border:none; border-radius:10px; background:rgba(255,255,255,0.15); color:#fff; font-size:22px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
     .hole-nav-btn:active { background:rgba(255,255,255,0.3); }
@@ -85,7 +85,15 @@
       border:2px solid transparent; cursor:pointer;
       transition:border-color 0.15s, background 0.15s;
       user-select:none; -webkit-user-select:none; touch-action:manipulation;
+      position:relative;
     }
+    .hint-min, .hint-plus {
+      position:absolute; top:50%; transform:translateY(-50%);
+      font-size:20px; font-weight:700; color:rgba(255,255,255,0.20);
+      pointer-events:none; line-height:1;
+    }
+    .hint-min { left:10px; }
+    .hint-plus { right:10px; }
     .score-blok.actief { border-color:var(--groen-dark); background:var(--kaart2); }
     .score-blok.leeg-blok { border:1.5px dashed var(--rand); cursor:default; background:rgba(255,255,255,0.03); }
     .score-getal { font-size:52px; font-weight:800; line-height:1; pointer-events:none; }
@@ -219,7 +227,7 @@
 
 <script>
 // ══════════════════════════════════════════════════════════════
-//  WATCH SCORE — v3.0.0-11.91
+//  WATCH SCORE — v3.0.0-11.92
 //  Geen Firebase SDK — alleen fetch() naar REST API.
 // ══════════════════════════════════════════════════════════════
 
@@ -432,7 +440,9 @@ function renderHole() {
       const getal = val !== null ? `<span class="score-getal ${kl}">${val}</span>` : `<span class="score-getal leeg">—</span>`;
       html += `<div class="score-cel">
         <div class="blok-naam">${esc(naamMap[s.uid]||'?')}</div>
-        <div class="score-blok${actief?' actief':''}" data-uid="${s.uid}" data-par="${hole.par}">${getal}</div>
+        <div class="score-blok${actief?' actief':''}" data-uid="${s.uid}" data-par="${hole.par}">
+          <span class="hint-min">−</span>${getal}<span class="hint-plus">+</span>
+        </div>
       </div>`;
     }
   }
@@ -498,7 +508,7 @@ grid.addEventListener('touchend', e => {
   if (idx !== -1) allePartijen[idx] = partij;
 
   // Blok direct bijwerken
-  blok.innerHTML = `<span class="score-getal ${scoreKleur(nieuw, par)}">${nieuw}</span>`;
+  blok.innerHTML = `<span class="hint-min">−</span><span class="score-getal ${scoreKleur(nieuw, par)}">${nieuw}</span><span class="hint-plus">+</span>`;
   blok.classList.add('actief');
 
   // Stand + totaal bijwerken
