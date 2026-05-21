@@ -78,7 +78,7 @@
     /* ── SCORE GRID 2×2 ───────────────────────────────── */
     .score-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:14px 14px 6px; }
     .score-cel { display:flex; flex-direction:column; align-items:center; }
-    .blok-naam { font-size:16px; font-weight:500; color:var(--tekst); margin-bottom:7px; text-align:center; letter-spacing:0.1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+    .blok-naam { font-size:26px; font-weight:800; color:var(--tekst); margin-bottom:7px; text-align:center; letter-spacing:0.1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
     .score-blok {
       width:100%; aspect-ratio:1; border-radius:16px; background:var(--kaart);
       display:flex; align-items:center; justify-content:center;
@@ -102,7 +102,7 @@
     .sectie { padding:10px 14px 4px; }
     .sectie-titel { font-size:11px; font-weight:600; color:var(--licht); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
     .matchup-kaart { background:var(--kaart); border-radius:12px; padding:10px 14px; display:flex; align-items:center; gap:8px; margin-bottom:6px; }
-    .matchup-speler { flex:1; font-size:14px; font-weight:500; color:var(--mid); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .matchup-speler { flex:1; font-size:26px; font-weight:800; color:var(--mid); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .matchup-speler.winnaar { font-weight:700; color:var(--tekst); }
     .matchup-score { flex-shrink:0; text-align:center; min-width:70px; }
     .matchup-badge { display:inline-block; padding:3px 8px; border-radius:8px; font-size:13px; font-weight:700; background:var(--kaart2); color:var(--mid); }
@@ -219,7 +219,7 @@
 
 <script>
 // ══════════════════════════════════════════════════════════════
-//  WATCH SCORE — v3.0.0-11.88
+//  WATCH SCORE — v3.0.0-11.89
 //  Geen Firebase SDK — alleen fetch() naar REST API.
 // ══════════════════════════════════════════════════════════════
 
@@ -472,22 +472,18 @@ grid.addEventListener('touchstart', e => {
 
 grid.addEventListener('touchmove', e => {
   if (!actieveUid) return;
-  const dx    = e.touches[0].clientX - touchStartX;
-  const stap  = 28; // pixels per score-eenheid
-  const delta = Math.round(dx / stap);
-  const nieuw = Math.max(1, Math.min(12, touchStartScore + delta));
+  const dx = e.touches[0].clientX - touchStartX;
+  // Links = hoger (+1), rechts = lager (-1) — één getal per swipe
+  let preview = touchStartScore;
+  if (dx < -24)     preview = Math.min(12, touchStartScore + 1);
+  else if (dx > 24) preview = Math.max(1,  touchStartScore - 1);
 
-  if (nieuw !== touchLiveScore) {
-    touchLiveScore = nieuw;
-    // Update lokaal direct
-    if (!partij.scores) partij.scores = {};
-    if (!partij.scores[actieveUid]) partij.scores[actieveUid] = new Array(partij.holes.length).fill(null);
-    partij.scores[actieveUid][huidigHole] = nieuw;
-    // Update alleen het getal in het actieve blok (snel, geen volledige re-render)
+  if (preview !== touchLiveScore) {
+    touchLiveScore = preview;
     const blok = document.querySelector(`.score-blok[data-uid="${actieveUid}"]`);
     if (blok) {
       const hole = partij.holes[huidigHole];
-      blok.innerHTML = `<span class="score-getal ${scoreKleur(nieuw, hole.par)}">${nieuw}</span>`;
+      blok.innerHTML = `<span class="score-getal ${scoreKleur(preview, hole.par)}">${preview}</span>`;
       blok.classList.add('actief');
     }
   }
