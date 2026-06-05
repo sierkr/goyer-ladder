@@ -227,7 +227,7 @@
 
 <script>
 // ══════════════════════════════════════════════════════════════
-//  WATCH SCORE — v3.0.0-11.95
+//  WATCH SCORE — v3.0.0-11.96
 //  Geen Firebase SDK — alleen fetch() naar REST API.
 // ══════════════════════════════════════════════════════════════
 
@@ -389,7 +389,7 @@ async function haalPartijOp() {
 
 function startPolling() {
   if (pollingTimer) clearInterval(pollingTimer);
-  pollingTimer = setInterval(async () => { if (await haalPartijOp() && !dirty) renderHole(); }, 10000);
+  pollingTimer = setInterval(async () => { if (dirty) return; if (await haalPartijOp()) renderHole(); }, 10000);
 }
 
 // ══════════════════════════════════════════════════════════════
