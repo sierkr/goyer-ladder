@@ -227,7 +227,7 @@
 
 <script>
 // ══════════════════════════════════════════════════════════════
-//  WATCH SCORE — v3.0.0-11.93
+//  WATCH SCORE — v3.0.0-11.94
 //  Geen Firebase SDK — alleen fetch() naar REST API.
 // ══════════════════════════════════════════════════════════════
 
@@ -253,6 +253,9 @@ let pollingTimer = null;
 let actieveUid = null;
 let tapStartX  = 0;
 let tapStartY  = 0;
+
+// Dirty flag — true als er een score gewijzigd is die nog niet naar Firestore is geschreven
+let dirty = false;
 
 // ══════════════════════════════════════════════════════════════
 //  FIRESTORE CONVERTERS
@@ -354,7 +357,7 @@ async function vernieuwToken() {
 function uitloggen() {
   if (pollingTimer) clearInterval(pollingTimer);
   idToken = refreshToken = uid = partij = null;
-  huidigHole = 0; actieveUid = null;
+  huidigHole = 0; actieveUid = null; dirty = false;
   pinReset(); toonScherm('scherm-pin');
 }
 
@@ -394,6 +397,15 @@ function startPolling() {
 // ══════════════════════════════════════════════════════════════
 function gaNaarHole(idx) {
   if (!partij || idx < 0 || idx >= partij.holes.length) return;
+  // Schrijf naar Firestore als er een gewijzigde score klaarstaat
+  if (dirty) {
+    dirty = false;
+    fetch(`${FS}/ladders/${ladderId}?updateMask.fieldPaths=actievePartijen&key=${API_KEY}`, {
+      method: 'PATCH',
+      headers: {'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json'},
+      body: JSON.stringify({ fields: { actievePartijen: fsVal(allePartijen) } })
+    }).then(() => startPolling()).catch(err => console.error('Score opslaan mislukt:', err));
+  }
   actieveUid = null;
   huidigHole = idx;
   renderHole();
@@ -516,12 +528,8 @@ grid.addEventListener('touchend', e => {
   renderStand();
   renderTotaal(naamMap, partij.spelers||[]);
 
-  // Firestore (fire-and-forget)
-  fetch(`${FS}/ladders/${ladderId}?updateMask.fieldPaths=actievePartijen&key=${API_KEY}`, {
-    method: 'PATCH',
-    headers: {'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json'},
-    body: JSON.stringify({ fields: { actievePartijen: fsVal(allePartijen) } })
-  }).catch(err => console.error('Score opslaan mislukt:', err));
+  // Score gewijzigd — wordt naar Firestore geschreven bij hole-wissel
+  dirty = true;
 });
 
 // ══════════════════════════════════════════════════════════════

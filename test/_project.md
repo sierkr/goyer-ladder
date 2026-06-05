@@ -22,21 +22,27 @@ Huidige versie: **v3.0.0-11.93**
 
 ```
 ladder_v4/
-├── index.html          # Hoofd-app (alle schermen in één pagina)
-├── watch.html          # Standalone watch-scorekaart (PIN-login, +/- scores)
-├── manifest.json       # PWA manifest
-├── sw.js               # Service Worker (caching + versie-check)
-├── version.json        # Versienummer (server-side, voor auto-update detectie)
-├── firestore.rules     # Firestore beveiligingsregels
-├── _project.md         # Dit bestand
+├── index.html                  # Hoofd-app (alle schermen in één pagina)
+├── watch.html                  # Watch Score — standalone scorekaart voor Apple Watch
+│                               # Geen Firebase SDK — werkt via REST API (fetch)
+│                               # PIN-login (4 cijfers) → auto-inloggen via refresh token
+│                               # 2×2 score grid, tap links=−1 rechts=+1, eerste tik=par
+│                               # Donker Watch-thema, real-time stand + totaal
+├── watch_backup_v11_86.html    # Backup van watch.html vóór grid/tap redesign
+├── handleiding-partij-ronde.html # Handleiding incl. Apple Watch sectie
+├── manifest.json               # PWA manifest
+├── sw.js                       # Service Worker (caching + versie-check)
+├── version.json                # Versienummer (server-side, voor auto-update detectie)
+├── firestore.rules             # Firestore beveiligingsregels
+├── _project.md                 # Dit bestand
 ├── functions/
-│   ├── index.js        # Cloud Functions (o.a. wachtwoord-reset)
+│   ├── index.js                # Cloud Functions (o.a. wachtwoord-reset)
 │   └── package.json
 └── js/
     ├── app.js          # Globals, imports, window.* exports, versie-check
     ├── config.js       # Firebase init, Firestore refs, helpers (esc, escAttr)
     ├── auth.js         # Firebase auth, huidigeBruiker, slaActievePartijenOp()
-    ├── ronde.js        # Scorekaart, matchups, berekenMatchStand(), genereerWatchPin()
+    ├── ronde.js        # Scorekaart, matchups, berekenMatchStand(), renderWatchPin()
     ├── partij.js       # mijnPartij(), startPartij(), renderHcpBlok()
     ├── ladder.js       # Ladder rendering
     ├── ladder-view.js  # getLadderSpelers()
@@ -69,14 +75,42 @@ ladders/{ladderId}
 spelers/{uid}
   .naam, .email, .hcp, .rol, .eersteLogin
 
-ladder/watchPins              # { [4-digit PIN]: { uid, naam, email, expires } }
+ladder/watchPins              # { [4-digit PIN]: { uid, naam, email, refreshToken, expires } }
+                              # refreshToken wordt gebruikt door watch.html om in te loggen
+                              # zonder wachtwoord. Aangemaakt door renderWatchPin() in ronde.js.
+                              # Publieke read-regel in firestore.rules (watch.html is niet auth'd)
 ladder/config                 # { initieelWachtwoord }
 ladder/banen                  # Alle beschikbare banen
 ladder/uitdagingen            # Lopende uitdagingen
 ladder/archief                # Seizoenshistorie
 ```
 
-## Sleutelpatronen
+## Watch Score — REST API aanpak
+
+watch.html gebruikt geen Firebase SDK maar directe fetch() aanroepen:
+
+```js
+const FS        = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`;
+const AUTH_URL  = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`;
+const TOKEN_URL = `https://securetoken.googleapis.com/v1/token?key=${API_KEY}`;
+
+// PIN ophalen (publiek, geen auth)
+fetch(`${FS}/ladder/watchPins?key=${API_KEY}`)
+
+// Inloggen via refresh token (geen wachtwoord)
+fetch(TOKEN_URL, { body: `grant_type=refresh_token&refresh_token=${rToken}` })
+
+// Partijen ophalen (met idToken)
+fetch(`${FS}/ladders?pageSize=50&key=${API_KEY}`, { headers: { Authorization: `Bearer ${idToken}` } })
+
+// Scores opslaan (PATCH, fire-and-forget)
+fetch(`${FS}/ladders/${ladderId}?updateMask.fieldPaths=actievePartijen&key=${API_KEY}`, { method: 'PATCH', ... })
+```
+
+Token vernieuwen elke 55 minuten via setInterval (token verloopt na 60 min).
+Polling elke 10 seconden voor live updates van andere spelers.
+
+## Sleutelpatronen hoofdapp
 
 ### Actieve partij ophalen
 ```js
@@ -91,9 +125,16 @@ const p = mijnPartij(); // geeft partij-object of null
 await slaActievePartijenOp(p.ladderId);
 ```
 
+### Watch PIN genereren
+```js
+// renderWatchPin() in ronde.js — aangeroepen vanuit renderRonde()
+// Genereert of hergebruikt PIN, slaat refreshToken op, toont in gele badge
+```
+
 ### huidigeBruiker object
 ```js
 { uid, email, gebruikersnaam, rol, spelerId, eersteLogin }
+// In ronde.js altijd via store.huidigeBruiker (niet direct importeren)
 ```
 
 ### Versie-update detectie
@@ -101,7 +142,7 @@ await slaActievePartijenOp(p.ladderId);
 - Bij mismatch: hard reload (zodat spelers altijd de nieuwste versie hebben)
 
 ## Buildregels (voor Claude)
-- Bouw alleen na exact: **ja je mag bouwen**
-- Verhoog versienummer bij elke wijziging (alle 4 plekken)
+- Bouw alleen na exact: **JA BOUWEN** (hoofdletters, twee woorden, alleen dit in het bericht)
+- Verhoog versienummer bij elke wijziging (alle 4 plekken + _project.md)
 - Foutcontrole na elke wijziging
 - Lever altijd een volledige downloadbare zip op
