@@ -89,6 +89,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, getDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
@@ -100,6 +101,11 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+// v3.0.0-11.100: App Check — reCAPTCHA v3 (vóór getFirestore)
+initializeAppCheck(app, {
+  provider: new ReCaptchaV3Provider('6LfOyhAtAAAAACKwXb70iOl_Pdrez2QQ_ktGhFSj'),
+  isTokenAutoRefreshEnabled: true
+});
 const db = getFirestore(app);
 
 let toernooiId = null;

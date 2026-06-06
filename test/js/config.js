@@ -11,6 +11,7 @@ import {
   reauthenticateWithCredential, createUserWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
+import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
@@ -22,6 +23,14 @@ export const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
+
+// v3.0.0-11.100: App Check — reCAPTCHA v3. Beschermt Firestore/Auth tegen
+// requests van buiten de echte app. Moet vóór getFirestore/getAuth gebeuren.
+export const appCheck = initializeAppCheck(app, {
+  provider: new ReCaptchaV3Provider('6LfOyhAtAAAAACKwXb70iOl_Pdrez2QQ_ktGhFSj'),
+  isTokenAutoRefreshEnabled: true
+});
+
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
