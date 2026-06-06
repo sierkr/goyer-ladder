@@ -11,7 +11,7 @@ import { initApp, uitloggen, loginSubmit, loginMetGoogle, autoAdvance,
 
 import { showPage } from './nav.js';
 import { renderLadder, toggleLadderKaart } from './ladder.js';
-import { initPartijForm, addPlayerSlot, voegGastSpelerToeAanPartij, removeSlot, onBaanSelect,
+import { initPartijForm, addPlayerSlot, voegGastSpelerToeAanPartij, removeSlot, onBaanSelect, onSpeltypeChange,
   startPartij, zoekPartijSpeler, selecteerPartijSpelerEl,
   sluitSpelerLijst, slaAangepasteBaanOp, verwijderAangepasteBaan,
   refreshPlayerSlotOptions, slaPartijFormulierOp } from './partij.js';
@@ -86,6 +86,7 @@ window.addPlayerSlot = addPlayerSlot;
 window.voegGastSpelerToeAanPartij = voegGastSpelerToeAanPartij;
 window.removeSlot = removeSlot;
 window.onBaanSelect = onBaanSelect;
+window.onSpeltypeChange = onSpeltypeChange;
 window.startPartij = startPartij;
 window.zoekPartijSpeler = zoekPartijSpeler;
 window.selecteerPartijSpelerEl = selecteerPartijSpelerEl;
@@ -218,7 +219,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v3.0.0-11.96';
+  const VERSION = 'v3.0.0-11.97';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -258,7 +259,7 @@ window.toggleTRankingLadder = toggleTRankingLadder;
 // Bij mismatch: sla partijformulier op in sessionStorage → hard reload.
 // Werkt ook als de app uren open staat als PWA zonder herstart.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v3.0.0-11.96';
+  const LOKALE_VERSIE = 'v3.0.0-11.97';
   let _versieCheckBezig = false;
   let _updateGepland    = false;
 

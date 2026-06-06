@@ -1144,6 +1144,23 @@
         <button class="btn btn-ghost btn-sm" onclick="addPlayerSlot()" id="add-player-btn">+ Speler toevoegen</button>
         <button class="btn btn-ghost btn-sm" onclick="voegGastSpelerToeAanPartij()" id="add-guest-btn">+ Gastspeler</button>
       </div>
+      <div id="speltype-wrap" style="display:none">
+        <div class="divider"></div>
+        <div class="form-group">
+          <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Speltype</label>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <label style="display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer;flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-matchplay-label">
+              <input type="radio" name="speltype" id="speltype-matchplay" value="matchplay" checked onchange="onSpeltypeChange()">
+              Matchplay
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer;flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-amerikaantje-label">
+              <input type="radio" name="speltype" id="speltype-amerikaantje" value="amerikaantje" onchange="onSpeltypeChange()">
+              Amerikaantje
+            </label>
+          </div>
+          <p id="speltype-hint" style="display:none;font-size:11px;color:var(--light);margin-top:6px">Exact 3 spelers vereist · 6 punten per hole · telt niet mee voor ladderstand</p>
+        </div>
+      </div>
       <div class="divider"></div>
       <button class="btn btn-primary btn-block" onclick="startPartij()">Partij starten →</button>
     </div>

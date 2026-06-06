@@ -57,6 +57,10 @@ function renderScorecard() {
       <button onclick="verwijderSpelerUitRonde('${escAttr(s.uid)}')" style="background:rgba(255,255,255,0.15);border:none;border-radius:4px;color:rgba(255,255,255,0.8);font-size:10px;cursor:pointer;padding:2px 5px;margin-top:2px">✕ verwijder</button>
     </th>`;
   });
+  // v3.0.0-11.97: extra kolom voor Amerikaantje punten
+  if (p.speltype === 'amerikaantje') {
+    headHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px;color:rgba(255,255,255,0.8)">Punten</th>`;
+  }
   headHtml += '</tr>';
   document.getElementById('scorecard-head').innerHTML = headHtml;
 
@@ -96,6 +100,15 @@ function renderScorecard() {
         style="width:38px;padding:3px;text-align:center;font-size:13px;font-family:'DM Mono',monospace;border:1.5px solid #e0ddd4;border-radius:5px"
       ></td>`;
     });
+    // v3.0.0-11.97: Amerikaantje punten-kolom
+    if (p.speltype === 'amerikaantje') {
+      const punten = berekenAmerikaaanjeHole(holeIdx);
+      if (punten) {
+        bodyHtml += `<td style="text-align:center;font-family:'DM Mono',monospace;font-size:12px;color:var(--mid);white-space:nowrap">${esc(punten.join('-'))}</td>`;
+      } else {
+        bodyHtml += `<td style="text-align:center;color:var(--light);font-size:11px">—</td>`;
+      }
+    }
     bodyHtml += '</tr>';
   });
 
@@ -107,6 +120,18 @@ function renderScorecard() {
     const filled = scoreArr2.filter(v => v !== null).length;
     bodyHtml += `<td style="text-align:center;font-family:'DM Mono',monospace;font-weight:700;font-size:14px">${filled > 0 ? totalen[s.uid] : '—'}</td>`;
   });
+  // v3.0.0-11.97: totaal punten kolom
+  if (p.speltype === 'amerikaantje') {
+    const totaalPunten = p.spelers.map((s, si) => {
+      let som = 0;
+      p.holes.forEach((_, hi) => {
+        const pt = berekenAmerikaaanjeHole(hi);
+        if (pt) som += pt[si];
+      });
+      return som;
+    });
+    bodyHtml += `<td style="text-align:center;font-family:'DM Mono',monospace;font-weight:700;font-size:13px;color:var(--green)">${esc(totaalPunten.join('-'))}</td>`;
+  }
   bodyHtml += '</tr>';
 
   // v3.0.0-11.21: onthoud waar focus stond vóór innerHTML vervanging,
@@ -192,9 +217,94 @@ function berekenMatchStand(matchup) {
   return { standA: effectieveStand, gespeeld, resterend: resterendOpBeslissing, resultatenPerHole, status: klaar && !beslist ? 'klaar' : beslist ? 'beslist' : 'lopend', beslissingsGespeeld };
 }
 
+// ============================================================
+//  AMERIKAANTJE — puntberekening per hole (v3.0.0-11.97)
+// ============================================================
+// Geeft per speler het aantal punten op een hole terug.
+// Volgorde: zelfde als p.spelers. Netto scores na HCP slagen.
+// Punten: 4 voor laagste, 2 voor tweede, 0 voor hoogste.
+// Gelijke scores delen de punten:
+//   4-2-0 (alle verschillend)
+//   3-3-0 (twee gelijk laagst)
+//   4-1-1 (twee gelijk hoogst)
+//   2-2-2 (alle gelijk)
+function berekenAmerikaaanjeHole(holeIdx) {
+  const p = mijnPartij();
+  if (!p || p.speltype !== 'amerikaantje') return null;
+  const netto = p.spelers.map(s => {
+    const scoreArr = Array.isArray(p.scores?.[s.uid]) ? p.scores[s.uid] : [];
+    const raw = scoreArr[holeIdx];
+    if (raw === null || raw === undefined) return null;
+    // HCP slagen: bereken via SI van de hole
+    const hole = p.holes[holeIdx];
+    const aantalHoles = p.holes.length;
+    // Zoek de HCP voor deze speler — gebruik partijHcp
+    const hcp = s.partijHcp ?? s.hcp ?? 0;
+    // Alloceer slagen op basis van SI (zelfde methode als matchplay)
+    const slagen = (hole.si <= Math.min(hcp, aantalHoles) ? 1 : 0) +
+                   (hole.si <= Math.max(0, hcp - aantalHoles) ? 1 : 0);
+    return raw - slagen;
+  });
+
+  // Als iemand geen score heeft: return null array
+  if (netto.some(v => v === null)) return null;
+
+  const gesorteerd = [...netto].sort((a, b) => a - b);
+  const laagste = gesorteerd[0];
+  const tweede  = gesorteerd[1];
+  const hoogste = gesorteerd[2];
+
+  return netto.map(n => {
+    if (n === laagste && n === tweede && n === hoogste) return 2; // 2-2-2
+    if (n === laagste && n === tweede) return 3;                  // 3-3-0
+    if (n === tweede  && n === hoogste) return 1;                 // 4-1-1
+    if (n === laagste) return 4;
+    if (n === tweede)  return 2;
+    return 0;
+  });
+}
+
+function renderAmerikaaanjeOverview() {
+  const p = mijnPartij();
+  if (!p) return;
+  const naamMap = kortNaamMap(p.spelers);
+  // Bereken totalen per speler
+  const totalen = {};
+  p.spelers.forEach(s => { totalen[s.uid] = 0; });
+  p.holes.forEach((_, holeIdx) => {
+    const punten = berekenAmerikaaanjeHole(holeIdx);
+    if (!punten) return;
+    p.spelers.forEach((s, si) => { totalen[s.uid] += punten[si]; });
+  });
+
+  // Sorteer op punten aflopend
+  const gesorteerd = [...p.spelers].sort((a, b) => totalen[b.uid] - totalen[a.uid]);
+
+  const maxPunten = p.holes.length * 6;
+  let html = '<div style="padding:12px 12px 4px">';
+  gesorteerd.forEach((s, pos) => {
+    const pts = totalen[s.uid];
+    const breedte = maxPunten > 0 ? Math.round((pts / maxPunten) * 100) : 0;
+    const kleur = pos === 0 ? 'var(--green)' : pos === 1 ? 'var(--gold)' : 'var(--mid)';
+    html += `<div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+        <span style="font-weight:${pos === 0 ? '700' : '400'};color:${pos === 0 ? 'var(--green)' : 'inherit'}">${esc(naamMap[s.uid])}</span>
+        <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:16px;color:${kleur}">${pts} <span style="font-size:11px;font-weight:400;color:var(--light)">pt</span></span>
+      </div>
+      <div style="height:6px;background:var(--border);border-radius:3px">
+        <div style="height:6px;background:${kleur};border-radius:3px;width:${breedte}%;transition:width 0.4s"></div>
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+  document.getElementById('match-overview').innerHTML = html;
+}
+
 function renderMatchOverview() {
   const p = mijnPartij();
   if (!p) return;
+  // v3.0.0-11.97: Amerikaantje heeft eigen overzicht
+  if (p.speltype === 'amerikaantje') { renderAmerikaaanjeOverview(); return; }
   const naamMap = kortNaamMap(p.spelers);
   let html = '';
   p.matchups.forEach(m => {
@@ -372,9 +482,47 @@ async function verwijderSpelerUitRonde(spelerId) {
 // ============================================================
 //  UITSLAG MODAL
 // ============================================================
+// ============================================================
+//  AMERIKAANTJE — uitslag (v3.0.0-11.97)
+//  Geen ranking-effect. Toon eindstand en sla archief op.
+// ============================================================
+function openAmerikaaanjeUitslagModal() {
+  const p = mijnPartij();
+  if (!p) return;
+  const naamMap = kortNaamMap(p.spelers);
+
+  // Bereken eindpunten
+  const totaalPunten = {};
+  p.spelers.forEach(s => { totaalPunten[s.uid] = 0; });
+  p.holes.forEach((_, hi) => {
+    const pt = berekenAmerikaaanjeHole(hi);
+    if (!pt) return;
+    p.spelers.forEach((s, si) => { totaalPunten[s.uid] += pt[si]; });
+  });
+
+  const gesorteerd = [...p.spelers].sort((a, b) => totaalPunten[b.uid] - totaalPunten[a.uid]);
+
+  let html = '<div style="margin-bottom:16px">';
+  gesorteerd.forEach((s, pos) => {
+    const medal = pos === 0 ? '🥇' : pos === 1 ? '🥈' : '🥉';
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f0ede4">
+      <span style="font-weight:${pos===0?'700':'400'}">${medal} ${esc(naamMap[s.uid])}</span>
+      <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:18px">${totaalPunten[s.uid]} <span style="font-size:12px;font-weight:400;color:var(--light)">pt</span></span>
+    </div>`;
+  });
+  html += '</div><p style="font-size:12px;color:var(--light)">Amerikaantje telt niet mee voor de ladderstand.</p>';
+
+  document.getElementById('modal-matches').innerHTML = html;
+  document.getElementById('modal-uitslag').classList.add('open');
+  // Markeer als amerikaantje zodat bevestigUitslag juist handelt
+  p._isAmerikaaantje = true;
+}
+
 function openUitslagModal() {
   const p = mijnPartij();
   if (!p) return;
+  // v3.0.0-11.97: Amerikaantje heeft vereenvoudigde afsluit-modal
+  if (p.speltype === 'amerikaantje') { openAmerikaaanjeUitslagModal(); return; }
   const naamMap = kortNaamMap(p.spelers);
   let html = '';
   p.matchups.forEach((m, idx) => {
@@ -474,6 +622,48 @@ async function bevestigUitslag() {
   console.log('[bevestig] bevestigUitslag gestart');
   const p = mijnPartij();
   if (!p) { console.warn('[bevestig] geen mijnPartij — abort'); return; }
+
+  // v3.0.0-11.97: Amerikaantje — geen ranking, wel archief opslaan
+  if (p.speltype === 'amerikaantje') {
+    closeModal('modal-uitslag');
+    // Sla scorekaart op als archief
+    try {
+      const totaalPunten = {};
+      p.spelers.forEach(s => { totaalPunten[s.uid] = 0; });
+      p.holes.forEach((_, hi) => {
+        const pt = berekenAmerikaaanjeHole(hi);
+        if (!pt) return;
+        p.spelers.forEach((s, si) => { totaalPunten[s.uid] += pt[si]; });
+      });
+      await addDoc(UITSLAGEN_COL, {
+        type: 'amerikaantje',
+        ladderId: p.ladderId,
+        datum: new Date().toISOString(),
+        timestamp: Date.now(),
+        baan: p.baan,
+        holes: p.holes,
+        spelers: p.spelers.map(s => ({ naam: s.naam, hcp: s.partijHcp, punten: totaalPunten[s.uid] })),
+        spelerIds: p.spelers.map(s => s.uid),
+        scores: p.scores,
+      });
+    } catch(e) { console.error('Amerikaantje archief opslaan mislukt:', e); }
+    // Verwijder partij
+    const lIdx = alleLadders.findIndex(l => l.id === p.ladderId);
+    if (lIdx >= 0) {
+      alleLadders[lIdx].actievePartijen = (alleLadders[lIdx].actievePartijen || [])
+        .filter(ap => ap.partijId !== p.partijId);
+    }
+    _verwijderdePartijIds.add(p.partijId);
+    await verwijderPartijMetRetry(p.ladderId, p.partijId);
+    renderRonde();
+    document.querySelectorAll('.page').forEach(pg => pg.classList.remove('active'));
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-ladder').classList.add('active');
+    document.querySelector('nav button').classList.add('active');
+    renderLadder();
+    toast('Amerikaantje afgerond! 🏌️');
+    return;
+  }
 
   // p.ladderId is de bron van waarheid — geen ladder-wissel nodig
 

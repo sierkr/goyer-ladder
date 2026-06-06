@@ -38,7 +38,7 @@ function slaPartijFormulierOp() {
       });
     }
 
-    const state = { ladderId, baanNaam, startHole, aantalH, slots };
+    const state = { ladderId, baanNaam, startHole, aantalH, slots, speltype: document.querySelector('input[name="speltype"]:checked')?.value || 'matchplay' };
     sessionStorage.setItem(PARTIJ_FORM_KEY, JSON.stringify(state));
   } catch(e) {
     console.warn('[partij] slaPartijFormulierOp mislukt:', e);
@@ -68,6 +68,12 @@ function herstelPartijFormulier() {
     if (state.ladderId) {
       const ladderSel = document.getElementById('partij-ladder-select');
       if (ladderSel) ladderSel.value = state.ladderId;
+    }
+
+    // Speltype
+    if (state.speltype) {
+      const radio = document.querySelector(`input[name="speltype"][value="${state.speltype}"]`);
+      if (radio) { radio.checked = true; onSpeltypeChange(); }
     }
 
     // Spelerslots herstellen — wacht tot spelerslijst beschikbaar is
@@ -103,6 +109,16 @@ function alleBANEN() {
   return result;
 }
 
+function onSpeltypeChange() {
+  const val = document.querySelector('input[name="speltype"]:checked')?.value || 'matchplay';
+  const hint = document.getElementById('speltype-hint');
+  const matchLabel = document.getElementById('speltype-matchplay-label');
+  const amerLabel  = document.getElementById('speltype-amerikaantje-label');
+  if (hint) hint.style.display = val === 'amerikaantje' ? 'block' : 'none';
+  if (matchLabel) matchLabel.style.borderColor = val === 'matchplay' ? 'var(--green)' : 'var(--border)';
+  if (amerLabel)  amerLabel.style.borderColor  = val === 'amerikaantje' ? 'var(--green)' : 'var(--border)';
+}
+
 function initPartijForm() {
   // v3.0.0-11.33: herstel eventueel opgeslagen formulierstate na versie-reload
   const heeftOpgeslagen = !!sessionStorage.getItem(PARTIJ_FORM_KEY);
@@ -123,6 +139,13 @@ function initPartijForm() {
   // Verberg selector als er maar één ladder beschikbaar is
   document.getElementById('partij-ladder-wrap').style.display = mijnLadders.length <= 1 ? 'none' : 'block';
   ladderSel.onchange = () => herlaadPartijSpelers();
+
+  // v3.0.0-11.97: speltype selector alleen voor beheerder/coordinator
+  const speltypeWrap = document.getElementById('speltype-wrap');
+  if (speltypeWrap) speltypeWrap.style.display = isCoordinatorRol() ? 'block' : 'none';
+  // Reset speltype naar matchplay bij (her)laden formulier
+  const speltypeMatchplay = document.getElementById('speltype-matchplay');
+  if (speltypeMatchplay) { speltypeMatchplay.checked = true; onSpeltypeChange(); }
 
   const sel = document.getElementById('baan-select');
   sel.innerHTML = '<option value="">— Selecteer baan —</option>';
@@ -555,6 +578,12 @@ async function startPartij() {
   // ── Validatie 4: minimaal 2 spelers geselecteerd? ─────────
   if (spelers.length < 2) { toast('Selecteer minimaal 2 spelers'); return; }
 
+  // v3.0.0-11.97: Amerikaantje vereist exact 3 spelers
+  const speltype = document.querySelector('input[name="speltype"]:checked')?.value || 'matchplay';
+  if (speltype === 'amerikaantje' && spelers.length !== 3) {
+    toast('Amerikaantje vereist exact 3 spelers'); return;
+  }
+
   // v3.0.0-11.24: zit een van deze spelers al in een actieve partij?
   // Check ALLE ladders, niet alleen de actieve. String-vergelijking voor id-types.
   // Gastspelers (id >= 90000) worden overgeslagen — die zijn per partij uniek.
@@ -625,19 +654,21 @@ async function startPartij() {
   // Wrap-around: na hole 18 door naar hole 1
   const activeHoles = Array.from({ length: aantalHoles }, (_, i) => holes[(startH + i) % holes.length]);
 
-  // Generate matchups
+  // Generate matchups — niet voor Amerikaantje
   const matchups = [];
-  for (let i = 0; i < spelers.length; i++) {
-    for (let j = i + 1; j < spelers.length; j++) {
-      const a = spelers[i], b = spelers[j];
-      const hcpDiff = Math.round(Math.abs(a.partijHcp - b.partijHcp) * 0.75);
-      const hoger = a.partijHcp > b.partijHcp ? a : b;
-      matchups.push({
-        id: `${a.uid}-${b.uid}`,
-        spelerA: a, spelerB: b,
-        hcpOntvanger: hoger.uid,
-        hcpSlagen: hcpDiff
-      });
+  if (speltype !== 'amerikaantje') {
+    for (let i = 0; i < spelers.length; i++) {
+      for (let j = i + 1; j < spelers.length; j++) {
+        const a = spelers[i], b = spelers[j];
+        const hcpDiff = Math.round(Math.abs(a.partijHcp - b.partijHcp) * 0.75);
+        const hoger = a.partijHcp > b.partijHcp ? a : b;
+        matchups.push({
+          id: `${a.uid}-${b.uid}`,
+          spelerA: a, spelerB: b,
+          hcpOntvanger: hoger.uid,
+          hcpSlagen: hcpDiff
+        });
+      }
     }
   }
 
@@ -649,6 +680,7 @@ async function startPartij() {
     startHole: startH + 1,
     spelers,
     matchups,
+    speltype,   // v3.0.0-11.97
     scores: {},
     timestamp: Date.now()
   };
@@ -777,4 +809,4 @@ function renderHcpBlok(spelers, holes, hcpPct, containerId) {
 
 // ============================================================
 
-export { addPlayerSlot, alleBANEN, filterPartijSpelers, getPartijLadderSpelers, herlaadPartijSpelers, initPartijForm, kortNaam, kortNaamMap, mijnPartij, onBaanSelect, refreshPlayerSlotOptions, removeSlot, renderHandmatigHoles, renderHcpBlok, selecteerPartijSpeler, selecteerPartijSpelerEl, slaAangepasteBaanOp, slaPartijFormulierOp, sluitSpelerLijst, startPartij, verwijderAangepasteBaan, voegGastSpelerToeAanPartij, vulKnockoutTegenstander, zoekPartijSpeler };
+export { addPlayerSlot, alleBANEN, filterPartijSpelers, getPartijLadderSpelers, herlaadPartijSpelers, initPartijForm, kortNaam, kortNaamMap, mijnPartij, onBaanSelect, onSpeltypeChange, refreshPlayerSlotOptions, removeSlot, renderHandmatigHoles, renderHcpBlok, selecteerPartijSpeler, selecteerPartijSpelerEl, slaAangepasteBaanOp, slaPartijFormulierOp, sluitSpelerLijst, startPartij, verwijderAangepasteBaan, voegGastSpelerToeAanPartij, vulKnockoutTegenstander, zoekPartijSpeler };
