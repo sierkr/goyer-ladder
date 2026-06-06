@@ -463,7 +463,14 @@ async function verwijderSpelerUitRonde(spelerId) {
   const speler = p.spelers.find(s => s.uid === spelerId);
   if (!speler) return;
   if (p.spelers.length <= 2) { toast('Minimaal 2 spelers nodig'); return; }
-  if (!confirm(`${speler.naam.split(' ')[0]} verwijderen uit de partij?`)) return;
+
+  // v3.0.0-11.98: Amerikaantje 3→2: omzetten naar matchplay
+  const wordtMatchplay = p.speltype === 'amerikaantje' && p.spelers.length === 3;
+  if (wordtMatchplay) {
+    if (!confirm(`${speler.naam.split(' ')[0]} verwijderen? De partij wordt omgezet naar matchplay en telt mee voor de ladder.`)) return;
+  } else {
+    if (!confirm(`${speler.naam.split(' ')[0]} verwijderen uit de partij?`)) return;
+  }
 
   p.spelers = p.spelers.filter(s => s.uid !== spelerId);
   p.matchups = p.matchups.filter(m =>
@@ -471,11 +478,32 @@ async function verwijderSpelerUitRonde(spelerId) {
     m.spelerB.uid !== spelerId
   );
   delete p.scores[spelerId];
-  delete p.scores[speler.uid]; // veiligheid: ruim onder beide mogelijke keys op
+  delete p.scores[speler.uid]; // veiligheid
 
-  await slaActievePartijenOp(p.ladderId);
-  renderRonde();
-  toast(`${speler.naam.split(' ')[0]} verwijderd uit partij`);
+  if (wordtMatchplay) {
+    // Zet speltype om naar matchplay
+    p.speltype = 'matchplay';
+    // Maak matchup aan voor de twee overgebleven spelers
+    const [a, b] = p.spelers;
+    const hcpDiff = Math.round(Math.abs(a.partijHcp - b.partijHcp) * 0.75);
+    const hoger = a.partijHcp > b.partijHcp ? a : b;
+    p.matchups = [{
+      id: `${a.uid}-${b.uid}`,
+      spelerA: a,
+      spelerB: b,
+      hcpOntvanger: hoger.uid,
+      hcpSlagen: hcpDiff
+    }];
+    // Reconstrueer match-stand over reeds gespeelde holes via berekenMatchStand()
+    // — dat werkt automatisch zodra matchup aanwezig is en scores bestaan.
+    await slaActievePartijenOp(p.ladderId);
+    renderRonde();
+    toast(`${speler.naam.split(' ')[0]} verwijderd · Omgezet naar matchplay ⚡`);
+  } else {
+    await slaActievePartijenOp(p.ladderId);
+    renderRonde();
+    toast(`${speler.naam.split(' ')[0]} verwijderd uit partij`);
+  }
   } catch(e) { console.error('verwijderSpelerUitRonde mislukt:', e); }
 }
 

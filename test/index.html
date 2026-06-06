@@ -1148,14 +1148,14 @@
         <div class="divider"></div>
         <div class="form-group">
           <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Speltype</label>
-          <div style="display:flex;gap:8px;margin-top:6px">
-            <label style="display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer;flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-matchplay-label">
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+            <label style="display:flex;align-items:center;gap:10px;font-size:14px;cursor:pointer;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-matchplay-label">
               <input type="radio" name="speltype" id="speltype-matchplay" value="matchplay" checked onchange="onSpeltypeChange()">
-              Matchplay
+              <span>Matchplay</span>
             </label>
-            <label style="display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer;flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-amerikaantje-label">
+            <label style="display:flex;align-items:center;gap:10px;font-size:14px;cursor:pointer;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-amerikaantje-label">
               <input type="radio" name="speltype" id="speltype-amerikaantje" value="amerikaantje" onchange="onSpeltypeChange()">
-              Amerikaantje
+              <span>Amerikaantje <span style="font-size:12px;color:var(--light)">(3 spelers · 6 punten/hole)</span></span>
             </label>
           </div>
           <p id="speltype-hint" style="display:none;font-size:11px;color:var(--light);margin-top:6px">Exact 3 spelers vereist · 6 punten per hole · telt niet mee voor ladderstand</p>

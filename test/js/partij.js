@@ -581,7 +581,7 @@ async function startPartij() {
   // v3.0.0-11.97: Amerikaantje vereist exact 3 spelers
   const speltype = document.querySelector('input[name="speltype"]:checked')?.value || 'matchplay';
   if (speltype === 'amerikaantje' && spelers.length !== 3) {
-    toast('Amerikaantje vereist exact 3 spelers'); return;
+    toast('Selecteer 3 spelers voor Amerikaantje'); return;
   }
 
   // v3.0.0-11.24: zit een van deze spelers al in een actieve partij?
