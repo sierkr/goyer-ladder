@@ -1666,6 +1666,29 @@
       </div>
     </div>
   </div>
+
+  <!-- v3.0.0-11.105: Ladder-integriteit (wees-standen, ontbrekende standen, rang-normalisatie) -->
+  <div class="card" id="admin-sectie-integriteit">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this); if(window.vulIntegriteitSelect) window.vulIntegriteitSelect()">
+      <h2>Ladder-integriteit</h2>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">
+          Controleer of de spelerslijst en de standen consistent zijn: wees-standen,
+          ontbrekende standen, en rang-gaten of dubbele rangen. Herstellen ruimt op en
+          hernummert de rangen netjes naar 1–N.
+        </p>
+        <div class="form-group">
+          <label>Ladder</label>
+          <select id="integriteit-ladder-select"></select>
+        </div>
+        <button class="btn btn-secondary btn-block" style="margin-bottom:10px" onclick="controleerLadderIntegriteit()">🔍 Controleren</button>
+        <button class="btn btn-ghost btn-block" onclick="herstelLadderIntegriteitUI()">🛠️ Herstellen</button>
+        <div id="integriteit-resultaat" style="margin-top:12px;font-size:13px"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Uitslag modal -->

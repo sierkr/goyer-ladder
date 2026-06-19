@@ -27,7 +27,7 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
   EmailAuthProvider, reauthenticateWithCredential, createUserWithEmailAndPassword }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc,
-  deleteDoc, getDocs, addDoc, query, where, orderBy }
+  deleteDoc, getDocs, addDoc, query, where, orderBy, writeBatch }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ============================================================
@@ -1103,6 +1103,119 @@ function initApp() {
 // ============================================================
 //  EXPORTS — identiek aan v2.5.x voor volledige backward compat
 // ============================================================
+// ============================================================
+//  LADDER-INTEGRITEIT — v3.0.0-11.105
+//  Houdt spelerIds[] (wie doet mee) en de standen/{uid}-subcollectie
+//  (wie heeft een rang) consistent, en garandeert dat rangen een schone
+//  permutatie 1..N zijn (geen gaten, geen duplicaten, geen wees-standen).
+// ============================================================
+
+// Hercompacteer de rangen van een ladder naar 1..N op volgorde van de huidige
+// rang. Schrijft uitsluitend gewijzigde rank-velden (merge). Kan een bestaande
+// batch meekrijgen; anders wordt er zelf een batch gecommit.
+// Returnt het aantal gewijzigde standen.
+export async function normaliseerLadderRangen(ladderId, externeBatch = null) {
+  const standenSnap = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
+  const rijen = standenSnap.docs.map(d => ({ uid: d.id, rank: (d.data().rank || 0) }));
+  // Sorteer op huidige rang; rang 0 / ontbrekend gaat achteraan, stabiel op uid.
+  rijen.sort((a, b) => {
+    const ra = a.rank > 0 ? a.rank : Infinity;
+    const rb = b.rank > 0 ? b.rank : Infinity;
+    return ra - rb || (a.uid < b.uid ? -1 : 1);
+  });
+  const batch = externeBatch || writeBatch(db);
+  let gewijzigd = 0;
+  rijen.forEach((r, i) => {
+    const nieuw = i + 1;
+    if (r.rank !== nieuw) {
+      batch.set(doc(db, 'ladders', ladderId, 'standen', r.uid), { rank: nieuw }, { merge: true });
+      gewijzigd++;
+    }
+  });
+  if (!externeBatch) await batch.commit();
+  return gewijzigd;
+}
+
+// Read-only integriteitsrapport voor één ladder.
+// Returnt { weesStanden, ontbrekendeStanden, spelerIdsZonderProfiel, rangGaten,
+//           rangDuplicaten, aantalSpelerIds, aantalStanden }.
+export async function ladderIntegriteitsRapport(ladderId) {
+  const ladder = alleLadders.find(l => l.id === ladderId);
+  const spelerIds = (ladder?.data?.spelerIds || ladder?.spelerIds || [])
+    .filter(id => typeof id === 'string' && id.length > 10);
+  const spelerIdSet = new Set(spelerIds);
+
+  const standenSnap = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
+  const standUids = standenSnap.docs.map(d => d.id);
+  const standUidSet = new Set(standUids);
+  const rangen = standenSnap.docs
+    .filter(d => spelerIdSet.has(d.id))           // alleen geldige leden tellen voor rang-checks
+    .map(d => d.data().rank || 0);
+
+  // Wees-standen: stand-document waarvan de uid niet (meer) in spelerIds zit.
+  const weesStanden = standUids.filter(uid => !spelerIdSet.has(uid));
+  // Ontbrekende standen: speler die meedoet maar geen stand-document heeft.
+  const ontbrekendeStanden = spelerIds.filter(uid => !standUidSet.has(uid));
+  // spelerIds zonder profiel in _usersCache.
+  const profielUids = new Set((_usersCache || []).map(u => u.uid));
+  const spelerIdsZonderProfiel = spelerIds.filter(uid => !profielUids.has(uid));
+
+  // Rang-gaten / duplicaten: voor de geldige leden moeten de rangen 1..M zijn.
+  const M = spelerIds.length;
+  const gezien = {};
+  let rangDuplicaten = [];
+  for (const r of rangen) gezien[r] = (gezien[r] || 0) + 1;
+  rangDuplicaten = Object.entries(gezien).filter(([r, n]) => n > 1).map(([r]) => Number(r));
+  let rangGaten = false;
+  for (let i = 1; i <= M; i++) { if (!gezien[i]) { rangGaten = true; break; } }
+  // Ook standen met rang 0 of buiten 1..M tellen als probleem.
+  const rangBuitenBereik = rangen.some(r => r < 1 || r > M);
+
+  return {
+    weesStanden, ontbrekendeStanden, spelerIdsZonderProfiel,
+    rangGaten: rangGaten || rangBuitenBereik, rangDuplicaten,
+    aantalSpelerIds: spelerIds.length, aantalStanden: standUids.length,
+    schoon: weesStanden.length === 0 && ontbrekendeStanden.length === 0 &&
+            spelerIdsZonderProfiel.length === 0 && !rangGaten && !rangBuitenBereik &&
+            rangDuplicaten.length === 0,
+  };
+}
+
+// Herstel de integriteit van één ladder atomair: verwijder wees-standen, maak
+// ontbrekende standen aan (achteraan), en normaliseer daarna de rangen.
+// Returnt een korte samenvatting van wat er is gedaan.
+export async function herstelLadderIntegriteit(ladderId) {
+  const ladder = alleLadders.find(l => l.id === ladderId);
+  const spelerIds = (ladder?.data?.spelerIds || ladder?.spelerIds || [])
+    .filter(id => typeof id === 'string' && id.length > 10);
+  const spelerIdSet = new Set(spelerIds);
+
+  const standenSnap = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
+  const standUidSet = new Set(standenSnap.docs.map(d => d.id));
+
+  const batch = writeBatch(db);
+  let weesVerwijderd = 0, standenAangemaakt = 0;
+
+  // 1) Wees-standen verwijderen.
+  for (const d of standenSnap.docs) {
+    if (!spelerIdSet.has(d.id)) { batch.delete(doc(db, 'ladders', ladderId, 'standen', d.id)); weesVerwijderd++; }
+  }
+  // 2) Ontbrekende standen aanmaken (rang krijgen ze bij de normalisatie hieronder).
+  let volg = standenSnap.size + 1;
+  for (const uid of spelerIds) {
+    if (!standUidSet.has(uid)) {
+      batch.set(doc(db, 'ladders', ladderId, 'standen', uid), { rank: volg++, partijen: 0, gewonnen: 0 });
+      standenAangemaakt++;
+    }
+  }
+  await batch.commit();
+
+  // 3) Rangen hercompacteren naar 1..N (eigen batch).
+  const rangenGewijzigd = await normaliseerLadderRangen(ladderId);
+
+  return { weesVerwijderd, standenAangemaakt, rangenGewijzigd };
+}
+
 export {
   initApp, initFirestore, setIngelogd, vervolgIngelogd, uitloggen,
   loginSubmit, loginMetGoogle,
