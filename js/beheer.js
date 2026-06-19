@@ -113,10 +113,12 @@ function openLadderInstellingen(ladderId) {
   };
 
   // Activiteitssysteem
+  document.getElementById('cfg-inactiviteit-referentiedatum').value = cfg.inactiviteitReferentiedatum ?? '2026-04-01';
   const inactiviteitAan = cfg.inactiviteitAan ?? true;
   document.getElementById('cfg-inactiviteit-aan').checked = inactiviteitAan;
   document.getElementById('cfg-inactiviteit-wrap').style.display = inactiviteitAan ? 'block' : 'none';
-  document.getElementById('cfg-inactiviteit-drempel').value = cfg.inactiviteitDrempelWeken ?? 3;
+  document.getElementById('cfg-inactiviteit-drempel').value = cfg.inactiviteitDrempelWeken ?? 4;
+  document.getElementById('cfg-inactiviteit-model').value = cfg.inactiviteitModel ?? 'zacht';
   document.getElementById('cfg-inactiviteit-aan').onchange = function() {
     document.getElementById('cfg-inactiviteit-wrap').style.display = this.checked ? 'block' : 'none';
   };
@@ -125,11 +127,20 @@ function openLadderInstellingen(ladderId) {
   document.getElementById('cfg-frequentie-aan').checked = frequentieAan;
   document.getElementById('cfg-frequentie-wrap').style.display = frequentieAan ? 'block' : 'none';
   document.getElementById('cfg-frequentie-partijen').value = cfg.frequentieBonusPartijen ?? 3;
+  document.getElementById('cfg-frequentie-plekken').value = cfg.frequentieBonusPlekken ?? 1;
   document.getElementById('cfg-frequentie-aan').onchange = function() {
     document.getElementById('cfg-frequentie-wrap').style.display = this.checked ? 'block' : 'none';
   };
 
-  document.getElementById('cfg-diversiteit-aan').checked = cfg.diversiteitsBonusAan ?? true;
+  const diversiteitAan = cfg.diversiteitsBonusAan ?? true;
+  document.getElementById('cfg-diversiteit-aan').checked = diversiteitAan;
+  document.getElementById('cfg-diversiteit-wrap').style.display = diversiteitAan ? 'block' : 'none';
+  document.getElementById('cfg-diversiteit-drempel').value = cfg.diversiteitsBonusDrempel ?? 6;
+  document.getElementById('cfg-diversiteit-plekken').value = cfg.diversiteitsBonusPlekken ?? 2;
+  document.getElementById('cfg-diversiteit-aan').onchange = function() {
+    document.getElementById('cfg-diversiteit-wrap').style.display = this.checked ? 'block' : 'none';
+  };
+
   document.getElementById('cfg-icoon-aan').checked = cfg.icoonAan ?? true;
 
   document.getElementById('modal-ladder-instellingen').classList.add('open');
@@ -150,10 +161,15 @@ async function slaLadderInstellingenOp() {
     drempel: parseInt(document.getElementById('cfg-drempel').value) || 4,
     // Activiteitssysteem
     inactiviteitAan: document.getElementById('cfg-inactiviteit-aan').checked,
-    inactiviteitDrempelWeken: parseInt(document.getElementById('cfg-inactiviteit-drempel').value) || 3,
+    inactiviteitReferentiedatum: document.getElementById('cfg-inactiviteit-referentiedatum').value || '2026-04-01',
+    inactiviteitDrempelWeken: parseInt(document.getElementById('cfg-inactiviteit-drempel').value) || 4,
+    inactiviteitModel: document.getElementById('cfg-inactiviteit-model').value || 'zacht',
     frequentieBonusAan: document.getElementById('cfg-frequentie-aan').checked,
     frequentieBonusPartijen: parseInt(document.getElementById('cfg-frequentie-partijen').value) || 3,
+    frequentieBonusPlekken: parseInt(document.getElementById('cfg-frequentie-plekken').value) || 1,
     diversiteitsBonusAan: document.getElementById('cfg-diversiteit-aan').checked,
+    diversiteitsBonusDrempel: parseInt(document.getElementById('cfg-diversiteit-drempel').value) || 6,
+    diversiteitsBonusPlekken: parseInt(document.getElementById('cfg-diversiteit-plekken').value) || 2,
     icoonAan: document.getElementById('cfg-icoon-aan').checked,
   };
 

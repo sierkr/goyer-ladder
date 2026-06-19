@@ -87,84 +87,13 @@ exports.resetSpelerWachtwoord = onCall(
 );
 
 // ============================================================
-//  Wekelijkse inactiviteitsval — elke maandag om 06:00 CET
-//  Berekent per ladder wie inactief is en past ranks aan.
+//  Wekelijkse inactiviteitsval — UITGESCHAKELD (v3.0.0-11.102)
+//  Het activiteitssysteem wordt nu volledig client-side en
+//  deterministisch berekend uit de partijhistorie (zie ladder.js,
+//  verrijkMetActiviteit). De inactiviteit is een tijdelijke
+//  weergave-demotie en muteert de opgeslagen competitierank niet,
+//  dus deze scheduled functie is overbodig en zou conflicteren.
+//  Als deze functie nog in de cloud draait: verwijder hem met
+//    firebase deploy --only functions
+//  (een ontbrekende export wordt bij deploy automatisch opgeruimd).
 // ============================================================
-exports.wekelijkseDecay = onSchedule(
-  { schedule: 'every monday 06:00', timeZone: 'Europe/Amsterdam', region: 'europe-west1' },
-  async () => {
-    const db = admin.firestore();
-    const NOW = Date.now();
-    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
-    const laddersSnap = await db.collection('ladders').get();
-
-    for (const ladderDoc of laddersSnap.docs) {
-      try {
-        const ladderId = ladderDoc.id;
-        const cfg = ladderDoc.data().config || {};
-
-        if (!cfg.inactiviteitAan) continue;
-
-        const drempelWeken = cfg.inactiviteitDrempelWeken ?? 3;
-
-        const standenSnap = await db.collection('ladders').doc(ladderId).collection('standen').get();
-        if (standenSnap.empty) continue;
-
-        const spelers = standenSnap.docs.map(d => ({ uid: d.id, ref: d.ref, ...d.data() }));
-        spelers.sort((a, b) => (a.rank || 999) - (b.rank || 999));
-
-        // Bereken inactieve weken en decay per speler
-        const metDecay = spelers.map(s => {
-          const lastPlayed = s.laatstGespeeld || 0;
-          const weeksInactive = lastPlayed > 0
-            ? Math.floor((NOW - lastPlayed) / WEEK_MS)
-            : 52; // nooit gespeeld = max inactiviteit
-
-          let decay = 0;
-          const overschrijding = weeksInactive - drempelWeken;
-          if (overschrijding >= 3) decay = 6;
-          else if (overschrijding === 2) decay = 4;
-          else if (overschrijding === 1) decay = 2;
-          else if (overschrijding === 0) decay = 1;
-
-          return { ...s, weeksInactive, decay };
-        });
-
-        // Pas ranks aan: hogere rank = lager in de lijst
-        // Voeg decay toe aan ranknummer, re-normaliseer daarna
-        const nieuweRanks = metDecay.map(s => ({
-          uid: s.uid,
-          ref: s.ref,
-          weeksInactive: s.weeksInactive,
-          nieuweRankScore: (s.rank || 999) + s.decay,
-        }));
-
-        nieuweRanks.sort((a, b) => a.nieuweRankScore - b.nieuweRankScore);
-
-        const batch = db.batch();
-        nieuweRanks.forEach((s, idx) => {
-          batch.update(s.ref, {
-            rank: idx + 1,
-            inactieveWeken: s.weeksInactive,
-          });
-        });
-
-        // Maandpartijen resetten als het een nieuwe maand is
-        const maandKey = `${new Date().getFullYear()}-${new Date().getMonth()}`;
-        metDecay.forEach(s => {
-          if (s.maandKey !== maandKey) {
-            batch.update(s.ref, { maandPartijen: 0, maandKey });
-          }
-        });
-
-        await batch.commit();
-        console.log(`[wekelijkseDecay] Ladder ${ladderId}: ${spelers.length} spelers verwerkt`);
-      } catch (e) {
-        console.error(`[wekelijkseDecay] fout bij ladder ${ladderDoc.id}:`, e.message);
-      }
-    }
-
-    return null;
-  }
-);

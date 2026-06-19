@@ -9,6 +9,111 @@ import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, d
 import { renderKnockoutLadderKaart } from './knockout.js';
 import { getLadderSpelers, isInLadder } from './ladder-view.js';
 
+// ============================================================
+//  ACTIVITEITSSYSTEEM — deterministisch berekend uit partijhistorie
+//  (ladder.data.uitslagen[]). Geen Cloud Function, geen opgeslagen
+//  velden nodig; werkt terugwerkend vanaf de referentiedatum.
+// ============================================================
+const _WEEK_MS = 7 * 24 * 3600 * 1000;
+
+// Timestamp van een uitslag: scoreTs indien aanwezig, anders de
+// 'd-m-yyyy' datumstring parsen.
+function _uitslagTs(u) {
+  if (u && u.scoreTs) return u.scoreTs;
+  if (u && u.datum) {
+    const p = String(u.datum).split('-').map(Number);
+    if (p.length === 3 && p.every(n => !isNaN(n))) {
+      return new Date(p[2], p[1] - 1, p[0]).getTime();
+    }
+  }
+  return null;
+}
+
+// Verrijk een spelerslijst met activiteitsstatus (_act) op basis van de
+// ladderconfig en de partijhistorie. Muteert niet; geeft nieuwe objecten terug.
+function verrijkMetActiviteit(spelers, ladder, cfg, nu = Date.now()) {
+  const uitslagen = (ladder && (ladder.data?.uitslagen || ladder.uitslagen)) || [];
+  const refTs = new Date(cfg.inactiviteitReferentiedatum || '2026-04-01').getTime();
+  const drempel    = cfg.inactiviteitDrempelWeken ?? 4;
+  const model      = cfg.inactiviteitModel || 'zacht';
+  const inactAan   = cfg.inactiviteitAan !== false;
+  const freqAan    = cfg.frequentieBonusAan !== false;
+  const divAan     = cfg.diversiteitsBonusAan !== false;
+  const freqMin    = cfg.frequentieBonusPartijen ?? 3;
+  const freqPlek   = cfg.frequentieBonusPlekken ?? 1;
+  const divMin     = cfg.diversiteitsBonusDrempel ?? 6;
+  const divPlek    = cfg.diversiteitsBonusPlekken ?? 2;
+
+  const nuD = new Date(nu);
+  const huidigeMaand = nuD.getFullYear() * 12 + nuD.getMonth();
+
+  // Reconstrueer per spelernaam: laatste speeldatum, partijen deze maand,
+  // unieke tegenstanders sinds de referentiedatum.
+  const stat = {};
+  const ensure = n => (stat[n] || (stat[n] = { laatst: null, maand: 0, opp: new Set() }));
+  for (const u of uitslagen) {
+    const ts = _uitslagTs(u);
+    if (ts == null) continue;
+    const d = new Date(ts);
+    const maandKey = d.getFullYear() * 12 + d.getMonth();
+    for (const n of (u.spelers || [])) {
+      const s = ensure(n);
+      if (s.laatst == null || ts > s.laatst) s.laatst = ts;
+      if (maandKey === huidigeMaand) s.maand++;
+    }
+    if (ts >= refTs) {
+      for (const m of (u.matchups || [])) {
+        if (m.a && m.b) { ensure(m.a).opp.add(m.b); ensure(m.b).opp.add(m.a); }
+      }
+    }
+  }
+
+  function straf(weken) {
+    if (!inactAan || weken < drempel) return 0;
+    const over = weken - drempel + 1;
+    if (model === 'zacht') return Math.min(6, over);
+    if (model === 'middel') return Math.min(14, over * 2);
+    return 9999; // 'fors' → harde scheiding via groep
+  }
+
+  return spelers.map(sp => {
+    const st = stat[sp.naam] || { laatst: null, maand: 0, opp: new Set() };
+    const actief = st.laatst != null && st.laatst >= refTs;
+    const inactiefSinds = st.laatst ? Math.max(st.laatst, refTs) : refTs;
+    const weken = refTs ? Math.max(0, Math.floor((nu - inactiefSinds) / _WEEK_MS)) : 0;
+    const strafPlek = straf(weken);
+    const uniek = st.opp.size;
+    const fb = (freqAan && st.maand > freqMin) ? freqPlek : 0;
+    const db = (divAan && uniek > divMin) ? divPlek : 0;
+    const baseRank = sp.rank || 999;
+    let groep = 0, eff;
+    if (model === 'fors' && inactAan) { groep = actief ? 0 : 1; eff = baseRank - fb - db; }
+    else { eff = baseRank + strafPlek - fb - db; }
+    return { ...sp, _act: { weken, straf: strafPlek, maand: st.maand, uniek, fb, db, actief, groep, eff } };
+  });
+}
+
+// Sorteer verrijkte spelers op effectieve positie en ken weergaverang toe.
+function sorteerOpActiviteit(verrijkt) {
+  const arr = [...verrijkt].sort((a, b) =>
+    (a._act.groep - b._act.groep) ||
+    (a._act.eff - b._act.eff) ||
+    ((a.rank || 999) - (b.rank || 999)));
+  arr.forEach((s, i) => { s._weergaveRang = i + 1; });
+  return arr;
+}
+
+// Geef de spelers in weergavevolgorde voor een ladder. Als het
+// activiteitssysteem uit staat, gewoon op competitierank.
+function getLadderSpelersWeergave(ladderId) {
+  const ladder = alleLadders.find(l => l.id === ladderId);
+  const spelers = getLadderSpelers(ladderId);
+  const cfg = getLadderConfig(ladderId) || DEFAULT_LADDER_CONFIG;
+  const actiefSysteem = cfg.inactiviteitAan !== false || cfg.frequentieBonusAan !== false || cfg.diversiteitsBonusAan !== false;
+  if (!actiefSysteem || spelers.length === 0) return spelers;
+  return sorteerOpActiviteit(verrijkMetActiviteit(spelers, ladder, cfg));
+}
+
 
 
 //  LADDER
@@ -84,8 +189,8 @@ async function renderLadder() {
     }
 
     // Gebruik view-laag (fase 9a) — haalt spelers uit spelers/{uid} + standen/{uid}
-    // Valt terug op l.data.spelers als standen/ nog leeg is
-    const spelers = getLadderSpelers(l.id);
+    // v3.0.0-11.102: weergavevolgorde via activiteitssysteem (inactiviteit/bonussen)
+    const spelers = getLadderSpelersWeergave(l.id);
     const lijstHtml = spelers.length === 0
       ? '<div class="empty"><p>Nog geen spelers.</p></div>'
       : spelers.map(s => renderLadderRij(s, l.id)).join('');
@@ -116,30 +221,32 @@ function renderLadderRij(s, ladderId) {
   const winpct = s.partijen > 0 ? Math.round(s.gewonnen/s.partijen*100) : 0;
   
   let deltaHtml = '';
-  if (s.prevRank != null && s.prevRank !== s.rank) {
+  // Bij actief activiteitssysteem is de getoonde rang de effectieve positie;
+  // de prevRank-delta (competitierank) zou dan misleiden, dus verbergen.
+  if (!s._act && s.prevRank != null && s.prevRank !== s.rank) {
     const d = s.prevRank - s.rank;
     deltaHtml = d > 0
       ? `<span class="delta-up" style="font-size:12px">▲${d}</span>`
       : `<span class="delta-down" style="font-size:12px">▼${Math.abs(d)}</span>`;
-  } else if (s.prevRank != null) {
+  } else if (!s._act && s.prevRank != null) {
     deltaHtml = `<span style="font-size:11px;color:var(--light)">—</span>`;
   }
 
-  // Activiteitsicoontje
+  // Activiteitsicoontje — gebaseerd op berekende activiteit (s._act)
   const cfg = getLadderConfig(ladderId);
   let icoonHtml = '';
-  if (cfg.icoonAan !== false) {
-    const drempel = cfg.inactiviteitDrempelWeken ?? 3;
-    const minPartijen = cfg.frequentieBonusPartijen ?? 3;
-    const weken = s.inactieveWeken;
-    const maandP = s.maandPartijen || 0;
-    if (maandP >= minPartijen) {
-      icoonHtml = `<span title="Actief — ${maandP} partijen deze maand" style="font-size:15px;line-height:1">🔥</span>`;
-    } else if (weken !== null && weken >= drempel) {
-      icoonHtml = `<span title="Inactief — ${weken} weken zonder partij" style="font-size:15px;line-height:1">⬇️</span>`;
-    } else if (weken !== null && weken >= drempel - 1) {
-      icoonHtml = `<span title="Let op — bijna inactiviteitszone" style="font-size:15px;line-height:1">⏳</span>`;
+  if (cfg.icoonAan !== false && s._act) {
+    const a = s._act;
+    const drempel = cfg.inactiviteitDrempelWeken ?? 4;
+    const iconen = [];
+    if (a.fb) iconen.push(`<span title="Frequent — ${a.maand} partijen deze maand" style="font-size:15px;line-height:1">🔥</span>`);
+    if (a.db) iconen.push(`<span title="Divers — ${a.uniek} verschillende tegenstanders" style="font-size:15px;line-height:1">⭐</span>`);
+    if (a.straf > 0 || (cfg.inactiviteitModel === 'fors' && cfg.inactiviteitAan !== false && !a.actief)) {
+      iconen.push(`<span title="Inactief — ${a.weken} weken zonder partij" style="font-size:15px;line-height:1">⬇️</span>`);
+    } else if (drempel > 1 && a.weken >= drempel - 1 && a.weken < drempel) {
+      iconen.push(`<span title="Let op — bijna inactiviteitszone" style="font-size:15px;line-height:1">⏳</span>`);
     }
+    icoonHtml = iconen.join('');
   }
 
   const uid = huidigeBruiker?.uid;
@@ -155,8 +262,9 @@ function renderLadderRij(s, ladderId) {
     ? `<button onclick="stuurUitdaging('${escAttr(s.uid)}')" style="background:none;border:1px solid #e0ddd4;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:${openUitdaging ? 'var(--gold)' : 'var(--light)'}" title="${openUitdaging ? 'Uitdaging loopt' : 'Uitdagen'}">⚔️</button>`
     : '';
 
+  const rang = s._weergaveRang ?? s.rank;
   return `<div class="ladder-item" style="${isZelf ? 'background:var(--green-pale);border-left:3px solid var(--green);margin-left:-3px;' : ''}">
-    <div class="rank-badge ${s.rank <= 3 ? 'top3' : isZelf ? 'zelf' : ''}">${s.rank}</div>
+    <div class="rank-badge ${rang <= 3 ? 'top3' : isZelf ? 'zelf' : ''}">${rang}</div>
     <div class="player-name" style="${isZelf ? 'font-weight:700;color:var(--green);' : ''}">${esc(s.naam)}${icoonHtml ? '&nbsp;' + icoonHtml : ''}</div>
     <div style="min-width:30px;text-align:center">${deltaHtml}</div>
     <div class="player-stats" style="text-align:right;min-width:52px">${s.partijen}P ${s.gewonnen}W<br>${winpct}%</div>
@@ -174,7 +282,7 @@ export { renderLadder, toggleLadderKaart, renderLadderRij };
 async function deelLadderAlsAfbeelding(ladderId) {
   try {
   const ladder = alleLadders.find(l => l.id === ladderId);
-  const spelers = getLadderSpelers(ladderId);
+  const spelers = getLadderSpelersWeergave(ladderId);
   if (spelers.length === 0) { toast('Geen spelers om te delen'); return; }
 
   const naam = ladder?.naam || 'Ladder';
@@ -241,7 +349,7 @@ async function deelLadderAlsAfbeelding(ladderId) {
       ctx.fillStyle = '#000';
       ctx.font = 'bold 13px Arial';
       ctx.textAlign = 'right';
-      ctx.fillText(String(s.rank), xOffset + 28, y + rowH - 5);
+      ctx.fillText(String(s._weergaveRang ?? s.rank), xOffset + 28, y + rowH - 5);
 
       // Naam
       ctx.font = '13px Arial';

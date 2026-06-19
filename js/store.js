@@ -87,10 +87,15 @@ export const DEFAULT_LADDER_CONFIG = {
   verliezerNaarWinnaar: false, drempel: 4,
   // Activiteitssysteem
   inactiviteitAan: true,
-  inactiviteitDrempelWeken: 3,      // pas na hoeveel weken begint decay
+  inactiviteitReferentiedatum: '2026-04-01', // 'actief' telt vanaf deze datum
+  inactiviteitDrempelWeken: 4,      // pas na hoeveel weken zonder partij begint de straf
+  inactiviteitModel: 'zacht',       // 'zacht' (+1/wk, max 6) · 'middel' (+2/wk, max 14) · 'fors' (harde scheiding)
   frequentieBonusAan: true,
-  frequentieBonusPartijen: 3,       // min. partijen/maand voor +1 plek bonus
+  frequentieBonusPartijen: 3,       // > dit aantal partijen deze maand geeft de bonus
+  frequentieBonusPlekken: 1,        // aantal plekken bonus bij frequentie
   diversiteitsBonusAan: true,
+  diversiteitsBonusDrempel: 6,      // > dit aantal unieke tegenstanders sinds referentiedatum geeft de bonus
+  diversiteitsBonusPlekken: 2,      // aantal plekken bonus bij diversiteit
   icoonAan: true,
 };
 

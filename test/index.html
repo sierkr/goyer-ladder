@@ -751,6 +751,11 @@
     <div class="section-title" style="margin-top:20px">Activiteitssysteem</div>
 
     <div class="form-group">
+      <label>Referentiedatum — "actief" telt vanaf deze dag</label>
+      <input type="date" id="cfg-inactiviteit-referentiedatum" value="2026-04-01" style="width:auto">
+    </div>
+
+    <div class="form-group">
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark)">
         <input type="checkbox" id="cfg-inactiviteit-aan" style="width:18px;height:18px;accent-color:var(--green)">
         Inactiviteitsval — spelers zakken bij lange inactiviteit
@@ -758,12 +763,17 @@
     </div>
     <div id="cfg-inactiviteit-wrap" style="display:none;margin-top:4px;padding:10px 12px;background:var(--green-pale);border-radius:8px">
       <div class="form-group" style="margin:0">
-        <label>Decay start na (weken zonder partij)</label>
-        <input type="number" id="cfg-inactiviteit-drempel" min="1" max="12" value="3" style="text-align:center;width:80px">
+        <label>Straf start na (weken zonder partij)</label>
+        <input type="number" id="cfg-inactiviteit-drempel" min="1" max="12" value="4" style="text-align:center;width:80px">
       </div>
-      <p style="font-size:11px;color:var(--mid);margin-top:6px;margin-bottom:0">
-        Week drempel: ×1 plek · drempel+1: ×2 · drempel+2: ×4 · drempel+3+: ×6 per week
-      </p>
+      <div class="form-group" style="margin:10px 0 0">
+        <label>Strafmodel</label>
+        <select id="cfg-inactiviteit-model" style="width:auto">
+          <option value="zacht">Zacht — +1 plek per week na drempel (max 6)</option>
+          <option value="middel">Gemiddeld — +2 plekken per week (max 14)</option>
+          <option value="fors">Fors — actieve spelers altijd boven inactieve</option>
+        </select>
+      </div>
     </div>
 
     <div class="form-group" style="margin-top:12px">
@@ -774,8 +784,12 @@
     </div>
     <div id="cfg-frequentie-wrap" style="display:none;margin-top:4px;padding:10px 12px;background:var(--green-pale);border-radius:8px">
       <div class="form-group" style="margin:0">
-        <label>Minimum partijen per maand voor +1 plek bonus</label>
+        <label>Bonus vanaf méér dan (partijen deze maand)</label>
         <input type="number" id="cfg-frequentie-partijen" min="1" max="20" value="3" style="text-align:center;width:80px">
+      </div>
+      <div class="form-group" style="margin:10px 0 0">
+        <label>Bonus (plekken omhoog)</label>
+        <input type="number" id="cfg-frequentie-plekken" min="1" max="10" value="1" style="text-align:center;width:80px">
       </div>
     </div>
 
@@ -785,11 +799,21 @@
         Diversiteitsbonus — beloning voor spelen tegen nieuwe tegenstanders
       </label>
     </div>
+    <div id="cfg-diversiteit-wrap" style="display:none;margin-top:4px;padding:10px 12px;background:var(--green-pale);border-radius:8px">
+      <div class="form-group" style="margin:0">
+        <label>Bonus vanaf méér dan (unieke tegenstanders sinds referentiedatum)</label>
+        <input type="number" id="cfg-diversiteit-drempel" min="1" max="40" value="6" style="text-align:center;width:80px">
+      </div>
+      <div class="form-group" style="margin:10px 0 0">
+        <label>Bonus (plekken omhoog)</label>
+        <input type="number" id="cfg-diversiteit-plekken" min="1" max="10" value="2" style="text-align:center;width:80px">
+      </div>
+    </div>
 
     <div class="form-group" style="margin-top:12px">
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark)">
         <input type="checkbox" id="cfg-icoon-aan" style="width:18px;height:18px;accent-color:var(--green)">
-        Activiteitsicoontjes tonen in de ladder (🔥 actief · ⏳ let op · ⬇️ inactief)
+        Activiteitsicoontjes tonen in de ladder (🔥 frequent · ⭐ divers · ⏳ let op · ⬇️ inactief)
       </label>
     </div>
 
@@ -1149,13 +1173,13 @@
         <div class="form-group">
           <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Speltype</label>
           <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
-            <label style="display:flex;align-items:center;gap:10px;font-size:14px;cursor:pointer;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;min-width:0" id="speltype-matchplay-label">
-              <input type="radio" name="speltype" id="speltype-matchplay" value="matchplay" checked onchange="onSpeltypeChange()" style="flex-shrink:0">
-              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Matchplay</span>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-matchplay-label">
+              <input type="radio" name="speltype" id="speltype-matchplay" value="matchplay" checked onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Matchplay</span>
             </label>
-            <label style="display:flex;align-items:center;gap:10px;font-size:14px;cursor:pointer;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff;min-width:0" id="speltype-amerikaantje-label">
-              <input type="radio" name="speltype" id="speltype-amerikaantje" value="amerikaantje" onchange="onSpeltypeChange()" style="flex-shrink:0">
-              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Amerikaantje</span>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-amerikaantje-label">
+              <input type="radio" name="speltype" id="speltype-amerikaantje" value="amerikaantje" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Amerikaantje</span>
             </label>
           </div>
           <p id="speltype-hint" style="display:none;font-size:11px;color:var(--light);margin-top:6px">Exact 3 spelers · 6 punten per hole · telt niet mee voor ladderstand</p>
