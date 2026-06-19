@@ -3,10 +3,10 @@
 // ============================================================
 import { db, auth, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, alleLadders, activeLadderId, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG } from './store.js';
-import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen, normaliseerLadderRangen } from './auth.js';
 import { laadInviteStatus } from './auth.js';
 import { renderLadder } from './ladder.js';
-import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { closeModal } from './admin.js';
 
 
@@ -310,25 +310,28 @@ async function slaLadderSpelersOp() {
     const ladderData = snapExists ? snapData
       : { ...JSON.parse(JSON.stringify(DEFAULT_STATE)), naam: alleLadders.find(l => l.id === ladderId)?.naam };
 
-    // Schrijf standen/{uid} voor nieuwe spelers (bestaande blijven ongewijzigd)
     const huidigeUids = new Set(ladderData.spelerIds || []);
     const nieuweUids  = geselecteerdeUids.filter(uid => !huidigeUids.has(uid));
-    const nieuweRankBase = geselecteerdeUids.length - nieuweUids.length;
-    await Promise.all(nieuweUids.map((uid, i) =>
-      setDoc(doc(db, 'ladders', ladderId, 'standen', uid), {
-        rank: nieuweRankBase + i + 1, partijen: 0, gewonnen: 0
-      }).catch(e => console.warn('standen write mislukt voor', uid, e.code))
-    ));
-
-    // Verwijder standen/{uid} voor spelers die uit de ladder zijn gehaald
     const verwijderdeUids = [...huidigeUids].filter(uid => !geselecteerdeUids.includes(uid));
-    await Promise.all(verwijderdeUids.map(uid =>
-      deleteDoc(doc(db, 'ladders', ladderId, 'standen', uid))
-        .catch(e => console.warn('standen delete mislukt voor', uid, e.code))
-    ));
 
-    // Sla alleen spelerIds op via merge — nooit het hele document herschrijven
-    await setDoc(doc(db, 'ladders', ladderId), { spelerIds: geselecteerdeUids }, { merge: true });
+    // v3.0.0-11.105: alle mutaties in één atomaire batch. Slaagt alles of niets,
+    // zodat spelerIds[] en de standen/-subcollectie niet kunnen divergeren.
+    const batch = writeBatch(db);
+    // Nieuwe spelers: voorlopige hoge rang (achteraan); normalisatie hercompacteert.
+    nieuweUids.forEach((uid, i) => {
+      batch.set(doc(db, 'ladders', ladderId, 'standen', uid), { rank: 9000 + i, partijen: 0, gewonnen: 0 });
+    });
+    // Verwijderde spelers: stand-document weg.
+    verwijderdeUids.forEach(uid => {
+      batch.delete(doc(db, 'ladders', ladderId, 'standen', uid));
+    });
+    // spelerIds via merge — nooit het hele document herschrijven.
+    batch.set(doc(db, 'ladders', ladderId), { spelerIds: geselecteerdeUids }, { merge: true });
+    await batch.commit();
+
+    // Rangen naar een schone permutatie 1..N (bestaande volgorde blijft behouden,
+    // nieuwe spelers komen achteraan, wezen bestaan niet meer).
+    await normaliseerLadderRangen(ladderId);
 
     const idx = alleLadders.findIndex(l => l.id === ladderId);
     if (idx >= 0) {

@@ -12,7 +12,8 @@ import { db, auth, firebaseConfig, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAG
 import { store, alleLadders, activeLadderId,
   huidigeBruiker, uitdagingenData } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers,
-  isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+  isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen,
+  normaliseerLadderRangen, ladderIntegriteitsRapport, herstelLadderIntegriteit } from './auth.js';
 
 // v3.0.0-11.103: gebruikersbeheer (aanmaken/verwijderen/wachtwoord-reset) loopt
 // via de gedeelde Firebase Auth — die is voor test én productie hetzelfde project.
@@ -35,7 +36,7 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
   EmailAuthProvider, reauthenticateWithCredential, createUserWithEmailAndPassword }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc,
-  deleteDoc, getDocs, addDoc, query, where, orderBy }
+  deleteDoc, getDocs, addDoc, query, where, orderBy, writeBatch }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { initApp } from './auth.js';
 
@@ -169,17 +170,14 @@ async function voegSpelerToeAanLadders(ladderIds, speler, uid) {
 
       if (spelerIds.includes(uid)) continue; // al lid
 
-      // Bepaal rank op basis van huidige standen/{uid} count
-      const standenSnap = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
-      const newRank = standenSnap.size + 1;
-
-      // Voeg uid toe aan spelerIds
+      // v3.0.0-11.105: spelerIds + standen in één atomaire batch, daarna normaliseren.
       spelerIds.push(uid);
-      await setDoc(doc(db, 'ladders', ladderId), { ...data, spelerIds });
-
-      // Maak standen/{uid} aan
-      await setDoc(doc(db, 'ladders', ladderId, 'standen', uid),
-        { rank: newRank, partijen: 0, gewonnen: 0 });
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'ladders', ladderId), { spelerIds }, { merge: true });
+      batch.set(doc(db, 'ladders', ladderId, 'standen', uid),
+        { rank: 9000, partijen: 0, gewonnen: 0 }); // voorlopige rang; normalisatie zet 'm achteraan
+      await batch.commit();
+      await normaliseerLadderRangen(ladderId);
 
       const idx = alleLadders.findIndex(l => l.id === ladderId);
       if (idx >= 0) {
@@ -512,13 +510,15 @@ async function removePlayer(uid) {
       const nieuweActievePartijen = (data.actievePartijen || []).filter(p =>
         !p.spelers?.some(s => s.uid === uid)
       );
-      await setDoc(doc(db, 'ladders', ladder.id), {
+      // v3.0.0-11.105: spelerIds-update + standen-delete in één atomaire batch.
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'ladders', ladder.id), {
         spelerIds: nieuweSpelerIds,
         actievePartijen: nieuweActievePartijen,
       }, { merge: true });
-
-      // Verwijder standen/{uid}
-      try { await deleteDoc(doc(db, 'ladders', ladder.id, 'standen', uid)); } catch(e) {}
+      batch.delete(doc(db, 'ladders', ladder.id, 'standen', uid));
+      await batch.commit();
+      await normaliseerLadderRangen(ladder.id);
 
       ladder.spelerIds = nieuweSpelerIds;
     }
@@ -818,8 +818,12 @@ async function removeUser(uid) {
     for (const ladder of alleLadders) {
       if (!(ladder.spelerIds || []).includes(uid)) continue;
       const nieuweSpelerIds = (ladder.spelerIds || []).filter(id => id !== uid);
-      await setDoc(doc(db, 'ladders', ladder.id), { spelerIds: nieuweSpelerIds }, { merge: true });
-      try { await deleteDoc(doc(db, 'ladders', ladder.id, 'standen', uid)); } catch(e) {}
+      // v3.0.0-11.105: spelerIds-update + standen-delete atomair, daarna normaliseren.
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'ladders', ladder.id), { spelerIds: nieuweSpelerIds }, { merge: true });
+      batch.delete(doc(db, 'ladders', ladder.id, 'standen', uid));
+      await batch.commit();
+      await normaliseerLadderRangen(ladder.id);
       ladder.spelerIds = nieuweSpelerIds;
     }
 
@@ -1278,6 +1282,72 @@ function kopieerBulkCredentials() {
 }
 
 
+
+// ============================================================
+//  LADDER-INTEGRITEIT — beheer-UI (v3.0.0-11.105)
+// ============================================================
+function vulIntegriteitSelect() {
+  const sel = document.getElementById('integriteit-ladder-select');
+  if (!sel) return;
+  const huidige = sel.value;
+  sel.innerHTML = alleLadders.map(l => `<option value="${escAttr(l.id)}">${esc(l.naam)}</option>`).join('');
+  if (huidige && alleLadders.find(l => l.id === huidige)) sel.value = huidige;
+  else if (activeLadderId) sel.value = activeLadderId;
+}
+
+async function controleerLadderIntegriteit() {
+  const sel = document.getElementById('integriteit-ladder-select');
+  const uit = document.getElementById('integriteit-resultaat');
+  const ladderId = sel?.value;
+  if (!ladderId || !uit) return;
+  uit.innerHTML = '<span style="color:var(--mid)">Bezig met controleren…</span>';
+  try {
+    const r = await ladderIntegriteitsRapport(ladderId);
+    if (r.schoon) {
+      uit.innerHTML = `<div style="padding:10px 12px;background:rgba(29,122,61,0.12);border-radius:8px;color:#1d7a3d">
+        ✓ Geen problemen. ${r.aantalSpelerIds} spelers, ${r.aantalStanden} standen, rangen sluitend 1–${r.aantalSpelerIds}.</div>`;
+      return;
+    }
+    const regels = [];
+    if (r.weesStanden.length)            regels.push(`${r.weesStanden.length} wees-stand(en) — stand zonder lidmaatschap`);
+    if (r.ontbrekendeStanden.length)     regels.push(`${r.ontbrekendeStanden.length} ontbrekende stand(en) — lid zonder rang`);
+    if (r.spelerIdsZonderProfiel.length) regels.push(`${r.spelerIdsZonderProfiel.length} lid/leden zonder spelerprofiel`);
+    if (r.rangGaten)                     regels.push('rang-gaten of rangen buiten 1–N');
+    if (r.rangDuplicaten.length)         regels.push(`dubbele rang(en): ${r.rangDuplicaten.join(', ')}`);
+    uit.innerHTML = `<div style="padding:10px 12px;background:rgba(192,57,43,0.10);border-radius:8px;color:var(--dark)">
+      <strong style="color:#c0392b">Problemen gevonden:</strong>
+      <ul style="margin:6px 0 0;padding-left:18px">${regels.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+      <p style="margin:8px 0 0;font-size:12px;color:var(--mid)">Klik op "Herstellen" om wezen op te ruimen, ontbrekende standen aan te maken en de rangen te normaliseren.</p>
+    </div>`;
+  } catch (e) {
+    console.error('integriteitscheck mislukt:', e);
+    uit.innerHTML = '<span style="color:#c0392b">Controle mislukt — zie console.</span>';
+  }
+}
+
+async function herstelLadderIntegriteitUI() {
+  const sel = document.getElementById('integriteit-ladder-select');
+  const uit = document.getElementById('integriteit-resultaat');
+  const ladderId = sel?.value;
+  if (!ladderId || !uit) return;
+  const naam = alleLadders.find(l => l.id === ladderId)?.naam || ladderId;
+  if (!confirm(`Integriteit herstellen voor "${naam}"?\n\nDit verwijdert wees-standen, maakt ontbrekende standen aan en hernummert de rangen naar 1–N. De onderlinge volgorde blijft behouden.`)) return;
+  uit.innerHTML = '<span style="color:var(--mid)">Bezig met herstellen…</span>';
+  try {
+    const res = await herstelLadderIntegriteit(ladderId);
+    uit.innerHTML = `<div style="padding:10px 12px;background:rgba(29,122,61,0.12);border-radius:8px;color:#1d7a3d">
+      ✓ Hersteld — ${res.weesVerwijderd} wees-stand(en) verwijderd, ${res.standenAangemaakt} stand(en) aangemaakt, ${res.rangenGewijzigd} rang(en) genormaliseerd.</div>`;
+    if (typeof renderLadder === 'function') renderLadder();
+    if (typeof renderAdminLadders === 'function') renderAdminLadders();
+  } catch (e) {
+    console.error('herstel mislukt:', e);
+    uit.innerHTML = '<span style="color:#c0392b">Herstel mislukt — zie console.</span>';
+  }
+}
+
+window.vulIntegriteitSelect = vulIntegriteitSelect;
+window.controleerLadderIntegriteit = controleerLadderIntegriteit;
+window.herstelLadderIntegriteitUI = herstelLadderIntegriteitUI;
 
 // ============================================================
 //  EXPORTS
