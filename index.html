@@ -937,6 +937,15 @@
   </div>
 </div>
 
+<!-- v3.0.0-11.104: Spelermatrix modal -->
+<div class="modal-overlay" id="modal-spelermatrix">
+  <div class="modal" style="max-width:min(95vw,1100px);width:auto">
+    <h3 id="spelermatrix-titel">Spelermatrix</h3>
+    <div id="spelermatrix-inhoud" style="margin-top:8px"></div>
+    <button class="btn btn-ghost btn-block" style="margin-top:16px" onclick="closeModal('modal-spelermatrix')">Sluiten</button>
+  </div>
+</div>
+
 <!-- Wachtwoord vergeten modal -->
 <div class="modal-overlay" id="modal-wachtwoord-vergeten" style="z-index:600">
   <div class="modal">
@@ -1634,6 +1643,26 @@
         <input type="file" id="backup-file-input" accept="application/json,.json" style="display:none" onchange="kiesBackupBestand(event)">
         <button class="btn btn-ghost btn-block" onclick="document.getElementById('backup-file-input').click()">📥 Backup terugzetten…</button>
         <div id="backup-status" style="font-size:13px;color:var(--light);margin-top:12px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- v3.0.0-11.104: Spelermatrix per ladder -->
+  <div class="card" id="admin-sectie-matrix">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this); if(window.vulMatrixSelect) window.vulMatrixSelect()">
+      <h2>Spelermatrix</h2>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">
+          Overzicht van het aantal onderlinge ladderpartijen per spelerpaar. Op de diagonaal:
+          groen met het aantal partijen deze maand, of rood met het aantal weken inactiviteit.
+        </p>
+        <div class="form-group">
+          <label>Ladder</label>
+          <select id="matrix-ladder-select"></select>
+        </div>
+        <button class="btn btn-primary btn-block" onclick="openSpelermatrix(document.getElementById('matrix-ladder-select').value)">📊 Matrix openen</button>
       </div>
     </div>
   </div>

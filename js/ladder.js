@@ -2,7 +2,7 @@
 //  ladder.js — Ladder rendering, ranking weergave
 // ============================================================
 import { db, LADDERS_COL, esc, escAttr } from './config.js';
-import { store, alleLadders, activeLadderId, huidigeBruiker, uitdagingenData, DEFAULT_LADDER_CONFIG } from './store.js';
+import { store, alleLadders, activeLadderId, huidigeBruiker, uitdagingenData, alleToernooien, DEFAULT_LADDER_CONFIG } from './store.js';
 import { getLadderConfig, getLadderData, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { stuurUitdaging } from './archief.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -31,7 +31,7 @@ function _uitslagTs(u) {
 
 // Verrijk een spelerslijst met activiteitsstatus (_act) op basis van de
 // ladderconfig en de partijhistorie. Muteert niet; geeft nieuwe objecten terug.
-function verrijkMetActiviteit(spelers, ladder, cfg, nu = Date.now()) {
+function verrijkMetActiviteit(spelers, ladder, cfg, nu = Date.now(), toernooien = []) {
   const uitslagen = (ladder && (ladder.data?.uitslagen || ladder.uitslagen)) || [];
   const refTs = new Date(cfg.inactiviteitReferentiedatum || '2026-04-01').getTime();
   const drempel    = cfg.inactiviteitDrempelWeken ?? 4;
@@ -64,6 +64,43 @@ function verrijkMetActiviteit(spelers, ladder, cfg, nu = Date.now()) {
     if (ts >= refTs) {
       for (const m of (u.matchups || [])) {
         if (m.a && m.b) { ensure(m.a).opp.add(m.b); ensure(m.b).opp.add(m.a); }
+      }
+    }
+  }
+
+  // v3.0.0-11.104: toernooipartijen tellen ook mee als activiteit. Een
+  // toernooidag geldt als 'gespeeld' zodra hij is afgerond (of, als dat veld
+  // ontbreekt, zodra de dagdatum in het verleden ligt). Elke gespeelde dag
+  // telt als één partij; flight-genoten van die dag tellen als tegenstanders
+  // voor de diversiteit. Toernooien en ladderuitslagen zijn gescheiden
+  // datastromen, dus er is geen dubbeltelling.
+  for (const t of (toernooien || [])) {
+    for (const dag of (t.dagen || [])) {
+      const gespeeld = dag.afgerond === true || (dag.datum && new Date(dag.datum).getTime() <= nu);
+      if (!gespeeld || !dag.datum) continue;
+      const ts = new Date(dag.datum).getTime();
+      if (isNaN(ts)) continue;
+      const dd = new Date(ts);
+      const maandKey = dd.getFullYear() * 12 + dd.getMonth();
+      const flights = Array.isArray(dag.flights) ? dag.flights : [];
+      // Deelnemers van de dag: uit de flights, anders de hele toernooilijst.
+      const dagDeelnemers = flights.length
+        ? flights.flatMap(f => (f.spelers || []).map(s => s.naam))
+        : (t.spelers || []).map(s => s.naam);
+      for (const naam of dagDeelnemers) {
+        if (!naam) continue;
+        const s = ensure(naam);
+        if (s.laatst == null || ts > s.laatst) s.laatst = ts;
+        if (maandKey === huidigeMaand) s.maand++;
+      }
+      // Diversiteit: flight-genoten als tegenstanders (sinds referentiedatum).
+      if (ts >= refTs) {
+        for (const f of flights) {
+          const namen = (f.spelers || []).map(s => s.naam).filter(Boolean);
+          for (const a of namen) for (const b of namen) {
+            if (a !== b) ensure(a).opp.add(b);
+          }
+        }
       }
     }
   }
@@ -111,8 +148,99 @@ function getLadderSpelersWeergave(ladderId) {
   const cfg = getLadderConfig(ladderId) || DEFAULT_LADDER_CONFIG;
   const actiefSysteem = cfg.inactiviteitAan !== false || cfg.frequentieBonusAan !== false || cfg.diversiteitsBonusAan !== false;
   if (!actiefSysteem || spelers.length === 0) return spelers;
-  return sorteerOpActiviteit(verrijkMetActiviteit(spelers, ladder, cfg));
+  return sorteerOpActiviteit(verrijkMetActiviteit(spelers, ladder, cfg, Date.now(), alleToernooien));
 }
+
+// ============================================================
+//  SPELERMATRIX (beheer) — v3.0.0-11.104
+//  Onderlinge partijen (uit ladderuitslagen) + activiteit op de diagonaal.
+// ============================================================
+function openSpelermatrix(ladderId) {
+  const id = ladderId || activeLadderId;
+  const wrap = document.getElementById('spelermatrix-inhoud');
+  const titel = document.getElementById('spelermatrix-titel');
+  const ladder = alleLadders.find(l => l.id === id);
+  if (wrap) wrap.innerHTML = renderSpelermatrixHtml(id);
+  if (titel) titel.textContent = 'Spelermatrix' + (ladder?.naam ? ' — ' + ladder.naam : '');
+  const modal = document.getElementById('modal-spelermatrix');
+  if (modal) modal.classList.add('open');
+}
+
+function renderSpelermatrixHtml(ladderId) {
+  const ladder = alleLadders.find(l => l.id === ladderId);
+  const cfg = getLadderConfig(ladderId) || DEFAULT_LADDER_CONFIG;
+  // Spelers op competitierank (vaste volgorde voor de matrix), verrijkt met activiteit.
+  const basis = getLadderSpelers(ladderId).slice().sort((a, b) => (a.rank || 999) - (b.rank || 999));
+  const spelers = verrijkMetActiviteit(basis, ladder, cfg, Date.now(), alleToernooien);
+  if (spelers.length === 0) return '<p style="padding:16px;color:var(--mid)">Geen spelers in deze ladder.</p>';
+
+  // Onderlinge telling uit ladderuitslagen (matchups a vs b, op naam).
+  const uitslagen = (ladder && (ladder.data?.uitslagen || ladder.uitslagen)) || [];
+  const paren = {};
+  const sleutel = (a, b) => (a < b ? a + '||' + b : b + '||' + a);
+  for (const u of uitslagen) {
+    for (const m of (u.matchups || [])) {
+      if (m.a && m.b) { const k = sleutel(m.a, m.b); paren[k] = (paren[k] || 0) + 1; }
+    }
+  }
+
+  const namen = spelers.map(s => s.naam);
+  const kort = s => { const d = (s.naam || '').trim().split(/\s+/); return d[d.length - 1] || s.naam; };
+
+  // Kolomkoppen = rangnummers (compact). Rijlabels = "rang. naam".
+  let html = '<div style="overflow:auto;max-height:70vh;border:1px solid var(--soft-bg);border-radius:8px">';
+  html += '<table style="border-collapse:collapse;font-size:11px;white-space:nowrap">';
+  // Header
+  html += '<thead><tr>';
+  html += '<th style="position:sticky;left:0;top:0;z-index:3;background:var(--soft-bg);padding:4px 8px;text-align:left;border-bottom:2px solid var(--mid)">Speler</th>';
+  spelers.forEach((s, j) => {
+    html += `<th title="${escAttr(s.naam)}" style="position:sticky;top:0;z-index:2;background:var(--soft-bg);padding:4px 6px;border-bottom:2px solid var(--mid);min-width:26px;text-align:center">${j + 1}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  spelers.forEach((rij, i) => {
+    html += '<tr>';
+    html += `<td style="position:sticky;left:0;z-index:1;background:var(--card-bg,#fff);padding:4px 8px;border-bottom:1px solid var(--soft-bg);border-right:2px solid var(--mid);font-weight:500">${i + 1}. ${esc(kort(rij))}</td>`;
+    spelers.forEach((kol, j) => {
+      if (i === j) {
+        // Diagonaal: groen + partijen deze maand als actief, anders rood + weken inactief.
+        const a = rij._act;
+        const actiefMaand = a.maand > 0;
+        const bg = actiefMaand ? '#1d7a3d' : '#c0392b';
+        const getal = actiefMaand ? a.maand : a.weken;
+        const tip = actiefMaand ? `${a.maand} partij(en) deze maand` : `${a.weken} weken inactief`;
+        html += `<td title="${escAttr(rij.naam + ' — ' + tip)}" style="padding:4px 6px;text-align:center;background:${bg};color:#fff;font-weight:700;border-bottom:1px solid var(--soft-bg)">${getal}</td>`;
+      } else {
+        const n = paren[sleutel(rij.naam, kol.naam)] || 0;
+        const bg = n > 0 ? 'rgba(45,90,61,0.10)' : 'transparent';
+        html += `<td title="${escAttr(rij.naam + ' vs ' + kol.naam + ': ' + n)}" style="padding:4px 6px;text-align:center;background:${bg};border-bottom:1px solid var(--soft-bg);color:${n > 0 ? 'var(--dark)' : 'var(--light)'}">${n > 0 ? n : ''}</td>`;
+      }
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+
+  // Legenda
+  html += '<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--mid);margin-top:12px">' +
+    '<span><span style="display:inline-block;width:12px;height:12px;background:#1d7a3d;border-radius:2px;vertical-align:middle"></span> diagonaal groen = partijen deze maand</span>' +
+    '<span><span style="display:inline-block;width:12px;height:12px;background:#c0392b;border-radius:2px;vertical-align:middle"></span> diagonaal rood = weken inactief</span>' +
+    '<span>cel = aantal onderlinge ladderpartijen</span>' +
+    '</div>';
+  return html;
+}
+
+window.openSpelermatrix = openSpelermatrix;
+
+// Vult de ladder-keuze in de Spelermatrix-beheerkaart (zelfde patroon als invite).
+function vulMatrixSelect() {
+  const sel = document.getElementById('matrix-ladder-select');
+  if (!sel) return;
+  const huidige = sel.value;
+  sel.innerHTML = alleLadders.map(l => `<option value="${escAttr(l.id)}">${esc(l.naam)}</option>`).join('');
+  if (huidige && alleLadders.find(l => l.id === huidige)) sel.value = huidige;
+  else if (activeLadderId) sel.value = activeLadderId;
+}
+window.vulMatrixSelect = vulMatrixSelect;
 
 
 
