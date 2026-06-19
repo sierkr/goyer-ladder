@@ -73,7 +73,7 @@
     <h1 id="toernooi-naam">⛳ Live Toernooi</h1>
     <div class="meta" id="toernooi-meta"></div>
   </div>
-  <button class="refresh-btn" onclick="laadData()">🔄 Vernieuwen</button>
+  <button class="refresh-btn" onclick="laadData()">🟢 Live</button>
 </header>
 
 <div id="tab-bar" class="tab-bar" style="display:none">
@@ -88,7 +88,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, getDoc, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, collection, query, where, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js";
 
 const firebaseConfig = {
@@ -111,6 +111,9 @@ const db = getFirestore(app);
 let toernooiId = null;
 let toernooiData = null;
 let actiefTab = 'scores';
+let _liveScoresMap = {}; // v3.0.0-11.106: { uid: { dagNr, scores, timestamp } }
+let _liveUnsub = null;   // onSnapshot unsubscribe
+let _docUnsub = null;    // main-doc onSnapshot unsubscribe
 
 // Haal toernooi ID op uit URL
 const params = new URLSearchParams(window.location.search);
@@ -132,6 +135,19 @@ window.laadData = async function() {
     if (btn) { btn.style.opacity = ''; btn.style.pointerEvents = ''; }
   }
 };
+
+// v3.0.0-11.106: helper — geeft de scores terug voor een dag,
+// met live/-subcollectie als prioriteit boven dag.scores.
+function getLiveScoresVoorDag(dag) {
+  if (!dag) return {};
+  const result = { ...(dag.scores || {}) };
+  Object.keys(_liveScoresMap).forEach(uid => {
+    if (_liveScoresMap[uid]?.dagNr === dag.dagNr) {
+      result[uid] = _liveScoresMap[uid].scores;
+    }
+  });
+  return result;
+}
 
 async function laadToernooi() {
   try {
@@ -189,14 +205,52 @@ async function laadToernooi() {
       tabBar.parentNode.insertBefore(dagTabsContainer, tabBar.nextSibling);
     }
 
-    document.getElementById('laatste-update').textContent =
-      'Bijgewerkt: ' + new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
+    updateTijd();
     renderInhoud();
+
+    // v3.0.0-11.106: start real-time listeners
+    startLiveListeners();
   } catch(e) {
     console.error('Laden mislukt:', e);
     document.getElementById('inhoud').innerHTML = '<div class="fout">Laden mislukt. Controleer je verbinding.</div>';
   }
+}
+
+function updateTijd() {
+  document.getElementById('laatste-update').textContent =
+    'Bijgewerkt: ' + new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// v3.0.0-11.106: real-time listeners op live/ subcollectie en hoofddocument
+function startLiveListeners() {
+  // Stop bestaande listeners
+  if (_liveUnsub) { _liveUnsub(); _liveUnsub = null; }
+  if (_docUnsub) { _docUnsub(); _docUnsub = null; }
+  if (!toernooiId) return;
+
+  // Listener op live/ subcollectie — real-time scores
+  _liveUnsub = onSnapshot(
+    collection(db, 'toernooien', toernooiId, 'live'),
+    (snap) => {
+      _liveScoresMap = {};
+      snap.docs.forEach(d => { _liveScoresMap[d.id] = d.data(); });
+      updateTijd();
+      renderInhoud();
+    },
+    (err) => { console.warn('live/ listener error:', err.code); }
+  );
+
+  // Listener op hoofddocument — structurele wijzigingen (flights, dag afsluiten, etc.)
+  _docUnsub = onSnapshot(
+    doc(db, 'toernooien', toernooiId),
+    (snap) => {
+      if (!snap.exists()) return;
+      toernooiData = snap.data();
+      updateTijd();
+      renderInhoud();
+    },
+    (err) => { console.warn('doc listener error:', err.code); }
+  );
 }
 
 function renderInhoud() {
@@ -210,7 +264,8 @@ function renderScores() {
   const dag = (t.dagen || [])[(t.actiefDagNr || 1) - 1] || null;
   const holes   = dag?.holes   || t.holes   || [];
   const flights = dag?.flights || t.flights || [{ naam: 'Flight', spelerIds: t.spelers.map(s => s.id) }];
-  const scores  = dag?.scores  || t.scores  || {};
+  // v3.0.0-11.106: merge live scores met dag.scores
+  const scores  = dag ? getLiveScoresVoorDag(dag) : (t.scores || {});
   let html = '';
 
   flights.forEach(flight => {
@@ -281,7 +336,8 @@ function berekenStrokeplayRanglijst(t, dagNrOverride) {
   }
   const dag = actieveDagLive(t, dagNrOverride);
   const holes  = dag?.holes  || t.holes  || [];
-  const scores = dag?.scores || t.scores || {};
+  // v3.0.0-11.106: merge live scores
+  const scores = dag ? getLiveScoresVoorDag(dag) : (t.scores || {});
   const aantalHoles = holes.length;
   return t.spelers.map(s => {
     const sScores = scores?.[s.id] || scores?.[String(s.id)] || [];
@@ -314,7 +370,8 @@ function renderRanglijst() {
   const aantalDagen = (t.dagen || []).length;
   const dag = actieveDagLive(t);
   const holes  = dag?.holes  || t.holes  || [];
-  const scores = dag?.scores || t.scores || {};
+  // v3.0.0-11.106: merge live scores
+  const scores = dag ? getLiveScoresVoorDag(dag) : (t.scores || {});
   const dagNr  = t.actiefDagNr || 1;
 
   // Ranglijst tabs bij meerdere dagen: Dag 1, Dag 2... + Totaal
@@ -331,7 +388,8 @@ function renderRanglijst() {
 
   const rlDagNr = window._liveRlDagNr !== undefined ? window._liveRlDagNr : dagNr;
   const rlHoles  = rlDagNr === 0 ? holes : (actieveDagLive(t, rlDagNr)?.holes  || holes);
-  const rlScores = rlDagNr === 0 ? scores : (actieveDagLive(t, rlDagNr)?.scores || scores);
+  const rlDag    = rlDagNr === 0 ? null : actieveDagLive(t, rlDagNr);
+  const rlScores = rlDag ? getLiveScoresVoorDag(rlDag) : scores;
 
   let html = '<div class="card">' + tabsHtml;
 
