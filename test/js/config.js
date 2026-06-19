@@ -31,7 +31,11 @@ export const appCheck = initializeAppCheck(app, {
   isTokenAutoRefreshEnabled: true
 });
 
-export const db = getFirestore(app);
+// v3.0.0-11.103: testomgeving — als de app onder /test/ draait, gebruik de
+// named Firestore database 'test' (los van productie). Auth en App Check zijn
+// gedeeld (zelfde project + zelfde sierkr.github.io-domein).
+export const IS_TEST = typeof location !== 'undefined' && location.pathname.includes('/test/');
+export const db = IS_TEST ? getFirestore(app, 'test') : getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 

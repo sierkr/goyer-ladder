@@ -3,7 +3,7 @@
 //  Primaire identifier: uid (Firebase Auth uid)
 //  Bron van waarheid:   spelers/{uid} (profiel), standen/{uid} (ranking)
 // ============================================================
-import { db, auth, firebaseConfig, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL,
+import { db, auth, firebaseConfig, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL,
   SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC,
   INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr,
   EMAIL_SUFFIX, DEFAULT_HCP,
@@ -13,6 +13,18 @@ import { store, alleLadders, activeLadderId,
   huidigeBruiker, uitdagingenData } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers,
   isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+
+// v3.0.0-11.103: gebruikersbeheer (aanmaken/verwijderen/wachtwoord-reset) loopt
+// via de gedeelde Firebase Auth — die is voor test én productie hetzelfde project.
+// In de testomgeving blokkeren we deze acties zodat je niet per ongeluk echte
+// accounts aanmaakt of wachtwoorden reset vanuit test.
+function _blokkeerInTest(actie) {
+  if (IS_TEST) {
+    toast(`${actie} is uitgeschakeld in de testomgeving — dit zou de live database raken.`);
+    return true;
+  }
+  return false;
+}
 import { openNieuweLadderModal, renderAdminLadders } from './beheer.js';
 import { reageerUitdaging, verwijderUitdaging } from './archief.js';
 import { renderLadder } from './ladder.js';
@@ -267,6 +279,7 @@ async function voegAccountToeAlsSpeler(uid, naam) {
 // Maak volledig nieuw account + speler aan (beheerder flow)
 // v3.0.0-11: email + wachtwoord worden auto-gegenereerd.
 async function saveNewPlayer() {
+  if (_blokkeerInTest('Speler aanmaken')) return;
   const voornaam   = document.getElementById('new-player-voornaam').value.trim();
   const achternaam = document.getElementById('new-player-achternaam').value.trim();
   const naam       = [voornaam, achternaam].filter(Boolean).join(' ');
@@ -375,6 +388,7 @@ function kopieerCredentials(loginTxt, pass) {
 //  WACHTWOORD RESET via Cloud Function — v3.0.0-11.2
 // ============================================================
 async function vraagResetWachtwoord(uid, naam) {
+  if (_blokkeerInTest('Wachtwoord resetten')) return;
   const bevestig = confirm(
     `Wachtwoord van ${naam} resetten naar ${store.initieelWachtwoord}?\n\n` +
     `De speler moet bij eerstvolgende inlog een nieuw wachtwoord kiezen en zijn handicap opnieuw instellen.`
@@ -745,6 +759,7 @@ function openAddUser() {
 }
 
 async function saveNewUser() {
+  if (_blokkeerInTest('Gebruiker aanmaken')) return;
   const email = document.getElementById('new-user-name').value.trim().toLowerCase();
   const pass  = document.getElementById('new-user-pass').value;
   const rol   = document.getElementById('new-user-rol').value;
@@ -1001,6 +1016,7 @@ function _handleBulkPaste(e) {
 }
 
 async function startBulkImport() {
+  if (_blokkeerInTest('Bulk-import van spelers')) return;
   const toernooiNaam = document.getElementById('bulk-toernooi-naam').value.trim();
   if (!toernooiNaam) { toast('Voer een toernooijnaam in'); return; }
 
