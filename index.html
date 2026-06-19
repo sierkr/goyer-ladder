@@ -1617,6 +1617,26 @@
       </div>
     </div>
   </div>
+
+  <!-- v3.0.0-11.103: Data backup & herstel (volledige database) -->
+  <div class="card" id="admin-sectie-backup">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+      <h2>Data backup</h2>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">
+          Maak een volledige backup van de database als JSON-bestand, of zet een backup terug.
+          Terugzetten schrijft naar de <strong id="backup-omgeving-label">huidige</strong> database
+          en overschrijft de bestaande data.
+        </p>
+        <button class="btn btn-secondary btn-block" style="margin-bottom:10px" onclick="maakBackup()">💾 Backup maken (download JSON)</button>
+        <input type="file" id="backup-file-input" accept="application/json,.json" style="display:none" onchange="kiesBackupBestand(event)">
+        <button class="btn btn-ghost btn-block" onclick="document.getElementById('backup-file-input').click()">📥 Backup terugzetten…</button>
+        <div id="backup-status" style="font-size:13px;color:var(--light);margin-top:12px"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Uitslag modal -->

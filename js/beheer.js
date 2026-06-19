@@ -1,7 +1,7 @@
 // ============================================================
 //  beheer.js
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
+import { db, auth, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, alleLadders, activeLadderId, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { laadInviteStatus } from './auth.js';
@@ -476,6 +476,142 @@ async function herstelSnapshot(snapId) {
 //  UITNODIGINGSLINK
 // ============================================================
 
+
+// ============================================================
+//  DATA BACKUP & HERSTEL (volledige database) — v3.0.0-11.103
+// ============================================================
+// Top-level collecties die meegaan in de backup. 'ladders' krijgt zijn
+// standen-subcollectie mee onder de sleutel _standen per ladderdocument.
+const _BACKUP_COLLECTIES = ['ladders', 'spelers', 'toernooien', 'uitslagen', 'snapshots'];
+const _BACKUP_DOCUMENTEN = ['state', 'users', 'banen', 'archief', 'uitdagingen', 'toernooi', 'config', 'invite', 'ladderVolgorde'];
+
+function _omgevingLabel() { return IS_TEST ? 'TEST' : 'PRODUCTIE (live)'; }
+
+// Zet het omgeving-label in de beheerkaart zodra het DOM klaar is.
+if (typeof document !== 'undefined') {
+  const _zet = () => { const el = document.getElementById('backup-omgeving-label'); if (el) el.textContent = _omgevingLabel(); };
+  if (document.readyState !== 'loading') _zet();
+  else document.addEventListener('DOMContentLoaded', _zet);
+}
+
+async function maakBackup() {
+  const status = document.getElementById('backup-status');
+  try {
+    if (status) status.textContent = 'Backup wordt gemaakt…';
+    const data = {
+      _meta: {
+        app: 'goyer-golf-mp-ladder',
+        omgeving: IS_TEST ? 'test' : 'productie',
+        datum: new Date().toISOString(),
+      },
+      collecties: {},
+      documenten: {},
+    };
+
+    for (const c of _BACKUP_COLLECTIES) {
+      const snap = await getDocs(collection(db, c));
+      data.collecties[c] = {};
+      for (const d of snap.docs) {
+        const docData = d.data();
+        if (c === 'ladders') {
+          const st = await getDocs(collection(db, 'ladders', d.id, 'standen'));
+          const standen = {};
+          st.docs.forEach(s => { standen[s.id] = s.data(); });
+          docData._standen = standen;
+        }
+        data.collecties[c][d.id] = docData;
+      }
+    }
+
+    for (const id of _BACKUP_DOCUMENTEN) {
+      const snap = await getDoc(doc(db, 'ladder', id));
+      if (snap.exists()) data.documenten[id] = snap.data();
+    }
+
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    const naam = `goyer-ladder-backup-${IS_TEST ? 'test-' : ''}${stamp}.json`;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = naam; a.click();
+    URL.revokeObjectURL(url);
+
+    const nL = Object.values(data.collecties.ladders || {}).length;
+    const nS = Object.values(data.collecties.spelers || {}).length;
+    if (status) status.textContent = `✓ Backup gedownload (${nL} ladders, ${nS} spelers) — omgeving: ${_omgevingLabel()}`;
+  } catch (e) {
+    console.error('maakBackup mislukt:', e);
+    if (status) status.textContent = 'Backup mislukt — zie console.';
+    toast('Backup mislukt');
+  }
+}
+
+function kiesBackupBestand(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = ''; // reset zodat hetzelfde bestand opnieuw gekozen kan worden
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let data;
+    try { data = JSON.parse(reader.result); }
+    catch (e) { toast('Ongeldig backup-bestand (geen JSON)'); return; }
+    if (!data || !data.collecties || !data.documenten) {
+      toast('Dit lijkt geen Goyer-ladder backup');
+      return;
+    }
+    const herkomst = data._meta?.omgeving || 'onbekend';
+    const aantalLadders = Object.keys(data.collecties.ladders || {}).length;
+    const waarschuwing =
+      `BACKUP TERUGZETTEN\n\n` +
+      `Bron: ${herkomst} (${data._meta?.datum || 'onbekende datum'})\n` +
+      `Doel: ${_omgevingLabel()}\n\n` +
+      `Dit OVERSCHRIJFT de huidige data (${aantalLadders} ladders in de backup).\n` +
+      (IS_TEST ? '' : '⚠️ Je staat in PRODUCTIE — dit raakt de live database!\n') +
+      `\nDoorgaan?`;
+    if (!confirm(waarschuwing)) return;
+    zetBackupTerug(data);
+  };
+  reader.onerror = () => toast('Kon bestand niet lezen');
+  reader.readAsText(file);
+}
+
+async function zetBackupTerug(data) {
+  const status = document.getElementById('backup-status');
+  try {
+    if (status) status.textContent = 'Backup wordt teruggezet…';
+    let geschreven = 0;
+
+    for (const [c, docs] of Object.entries(data.collecties || {})) {
+      for (const [id, docData] of Object.entries(docs)) {
+        const kopie = { ...docData };
+        const standen = kopie._standen; delete kopie._standen;
+        await setDoc(doc(db, c, id), kopie);
+        geschreven++;
+        if (standen && typeof standen === 'object') {
+          for (const [uid, s] of Object.entries(standen)) {
+            await setDoc(doc(db, c, id, 'standen', uid), s);
+            geschreven++;
+          }
+        }
+      }
+    }
+
+    for (const [id, docData] of Object.entries(data.documenten || {})) {
+      await setDoc(doc(db, 'ladder', id), docData);
+      geschreven++;
+    }
+
+    if (status) status.textContent = `✓ Backup teruggezet in ${_omgevingLabel()} (${geschreven} documenten). Herlaad de pagina om de nieuwe data te zien.`;
+    toast('Backup teruggezet ✓');
+  } catch (e) {
+    console.error('zetBackupTerug mislukt:', e);
+    if (status) status.textContent = 'Terugzetten mislukt — zie console. Mogelijk ontbreken rechten op deze database.';
+    toast('Terugzetten mislukt');
+  }
+}
+
+window.maakBackup = maakBackup;
+window.kiesBackupBestand = kiesBackupBestand;
 
 // ============================================================
 //  WINDOW EXPORTS
