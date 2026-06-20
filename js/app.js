@@ -14,7 +14,7 @@ import { renderLadder, toggleLadderKaart } from './ladder.js';
 import { initPartijForm, addPlayerSlot, voegGastSpelerToeAanPartij, removeSlot, onBaanSelect, onSpeltypeChange,
   startPartij, zoekPartijSpeler, selecteerPartijSpelerEl,
   sluitSpelerLijst, slaAangepasteBaanOp, verwijderAangepasteBaan,
-  refreshPlayerSlotOptions, slaPartijFormulierOp } from './partij.js';
+  refreshPlayerSlotOptions, slaPartijFormulierOp, scanScorekaartFoto } from './partij.js';
 import { renderRonde, renderScorecard, updateScore, toggleScorecard,
   openUitslagModal, bevestigUitslag, setWinnaar, skipMatchup,
   editPartijHcp, verwijderSpelerUitRonde, openToevoegenModal,
@@ -92,6 +92,7 @@ window.zoekPartijSpeler = zoekPartijSpeler;
 window.selecteerPartijSpelerEl = selecteerPartijSpelerEl;
 window.sluitSpelerLijst = sluitSpelerLijst;
 window.slaAangepasteBaanOp = slaAangepasteBaanOp;
+window.scanScorekaartFoto = scanScorekaartFoto;
 window.verwijderAangepasteBaan = verwijderAangepasteBaan;
 window.refreshPlayerSlotOptions = refreshPlayerSlotOptions;
 window.updateScore = updateScore;
@@ -220,7 +221,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v3.0.0-11.107';
+  const VERSION = 'v3.0.0-11.108';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -261,7 +262,7 @@ window.toggleTRankingLadder = toggleTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v3.0.0-11.107';
+  const LOKALE_VERSIE = 'v3.0.0-11.108';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 
