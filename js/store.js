@@ -50,6 +50,11 @@ export let toernooiData = null;
 export let alleToernooien = [];
 export let actieveToernooiId = null;
 
+// ─── Toernooi live scores ────────────────────────────────────
+// v3.0.0-11.106: _liveScores is de bron van waarheid voor actuele scores
+// tijdens het spelen. Structuur: { [uid]: { dagNr, scores: [...], timestamp } }
+export let _liveScores = {};
+
 // ─── Toernooi setup ──────────────────────────────────────────
 export let _tGeselecteerdeSpelers = [];
 export let _tSpelersLadderIds = new Set();
@@ -171,6 +176,8 @@ export const store = {
   get _instellingenLadderId() { return _instellingenLadderId; },
   set _toernooiSpelerToevoegen(v) { _toernooiSpelerToevoegen = v; },
   get _toernooiSpelerToevoegen() { return _toernooiSpelerToevoegen; },
+  set _liveScores(v) { _liveScores = v; },
+  get _liveScores() { return _liveScores; },
   set aangepasteBanen(v) { aangepasteBanen = v; },
   get aangepasteBanen() { return aangepasteBanen; },
   set _verwijderdePartijIds(v) { _verwijderdePartijIds = v; },

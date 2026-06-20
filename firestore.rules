@@ -111,13 +111,12 @@ service cloud.firestore {
       allow read:  if true;
       allow write: if isCoordinator();
 
-      // v3.0.0-11.65: live-scores subcollectie - spelers schrijven eigen scores hier.
-      // Coordinator leest via onSnapshot en mergt in het hoofddocument.
-      // Speler mag alleen zijn eigen doc schrijven (request.auth.uid == uid).
-      // Read open zodat coordinator alle docs kan lezen.
+      // v3.0.0-11.106: live-scores subcollectie - spelers schrijven eigen scores hier.
+      // Coordinator mag ook andermans scores schrijven (score-invoer namens speler).
+      // Read publiek zodat toernooi-live.html real-time scores kan tonen.
       match /live/{uid} {
-        allow read:  if isIngelogd();
-        allow write: if isIngelogd() && request.auth.uid == uid;
+        allow read:  if true;
+        allow write: if isIngelogd() && (request.auth.uid == uid || isCoordinator());
       }
     }
 

@@ -1,10 +1,11 @@
 // ============================================================
-//  toernooi.js — v3.0.0-11.45
+//  toernooi.js — v3.0.0-11.106
 //  Meerdaags toernooi: scores/flights/baan per dag
+//  v11.106: live/-subcollectie als bron van waarheid; scorekaart bovenaan voor spelers
 //  Datastructuur: t.dagen[dagNr-1].{datum,baan,holes,flights,scores,afgerond}
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
-import { store, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tSpelersLadderIds, _tRankingLadderIds, _flights } from './store.js';
+import { store, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tSpelersLadderIds, _tRankingLadderIds, _flights, _liveScores } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { renderHcpBlok, alleBANEN, renderHandmatigHoles } from './partij.js';
 import { renderLadder } from './ladder.js';
@@ -115,10 +116,13 @@ function renderToernooi() {
 // Ze schrijven hun eigen scores naar de subcollectie toernooien/{id}/live/{uid}.
 // De coordinator-onSnapshot listener pikt dit op en mergt de scores
 // in het hoofddocument.
+// v3.0.0-11.106: Per-uid debounce timers zodat gelijktijdige score-invoer
+// voor meerdere spelers (door coordinator) niet elkaars timer overschrijft.
 async function slaSpelerScoreOp(uid, dagNr, scores) {
   if (!actieveToernooiId || !uid) return;
-  clearTimeout(window._tSpelerSaveTimer);
-  window._tSpelerSaveTimer = setTimeout(async () => {
+  if (!window._tSpelerSaveTimers) window._tSpelerSaveTimers = {};
+  clearTimeout(window._tSpelerSaveTimers[uid]);
+  window._tSpelerSaveTimers[uid] = setTimeout(async () => {
     try {
       await setDoc(
         doc(db, 'toernooien', actieveToernooiId, 'live', uid),
@@ -189,19 +193,19 @@ async function herlaadToernooien() {
     if (toernooiData) store.actieveToernooiId = toernooiData.id;
 
     herlaadToernooiListeners();
-
-    herlaadToernooiListeners();
   } catch(e) { console.error('Toernooien laden mislukt:', e); }
 }
 
-// v3.0.0-11.73: Per-document onSnapshot listeners voor actieve toernooien.
+// v3.0.0-11.106: Per-document onSnapshot listeners voor actieve toernooien.
 // Wordt aangeroepen vanuit herlaadToernooien() en vanuit de collectie-onSnapshot
 // in auth.js zodat listeners altijd actueel zijn.
 function herlaadToernooiListeners() {
   _toernooiListeners.forEach(unsub => unsub());
   store._toernooiListeners = [];
+  store._liveScores = {};
 
-if (isCoordinatorRol()) {
+  // v3.0.0-11.106: ALLE gebruikers luisteren op live/ subcollectie
+  // zodat scores real-time zichtbaar zijn zonder de coördinator als tussenschakel.
   alleToernooien.forEach(t => {
     const liveUnsub = onSnapshot(
       collection(db, 'toernooien', t.id, 'live'),
@@ -211,9 +215,12 @@ if (isCoordinatorRol()) {
         if (!dag || dag.afgerond) return;
         let gewijzigd = false;
         liveSnap.docs.forEach(liveDoc => {
-          const { dagNr, scores } = liveDoc.data();
-          if (dagNr !== toernooiData.actiefDagNr) return;
+          const data = liveDoc.data();
+          const { dagNr, scores } = data;
           const uid = liveDoc.id;
+          // Sla op in _liveScores (altijd, ongeacht dagNr)
+          store._liveScores[uid] = data;
+          if (dagNr !== toernooiData.actiefDagNr) return;
           if (!dag.scores) dag.scores = {};
           const huidig = JSON.stringify(dag.scores[uid] || []);
           const nieuw  = JSON.stringify(scores || []);
@@ -225,23 +232,18 @@ if (isCoordinatorRol()) {
         if (gewijzigd) {
           updateTTotaalRijInline();
           renderTMatrix();
-          const btn = document.getElementById('t-refresh-btn');
-          if (btn) btn.style.display = '';
-          // Debounced wegschrijven naar hoofddocument
-          clearTimeout(window._tLiveMergeTimer);
-          window._tLiveMergeTimer = setTimeout(async () => {
-            try {
-              await setDoc(doc(db, 'toernooien', actieveToernooiId),
-                JSON.parse(JSON.stringify(toernooiData)));
-            } catch(e) { console.error('Live merge opslaan mislukt:', e); }
-          }, 2000);
+          if (isCoordinatorRol()) {
+            const btn = document.getElementById('t-refresh-btn');
+            if (btn) btn.style.display = '';
+          }
+          // v3.0.0-11.106: NIET meer debounced wegschrijven naar hoofddocument.
+          // Consolidatie gebeurt eenmalig bij "dag afsluiten" (sluitDagAf).
         }
       },
       (err) => { console.warn('live/ listener error:', err.code); }
     );
     store._toernooiListeners.push(liveUnsub);
   });
-}
 
 alleToernooien.forEach(t => {
   const unsub = onSnapshot(doc(db, 'toernooien', t.id), (snap) => {
@@ -252,17 +254,26 @@ alleToernooien.forEach(t => {
     if (actieveToernooiId === snap.id) {
       const isBeheerder = isCoordinatorRol();
       const detail = document.getElementById('toernooi-detail');
+
+      // v3.0.0-11.106: Behoud dag.scores voor de actieve niet-afgeronde dag.
+      // Tijdens het spelen is de live/-subcollectie de bron van waarheid;
+      // het hoofddocument bevat alleen geconsolideerde scores (na "dag afsluiten").
+      // Als we hier de serverversie klakkeloos overnemen, overschrijft dat
+      // de lokaal-ingevoerde scores die nog in de live-write-queue zitten.
+      const actieveDagNr = nieuweData.actiefDagNr || 1;
+      const actieveDagIdx = actieveDagNr - 1;
+      if (nieuweData.dagen && nieuweData.dagen[actieveDagIdx] &&
+          !nieuweData.dagen[actieveDagIdx].afgerond && toernooiData) {
+        const huidigeDag = actieveDag(toernooiData);
+        if (huidigeDag && huidigeDag.scores) {
+          nieuweData.dagen[actieveDagIdx].scores = huidigeDag.scores;
+        }
+      }
+
       if (detail) {
         const dag = actieveDag(nieuweData);
         if (isBeheerder) {
-          const oudScores = JSON.stringify(actieveDag(toernooiData)?.scores || {});
-          const nieuwScores = JSON.stringify(dag?.scores || {});
           store.toernooiData = nieuweData;
-          if (oudScores !== nieuwScores) {
-            const btn = document.getElementById('t-refresh-btn');
-            if (btn) btn.style.display = '';
-            renderTMatrix();
-          }
           const dagUitslag = dag?.afgerond || nieuweData.uitslagZichtbaar;
           if (dagUitslag || nieuweData.modus === 'strokeplay') renderTRanglijst();
         } else {
@@ -314,6 +325,9 @@ alleToernooien.forEach(t => {
             renderTRanglijst();
           }
         }
+      } else {
+        // Geen detail-element zichtbaar (bijv. op ander scherm) — gewoon data bijwerken
+        store.toernooiData = nieuweData;
       }
     }
   });
@@ -813,6 +827,8 @@ async function startToernooi() {
     }
     document.getElementById('toernooi-actief-wrap').style.display = 'block';
     renderToernooi();
+    // v3.0.0-11.106: start live/ listeners direct na aanmaken
+    herlaadToernooiListeners();
   } catch(e) { console.error('startToernooi mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
@@ -967,7 +983,7 @@ async function slaFlightIndelingDagOp() {
   } catch(e) { console.error('slaFlightIndelingDagOp mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
 }
 
-// Sluit dag af — zet afgerond=true, toont samenvatting
+// Sluit dag af — consolideer live-scores naar hoofddoc, zet afgerond=true
 async function sluitDagAf() {
   try {
     const t   = toernooiData;
@@ -975,6 +991,28 @@ async function sluitDagAf() {
     if (!dag) return;
 
     if (!confirm(`Dag ${dag.dagNr} afsluiten? Scores zijn daarna niet meer aanpasbaar.`)) return;
+
+    // v3.0.0-11.106: consolideer live/-subcollectie → dag.scores voordat we afsluiten.
+    // Haal verse data op uit Firestore (niet alleen de lokale _liveScores cache).
+    try {
+      const liveSnap = await getDocs(collection(db, 'toernooien', actieveToernooiId, 'live'));
+      liveSnap.docs.forEach(liveDoc => {
+        const { dagNr, scores } = liveDoc.data();
+        if (dagNr !== dag.dagNr) return;
+        const uid = liveDoc.id;
+        if (scores && scores.length > 0) {
+          dag.scores[uid] = scores;
+        }
+      });
+    } catch(e) {
+      console.warn('Live scores ophalen bij afsluiten mislukt, val terug op lokale data:', e);
+      // Gebruik _liveScores als fallback
+      Object.keys(_liveScores).forEach(uid => {
+        if (_liveScores[uid]?.dagNr === dag.dagNr && _liveScores[uid]?.scores?.length > 0) {
+          dag.scores[uid] = _liveScores[uid].scores;
+        }
+      });
+    }
 
     dag.afgerond = true;
     dag.uitslagZichtbaar = true;
@@ -1256,8 +1294,10 @@ function renderToernooiActief() {
     dagTabsHtml += '</div>';
   }
 
-  detail.innerHTML = `
-    ${dagTabsHtml}
+  // v3.0.0-11.106: bouw secties als variabelen op, zodat de volgorde
+  // verschilt voor beheerder (scores onderaan) vs speler (scores bovenaan).
+
+  const titelKaart = `
     <div class="card">
       <div class="card-header">
         <h2>${esc(t.naam)}</h2>
@@ -1271,9 +1311,9 @@ function renderToernooiActief() {
         ${flights.length > 1 ? ` · ${flights.length} flights` : ''}
         ${!isBeheerder && mijnFlight ? ` · <strong style="color:var(--green)">${esc(mijnFlight.naam)}</strong>` : ''}
       </div>
-    </div>
+    </div>`;
 
-    ${uitslag || dagAfgerond || t.modus === 'strokeplay' ? `
+  const ranglijstKaart = (uitslag || dagAfgerond || t.modus === 'strokeplay') ? `
     <div class="card">
       <div style="display:flex;gap:6px;overflow-x:auto;padding:10px 12px 0;scrollbar-width:none;border-bottom:1px solid var(--border)">
         ${(t.dagen || []).map(d => `
@@ -1290,10 +1330,9 @@ function renderToernooiActief() {
           </button>` : ''}
       </div>
       <div id="t-ranglijst"></div>
-    </div>
-    ` : ''}
+    </div>` : '';
 
-    ${t.modus !== 'strokeplay' ? `
+  const matrixKaart = t.modus !== 'strokeplay' ? `
     <div class="card">
       <div class="card-header ${isBeheerder ? 'inklapbaar' : ''} ${t.matrixIngeklapt && !uitslag ? 'ingeklapt' : ''}"
         ${isBeheerder ? 'onclick="toggleToernooiMatrix()"' : ''}>
@@ -1302,12 +1341,19 @@ function renderToernooiActief() {
       <div class="card-collapse ${t.matrixIngeklapt && !uitslag ? 'ingeklapt' : ''}" id="t-matrix-collapse">
         <div id="t-matrix" style="overflow-x:auto;padding:8px"></div>
       </div>
-    </div>
-    ` : ''}
+    </div>` : '';
 
+  // v3.0.0-11.106: voor spelers een duidelijke kop met flightnaam en instructie
+  const scorecardTitel = isBeheerder
+    ? 'Scores dag ' + dagNr
+    : mijnFlight
+      ? `⛳ Jouw scorekaart · ${esc(mijnFlight.naam)}`
+      : '⛳ Jouw scorekaart';
+
+  const scorecardKaart = `
     <div class="card">
       <div class="card-header inklapbaar ${dagAfgerond ? 'ingeklapt' : ''}" onclick="toggleAdminKaart(this)">
-        <h2>${isBeheerder ? 'Scores dag ' + dagNr : 'Mijn scorekaart'}</h2>
+        <h2>${scorecardTitel}</h2>
         <div style="display:flex;gap:6px" onclick="event.stopPropagation()">
           ${isBeheerder ? `
             <button id="t-refresh-btn" class="btn btn-sm btn-ghost" onclick="refreshToernooiScorekaart()" style="display:none;background:var(--gold);color:white;border-color:var(--gold)">↺ Nieuw</button>
@@ -1316,18 +1362,23 @@ function renderToernooiActief() {
           ` : ''}
         </div>
       </div>
+      ${!isBeheerder && !dagAfgerond && mijnFlight ? `
+      <div style="padding:8px 16px 0;font-size:12px;color:var(--mid)">
+        Vul hieronder je scores in per hole. Scores worden automatisch gedeeld met je flight.
+      </div>` : ''}
       <div class="card-collapse ${dagAfgerond ? 'ingeklapt' : ''}">
         <div id="t-scorecard-wrap" style="overflow-x:auto"></div>
       </div>
-    </div>
+    </div>`;
 
+  const liveLinkKnop = `
     <div style="padding:0 0 12px">
       <button onclick="kopieerLiveLink()" class="btn btn-ghost btn-block" style="font-size:13px">
         🔗 Live meekijklink kopiëren
       </button>
-    </div>
+    </div>`;
 
-    ${isBeheerder ? `
+  const beheerderKnoppen = isBeheerder ? `
     <div style="padding:0 0 16px">
       ${!dagAfgerond && !uitslag ? `
       <button id="t-uitslag-btn" class="btn btn-primary btn-block"
@@ -1355,6 +1406,11 @@ function renderToernooiActief() {
           <span><strong>Toernooi-modus</strong><br><span style="font-size:11px;color:var(--mid)">Deelnemers zien alleen de Toernooi-tab. Titelbalk toont toernooinaam.</span></span>
         </label>
       </div>
+      ${!t.toernooiModus && !dagAfgerond ? `
+      <div style="padding:6px 16px 10px;background:var(--gold-pale);border-radius:8px;margin-bottom:8px;font-size:12px;color:var(--gold)">
+        💡 <strong>Tip:</strong> Zet toernooi-modus aan zodat deelnemers direct hun scorekaart zien en niet per ongeluk een ladderpartij starten.
+      </div>
+      ` : ''}
       ${heeftGeenScores(t) ? `
       <button class="btn btn-secondary btn-block" onclick="bewerkToernooi()" style="margin-bottom:8px">
         ✏️ Terug naar aanmaakscherm
@@ -1373,8 +1429,16 @@ function renderToernooiActief() {
         Toernooi annuleren
       </button>
     </div>
-    ` : ''}
-  `;
+    ` : '';
+
+  // v3.0.0-11.106: volgorde verschilt per rol
+  // Speler: titel → scorekaart → ranglijst → matrix → livelink
+  // Beheerder: titel → ranglijst → matrix → scorekaart → livelink → knoppen
+  if (isBeheerder) {
+    detail.innerHTML = dagTabsHtml + titelKaart + ranglijstKaart + matrixKaart + scorecardKaart + liveLinkKnop + beheerderKnoppen;
+  } else {
+    detail.innerHTML = dagTabsHtml + titelKaart + scorecardKaart + ranglijstKaart + matrixKaart + liveLinkKnop;
+  }
 
   renderTScorecard();
 
@@ -1611,14 +1675,14 @@ function updateTScore(spelerId, holeIdx, val) {
     btn.onclick = alles ? toonToernooiUitslag : null;
   }
 
-  // v3.0.0-11.73: coordinator schrijft het hoofddocument, speler schrijft
-  // alleen zijn eigen scores naar de live/{uid} subcollectie.
-  if (isBeheerder) {
-    slaToernooiOp(800);
-  } else {
-    const dagNr = toernooiData.actiefDagNr || 1;
-    slaSpelerScoreOp(spelerId, dagNr, dag.scores[String(spelerId)] || []);
-  }
+  // v3.0.0-11.106: ALLE score-invoer gaat naar live/{spelerId}.
+  // Coördinator en speler schrijven beide naar de subcollectie;
+  // het hoofddocument wordt pas bij "dag afsluiten" bijgewerkt.
+  const dagNr = toernooiData.actiefDagNr || 1;
+  const scoresCopy = [...(dag.scores[String(spelerId)] || [])];
+  // Update _liveScores lokaal voor directe weergave
+  store._liveScores[String(spelerId)] = { dagNr, scores: scoresCopy, timestamp: Date.now() };
+  slaSpelerScoreOp(spelerId, dagNr, scoresCopy);
 }
 
 function updateTTotaalRijInline() {
