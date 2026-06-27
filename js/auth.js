@@ -191,7 +191,23 @@ async function slaEersteLoginOp() {
 
   try {
     const hcpInt = Math.round(hcp);
-    // Stap 1: wachtwoord wijzigen in Firebase Auth
+    // Stap 1: wachtwoord wijzigen in Firebase Auth.
+    // v3.0.0-11.110: updatePassword vereist een recent ingelogde sessie. Bij een
+    // herstelde sessie (PWA opnieuw geopend / page reload) of na enige vertraging is
+    // het credential niet meer "recent" → auth/requires-recent-login. Daarom eerst
+    // herauthenticeren met het initiële wachtwoord, net als wijzigWachtwoord() doet.
+    try {
+      const huidigPass = store.initieelWachtwoord;
+      if (huidigPass) {
+        const cred = EmailAuthProvider.credential(auth.currentUser.email, huidigPass);
+        await reauthenticateWithCredential(auth.currentUser, cred);
+      }
+    } catch(reAuthErr) {
+      // Reauth faalde (bv. afwijkend initieel wachtwoord). Niet hard stoppen:
+      // updatePassword kan alsnog slagen als de sessie wél recent is. Faalt die ook,
+      // dan vangt de buitenste catch auth/requires-recent-login af.
+      console.warn('reauth bij eerste login mislukt, ga toch door:', reAuthErr.code);
+    }
     await updatePassword(auth.currentUser, pass1);
 
     // Stap 2: spelers/{uid} bijwerken — hcp + eersteLogin:false
