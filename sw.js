@@ -1,5 +1,5 @@
 // Goyer Golf MP Ladder — Service Worker
-const CACHE_VERSION = 'v188'; // v3.0.0-11.110
+const CACHE_VERSION = 'v189'; // v3.0.0-11.111
 // v3.0.0-11.33: detecteer test-omgeving via SW-scope URL.
 // Service worker draaiend onder /test/* → aparte cache, voorkomt conflict met productie.
 const IS_TEST_ENV = self.registration && self.registration.scope.includes('/test/');
@@ -100,9 +100,12 @@ self.addEventListener('fetch', event => {
   }
 
   // Eigen bestanden — network first, cache als fallback
+  // v3.0.0-11.111: { cache: 'no-store' } zodat de browser-HTTP-cache wordt omzeild.
+  // Zonder dit gaf een gewone reload vaak de oude (HTTP-gecachete) bytes terug en
+  // werkte alleen een hard reset. Offline blijft werken via de cache-fallback.
   if (url.origin === self.location.origin) {
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: 'no-store' })
         .then(response => {
           if (response.ok) {
             const clone = response.clone();
