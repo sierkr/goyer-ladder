@@ -405,8 +405,10 @@ function renderHandmatigHoles(context) {
   </div>`;
 
   // v3.0.0-11.108: scan-knop voor scorekaart-foto
+  // v3.0.1: capture="environment" verwijderd — dwong op iOS (PWA) direct de camera af
+  // en verborg de optie om een bestaande foto uit de bibliotheek te kiezen.
   html += `<div style="margin-bottom:12px">
-    <input type="file" id="scorekaart-foto-input" accept="image/*" capture="environment"
+    <input type="file" id="scorekaart-foto-input" accept="image/*"
       style="display:none" onchange="scanScorekaartFoto(this)">
     <button class="btn btn-ghost btn-block" onclick="document.getElementById('scorekaart-foto-input').click()"
       style="color:var(--green);border-color:var(--green-pale)">
