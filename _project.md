@@ -10,7 +10,18 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v3.0.0-11.93**
+Huidige versie: **v3.0.2**
+
+### Changelog
+- **v3.0.2** — Fix discrepantie uitslagbericht vs. ladderpositie. Het
+  LADDERWIJZIGINGEN-bericht (`showLadderChanges` in `js/ronde.js`) toonde de
+  rauwe *competitierank* (`rank` uit `standen/{uid}`), terwijl de ladderlijst en
+  de gedeelde afbeelding de *weergaverang* tonen (activiteits-gecorrigeerd via
+  inactiviteit/frequentie/diversiteit). Daardoor weken de getallen elke partij
+  af. Nieuw: `berekenWeergaveRangen()` in `js/ladder.js` (geëxporteerd) berekent
+  de weergaverang voor een meegegeven spelerslijst; `ronde.js` maakt een
+  snapshot vóór en ná de partij en rapporteert die nummers. Pijlrichting wordt
+  nu afgeleid uit het verschil i.p.v. hardgecodeerd.
 
 ## Firebase
 - Project: `goyer-golf-mp-ladder`
