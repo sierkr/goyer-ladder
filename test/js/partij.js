@@ -1,7 +1,7 @@
 // ============================================================
 //  partij.js — Partij aanmaken, banen, naam helpers
 // ============================================================
-import { db, BANEN_DOC, LADDERS_COL, DEFAULT_STATE, esc, escAttr } from './config.js';
+import { db, BANEN_DOC, LADDERS_COL, DEFAULT_STATE, esc, escAttr, functions, httpsCallable } from './config.js';
 import { store, alleLadders, activeLadderId, alleToernooien, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
 import { slaActievePartijenOp, getLadderData, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { objNaarRondes } from './knockout.js';
@@ -403,13 +403,28 @@ function renderHandmatigHoles(context) {
     <label>Naam van de baan</label>
     <input type="text" id="${naamInputId}" placeholder="bijv. Golfbaan de Poel" style="font-size:16px">
   </div>`;
+
+  // v3.0.0-11.108: scan-knop voor scorekaart-foto
+  // v3.0.1: capture="environment" verwijderd — dwong op iOS (PWA) direct de camera af
+  // en verborg de optie om een bestaande foto uit de bibliotheek te kiezen.
+  html += `<div style="margin-bottom:12px">
+    <input type="file" id="scorekaart-foto-input" accept="image/*"
+      style="display:none" onchange="scanScorekaartFoto(this)">
+    <button class="btn btn-ghost btn-block" onclick="document.getElementById('scorekaart-foto-input').click()"
+      style="color:var(--green);border-color:var(--green-pale)">
+      📸 Scan scorekaart (foto)
+    </button>
+    <div id="scan-status" style="font-size:12px;color:var(--mid);margin-top:4px;text-align:center"></div>
+  </div>`;
+
+  // v3.0.0-11.108: velden zijn leeg (geen defaults die toch nooit kloppen)
   html += '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:13px;width:100%">';
   html += '<tr><th style="padding:6px 4px;text-align:left">Hole</th><th style="padding:6px 4px">PAR</th><th style="padding:6px 4px">SI</th></tr>';
   for (let i = 1; i <= 18; i++) {
     html += `<tr>
       <td style="padding:4px;font-weight:600">${i}</td>
-      <td><input type="number" id="mpar-${i}" min="3" max="6" value="4" inputmode="numeric" style="width:54px;padding:6px;border:1.5px solid #ddd;border-radius:6px;text-align:center;font-size:15px"></td>
-      <td><input type="number" id="msi-${i}" min="1" max="18" value="${i}" inputmode="numeric" style="width:54px;padding:6px;border:1.5px solid #ddd;border-radius:6px;text-align:center;font-size:15px"></td>
+      <td><input type="number" id="mpar-${i}" min="3" max="6" placeholder="—" inputmode="numeric" style="width:54px;padding:6px;border:1.5px solid #ddd;border-radius:6px;text-align:center;font-size:15px"></td>
+      <td><input type="number" id="msi-${i}" min="1" max="18" placeholder="—" inputmode="numeric" style="width:54px;padding:6px;border:1.5px solid #ddd;border-radius:6px;text-align:center;font-size:15px"></td>
     </tr>`;
   }
   html += '</table></div>';
@@ -417,6 +432,12 @@ function renderHandmatigHoles(context) {
     Baan opslaan voor iedereen
   </button>`;
   document.getElementById(containerId).innerHTML = html;
+
+  // Focus op par hole 1
+  setTimeout(() => {
+    const parH1 = document.getElementById('mpar-1');
+    if (parH1) parH1.focus();
+  }, 100);
 }
 
 // context: 'partij' (default), 'toernooi', of 'toernooi-{dagNr}'
@@ -432,10 +453,20 @@ async function slaAangepasteBaanOp(context) {
 
   // Lees holes — IDs zijn altijd mpar-N / msi-N ongeacht context
   const holes = [];
+  let legeVelden = false;
   for (let i = 1; i <= 18; i++) {
-    const par = parseInt(document.getElementById('mpar-'+i)?.value || 4);
-    const si  = parseInt(document.getElementById('msi-'+i)?.value  || i);
+    const parVal = document.getElementById('mpar-'+i)?.value;
+    const siVal  = document.getElementById('msi-'+i)?.value;
+    if (!parVal || !siVal) { legeVelden = true; continue; }
+    const par = parseInt(parVal);
+    const si  = parseInt(siVal);
+    if (isNaN(par) || isNaN(si)) { legeVelden = true; continue; }
     holes.push({ par, si });
+  }
+
+  if (holes.length === 0) { toast('Vul eerst de par en SI in voor de holes'); return; }
+  if (holes.length !== 9 && holes.length !== 18) {
+    if (!confirm(`${holes.length} holes ingevuld (verwacht 9 of 18). Doorgaan?`)) return;
   }
 
   // Check dubbele naam
@@ -470,6 +501,67 @@ async function slaAangepasteBaanOp(context) {
     aangepasteBanen.pop();
     toast('Fout bij opslaan: ' + (e.code || e.message || 'onbekend'));
   }
+}
+
+// v3.0.0-11.108: scorekaart-foto scannen via Cloud Function + Claude Vision
+async function scanScorekaartFoto(fileInput) {
+  const file = fileInput?.files?.[0];
+  if (!file) return;
+
+  const statusEl = document.getElementById('scan-status');
+  if (statusEl) statusEl.textContent = '⏳ Foto wordt geanalyseerd...';
+
+  try {
+    // Lees bestand als base64
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]); // strip data:...;base64,
+      reader.onerror = () => reject(new Error('Foto lezen mislukt'));
+      reader.readAsDataURL(file);
+    });
+
+    // Roep Cloud Function aan
+    const scanFn = httpsCallable(functions, 'scanScorekaart');
+    const result = await scanFn({ imageBase64: base64, mediaType: file.type || 'image/jpeg' });
+    const holes = result.data?.holes;
+
+    if (!holes || !Array.isArray(holes) || holes.length === 0) {
+      if (statusEl) statusEl.textContent = '❌ Geen holes herkend. Probeer een duidelijkere foto.';
+      return;
+    }
+
+    // Vul de velden in
+    holes.forEach(h => {
+      const parEl = document.getElementById(`mpar-${h.hole}`);
+      const siEl  = document.getElementById(`msi-${h.hole}`);
+      if (parEl && h.par != null) parEl.value = h.par;
+      if (siEl && h.si != null)   siEl.value = h.si;
+    });
+
+    if (statusEl) statusEl.textContent = `✅ ${holes.length} holes herkend. Controleer de waarden en pas aan indien nodig.`;
+
+    // Flash de ingevulde velden even groen
+    holes.forEach(h => {
+      ['mpar-', 'msi-'].forEach(prefix => {
+        const el = document.getElementById(prefix + h.hole);
+        if (el) {
+          el.style.borderColor = '#2d6a4f';
+          el.style.background = '#d8f3dc';
+          setTimeout(() => { el.style.borderColor = '#ddd'; el.style.background = ''; }, 2000);
+        }
+      });
+    });
+
+  } catch(e) {
+    console.error('scanScorekaartFoto mislukt:', e);
+    const msg = e.code === 'functions/unauthenticated' ? 'Je moet ingelogd zijn'
+      : e.code === 'functions/failed-precondition' ? 'API key niet ingesteld (neem contact op met beheerder)'
+      : e.message || 'Scan mislukt';
+    if (statusEl) statusEl.textContent = `❌ ${msg}`;
+  }
+
+  // Reset file input zodat dezelfde foto opnieuw geselecteerd kan worden
+  fileInput.value = '';
 }
 
 async function verwijderAangepasteBaan() {
@@ -809,4 +901,4 @@ function renderHcpBlok(spelers, holes, hcpPct, containerId) {
 
 // ============================================================
 
-export { addPlayerSlot, alleBANEN, filterPartijSpelers, getPartijLadderSpelers, herlaadPartijSpelers, initPartijForm, kortNaam, kortNaamMap, mijnPartij, onBaanSelect, onSpeltypeChange, refreshPlayerSlotOptions, removeSlot, renderHandmatigHoles, renderHcpBlok, selecteerPartijSpeler, selecteerPartijSpelerEl, slaAangepasteBaanOp, slaPartijFormulierOp, sluitSpelerLijst, startPartij, verwijderAangepasteBaan, voegGastSpelerToeAanPartij, vulKnockoutTegenstander, zoekPartijSpeler };
+export { addPlayerSlot, alleBANEN, filterPartijSpelers, getPartijLadderSpelers, herlaadPartijSpelers, initPartijForm, kortNaam, kortNaamMap, mijnPartij, onBaanSelect, onSpeltypeChange, refreshPlayerSlotOptions, removeSlot, renderHandmatigHoles, renderHcpBlok, scanScorekaartFoto, selecteerPartijSpeler, selecteerPartijSpelerEl, slaAangepasteBaanOp, slaPartijFormulierOp, sluitSpelerLijst, startPartij, verwijderAangepasteBaan, voegGastSpelerToeAanPartij, vulKnockoutTegenstander, zoekPartijSpeler };

@@ -151,6 +151,38 @@ function getLadderSpelersWeergave(ladderId) {
   return sorteerOpActiviteit(verrijkMetActiviteit(spelers, ladder, cfg, Date.now(), alleToernooien));
 }
 
+// v3.0.2: Bereken de weergaverang (activiteits-gecorrigeerde ladderpositie)
+// voor een MEEGEGEVEN spelerslijst, zonder de standen-cache te raadplegen.
+// Geeft een map uid -> weergaverang terug. Zo kan ronde.js het uitslagbericht
+// in exact dezelfde nummers tonen als de ladderlijst (fix discrepantie).
+// extraUitslag (optioneel) telt een zojuist gespeelde partij mee voor de
+// activiteitsberekening, zodat de "na"-stand overeenkomt met de ladder direct
+// na afsluiten.
+function berekenWeergaveRangen(ladderId, spelers, extraUitslag = null) {
+  const map = {};
+  if (!Array.isArray(spelers) || spelers.length === 0) return map;
+  const cfg = getLadderConfig(ladderId) || DEFAULT_LADDER_CONFIG;
+  const actiefSysteem = cfg.inactiviteitAan !== false || cfg.frequentieBonusAan !== false || cfg.diversiteitsBonusAan !== false;
+  if (!actiefSysteem) {
+    // Zonder activiteitssysteem is de weergaverang gewoon de competitierank-volgorde.
+    [...spelers].sort((a, b) => (a.rank || 999) - (b.rank || 999))
+      .forEach((s, i) => { if (s.uid) map[s.uid] = i + 1; });
+    return map;
+  }
+  const ladder = alleLadders.find(l => l.id === ladderId);
+  let ladderVoorCalc = ladder;
+  if (extraUitslag && ladder) {
+    const bestaande = (ladder.data?.uitslagen || ladder.uitslagen) || [];
+    // data-veld leegzetten zodat verrijkMetActiviteit onze uitgebreide lijst pakt.
+    ladderVoorCalc = { ...ladder, data: undefined, uitslagen: [...bestaande, extraUitslag] };
+  }
+  const gesorteerd = sorteerOpActiviteit(
+    verrijkMetActiviteit(spelers, ladderVoorCalc, cfg, Date.now(), alleToernooien)
+  );
+  gesorteerd.forEach(s => { if (s.uid) map[s.uid] = s._weergaveRang; });
+  return map;
+}
+
 // ============================================================
 //  SPELERMATRIX (beheer) — v3.0.0-11.104
 //  Onderlinge partijen (uit ladderuitslagen) + activiteit op de diagonaal.
@@ -402,7 +434,7 @@ function renderLadderRij(s, ladderId) {
 
 // ============================================================
 
-export { renderLadder, toggleLadderKaart, renderLadderRij };
+export { renderLadder, toggleLadderKaart, renderLadderRij, getLadderSpelersWeergave, berekenWeergaveRangen };
 
 // ============================================================
 //  DEEL ALS AFBEELDING — WhatsApp stijl
@@ -521,3 +553,4 @@ async function deelLadderAlsAfbeelding(ladderId) {
 }
 
 window.deelLadderAlsAfbeelding = deelLadderAlsAfbeelding;
+// v3.0.2

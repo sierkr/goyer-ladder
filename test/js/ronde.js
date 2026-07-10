@@ -7,7 +7,7 @@ import { slaActievePartijenOp, slaUitslagenOp, getLadderData, getLadderConfig, g
 import { closeModal } from './admin.js';
 import { kortNaamMap, mijnPartij, renderHcpBlok } from './partij.js';
 import { getLadderSpelers } from './ladder-view.js';
-import { renderLadder } from './ladder.js';
+import { renderLadder, berekenWeergaveRangen } from './ladder.js';
 import { slaSnapshotOp } from './beheer.js';
 import { verwerkKnockoutUitslag } from './knockout.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -710,6 +710,11 @@ async function bevestigUitslag() {
   const rankSpelers = getLadderSpelers(p.ladderId).map(s => ({ ...s }));
   rankSpelers.forEach(s => { s.prevRank = s.rank; });
 
+  // v3.0.2: Snapshot van de WEERGAVERANG (activiteits-gecorrigeerde positie)
+  // vóór verwerking. Het uitslagbericht toont deze nummers i.p.v. de rauwe
+  // competitierank, zodat het bericht overeenkomt met de ladderlijst.
+  const weergaveVoor = berekenWeergaveRangen(p.ladderId, rankSpelers.map(s => ({ ...s })));
+
   // Sorteer matchups op volgorde van afronding (timestamp)
   const timestamps = p._modalTimestamps || p.matchups.map(() => 0);
   const volgorde = p.matchups
@@ -774,7 +779,12 @@ async function bevestigUitslag() {
       .sort((a, b) => a.rank - b.rank);
     anderen.forEach((s, i) => { s.rank = beschikbaar[i]; });
 
-    changes.push({ winnaar: sw.naam, verliezer: sv.naam, wOud: oldWrank, wNieuw: newWrank, vOud: oldVrank, vNieuw: newVrank });
+    changes.push({
+      winnaar: sw.naam, verliezer: sv.naam,
+      winnaarUid: sw.uid, verliezerUid: sv.uid,
+      // Competitierank-fallback (gebruikt als weergaverang ontbreekt)
+      wRankOud: oldWrank, wRankNieuw: newWrank, vRankOud: oldVrank, vRankNieuw: newVrank,
+    });
     sw.rank = newWrank;
     sv.rank = newVrank;
   });
@@ -797,6 +807,22 @@ async function bevestigUitslag() {
         };
       })
   };
+  // v3.0.2: Bereken de WEERGAVERANG NÁ verwerking en zet de changes om naar
+  // deze getallen (dezelfde die op de ladderlijst staan). De net gespeelde
+  // partij telt mee voor de activiteitsberekening via extraUitslag, zodat de
+  // "na"-positie klopt met wat de ladder direct na afsluiten toont. Belangrijk:
+  // dit gebeurt VÓÓR de unshift hieronder, anders zou de partij dubbel tellen.
+  const weergaveNa = berekenWeergaveRangen(
+    p.ladderId, rankSpelers,
+    { spelers: uitslag.spelers, matchups: uitslag.matchups }
+  );
+  changes.forEach(c => {
+    c.wOud   = weergaveVoor[c.winnaarUid]   ?? c.wRankOud;
+    c.wNieuw = weergaveNa[c.winnaarUid]     ?? c.wRankNieuw;
+    c.vOud   = weergaveVoor[c.verliezerUid] ?? c.vRankOud;
+    c.vNieuw = weergaveNa[c.verliezerUid]   ?? c.vRankNieuw;
+  });
+
   // Sla uitslag op in alleLadders[idx] en naar Firestore
   const ladderIdx = alleLadders.findIndex(l => l.id === p.ladderId);
   if (ladderIdx >= 0) {
@@ -896,20 +922,30 @@ function sluitUitslagEnGaNaarLadder() {
   }, 4000);
 }
 
+// v3.0.2: posities zijn nu WEERGAVERANG (zelfde nummers als de ladderlijst).
+// Een lager nummer = hoger op de ladder. De pijlrichting wordt afgeleid uit het
+// verschil i.p.v. hardgecodeerd, omdat de weergaverang van een winnaar door het
+// activiteitssysteem soms gelijk kan blijven (of zelfs zakken) — dan mag er geen
+// misleidende ↑ getoond worden.
+function _deltaBadge(oud, nieuw) {
+  const d = (oud ?? 0) - (nieuw ?? 0); // positief = omhoog
+  if (d > 0)  return `<span class="delta-up">↑${d} (${oud} → ${nieuw})</span>`;
+  if (d < 0)  return `<span class="delta-down">↓${Math.abs(d)} (${oud} → ${nieuw})</span>`;
+  return `<span style="color:var(--mid)">— (${oud})</span>`;
+}
+
 function showLadderChanges(changes) {
   let html = '';
   changes.forEach(c => {
-    const wDelta = c.wOud - c.wNieuw;
-    const vDelta = c.vOud - c.vNieuw;
     html += `
       <div style="margin-bottom:12px;padding:12px;background:var(--green-pale);border-radius:10px">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px">
           <span style="font-weight:600">🏆 ${c.winnaar}</span>
-          <span class="delta-up">↑${wDelta} (${c.wOud} → ${c.wNieuw})</span>
+          ${_deltaBadge(c.wOud, c.wNieuw)}
         </div>
         <div style="display:flex;justify-content:space-between">
           <span style="color:var(--mid)">${c.verliezer}</span>
-          <span class="delta-down">↓${Math.abs(vDelta)} (${c.vOud} → ${c.vNieuw})</span>
+          ${_deltaBadge(c.vOud, c.vNieuw)}
         </div>
       </div>`;
   });
@@ -1139,3 +1175,4 @@ async function renderWatchPin() {
 }
 
 export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij, syncStandenNaBevestigUitslag, verwijderPartijMetRetry };
+// v3.0.2

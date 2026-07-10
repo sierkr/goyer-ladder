@@ -14,7 +14,7 @@ import { renderLadder, toggleLadderKaart } from './ladder.js';
 import { initPartijForm, addPlayerSlot, voegGastSpelerToeAanPartij, removeSlot, onBaanSelect, onSpeltypeChange,
   startPartij, zoekPartijSpeler, selecteerPartijSpelerEl,
   sluitSpelerLijst, slaAangepasteBaanOp, verwijderAangepasteBaan,
-  refreshPlayerSlotOptions, slaPartijFormulierOp } from './partij.js';
+  refreshPlayerSlotOptions, slaPartijFormulierOp, scanScorekaartFoto } from './partij.js';
 import { renderRonde, renderScorecard, updateScore, toggleScorecard,
   openUitslagModal, bevestigUitslag, setWinnaar, skipMatchup,
   editPartijHcp, verwijderSpelerUitRonde, openToevoegenModal,
@@ -92,6 +92,7 @@ window.zoekPartijSpeler = zoekPartijSpeler;
 window.selecteerPartijSpelerEl = selecteerPartijSpelerEl;
 window.sluitSpelerLijst = sluitSpelerLijst;
 window.slaAangepasteBaanOp = slaAangepasteBaanOp;
+window.scanScorekaartFoto = scanScorekaartFoto;
 window.verwijderAangepasteBaan = verwijderAangepasteBaan;
 window.refreshPlayerSlotOptions = refreshPlayerSlotOptions;
 window.updateScore = updateScore;
@@ -136,6 +137,7 @@ window.openNieuwSeizoenModal = openNieuwSeizoenModal;
 window.bevestigNieuwSeizoen = bevestigNieuwSeizoen;
 window.verwijderArchiefSeizoen = verwijderArchiefSeizoen;
 window.openArchiefDetail = openArchiefDetail;
+window.openToernooiDetail = openToernooiDetail;
 window.stuurUitdaging = stuurUitdaging;
 window.reageerUitdaging = reageerUitdaging;
 window.verwijderUitdaging = verwijderUitdaging;
@@ -219,7 +221,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v3.0.0-11.106';
+  const VERSION = 'v3.0.2';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -256,15 +258,45 @@ window.toggleTRankingLadder = toggleTRankingLadder;
 
 // ─── Versie-check & auto-update ──────────────────────────────
 // v3.0.0-11.33: Vergelijk periodiek de ingebakken versie met version.json op de server.
-// Bij mismatch: sla partijformulier op in sessionStorage → hard reload.
-// Werkt ook als de app uren open staat als PWA zonder herstart.
+// v3.0.0-11.107: GEEN hard reload meer bij versie-mismatch.
+// In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
+// Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v3.0.0-11.106';
+  const LOKALE_VERSIE = 'v3.0.2';
   let _versieCheckBezig = false;
-  let _updateGepland    = false;
+  let _updateBannerZichtbaar = false;
+
+  function toonUpdateBanner(nieuweVersie) {
+    if (_updateBannerZichtbaar) return;
+    _updateBannerZichtbaar = true;
+
+    const banner = document.createElement('div');
+    banner.id = 'update-banner';
+    banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9999;' +
+      'background:#2d6a4f;color:white;padding:10px 16px;display:flex;' +
+      'align-items:center;justify-content:space-between;gap:10px;' +
+      'font-family:"DM Sans",sans-serif;font-size:13px;box-shadow:0 -2px 8px rgba(0,0,0,0.15)';
+
+    banner.innerHTML = `
+      <span>🔄 Update beschikbaar: ${LOKALE_VERSIE} → ${nieuweVersie}</span>
+      <div style="display:flex;gap:6px">
+        <button onclick="document.getElementById('update-banner').remove();window._updateBannerGesloten=true"
+          style="padding:6px 12px;border-radius:6px;border:1.5px solid rgba(255,255,255,0.5);background:transparent;color:white;cursor:pointer;font-family:inherit;font-size:12px">
+          Later
+        </button>
+        <button onclick="(function(){try{slaPartijFormulierOp()}catch(e){}setTimeout(function(){location.reload()},200)})()"
+          style="padding:6px 12px;border-radius:6px;border:none;background:white;color:#2d6a4f;cursor:pointer;font-weight:700;font-family:inherit;font-size:12px">
+          Nu updaten
+        </button>
+      </div>`;
+
+    document.body.appendChild(banner);
+  }
 
   async function checkVersie() {
-    if (_versieCheckBezig || _updateGepland) return;
+    if (_versieCheckBezig || _updateBannerZichtbaar) return;
+    // Als gebruiker banner heeft weggeklikt, niet opnieuw tonen in deze sessie
+    if (window._updateBannerGesloten) return;
     _versieCheckBezig = true;
     try {
       const resp = await fetch('./version.json', { cache: 'no-store' });
@@ -273,17 +305,10 @@ window.toggleTRankingLadder = toggleTRankingLadder;
       const serverVersie = data && data.version ? String(data.version).trim() : null;
       if (!serverVersie || serverVersie === LOKALE_VERSIE) return;
 
-      // Nieuwe versie beschikbaar — sla formulierstate op en herlaad
       console.log(`[versieCheck] update gevonden: ${LOKALE_VERSIE} → ${serverVersie}`);
-      _updateGepland = true;
-
-      // Bewaar ingevuld partijformulier zodat de gebruiker niet opnieuw hoeft in te vullen
-      try { slaPartijFormulierOp(); } catch(e) { /* geen formulier open — geen probleem */ }
-
-      // Kleine vertraging zodat sessionStorage zeker geschreven is
-      setTimeout(() => { location.reload(); }, 300);
+      toonUpdateBanner(serverVersie);
     } catch(e) {
-      // Offline of netwerk fout — stil falen, geen reload
+      // Offline of netwerk fout — stil falen
     } finally {
       _versieCheckBezig = false;
     }

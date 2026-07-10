@@ -402,9 +402,28 @@ async function vraagResetWachtwoord(uid, naam) {
       // Gebruik het wachtwoord dat de Cloud Function daadwerkelijk heeft ingesteld —
       // niet store.initieelWachtwoord, dat mogelijk verouderd is als een andere beheerder
       // het wachtwoord in de tussentijd heeft gewijzigd.
-      const gebruiktWachtwoord = result.data.nieuwWachtwoord || store.initieelWachtwoord;
+      // v3.0.0-11.111: fallback-keten zodat nooit 'null' getoond wordt. Als de
+      // (mogelijk oudere) gedeployede Cloud Function geen nieuwWachtwoord teruggeeft
+      // én store.initieelWachtwoord leeg is, lees dan ladder/config vers uit Firestore.
+      // De Cloud Function zet het wachtwoord op exact díe waarde, dus dit klopt altijd.
+      let gebruiktWachtwoord = result.data.nieuwWachtwoord || store.initieelWachtwoord;
+      if (!gebruiktWachtwoord) {
+        try {
+          const cfgSnap = await getDoc(doc(db, 'ladder', 'config'));
+          const cfgPass = cfgSnap.exists() ? cfgSnap.data().initieelWachtwoord : null;
+          if (typeof cfgPass === 'string' && cfgPass.length > 0) {
+            gebruiktWachtwoord = cfgPass;
+            store.initieelWachtwoord = cfgPass; // lokale state alsnog bijwerken
+          }
+        } catch(cfgErr) {
+          console.warn('ladder/config vers lezen mislukt:', cfgErr.code || cfgErr.message);
+        }
+      }
       const loginTxt = loginNaamVan((await getDoc(doc(db, 'spelers', uid))).data()?.email || '');
-      toonCredentialsModal(naam, loginTxt, gebruiktWachtwoord);
+      if (!gebruiktWachtwoord) {
+        toast('Wachtwoord gereset, maar kon het wachtwoord niet ophalen — controleer ladder/config');
+      }
+      toonCredentialsModal(naam, loginTxt, gebruiktWachtwoord || '—');
     } else {
       toast('Reset mislukt: onverwachte respons');
     }

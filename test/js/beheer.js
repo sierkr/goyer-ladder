@@ -3,7 +3,7 @@
 // ============================================================
 import { db, auth, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, alleLadders, activeLadderId, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG } from './store.js';
-import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen, normaliseerLadderRangen } from './auth.js';
+import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen, normaliseerLadderRangen, herstelLadderIntegriteit } from './auth.js';
 import { laadInviteStatus } from './auth.js';
 import { renderLadder } from './ladder.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -392,19 +392,26 @@ async function slaSnapshotOp(label, ladderId) {
     // Verwijder snapshots ouder dan 30 dagen
     const dertig = Date.now() - 30 * 24 * 60 * 60 * 1000;
     const oudeSnaps = await getDocs(query(SNAPSHOTS_COL, where('timestamp', '<', dertig)));
-    oudeSnaps.forEach(d => deleteDoc(d.ref));
+    for (const d of oudeSnaps.docs) {
+      try { await deleteDoc(d.ref); } catch(e) { /* stil */ }
+    }
 
-    // Lees actuele standen uit standen/{uid}
+    // v3.0.0-11.109: lees ALLE standen vers uit Firestore (niet uit lokale cache)
+    // zodat de snapshot altijd de actuele staat bevat, inclusief recent
+    // toegevoegde of verwijderde spelers.
     const ladder = alleLadders.find(l => l.id === ladderId);
-    const spelerIds = ladder?.spelerIds || ladder?.data?.spelerIds || [];
-    const standenSnaps = await Promise.all(
-      spelerIds.map(uid => getDoc(doc(db, 'ladders', ladderId, 'standen', uid)).catch(() => null))
-    );
-    const spelersSnapshot = spelerIds.map((uid, i) => {
-      const d = standenSnaps[i]?.exists() ? standenSnaps[i].data() : {};
-      const profiel = (store._usersCache || []).find(u => u.uid === uid) || {};
-      return { uid, naam: profiel.naam || uid, hcp: profiel.hcp ?? 0,
-               rank: d.rank || 0, partijen: d.partijen || 0, gewonnen: d.gewonnen || 0 };
+    const standenSnap = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
+    const spelersSnapshot = standenSnap.docs.map(d => {
+      const data = d.data();
+      const profiel = (store._usersCache || []).find(u => u.uid === d.id) || {};
+      return {
+        uid: d.id,
+        naam: profiel.naam || d.id,
+        hcp: profiel.hcp ?? 0,
+        rank: data.rank || 0,
+        partijen: data.partijen || 0,
+        gewonnen: data.gewonnen || 0,
+      };
     });
 
     await addDoc(SNAPSHOTS_COL, {
@@ -453,26 +460,46 @@ async function herstelSnapshot(snapId) {
     if (!ladderId) { toast('Snapshot heeft geen ladderId'); return; }
     const ladderNaam = data.ladderNaam || ladderId;
 
-    if (!confirm(`Ladderstand van "${ladderNaam}" herstellen naar:\n${data.label} (${data.datum})?\n\nDe huidige stand wordt eerst opgeslagen.`)) return;
+    const aantalSpelers = (data.spelers || []).length;
+    if (!confirm(`Ladderstand van "${ladderNaam}" herstellen naar:\n${data.label} (${data.datum})?\n\n${aantalSpelers} spelers worden teruggezet.\nDe huidige stand wordt eerst opgeslagen.`)) return;
 
-    // Sla huidige stand op voordat we herstellen
+    // 1. Sla huidige stand op voordat we herstellen
     await slaSnapshotOp('⚠️ Voor herstel op ' + new Date().toLocaleString('nl-NL'), ladderId);
 
-    // Schrijf elke speler terug naar standen/{uid}
-    const writes = (data.spelers || [])
+    // v3.0.0-11.109: verwijder ALLE huidige standen voor deze ladder
+    // voordat de snapshot wordt teruggeschreven. Dit voorkomt rankenconflicten
+    // met spelers die ná de snapshot zijn toegevoegd.
+    const huidigeStanden = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
+    const deleteBatch = writeBatch(db);
+    huidigeStanden.docs.forEach(d => {
+      deleteBatch.delete(doc(db, 'ladders', ladderId, 'standen', d.id));
+    });
+    await deleteBatch.commit();
+
+    // 3. Schrijf snapshot-standen terug
+    const writeBatch2 = writeBatch(db);
+    (data.spelers || [])
       .filter(s => s.uid)
-      .map(s => setDoc(doc(db, 'ladders', ladderId, 'standen', s.uid), {
-        rank:     s.rank     ?? 0,
-        partijen: s.partijen ?? 0,
-        gewonnen: s.gewonnen ?? 0,
-        prevRank: null,
-      }));
-    await Promise.all(writes);
+      .forEach(s => {
+        writeBatch2.set(doc(db, 'ladders', ladderId, 'standen', s.uid), {
+          rank:     s.rank     ?? 0,
+          partijen: s.partijen ?? 0,
+          gewonnen: s.gewonnen ?? 0,
+          prevRank: null,
+        });
+      });
+    await writeBatch2.commit();
+
+    // 4. Hernummer rangen zodat er geen gaten of conflicten zijn
+    await normaliseerLadderRangen(ladderId);
 
     renderLadder();
     toast(`Ladderstand "${ladderNaam}" hersteld ✓`);
     closeModal('modal-snapshots');
-  } catch(e) { toast('Herstel mislukt: ' + e.message); }
+  } catch(e) {
+    console.error('herstelSnapshot mislukt:', e);
+    toast('Herstel mislukt: ' + e.message);
+  }
 }
 
 // ============================================================
