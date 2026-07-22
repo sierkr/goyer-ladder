@@ -114,9 +114,22 @@ function onSpeltypeChange() {
   const hint = document.getElementById('speltype-hint');
   const matchLabel = document.getElementById('speltype-matchplay-label');
   const amerLabel  = document.getElementById('speltype-amerikaantje-label');
-  if (hint) hint.style.display = val === 'amerikaantje' ? 'block' : 'none';
-  if (matchLabel) matchLabel.style.borderColor = val === 'matchplay' ? 'var(--green)' : 'var(--border)';
+  const hlLabel    = document.getElementById('speltype-highlow-label');
+  // v3.0.3: hint-tekst per speltype
+  if (hint) {
+    if (val === 'amerikaantje') {
+      hint.textContent = 'Exact 3 spelers · 6 punten per hole · telt niet mee voor ladderstand';
+      hint.style.display = 'block';
+    } else if (val === 'highlow') {
+      hint.textContent = 'Exact 4 spelers · 2 teams van 2 (slot 1+2 vs 3+4) · low/high-punt per hole · telt niet mee voor ladderstand';
+      hint.style.display = 'block';
+    } else {
+      hint.style.display = 'none';
+    }
+  }
+  if (matchLabel) matchLabel.style.borderColor = val === 'matchplay'    ? 'var(--green)' : 'var(--border)';
   if (amerLabel)  amerLabel.style.borderColor  = val === 'amerikaantje' ? 'var(--green)' : 'var(--border)';
+  if (hlLabel)    hlLabel.style.borderColor    = val === 'highlow'      ? 'var(--green)' : 'var(--border)';
 }
 
 function initPartijForm() {
@@ -675,6 +688,10 @@ async function startPartij() {
   if (speltype === 'amerikaantje' && spelers.length !== 3) {
     toast('Selecteer 3 spelers voor Amerikaantje'); return;
   }
+  // v3.0.3: High-Low vereist exact 4 spelers (2 teams van 2)
+  if (speltype === 'highlow' && spelers.length !== 4) {
+    toast('Selecteer 4 spelers voor High-Low'); return;
+  }
 
   // v3.0.0-11.24: zit een van deze spelers al in een actieve partij?
   // Check ALLE ladders, niet alleen de actieve. String-vergelijking voor id-types.
@@ -746,9 +763,9 @@ async function startPartij() {
   // Wrap-around: na hole 18 door naar hole 1
   const activeHoles = Array.from({ length: aantalHoles }, (_, i) => holes[(startH + i) % holes.length]);
 
-  // Generate matchups — niet voor Amerikaantje
+  // Generate matchups — niet voor Amerikaantje of High-Low
   const matchups = [];
-  if (speltype !== 'amerikaantje') {
+  if (speltype !== 'amerikaantje' && speltype !== 'highlow') {
     for (let i = 0; i < spelers.length; i++) {
       for (let j = i + 1; j < spelers.length; j++) {
         const a = spelers[i], b = spelers[j];
@@ -773,6 +790,10 @@ async function startPartij() {
     spelers,
     matchups,
     speltype,   // v3.0.0-11.97
+    // v3.0.3: High-Low teams (slot 1+2 vs 3+4), anders null
+    teams: speltype === 'highlow'
+      ? [[spelers[0].uid, spelers[1].uid], [spelers[2].uid, spelers[3].uid]]
+      : null,
     scores: {},
     timestamp: Date.now()
   };
