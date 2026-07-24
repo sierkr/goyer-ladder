@@ -80,6 +80,12 @@
     <div class="scrollwrap"><ol id="rawlist" style="margin:0;padding:8px 8px 8px 34px"></ol></div>
   </div>
 
+  <div id="snapcard" class="card" style="display:none">
+    <div style="font-weight:600;margin-bottom:4px">Snapshots (herstelpunten) voor deze ladder</div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">Nieuwste boven. Kies de nieuwste snapshot met de vlag <span class="pill pill-yes">lijkt goed</span> en een top-10 die klopt met je correcte lijst — die zet je in de app terug via beheer → snapshots.</div>
+    <div id="snaplist"></div>
+  </div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, doc, collection, getDoc, getDocs }
@@ -250,6 +256,62 @@ async function laadLadder(ladderId) {
   // Ruwe spelerIds-volgorde
   $('ordercard').style.display = '';
   $('rawlist').innerHTML = spelerIds.map(uid=>`<li>${esc(naamVan[uid]||uid)}</li>`).join('');
+
+  // Snapshots inspecteren (read-only)
+  await laadSnapshots(ladderId, naamVan);
+}
+
+// Heuristiek: hoe "alfabetisch op voornaam" is een op rang gesorteerde namenlijst?
+// Retourneert fractie 0..1 van opeenvolgende paren die in alfabetische volgorde staan.
+function alfabetischeFractie(namen) {
+  if (namen.length < 2) return 0;
+  let inVolgorde = 0;
+  for (let i = 0; i < namen.length - 1; i++) {
+    if ((namen[i] || '').localeCompare(namen[i+1] || '', 'nl', { sensitivity: 'base' }) <= 0) inVolgorde++;
+  }
+  return inVolgorde / (namen.length - 1);
+}
+
+async function laadSnapshots(ladderId, naamVan) {
+  $('snapcard').style.display = '';
+  $('snaplist').innerHTML = '<div class="muted">Snapshots laden…</div>';
+  let docs;
+  try {
+    const snap = await getDocs(collection(db, 'snapshots'));
+    docs = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(s => !s.ladderId || s.ladderId === ladderId)
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  } catch(e) {
+    $('snaplist').innerHTML = '<div class="err">Snapshots lezen mislukt: ' + esc(e.code || e.message) +
+      ' (lezen van snapshots vereist beheerder/coördinator).</div>';
+    return;
+  }
+  if (!docs.length) {
+    $('snaplist').innerHTML = '<div class="err">Geen snapshots gevonden voor deze ladder. ' +
+      'Zonder herstelpunt is terugzetten niet mogelijk — dan moeten we de stand handmatig reconstrueren.</div>';
+    return;
+  }
+  $('snaplist').innerHTML = docs.map(s => {
+    const spelers = (s.spelers || []).slice()
+      .sort((a, b) => ((a.rank || 999) - (b.rank || 999)));
+    const namen = spelers.map(p => (naamVan && naamVan[p.uid]) || p.naam || p.uid);
+    const frac = alfabetischeFractie(namen);
+    const verdachtAlfabetisch = frac >= 0.9;
+    const vlag = verdachtAlfabetisch
+      ? '<span class="pill pill-no">⚠ lijkt alfabetisch (mogelijk corrupt)</span>'
+      : '<span class="pill pill-yes">lijkt goed</span>';
+    const top = spelers.slice(0, 10)
+      .map((p, i) => `${i+1}. ${esc((naamVan && naamVan[p.uid]) || p.naam || p.uid)}`).join('<br>');
+    const dt = s.datum || (s.timestamp ? new Date(s.timestamp).toLocaleString('nl-NL') : '—');
+    return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+        <div><b>${esc(s.label || '(geen label)')}</b> ${vlag}</div>
+        <div class="muted" style="font-size:12px">${esc(dt)} · ${spelers.length} spelers · alfabetisch ${(frac*100).toFixed(0)}%</div>
+      </div>
+      <div style="font-size:12px;color:var(--mid);margin-top:8px;columns:2;column-gap:24px">${top}</div>
+    </div>`;
+  }).join('');
 }
 </script>
 </body>
