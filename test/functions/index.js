@@ -92,6 +92,62 @@ exports.resetSpelerWachtwoord = onCall(
   }
 );
 
+/**
+ * Voltooi de eerste-login. Zet het door de speler zelf gekozen wachtwoord en
+ * handicap en markeert eersteLogin:false. Server-side via de Admin SDK, zodat er
+ * GEEN auth/requires-recent-login kan optreden en er geen client-side reauth of
+ * store.initieelWachtwoord nodig is (v3.0.4).
+ *
+ * Input:  { nieuwWachtwoord: string (>=6), hcp: number }
+ * Output: { success: true } of throws HttpsError
+ */
+exports.voltooiEersteLogin = onCall(
+  { region: 'europe-west1' },
+  async (request) => {
+    const { auth, data } = request;
+
+    // Stap 1: ingelogd?
+    if (!auth?.uid) {
+      throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
+    }
+
+    // Stap 2: invoer valideren
+    const nieuwWachtwoord = data?.nieuwWachtwoord;
+    if (typeof nieuwWachtwoord !== 'string' || nieuwWachtwoord.length < 6) {
+      throw new HttpsError('invalid-argument', 'Wachtwoord moet minimaal 6 tekens zijn.');
+    }
+    const hcp = Math.round(Number(data?.hcp));
+    if (!Number.isFinite(hcp) || hcp < -10 || hcp > 54) {
+      throw new HttpsError('invalid-argument', 'Ongeldige handicap.');
+    }
+
+    // Stap 3: profiel bestaat en is daadwerkelijk een eerste-login?
+    const spelerRef  = admin.firestore().doc(`spelers/${auth.uid}`);
+    const spelerSnap = await spelerRef.get();
+    if (!spelerSnap.exists) {
+      throw new HttpsError('not-found', 'Speler niet gevonden in database.');
+    }
+    if (spelerSnap.data().eersteLogin !== true) {
+      // Idempotent: al voltooid. Geen fout — voorkomt vastlopen bij dubbele tik
+      // of een herhaalde aanroep na een netwerk-hapering.
+      return { success: true, alVoltooid: true };
+    }
+
+    try {
+      // Stap 4: Auth-wachtwoord zetten (Admin SDK — geen recentheidseis)
+      await admin.auth().updateUser(auth.uid, { password: nieuwWachtwoord });
+
+      // Stap 5: profiel bijwerken — hcp + eersteLogin:false
+      await spelerRef.update({ hcp, eersteLogin: false });
+
+      return { success: true };
+    } catch (err) {
+      console.error('voltooiEersteLogin fout:', err);
+      throw new HttpsError('internal', 'Voltooien mislukt: ' + err.message);
+    }
+  }
+);
+
 // ============================================================
 //  Wekelijkse inactiviteitsval — UITGESCHAKELD (v3.0.0-11.102)
 //  Het activiteitssysteem wordt nu volledig client-side en

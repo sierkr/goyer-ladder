@@ -48,11 +48,17 @@ function renderScorecard() {
 
   const naamMap = kortNaamMap(p.spelers);
 
+  // v3.0.3: team-labels voor High-Low (uid → team-index)
+  const teamLabel = {};
+  if (p.speltype === 'highlow' && Array.isArray(p.teams)) {
+    p.teams.forEach((team, ti) => team.forEach(uid => { teamLabel[uid] = ti; }));
+  }
+
   // HEAD
   let headHtml = '<tr><th class="player-col" style="text-align:left">Hole</th>';
   p.spelers.forEach(s => {
     headHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px">
-      ${esc(naamMap[s.uid])}<br>
+      ${p.speltype === 'highlow' && teamLabel[s.uid] !== undefined ? `<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:6px;margin-bottom:2px;background:rgba(255,255,255,0.22);color:#fff">T${teamLabel[s.uid] + 1}</span><br>` : ''}${esc(naamMap[s.uid])}<br>
       <span onclick="editPartijHcp('${escAttr(s.uid)}')" style="font-size:10px;font-weight:400;color:rgba(255,255,255,0.7);cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)" title="Klik om aan te passen">hcp ${Math.round(s.partijHcp)}</span><br>
       <button onclick="verwijderSpelerUitRonde('${escAttr(s.uid)}')" style="background:rgba(255,255,255,0.15);border:none;border-radius:4px;color:rgba(255,255,255,0.8);font-size:10px;cursor:pointer;padding:2px 5px;margin-top:2px">✕ verwijder</button>
     </th>`;
@@ -60,6 +66,9 @@ function renderScorecard() {
   // v3.0.0-11.97: extra kolom voor Amerikaantje punten
   if (p.speltype === 'amerikaantje') {
     headHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px;color:rgba(255,255,255,0.8)">Punten</th>`;
+  } else if (p.speltype === 'highlow') {
+    // v3.0.3: team-punten kolom
+    headHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px;color:rgba(255,255,255,0.8)">T1–T2</th>`;
   }
   headHtml += '</tr>';
   document.getElementById('scorecard-head').innerHTML = headHtml;
@@ -108,6 +117,14 @@ function renderScorecard() {
       } else {
         bodyHtml += `<td style="text-align:center;color:var(--light);font-size:11px">—</td>`;
       }
+    } else if (p.speltype === 'highlow') {
+      // v3.0.3: team-punten deze hole (T1–T2)
+      const hl = berekenHighlowHole(holeIdx);
+      if (hl) {
+        bodyHtml += `<td style="text-align:center;font-family:'DM Mono',monospace;font-size:12px;color:var(--mid);white-space:nowrap">${hl.teamPunten[0]}–${hl.teamPunten[1]}</td>`;
+      } else {
+        bodyHtml += `<td style="text-align:center;color:var(--light);font-size:11px">—</td>`;
+      }
     }
     bodyHtml += '</tr>';
   });
@@ -131,6 +148,14 @@ function renderScorecard() {
       return som;
     });
     bodyHtml += `<td style="text-align:center;font-family:'DM Mono',monospace;font-weight:700;font-size:13px;color:var(--green)">${esc(totaalPunten.join('-'))}</td>`;
+  } else if (p.speltype === 'highlow') {
+    // v3.0.3: team-totalen
+    let tA = 0, tB = 0;
+    p.holes.forEach((_, hi) => {
+      const hl = berekenHighlowHole(hi);
+      if (hl) { tA += hl.teamPunten[0]; tB += hl.teamPunten[1]; }
+    });
+    bodyHtml += `<td style="text-align:center;font-family:'DM Mono',monospace;font-weight:700;font-size:13px;color:var(--green)">${tA}–${tB}</td>`;
   }
   bodyHtml += '</tr>';
 
@@ -264,6 +289,83 @@ function berekenAmerikaaanjeHole(holeIdx) {
   });
 }
 
+// ============================================================
+//  HIGH-LOW (v3.0.3)
+//  2 teams van 2. Per hole: laagste net-bal per team (low) en
+//  hoogste net-bal per team (high). Team met de lagere low krijgt
+//  het low-punt; team met de lagere high krijgt het high-punt.
+//  Gelijk = push (geen punt). Netto-slagen identiek aan Amerikaantje
+//  (SI-allocatie op partijHcp). Geen ladder-effect.
+// ============================================================
+function netScoreHighlow(p, s, holeIdx) {
+  const scoreArr = Array.isArray(p.scores?.[s.uid]) ? p.scores[s.uid] : [];
+  const raw = scoreArr[holeIdx];
+  if (raw === null || raw === undefined) return null;
+  const hole = p.holes[holeIdx];
+  const aantalHoles = p.holes.length;
+  const hcp = s.partijHcp ?? s.hcp ?? 0;
+  // Zelfde slag-allocatie als Amerikaantje/matchplay
+  const slagen = (hole.si <= Math.min(hcp, aantalHoles) ? 1 : 0) +
+                 (hole.si <= Math.max(0, hcp - aantalHoles) ? 1 : 0);
+  return raw - slagen;
+}
+
+function berekenHighlowHole(holeIdx) {
+  const p = mijnPartij();
+  if (!p || p.speltype !== 'highlow' || !Array.isArray(p.teams) || p.teams.length !== 2) return null;
+  const teamNet = p.teams.map(team =>
+    team.map(uid => {
+      const s = p.spelers.find(sp => sp.uid === uid);
+      if (!s) return null;
+      return netScoreHighlow(p, s, holeIdx);
+    })
+  );
+  // Alle 4 spelers moeten een score hebben op deze hole
+  if (teamNet.some(t => t.some(v => v === null || v === undefined))) return null;
+  const low  = teamNet.map(t => Math.min(...t));
+  const high = teamNet.map(t => Math.max(...t));
+  const punten = [0, 0];
+  // Low-punt: laagste low wint; gelijk = push
+  if (low[0] < low[1]) punten[0] += 1;
+  else if (low[1] < low[0]) punten[1] += 1;
+  // High-punt: laagste high wint; gelijk = push
+  if (high[0] < high[1]) punten[0] += 1;
+  else if (high[1] < high[0]) punten[1] += 1;
+  return { teamPunten: punten, low, high };
+}
+
+function renderHighlowOverview() {
+  const p = mijnPartij();
+  if (!p || !Array.isArray(p.teams)) return;
+  const naamMap = kortNaamMap(p.spelers);
+  let tA = 0, tB = 0;
+  p.holes.forEach((_, hi) => {
+    const hl = berekenHighlowHole(hi);
+    if (hl) { tA += hl.teamPunten[0]; tB += hl.teamPunten[1]; }
+  });
+  const totals = [tA, tB];
+  const maxPunten = p.holes.length * 2;
+  const teamNamen = p.teams.map(team => team.map(uid => naamMap[uid] || '?').join(' & '));
+  let html = '<div style="padding:12px 12px 4px">';
+  [0, 1].forEach(ti => {
+    const pts = totals[ti];
+    const leidt = totals[0] !== totals[1] && totals[ti] > totals[1 - ti];
+    const breedte = maxPunten > 0 ? Math.round((pts / maxPunten) * 100) : 0;
+    const kleur = leidt ? 'var(--green)' : 'var(--mid)';
+    html += `<div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+        <span style="font-weight:${leidt ? '700' : '400'};color:${leidt ? 'var(--green)' : 'inherit'}">Team ${ti + 1} · ${esc(teamNamen[ti])}</span>
+        <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:16px;color:${kleur}">${pts} <span style="font-size:11px;font-weight:400;color:var(--light)">pt</span></span>
+      </div>
+      <div style="height:6px;background:var(--border);border-radius:3px">
+        <div style="height:6px;background:${kleur};border-radius:3px;width:${breedte}%;transition:width 0.4s"></div>
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+  document.getElementById('match-overview').innerHTML = html;
+}
+
 function renderAmerikaaanjeOverview() {
   const p = mijnPartij();
   if (!p) return;
@@ -305,6 +407,8 @@ function renderMatchOverview() {
   if (!p) return;
   // v3.0.0-11.97: Amerikaantje heeft eigen overzicht
   if (p.speltype === 'amerikaantje') { renderAmerikaaanjeOverview(); return; }
+  // v3.0.3: High-Low eigen team-overzicht
+  if (p.speltype === 'highlow') { renderHighlowOverview(); return; }
   const naamMap = kortNaamMap(p.spelers);
   let html = '';
   p.matchups.forEach(m => {
@@ -462,6 +566,8 @@ async function verwijderSpelerUitRonde(spelerId) {
   // (later toegevoegde spelers kunnen een numeric id hebben, knop geeft string)
   const speler = p.spelers.find(s => s.uid === spelerId);
   if (!speler) return;
+  // v3.0.3: High-Low vereist exact 4 spelers (2 teams van 2) — verwijderen niet mogelijk
+  if (p.speltype === 'highlow') { toast('High-Low vereist 4 spelers — verwijderen niet mogelijk'); return; }
   if (p.spelers.length <= 2) { toast('Minimaal 2 spelers nodig'); return; }
 
   // v3.0.0-11.98: Amerikaantje 3→2: omzetten naar matchplay
@@ -546,11 +652,46 @@ function openAmerikaaanjeUitslagModal() {
   p._isAmerikaaantje = true;
 }
 
+// ============================================================
+//  HIGH-LOW — uitslag (v3.0.3)
+//  Geen ranking-effect. Toon team-eindstand en sla archief op.
+// ============================================================
+function openHighlowUitslagModal() {
+  const p = mijnPartij();
+  if (!p || !Array.isArray(p.teams)) return;
+  const naamMap = kortNaamMap(p.spelers);
+  let tA = 0, tB = 0;
+  p.holes.forEach((_, hi) => {
+    const hl = berekenHighlowHole(hi);
+    if (hl) { tA += hl.teamPunten[0]; tB += hl.teamPunten[1]; }
+  });
+  const totals = [tA, tB];
+  const teamNamen = p.teams.map(team => team.map(uid => naamMap[uid] || '?').join(' & '));
+  const volgorde = totals[0] >= totals[1] ? [0, 1] : [1, 0];
+  const gelijk = totals[0] === totals[1];
+
+  let html = '<div style="margin-bottom:16px">';
+  volgorde.forEach((ti, pos) => {
+    const medal = gelijk ? '🤝' : (pos === 0 ? '🥇' : '🥈');
+    const winnend = !gelijk && pos === 0;
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f0ede4">
+      <span style="font-weight:${winnend ? '700' : '400'}">${medal} Team ${ti + 1} · ${esc(teamNamen[ti])}</span>
+      <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:18px">${totals[ti]} <span style="font-size:12px;font-weight:400;color:var(--light)">pt</span></span>
+    </div>`;
+  });
+  html += '</div><p style="font-size:12px;color:var(--light)">High-Low telt niet mee voor de ladderstand.</p>';
+
+  document.getElementById('modal-matches').innerHTML = html;
+  document.getElementById('modal-uitslag').classList.add('open');
+}
+
 function openUitslagModal() {
   const p = mijnPartij();
   if (!p) return;
   // v3.0.0-11.97: Amerikaantje heeft vereenvoudigde afsluit-modal
   if (p.speltype === 'amerikaantje') { openAmerikaaanjeUitslagModal(); return; }
+  // v3.0.3: High-Low eigen afsluit-modal
+  if (p.speltype === 'highlow') { openHighlowUitslagModal(); return; }
   const naamMap = kortNaamMap(p.spelers);
   let html = '';
   p.matchups.forEach((m, idx) => {
@@ -690,6 +831,53 @@ async function bevestigUitslag() {
     document.querySelector('nav button').classList.add('active');
     renderLadder();
     toast('Amerikaantje afgerond! 🏌️');
+    return;
+  }
+
+  // v3.0.3: High-Low — geen ranking, wel archief opslaan
+  if (p.speltype === 'highlow') {
+    closeModal('modal-uitslag');
+    try {
+      let tA = 0, tB = 0;
+      p.holes.forEach((_, hi) => {
+        const hl = berekenHighlowHole(hi);
+        if (hl) { tA += hl.teamPunten[0]; tB += hl.teamPunten[1]; }
+      });
+      const naamMap = kortNaamMap(p.spelers);
+      const teamTotalen = [tA, tB];
+      await addDoc(UITSLAGEN_COL, {
+        type: 'highlow',
+        ladderId: p.ladderId,
+        datum: new Date().toISOString(),
+        timestamp: Date.now(),
+        baan: p.baan,
+        holes: p.holes,
+        teams: (p.teams || []).map((team, ti) => ({
+          team: ti + 1,
+          spelerIds: team,
+          namen: team.map(uid => naamMap[uid] || '?'),
+          punten: teamTotalen[ti],
+        })),
+        spelers: p.spelers.map(s => ({ naam: s.naam, hcp: s.partijHcp })),
+        spelerIds: p.spelers.map(s => s.uid),
+        scores: p.scores,
+      });
+    } catch(e) { console.error('High-Low archief opslaan mislukt:', e); }
+    // Verwijder partij
+    const lIdx = alleLadders.findIndex(l => l.id === p.ladderId);
+    if (lIdx >= 0) {
+      alleLadders[lIdx].actievePartijen = (alleLadders[lIdx].actievePartijen || [])
+        .filter(ap => ap.partijId !== p.partijId);
+    }
+    _verwijderdePartijIds.add(p.partijId);
+    await verwijderPartijMetRetry(p.ladderId, p.partijId);
+    renderRonde();
+    document.querySelectorAll('.page').forEach(pg => pg.classList.remove('active'));
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-ladder').classList.add('active');
+    document.querySelector('nav button').classList.add('active');
+    renderLadder();
+    toast('High-Low afgerond! 🏌️');
     return;
   }
 

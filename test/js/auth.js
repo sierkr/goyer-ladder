@@ -7,7 +7,7 @@ import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
   INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB_MIGRATIE, esc, escAttr,
   EMAIL_SUFFIX, DEFAULT_HCP, CONFIG_DOC, laadInitieelWachtwoord,
-  genereerEmail, loginNaamVan } from './config.js';
+  genereerEmail, loginNaamVan, functions, httpsCallable } from './config.js';
 import { store, DEFAULT_LADDER_CONFIG,
   alleLadders, activeLadderId, alleSpelersData, huidigeBruiker,
   _usersCache, archiefData, uitdagingenData, toernooiData, alleToernooien,
@@ -178,46 +178,39 @@ async function slaEersteLoginOp() {
   const pass1El = document.getElementById('el-pass-1');
   const pass2El = document.getElementById('el-pass-2');
   const foutEl  = document.getElementById('el-fout');
+  const btnEl   = document.querySelector('#modal-eerste-login .btn-primary');
   foutEl.style.display = 'none';
 
   const hcp   = parseFloat(hcpEl.value);
   const pass1 = pass1El.value;
   const pass2 = pass2El.value;
 
-  if (isNaN(hcp))            { foutEl.textContent = 'Voer een geldige handicap in'; foutEl.style.display = 'block'; return; }
-  if (pass1.length < 6)       { foutEl.textContent = 'Wachtwoord moet minimaal 6 tekens zijn'; foutEl.style.display = 'block'; return; }
-  if (pass1 !== pass2)        { foutEl.textContent = 'De wachtwoorden komen niet overeen'; foutEl.style.display = 'block'; return; }
-  if (pass1 === store.initieelWachtwoord) { foutEl.textContent = 'Kies een ander wachtwoord dan het initiële'; foutEl.style.display = 'block'; return; }
+  if (isNaN(hcp))       { foutEl.textContent = 'Voer een geldige handicap in'; foutEl.style.display = 'block'; return; }
+  if (pass1.length < 6) { foutEl.textContent = 'Wachtwoord moet minimaal 6 tekens zijn'; foutEl.style.display = 'block'; return; }
+  if (pass1 !== pass2)  { foutEl.textContent = 'De wachtwoorden komen niet overeen'; foutEl.style.display = 'block'; return; }
+  // v3.0.4: alleen waarschuwen als het initiële wachtwoord daadwerkelijk bekend is.
+  // store.initieelWachtwoord kan leeg zijn wanneer de config-read bij koude start
+  // (ongeauthenticeerd) werd geweigerd; dan slaan we deze vriendelijke hint over.
+  if (store.initieelWachtwoord && pass1 === store.initieelWachtwoord) {
+    foutEl.textContent = 'Kies een ander wachtwoord dan het initiële';
+    foutEl.style.display = 'block'; return;
+  }
+
+  const hcpInt = Math.round(hcp);
+  if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'Bezig...'; }
 
   try {
-    const hcpInt = Math.round(hcp);
-    // Stap 1: wachtwoord wijzigen in Firebase Auth.
-    // v3.0.0-11.110: updatePassword vereist een recent ingelogde sessie. Bij een
-    // herstelde sessie (PWA opnieuw geopend / page reload) of na enige vertraging is
-    // het credential niet meer "recent" → auth/requires-recent-login. Daarom eerst
-    // herauthenticeren met het initiële wachtwoord, net als wijzigWachtwoord() doet.
-    try {
-      const huidigPass = store.initieelWachtwoord;
-      if (huidigPass) {
-        const cred = EmailAuthProvider.credential(auth.currentUser.email, huidigPass);
-        await reauthenticateWithCredential(auth.currentUser, cred);
-      }
-    } catch(reAuthErr) {
-      // Reauth faalde (bv. afwijkend initieel wachtwoord). Niet hard stoppen:
-      // updatePassword kan alsnog slagen als de sessie wél recent is. Faalt die ook,
-      // dan vangt de buitenste catch auth/requires-recent-login af.
-      console.warn('reauth bij eerste login mislukt, ga toch door:', reAuthErr.code);
-    }
-    await updatePassword(auth.currentUser, pass1);
+    // v3.0.4: wachtwoordwijziging + profiel-update gebeurt server-side via de
+    // Cloud Function voltooiEersteLogin (Admin SDK). Dit omzeilt volledig de
+    // auth/requires-recent-login-fout die de oude client-side updatePassword-flow
+    // trof bij een herstelde sessie (PWA-heropening / reload), en is niet
+    // afhankelijk van store.initieelWachtwoord voor reauthenticatie.
+    const voltooiFn = httpsCallable(functions, 'voltooiEersteLogin');
+    await voltooiFn({ nieuwWachtwoord: pass1, hcp: hcpInt });
 
-    // Stap 2: spelers/{uid} bijwerken — hcp + eersteLogin:false
-    const snap = await getDoc(doc(db, 'spelers', huidigeBruiker.uid));
-    const data = snap.exists() ? snap.data() : {};
-    await setDoc(doc(db, 'spelers', huidigeBruiker.uid),
-      { ...data, hcp: hcpInt, eersteLogin: false });
-
-    // Stap 3: hcp sync naar standen/{uid} in alle ladders waar speler in zit.
-    // spelers/{uid} hierboven is de bron van waarheid — ladder.spelers[] niet meer.
+    // hcp-sync naar standen/{uid} in alle ladders waar speler in zit. Niet-kritisch:
+    // fouten hier blokkeren het voltooien van de eerste-login niet meer (wachtwoord
+    // en profiel zijn op dit punt al server-side vastgelegd).
     for (const ladder of alleLadders) {
       if (!(ladder.spelerIds || []).includes(huidigeBruiker.uid)) continue;
       try {
@@ -231,20 +224,26 @@ async function slaEersteLoginOp() {
       }
     }
 
-    // Stap 4: lokale state bijwerken en modal sluiten
+    // Lokale state bijwerken en modal sluiten
     store.huidigeBruiker.eersteLogin = false;
     document.getElementById('modal-eerste-login')?.remove();
     toast('Profiel compleet ✓');
   } catch(e) {
-    console.error('slaEersteLoginOp mislukt:', e);
-    if (e.code === 'auth/requires-recent-login') {
-      foutEl.textContent = 'Log opnieuw in en probeer het nog eens';
-    } else if (e.code === 'auth/weak-password') {
-      foutEl.textContent = 'Wachtwoord is te zwak — kies een sterker wachtwoord';
+    console.error('slaEersteLoginOp (server) mislukt:', e);
+    const code = e.code || '';
+    if (code === 'functions/failed-precondition') {
+      foutEl.textContent = e.message || 'Configuratie ontbreekt — neem contact op met de beheerder';
+    } else if (code === 'functions/invalid-argument') {
+      foutEl.textContent = e.message || 'Ongeldige invoer — controleer je wachtwoord en handicap';
+    } else if (code === 'functions/unauthenticated') {
+      foutEl.textContent = 'Je sessie is verlopen — log opnieuw in en probeer opnieuw';
+    } else if (code === 'functions/not-found') {
+      foutEl.textContent = 'Je profiel is niet gevonden — neem contact op met de beheerder';
     } else {
-      foutEl.textContent = 'Er is iets misgegaan: ' + (e.message || e.code);
+      foutEl.textContent = 'Er is iets misgegaan: ' + (e.message || code || 'onbekende fout');
     }
     foutEl.style.display = 'block';
+    if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Opslaan en verder'; }
   }
 }
 
@@ -723,6 +722,15 @@ async function initFirestore() {
     if (user) {
       if (huidigeBruiker && huidigeBruiker.uid === user.uid) return;
       await setIngelogd(user);
+      // v3.0.4: (her)laad het initiële wachtwoord nu de gebruiker ingelogd is.
+      // Bij een koude start draait initFirestore() ongeauthenticeerd, waardoor de
+      // config-read wordt geweigerd en store.initieelWachtwoord leeg blijft. Dat
+      // veroorzaakte o.a. de "reset naar null"-weergave in het beheerscherm en de
+      // lege eerste-login-hint. Fout is niet fataal (config is beheerder-context).
+      if (!store.initieelWachtwoord) {
+        try { await laadInitieelWachtwoord(store); }
+        catch(e) { console.warn('herladen initieelWachtwoord na login mislukt:', e.code || e.message); }
+      }
       // Start spelers/ listener nu de gebruiker ingelogd is
       if (!_vasteListeners._spelersListenerActief) {
         _vasteListeners._spelersListenerActief = true;
