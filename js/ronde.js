@@ -6,7 +6,7 @@ import { store, alleLadders, activeLadderId, _usersCache, _verwijderdePartijIds 
 import { slaActievePartijenOp, slaUitslagenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { closeModal } from './admin.js';
 import { kortNaamMap, mijnPartij, renderHcpBlok } from './partij.js';
-import { getLadderSpelers } from './ladder-view.js';
+import { getLadderSpelers, ladderStandenGeladen } from './ladder-view.js';
 import { renderLadder, berekenWeergaveRangen } from './ladder.js';
 import { slaSnapshotOp } from './beheer.js';
 import { verwerkKnockoutUitslag } from './knockout.js';
@@ -890,12 +890,27 @@ async function bevestigUitslag() {
   });
   if (probleem) { toast('Kies bij gelijkspel een winnaar of sla de matchup over'); return; }
 
+  // v3.0.5: guard — nooit rangen herschrijven op basis van een nog niet geladen
+  // standen-cache. Zonder deze check levert getLadderSpelers() rang 0 voor iedereen
+  // en hernummert de bevestiging de hele ladder alfabetisch (spelerIds-volgorde).
+  if (!ladderStandenGeladen(p.ladderId)) {
+    toast('Ladder is nog aan het laden — probeer over een paar seconden opnieuw');
+    return;
+  }
+
   closeModal('modal-uitslag');
 
   const changes = [];
   // Laad actuele ranking uit standen/{uid} via getLadderSpelers — niet uit singleton state
   // Maak een mutable lokale kopie voor de rank-berekening
   const rankSpelers = getLadderSpelers(p.ladderId).map(s => ({ ...s }));
+
+  // v3.0.5: tweede vangnet — als (ondanks de guard) elke speler rang 0 heeft,
+  // zijn de standen niet betrouwbaar geladen; afbreken i.p.v. alles te overschrijven.
+  if (rankSpelers.length > 0 && rankSpelers.every(s => !(s.rank > 0))) {
+    toast('Ladderstanden nog niet geladen — probeer opnieuw');
+    return;
+  }
   rankSpelers.forEach(s => { s.prevRank = s.rank; });
 
   // v3.0.2: Snapshot van de WEERGAVERANG (activiteits-gecorrigeerde positie)

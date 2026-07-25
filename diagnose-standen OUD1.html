@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagnose ladderstanden (read-only)</title>
+<style>
+  :root{--dark:#1a1a1a;--mid:#555;--light:#999;--border:#e2e2e2;--soft:#f5f5f5;
+        --green:#0a7d3d;--red:#c0392b;--amber:#b8860b;--card:#fff;}
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+       margin:0;padding:16px;color:var(--dark);background:#fafafa;font-size:14px;line-height:1.4}
+  h1{font-size:18px;margin:0 0 4px}
+  .sub{color:var(--mid);font-size:12px;margin-bottom:16px}
+  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+  .b-read{background:#e8f4ff;color:#1560bd}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+  .verdict{font-size:15px;font-weight:700;padding:12px 14px;border-radius:10px;margin-bottom:14px}
+  .v-ok{background:#e7f7ee;color:var(--green);border:1px solid #b6e3c8}
+  .v-bad{background:#fdecea;color:var(--red);border:1px solid #f5c6cd}
+  .v-warn{background:#fff7e6;color:var(--amber);border:1px solid #f0dca0}
+  .stat{display:inline-block;margin:0 18px 8px 0}
+  .stat b{font-size:18px}
+  .stat span{display:block;font-size:11px;color:var(--mid)}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+  th{position:sticky;top:0;background:var(--soft);font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--mid)}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  tr.norank td{background:#fff7f5}
+  .pill{font-size:10px;padding:1px 6px;border-radius:8px}
+  .pill-yes{background:#e7f7ee;color:var(--green)}
+  .pill-no{background:#fdecea;color:var(--red)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  select,input,button{font-size:14px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#fff}
+  button{cursor:pointer;background:var(--dark);color:#fff;border:0}
+  button.ghost{background:#fff;color:var(--dark);border:1px solid var(--border)}
+  .muted{color:var(--light)}
+  .scrollwrap{max-height:60vh;overflow:auto;border:1px solid var(--border);border-radius:10px}
+  code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:12px}
+  #login{max-width:320px}
+  #login .row{flex-direction:column;align-items:stretch}
+  .err{color:var(--red);font-size:13px}
+</style>
+</head>
+<body>
+  <h1>Diagnose ladderstanden <span class="badge b-read">READ-ONLY</span></h1>
+  <div class="sub">Leest uitsluitend. Schrijft niets naar de database. Vergelijkt de opgeslagen <code>rank</code> per speler.</div>
+
+  <div id="status" class="card">Verbinden met Firebase…</div>
+
+  <div id="login" class="card" style="display:none">
+    <div style="font-weight:600;margin-bottom:8px">Niet ingelogd op dit domein — log even in als beheerder</div>
+    <div class="row">
+      <input id="li-user" placeholder="login (bijv. voornaam.achternaam) of e-mail" autocomplete="username">
+      <input id="li-pass" type="password" placeholder="wachtwoord" autocomplete="current-password">
+      <button id="li-btn">Inloggen (alleen om te lezen)</button>
+      <div id="li-err" class="err" style="display:none"></div>
+    </div>
+    <div class="muted" style="font-size:12px">Tip: als je deze pagina op hetzelfde domein als de app opent terwijl je al bent ingelogd, hoeft dit niet.</div>
+  </div>
+
+  <div id="controls" class="card" style="display:none">
+    <div class="row">
+      <label>Ladder:&nbsp;</label>
+      <select id="ladderSel"></select>
+      <button id="reloadBtn" class="ghost">Opnieuw laden</button>
+      <span id="who" class="muted"></span>
+    </div>
+  </div>
+
+  <div id="verdict"></div>
+  <div id="stats" class="card" style="display:none"></div>
+  <div id="tableCard" class="card" style="display:none">
+    <div style="font-weight:600;margin-bottom:8px">Spelers gesorteerd op opgeslagen rang</div>
+    <div class="scrollwrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+  </div>
+  <div id="ordercard" class="card" style="display:none">
+    <div style="font-weight:600;margin-bottom:8px">Ruwe <code>spelerIds[]</code>-volgorde in het ladderdocument</div>
+    <div class="muted" style="font-size:12px;margin-bottom:8px">Als de rangen weg zijn, toont de app déze volgorde. Vergelijk met de "24 jul"-lijst.</div>
+    <div class="scrollwrap"><ol id="rawlist" style="margin:0;padding:8px 8px 8px 34px"></ol></div>
+  </div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, collection, getDoc, getDocs }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { initializeAppCheck, ReCaptchaV3Provider }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js";
+
+// ── Zelfde project + App Check als de app (anders blokkeert App Check de reads) ──
+const firebaseConfig = {
+  apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
+  authDomain: "goyer-golf-mp-ladder.firebaseapp.com",
+  projectId: "goyer-golf-mp-ladder",
+  storageBucket: "goyer-golf-mp-ladder.firebasestorage.app",
+  messagingSenderId: "124116031878",
+  appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
+};
+const app = initializeApp(firebaseConfig);
+try {
+  initializeAppCheck(app, {
+    provider: new ReCaptchaV3Provider('6LfOyhAtAAAAACKwXb70iOl_Pdrez2QQ_ktGhFSj'),
+    isTokenAutoRefreshEnabled: true
+  });
+} catch(e) { console.warn('App Check init:', e); }
+
+// Zelfde test-detectie als de app: onder /test/ → named database 'test'
+const IS_TEST = location.pathname.includes('/test/');
+const db = IS_TEST ? getFirestore(app, 'test') : getFirestore(app);
+const auth = getAuth(app);
+const EMAIL_SUFFIX = '@MPladder.stb';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    $('login').style.display = 'none';
+    $('status').textContent = 'Ingelogd — data laden…';
+    $('who').textContent = 'ingelogd als ' + (user.email || user.uid);
+    try { await vulLadderKeuze(); } catch(e){ $('status').innerHTML = '<span class="err">Kon ladders niet laden: '+esc(e.code||e.message)+'</span>'; }
+  } else {
+    $('status').innerHTML = 'Niet ingelogd. Open deze pagina op hetzelfde domein als de app terwijl je ingelogd bent, of log hieronder in.';
+    $('login').style.display = '';
+    $('controls').style.display = 'none';
+  }
+});
+
+$('li-btn').addEventListener('click', async () => {
+  const invoer = $('li-user').value.trim();
+  const pass = $('li-pass').value;
+  $('li-err').style.display = 'none';
+  if (!invoer || !pass) { $('li-err').textContent = 'Vul login en wachtwoord in'; $('li-err').style.display=''; return; }
+  const email = invoer.includes('@') ? invoer.toLowerCase() : invoer.toLowerCase() + EMAIL_SUFFIX;
+  try { await signInWithEmailAndPassword(auth, email, pass); }
+  catch(e){ $('li-err').textContent = 'Inloggen mislukt: ' + (e.code||e.message); $('li-err').style.display=''; }
+});
+
+async function vulLadderKeuze() {
+  const sel = $('ladderSel');
+  const snap = await getDocs(collection(db, 'ladders'));
+  const ladders = snap.docs.map(d => ({ id: d.id, naam: (d.data().naam || d.id) }));
+  ladders.sort((a,b)=> a.id === 'mp' ? -1 : b.id === 'mp' ? 1 : a.id.localeCompare(b.id));
+  sel.innerHTML = ladders.map(l => `<option value="${esc(l.id)}">${esc(l.naam)} (${esc(l.id)})</option>`).join('');
+  $('controls').style.display = '';
+  $('status').style.display = 'none';
+  const run = () => laadLadder(sel.value).catch(e => {
+    $('verdict').innerHTML = '<div class="verdict v-bad">Fout bij laden: '+esc(e.code||e.message)+'</div>';
+  });
+  sel.onchange = run;
+  $('reloadBtn').onclick = run;
+  await run();
+}
+
+async function laadLadder(ladderId) {
+  $('verdict').innerHTML = '<div class="card">Laden…</div>';
+  // 1) ladderdoc → spelerIds volgorde
+  const ladderSnap = await getDoc(doc(db, 'ladders', ladderId));
+  const spelerIds = (ladderSnap.exists() ? (ladderSnap.data().spelerIds || []) : [])
+    .filter(id => typeof id === 'string' && id.length > 10);
+  // 2) spelers → uid→naam
+  const spelersSnap = await getDocs(collection(db, 'spelers'));
+  const naamVan = {};
+  spelersSnap.docs.forEach(d => { const x = d.data(); naamVan[d.id] = x.naam || x.email || d.id; });
+  // 3) standen (bron van waarheid voor rank)
+  const standenSnap = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
+  const standen = {};
+  standenSnap.docs.forEach(d => { standen[d.id] = d.data(); });
+
+  // Rijen samenstellen op basis van spelerIds
+  const rijen = spelerIds.map(uid => {
+    const st = standen[uid];
+    return {
+      uid,
+      naam: naamVan[uid] || '(geen profiel)',
+      heeftStand: !!st,
+      rank: st && typeof st.rank === 'number' ? st.rank : (st && st.rank ? Number(st.rank) : 0),
+      partijen: st?.partijen ?? 0,
+      gewonnen: st?.gewonnen ?? 0,
+      prevRank: st?.prevRank ?? null,
+      laatst: st?.laatstGespeeld ?? null,
+    };
+  });
+
+  // Analyse
+  const N = rijen.length;
+  const metRank = rijen.filter(r => r.rank > 0);
+  const zonderRank = rijen.filter(r => !(r.rank > 0));
+  const rankWaarden = metRank.map(r => r.rank);
+  const uniek = new Set(rankWaarden);
+  const duplicaten = rankWaarden.length - uniek.size;
+  const maxRank = rankWaarden.length ? Math.max(...rankWaarden) : 0;
+  const minRank = rankWaarden.length ? Math.min(...rankWaarden) : 0;
+  let gaten = 0;
+  for (let i = 1; i <= N; i++) if (!uniek.has(i)) gaten++;
+  const weesStanden = standenSnap.docs.map(d=>d.id).filter(id => !spelerIds.includes(id)).length;
+
+  // Verdict
+  const rangenIntact = zonderRank.length === 0 && duplicaten === 0 && gaten === 0 && maxRank === N && minRank === 1;
+  const rangenGrotendeelsWeg = metRank.length <= Math.max(3, Math.floor(N*0.1));
+  let vHtml;
+  if (rangenIntact) {
+    vHtml = `<div class="verdict v-ok">✔ RANGEN INTACT in de database — de opgeslagen rangen zijn een schone reeks 1…${N}.
+      De door-elkaar-volgorde in de app is dan een <b>weergave-/cacheprobleem</b>, geen dataverlies.
+      Aanpak: harde refresh / service-worker-cache legen; géén snapshot terugzetten.</div>`;
+  } else if (rangenGrotendeelsWeg) {
+    vHtml = `<div class="verdict v-bad">✖ RANGEN ONTBREKEN in de database — slechts ${metRank.length} van ${N} spelers heeft een rang &gt; 0.
+      Dit is <b>dataverlies</b>. Aanpak: een snapshot van vóór het probleem terugzetten (beheer → snapshots).</div>`;
+  } else {
+    vHtml = `<div class="verdict v-warn">⚠ RANGEN DEELS BESCHADIGD — ${zonderRank.length} zonder rang, ${duplicaten} duplicaat/duplicaten, ${gaten} gat(en) in 1…${N}.
+      Bekijk de tabel; waarschijnlijk snapshot-herstel nodig.</div>`;
+  }
+  $('verdict').innerHTML = vHtml;
+
+  // Stats
+  $('stats').style.display = '';
+  $('stats').innerHTML = `
+    <div class="stat"><b>${N}</b><span>spelers in spelerIds</span></div>
+    <div class="stat"><b>${standenSnap.size}</b><span>standen-documenten</span></div>
+    <div class="stat"><b>${metRank.length}</b><span>met rank &gt; 0</span></div>
+    <div class="stat"><b>${zonderRank.length}</b><span>zonder rank</span></div>
+    <div class="stat"><b>${uniek.size}</b><span>unieke rangen</span></div>
+    <div class="stat"><b>${duplicaten}</b><span>duplicaten</span></div>
+    <div class="stat"><b>${gaten}</b><span>gaten in 1…${N}</span></div>
+    <div class="stat"><b>${minRank||'–'}–${maxRank||'–'}</b><span>min–max rank</span></div>
+    <div class="stat"><b>${weesStanden}</b><span>wees-standen</span></div>`;
+
+  // Tabel — gesorteerd op opgeslagen rank (0/ontbrekend achteraan)
+  const gesorteerd = [...rijen].sort((a,b)=>{
+    const ra = a.rank>0?a.rank:1e9, rb = b.rank>0?b.rank:1e9;
+    return ra-rb || a.naam.localeCompare(b.naam);
+  });
+  $('tableCard').style.display = '';
+  $('tbl').querySelector('thead').innerHTML =
+    '<tr><th>#</th><th>rank</th><th>speler</th><th>stand?</th><th>partijen</th><th>gew.</th><th>prevRank</th><th>uid</th></tr>';
+  $('tbl').querySelector('tbody').innerHTML = gesorteerd.map((r,i)=>`
+    <tr class="${r.rank>0?'':'norank'}">
+      <td class="num">${i+1}</td>
+      <td class="num">${r.rank>0?r.rank:'<span class="pill pill-no">–</span>'}</td>
+      <td>${esc(r.naam)}</td>
+      <td>${r.heeftStand?'<span class="pill pill-yes">ja</span>':'<span class="pill pill-no">nee</span>'}</td>
+      <td class="num">${r.partijen}</td>
+      <td class="num">${r.gewonnen}</td>
+      <td class="num">${r.prevRank ?? ''}</td>
+      <td class="muted">${esc(r.uid.slice(0,8))}…</td>
+    </tr>`).join('');
+
+  // Ruwe spelerIds-volgorde
+  $('ordercard').style.display = '';
+  $('rawlist').innerHTML = spelerIds.map(uid=>`<li>${esc(naamVan[uid]||uid)}</li>`).join('');
+}
+</script>
+</body>
+</html>

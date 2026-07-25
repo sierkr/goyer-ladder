@@ -95,6 +95,23 @@ export function getLadderSpeler(ladderId, uid) {
 }
 
 /**
+ * v3.0.5: readiness-check voor de standen-cache van een ladder.
+ * Onderscheidt "onSnapshot-listener nog niet gevuurd" (cache leeg) van een
+ * daadwerkelijk geladen ladder. Nodig omdat getLadderSpelers() bij een lege
+ * cache rang 0 voor iedereen teruggeeft; een bevestiging zou de ladder dan
+ * alfabetisch (spelerIds-volgorde) hernummeren. Zie audit-cache-race-plan.
+ * Returnt true als er niets te beschermen valt (lege ladder) of de cache gevuld is.
+ */
+export function ladderStandenGeladen(ladderId) {
+  const ladder = alleLadders.find(l => l.id === ladderId);
+  const spelerIds = (ladder?.data?.spelerIds || ladder?.spelerIds || [])
+    .filter(id => typeof id === 'string' && id.length > 10);
+  if (spelerIds.length === 0) return true; // geen leden → geen rangen om te beschermen
+  const standenMap = store._standenCache?.[ladderId] || {};
+  return Object.keys(standenMap).length > 0;
+}
+
+/**
  * Check of een speler (uid) in een ladder zit.
  */
 export function isInLadder(ladderId, uid) {
