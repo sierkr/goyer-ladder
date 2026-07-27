@@ -1,8 +1,8 @@
 // ============================================================
 //  ladder.js — Ladder rendering, ranking weergave
 // ============================================================
-import { db, LADDERS_COL, esc, escAttr } from './config.js';
-import { store, alleLadders, activeLadderId, huidigeBruiker, uitdagingenData, alleToernooien, DEFAULT_LADDER_CONFIG } from './store.js';
+import { db, LADDERS_COL, SNAPSHOTS_COL, ARCHIEF_DOC, esc, escAttr } from './config.js';
+import { store, alleLadders, activeLadderId, huidigeBruiker, uitdagingenData, alleToernooien, archiefData, DEFAULT_LADDER_CONFIG } from './store.js';
 import { getLadderConfig, getLadderData, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { stuurUitdaging } from './archief.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -232,7 +232,8 @@ function renderSpelermatrixHtml(ladderId) {
 
   spelers.forEach((rij, i) => {
     html += '<tr>';
-    html += `<td style="position:sticky;left:0;z-index:1;background:var(--card-bg,#fff);padding:4px 8px;border-bottom:1px solid var(--soft-bg);border-right:2px solid var(--mid);font-weight:500">${i + 1}. ${esc(kort(rij))}</td>`;
+    const _lvKlik = rij.uid ? `onclick="openLadderverloop('${escAttr(ladderId)}','${escAttr(rij.uid)}')" style="cursor:pointer;text-decoration:underline dotted" title="Bekijk ladderverloop van ${escAttr(rij.naam)}"` : '';
+    html += `<td style="position:sticky;left:0;z-index:1;background:var(--card-bg,#fff);padding:4px 8px;border-bottom:1px solid var(--soft-bg);border-right:2px solid var(--mid);font-weight:500"><span ${_lvKlik}>${i + 1}. ${esc(kort(rij))}</span></td>`;
     spelers.forEach((kol, j) => {
       if (i === j) {
         // Diagonaal: groen + partijen deze maand als actief, anders rood + weken inactief.
@@ -261,7 +262,370 @@ function renderSpelermatrixHtml(ladderId) {
   return html;
 }
 
+// ============================================================
+//  LADDERVERLOOP PER SPELER — v3.0.7
+//  Klik op een speler in de spelermatrix -> grafiek van de rang over de
+//  tijd binnen het HUIDIGE seizoen. Twee lijnen: 'zonder activiteit'
+//  (competitierang) en 'met activiteit' (activiteits-gecorrigeerde positie).
+//  Databron (hybride):
+//   - Recent (laatste ~30 dagen): exacte snapshots (snapshots-collectie).
+//   - Ouder deel van dit seizoen: eenmalig gereconstrueerd uit uitslagen[],
+//     startend vanaf de gearchiveerde eindstand van het vorige seizoen, met
+//     exact hetzelfde rang-verschuif-algoritme als bevestigUitslag().
+//  Veiligheid: de reconstructie wordt gevalideerd tegen overlappende
+//  snapshots. Klopt ze niet -> alleen snapshotdata tonen (nooit foute data).
+// ============================================================
+
+let _lvState = null;
+
+function _lvTs(u) {
+  if (u && u.scoreTs) return u.scoreTs;
+  if (u && u.datum) {
+    const p = String(u.datum).split('-').map(Number);
+    if (p.length === 3 && p.every(n => !isNaN(n))) return new Date(p[2], p[1] - 1, p[0]).getTime();
+  }
+  return null;
+}
+
+function _lvRanksMap(standen) {
+  const m = {};
+  for (const s of standen) m[s.naam] = s.rank;
+  return m;
+}
+
+// Eén matchup toepassen op de standen (op naam). Repliceert exact de logica
+// van bevestigUitslag() in ronde.js -- geen extra clamps, zodat de
+// reconstructie identiek is aan de echte historie.
+function _lvPasMatchupToe(standen, winnaarNaam, verliezerNaam, cfg) {
+  const sw = standen.find(s => s.naam === winnaarNaam);
+  const sv = standen.find(s => s.naam === verliezerNaam);
+  if (!sw || !sv) return; // gast of onbekende speler -> geen rangwijziging
+  const swRank = sw.rank, svRank = sv.rank;
+  let newWrank, newVrank;
+  if (swRank > svRank) {
+    newWrank = Math.max(1, swRank - cfg.laagStijg);
+    const verschil = swRank - svRank;
+    if (cfg.verliezerNaarWinnaar && verschil <= cfg.drempel) newVrank = swRank;
+    else newVrank = svRank + cfg.laagZak;
+  } else {
+    newWrank = Math.max(1, swRank - cfg.hoogStijg);
+    newVrank = svRank + cfg.hoogZak;
+  }
+  const n = standen.length;
+  const gereserveerd = new Set([newWrank, newVrank]);
+  const beschikbaar = [];
+  for (let r = 1; r <= n; r++) if (!gereserveerd.has(r)) beschikbaar.push(r);
+  const anderen = standen.filter(s => s !== sw && s !== sv).sort((a, b) => a.rank - b.rank);
+  anderen.forEach((s, i) => { s.rank = beschikbaar[i]; });
+  sw.rank = newWrank; sv.rank = newVrank;
+}
+
+// Reconstrueer de volledige standen na elke uitslag, startend vanaf baseline.
+// Geeft een lijst { ts, ranks:{naam->rank} } terug (incl. baseline op start).
+function _lvReconstrueer(baselineOrder, uitslagenAsc, cfg, startTs) {
+  const standen = baselineOrder.map((naam, i) => ({ naam, rank: i + 1 }));
+  const states = [{ ts: startTs, ranks: _lvRanksMap(standen) }];
+  for (const u of uitslagenAsc) {
+    const ts = _lvTs(u);
+    for (const m of (u.matchups || [])) {
+      if (m.winnaar && m.a && m.b) {
+        const verliezer = m.winnaar === m.a ? m.b : (m.winnaar === m.b ? m.a : null);
+        if (verliezer) _lvPasMatchupToe(standen, m.winnaar, verliezer, cfg);
+      }
+    }
+    states.push({ ts, ranks: _lvRanksMap(standen) });
+  }
+  return states;
+}
+
+// Valideer reconstructie tegen snapshots: elke snapshot moet exact matchen met
+// de gereconstrueerde stand op dat tijdstip. Retourneert true/false.
+function _lvValideer(states, snapshots) {
+  if (!snapshots.length) return true; // niets om tegen te toetsen -> vertrouw baseline
+  for (const snap of snapshots) {
+    let st = states[0];
+    for (const s of states) { if (s.ts != null && s.ts <= snap.timestamp) st = s; }
+    for (const sp of (snap.spelers || [])) {
+      if (st.ranks[sp.naam] == null) return false;      // roster-verschil
+      if (st.ranks[sp.naam] !== sp.rank) return false;  // afwijking
+    }
+  }
+  return true;
+}
+
+// Activiteits-gecorrigeerde positie van een speler bij een gegeven stand + tijdstip.
+function _lvMetRang(spelersLijst, cfg, ladder, ts, matchUid, matchNaam) {
+  const alle = ((ladder && (ladder.data?.uitslagen || ladder.uitslagen)) || []);
+  const uitslagenTot = alle.filter(u => { const t = _lvTs(u); return t != null && t <= ts; });
+  const override = { ...(ladder || {}), data: undefined, uitslagen: uitslagenTot };
+  const verrijkt = sorteerOpActiviteit(verrijkMetActiviteit(spelersLijst, override, cfg, ts, alleToernooien));
+  const hit = verrijkt.find(s => (matchUid && s.uid === matchUid) || s.naam === matchNaam);
+  return hit ? hit._weergaveRang : null;
+}
+
+// Detailtekst voor een punt: datum + tegenstander(s) + uitslag.
+function _lvDetail(uitslagen, ts, naam) {
+  let best = null;
+  for (const u of uitslagen) {
+    const t = _lvTs(u);
+    if (t != null && t <= ts && (u.spelers || []).includes(naam)) {
+      if (!best || t > _lvTs(best)) best = u;
+    }
+  }
+  if (!best) return '';
+  const datum = best.datum || new Date(_lvTs(best)).toLocaleDateString('nl-NL');
+  const mine = (best.matchups || []).filter(m => m.a === naam || m.b === naam);
+  const parts = mine.map(m => {
+    const tegen = m.a === naam ? m.b : m.a;
+    const res = m.winnaar === naam ? 'gewonnen' : (m.winnaar ? 'verloren' : '-');
+    return `vs ${tegen} (${res})`;
+  });
+  return datum + (parts.length ? ' - ' + parts.join(', ') : '');
+}
+
+function _lvBouwPunten(ctx) {
+  const { ladder, cfg, uid, spelerNaam, snaps, states, reconstructieOk, eersteSnapTs, uitslagen } = ctx;
+  const punten = [];
+  if (reconstructieOk && states) {
+    for (const state of states) {
+      if (state.ts == null || state.ts >= eersteSnapTs) continue;
+      const zonder = state.ranks[spelerNaam];
+      if (zonder == null) continue;
+      const spelersLijst = Object.entries(state.ranks).map(([naam, rank]) => ({ naam, rank }));
+      const met = _lvMetRang(spelersLijst, cfg, ladder, state.ts, null, spelerNaam) ?? zonder;
+      punten.push({ ts: state.ts, zonder, met, bron: 'recon', detail: _lvDetail(uitslagen, state.ts, spelerNaam) });
+    }
+  }
+  for (const snap of snaps) {
+    const mij = (snap.spelers || []).find(s => s.uid === uid);
+    if (!mij) continue;
+    const zonder = mij.rank;
+    const spelersLijst = (snap.spelers || []).map(s => ({ uid: s.uid, naam: s.naam, rank: s.rank }));
+    const met = _lvMetRang(spelersLijst, cfg, ladder, snap.timestamp, uid, spelerNaam) ?? zonder;
+    punten.push({ ts: snap.timestamp, zonder, met, bron: 'snap', detail: _lvDetail(uitslagen, snap.timestamp, spelerNaam) });
+  }
+  punten.sort((a, b) => a.ts - b.ts);
+  return punten;
+}
+
+function _lvVeldData(snaps, excludeUid) {
+  const map = {};
+  for (const snap of snaps) {
+    for (const s of (snap.spelers || [])) {
+      if (s.uid === excludeUid) continue;
+      (map[s.uid] || (map[s.uid] = { naam: s.naam, punten: [] })).punten.push({ ts: snap.timestamp, rank: s.rank });
+    }
+  }
+  Object.values(map).forEach(v => v.punten.sort((a, b) => a.ts - b.ts));
+  return map;
+}
+
+function _lvStepPath(pts, xf, yf) {
+  if (!pts.length) return '';
+  let d = `M${xf(pts[0].ts).toFixed(1)},${yf(pts[0].val).toFixed(1)}`;
+  for (let i = 1; i < pts.length; i++) {
+    const x = xf(pts[i].ts).toFixed(1);
+    d += ` L${x},${yf(pts[i - 1].val).toFixed(1)} L${x},${yf(pts[i].val).toFixed(1)}`;
+  }
+  return d;
+}
+
+async function openLadderverloop(ladderId, uid) {
+  const modal = document.getElementById('modal-ladderverloop');
+  const inhoud = document.getElementById('ladderverloop-inhoud');
+  const titel = document.getElementById('ladderverloop-titel');
+  if (!modal || !inhoud) return;
+  modal.classList.add('open');
+  inhoud.innerHTML = '<p style="padding:20px;color:var(--mid)">Laden...</p>';
+
+  try {
+    const ladder = alleLadders.find(l => l.id === ladderId);
+    const cfg = getLadderConfig(ladderId) || DEFAULT_LADDER_CONFIG;
+    const roster = getLadderSpelers(ladderId);
+    const speler = roster.find(s => s.uid === uid);
+    const spelerNaam = speler ? speler.naam : uid;
+    if (titel) titel.textContent = 'Ladderverloop - ' + spelerNaam + (ladder?.naam ? ' \u00b7 ' + ladder.naam : '');
+
+    const archMatches = (archiefData || []).filter(a => a.ladderId === ladderId)
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    const arch = archMatches[0] || null;
+    const startTs = arch ? (arch.timestamp || 0) : 0;
+    const baselineOrder = arch && Array.isArray(arch.eindstand)
+      ? [...arch.eindstand].sort((a, b) => (a.rank || 999) - (b.rank || 999)).map(e => e.naam)
+      : null;
+
+    let snaps = [];
+    try {
+      const snapSnap = await getDocs(query(SNAPSHOTS_COL, where('ladderId', '==', ladderId)));
+      snaps = snapSnap.docs.map(d => d.data())
+        .filter(s => s && typeof s.timestamp === 'number' && s.timestamp >= startTs)
+        .sort((a, b) => a.timestamp - b.timestamp);
+    } catch (e) { console.warn('snapshots laden mislukt:', e); }
+
+    const uitslagen = ((ladder && (ladder.data?.uitslagen || ladder.uitslagen)) || [])
+      .filter(u => { const t = _lvTs(u); return t != null && t >= startTs; })
+      .sort((a, b) => (_lvTs(a) || 0) - (_lvTs(b) || 0));
+
+    let states = null, reconstructieOk = false, reconMelding = '';
+    const eersteSnapTs = snaps.length ? snaps[0].timestamp : Infinity;
+    if (baselineOrder && baselineOrder.length) {
+      states = _lvReconstrueer(baselineOrder, uitslagen, cfg, startTs);
+      reconstructieOk = _lvValideer(states, snaps);
+      if (!reconstructieOk) {
+        const states2 = _lvReconstrueer([...baselineOrder].reverse(), uitslagen, cfg, startTs);
+        if (_lvValideer(states2, snaps)) { states = states2; reconstructieOk = true; }
+      }
+      if (!reconstructieOk) reconMelding = 'Oudere historie kon niet betrouwbaar gereconstrueerd worden - alleen exacte snapshotdata getoond.';
+    } else if (snaps.length) {
+      reconMelding = 'Geen archief van vorig seizoen - grafiek start bij de oudste snapshot.';
+    }
+
+    const punten = _lvBouwPunten({ ladder, cfg, uid, spelerNaam, snaps, states, reconstructieOk, eersteSnapTs, uitslagen });
+    if (punten.length === 0) {
+      inhoud.innerHTML = '<p style="padding:20px;color:var(--mid)">Nog geen verloop-data voor deze speler dit seizoen.</p>';
+      return;
+    }
+
+    _lvState = {
+      punten, spelerNaam,
+      toon: { zonder: true, met: true, veld: false },
+      veldData: _lvVeldData(snaps, uid),
+      reconMelding
+    };
+    _lvRender();
+  } catch (e) {
+    console.error('openLadderverloop mislukt:', e);
+    inhoud.innerHTML = '<p style="padding:20px;color:#c0392b">Kon het ladderverloop niet laden.</p>';
+  }
+}
+
+function _lvToggle(welk) {
+  if (!_lvState) return;
+  _lvState.toon[welk] = !_lvState.toon[welk];
+  _lvRender();
+}
+
+function _lvToonPunt(i) {
+  const el = document.getElementById('ladderverloop-detail');
+  if (!el || !_lvState) return;
+  const p = _lvState.punten[i];
+  if (!p) return;
+  const bron = p.bron === 'snap' ? 'exact (snapshot)' : 'gereconstrueerd';
+  el.innerHTML = `<strong>${esc(p.detail || new Date(p.ts).toLocaleDateString('nl-NL'))}</strong>` +
+    ` &nbsp;-&nbsp; rang ${p.zonder} (zonder) / ${p.met} (met) &nbsp;<span style="color:var(--light)">\u00b7 ${bron}</span>`;
+}
+
+function _lvRender() {
+  const st = _lvState; if (!st) return;
+  const inhoud = document.getElementById('ladderverloop-inhoud'); if (!inhoud) return;
+  const P = st.punten;
+  const W = 360, H = 236, x0 = 40, x1 = 350, y0 = 16, yB = 190;
+  const tsMin = P[0].ts;
+  const tsMax = Math.max(P[P.length - 1].ts, Date.now());
+  const tsSpan = Math.max(1, tsMax - tsMin);
+  let maxRank = 1;
+  P.forEach(p => { maxRank = Math.max(maxRank, p.zonder || 1, st.toon.met ? (p.met || 1) : 1); });
+  if (st.toon.veld) Object.values(st.veldData).forEach(v => v.punten.forEach(pt => { maxRank = Math.max(maxRank, pt.rank); }));
+  const xf = ts => x0 + ((ts - tsMin) / tsSpan) * (x1 - x0);
+  const yf = r => y0 + ((r - 1) / Math.max(1, maxRank - 1)) * (yB - y0);
+
+  const recon = P.filter(p => p.bron === 'recon');
+  const snap = P.filter(p => p.bron === 'snap');
+  const eersteSnap = snap.length ? snap[0] : null;
+
+  const mkRecon = veld => { const a = recon.map(veld); if (eersteSnap) a.push(veld(eersteSnap)); return a; };
+  const zReconPts = mkRecon(p => ({ ts: p.ts, val: p.zonder }));
+  const zSnapPts = snap.map(p => ({ ts: p.ts, val: p.zonder }));
+  const mReconPts = mkRecon(p => ({ ts: p.ts, val: p.met }));
+  const mSnapPts = snap.map(p => ({ ts: p.ts, val: p.met }));
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Ladderverloop van ${escAttr(st.spelerNaam)} over de tijd">`;
+  // as-lijnen
+  svg += `<line x1="${x0}" y1="${y0}" x2="${x0}" y2="${yB}" stroke="var(--soft-bg)" stroke-width="1"/>`;
+  svg += `<line x1="${x0}" y1="${yB}" x2="${x1}" y2="${yB}" stroke="var(--soft-bg)" stroke-width="1"/>`;
+  // y-labels: 1, midden, maxRank
+  const yLabels = maxRank <= 2 ? [1, maxRank] : [1, Math.round((1 + maxRank) / 2), maxRank];
+  yLabels.forEach(r => {
+    svg += `<text x="${x0 - 6}" y="${(yf(r) + 4).toFixed(1)}" font-size="11" fill="var(--mid)" text-anchor="end">${r}</text>`;
+    svg += `<line x1="${x0}" y1="${yf(r).toFixed(1)}" x2="${x1}" y2="${yf(r).toFixed(1)}" stroke="var(--soft-bg)" stroke-width="0.5"/>`;
+  });
+  // x-labels: start, midden, nu
+  const fmt = ts => new Date(ts).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+  [[tsMin, x0, 'start'], [(tsMin + tsMax) / 2, (x0 + x1) / 2, 'mid'], [tsMax, x1, 'nu']].forEach(([ts, x, k]) => {
+    const label = k === 'nu' ? 'nu' : fmt(ts);
+    const anchor = k === 'start' ? 'start' : (k === 'nu' ? 'end' : 'middle');
+    svg += `<text x="${x}" y="${yB + 16}" font-size="11" fill="var(--mid)" text-anchor="${anchor}">${label}</text>`;
+  });
+  // grens gereconstrueerd
+  if (recon.length && eersteSnap) {
+    const gx = xf(eersteSnap.ts).toFixed(1);
+    svg += `<rect x="${x0}" y="${y0}" width="${(gx - x0).toFixed(1)}" height="${yB - y0}" fill="var(--dark)" opacity="0.04"/>`;
+    svg += `<line x1="${gx}" y1="${y0}" x2="${gx}" y2="${yB}" stroke="var(--mid)" stroke-width="1" stroke-dasharray="3 3" opacity="0.5"/>`;
+  }
+  // veld-context
+  if (st.toon.veld) {
+    Object.values(st.veldData).forEach(v => {
+      const pts = v.punten.map(pt => ({ ts: pt.ts, val: pt.rank }));
+      svg += `<path d="${_lvStepPath(pts, xf, yf)}" fill="none" stroke="var(--mid)" stroke-width="1" opacity="0.22"/>`;
+    });
+  }
+  // met activiteit (oranje, gestippeld)
+  if (st.toon.met) {
+    svg += `<path d="${_lvStepPath(mReconPts, xf, yf)}" fill="none" stroke="#eb6834" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round" opacity="0.45"/>`;
+    svg += `<path d="${_lvStepPath(mSnapPts, xf, yf)}" fill="none" stroke="#eb6834" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>`;
+  }
+  // zonder activiteit (blauw, vol)
+  if (st.toon.zonder) {
+    svg += `<path d="${_lvStepPath(zReconPts, xf, yf)}" fill="none" stroke="#2a78d6" stroke-width="2.5" stroke-linejoin="round" opacity="0.45"/>`;
+    svg += `<path d="${_lvStepPath(zSnapPts, xf, yf)}" fill="none" stroke="#2a78d6" stroke-width="2.5" stroke-linejoin="round"/>`;
+    P.forEach((p, i) => {
+      const solid = p.bron === 'snap';
+      svg += `<circle cx="${xf(p.ts).toFixed(1)}" cy="${yf(p.zonder).toFixed(1)}" r="4" fill="#2a78d6" stroke="var(--card-bg,#fff)" stroke-width="2" opacity="${solid ? 1 : 0.5}" style="cursor:pointer" onclick="_lvToonPunt(${i})"><title>${escAttr(p.detail || fmt(p.ts))}</title></circle>`;
+    });
+  }
+  svg += '</svg>';
+
+  // mini-stats
+  const zAlle = P.map(p => p.zonder);
+  const huidig = zAlle[zAlle.length - 1];
+  const hoogste = Math.min(...zAlle);
+  const laagste = Math.max(...zAlle);
+  const netto = zAlle[0] - huidig; // + = gestegen
+  const nettoTxt = netto === 0 ? '\u00b10' : (netto > 0 ? '\u25b2 ' + netto : '\u25bc ' + Math.abs(netto));
+  const nettoKleur = netto > 0 ? '#1d7a3d' : (netto < 0 ? '#c0392b' : 'var(--mid)');
+
+  const knop = (welk, kleur, label) => {
+    const aan = st.toon[welk];
+    return `<button onclick="_lvToggle('${welk}')" style="border:1px solid ${aan ? kleur : 'var(--soft-bg)'};background:${aan ? kleur + '18' : 'transparent'};color:${aan ? kleur : 'var(--mid)'};border-radius:14px;padding:3px 10px;font-size:12px;cursor:pointer">${aan ? '\u25cf' : '\u25cb'} ${label}</button>`;
+  };
+
+  let html = '';
+  html += '<div style="display:flex;gap:8px;margin-bottom:8px">' +
+    `<div style="flex:1;background:var(--soft-bg);border-radius:8px;padding:8px;text-align:center"><div style="font-size:11px;color:var(--mid)">huidig</div><div style="font-size:20px;font-weight:600">${huidig}</div></div>` +
+    `<div style="flex:1;background:var(--soft-bg);border-radius:8px;padding:8px;text-align:center"><div style="font-size:11px;color:var(--mid)">hoogste</div><div style="font-size:20px;font-weight:600">${hoogste}</div></div>` +
+    `<div style="flex:1;background:var(--soft-bg);border-radius:8px;padding:8px;text-align:center"><div style="font-size:11px;color:var(--mid)">laagste</div><div style="font-size:20px;font-weight:600">${laagste}</div></div>` +
+    `<div style="flex:1;background:var(--soft-bg);border-radius:8px;padding:8px;text-align:center"><div style="font-size:11px;color:var(--mid)">seizoen</div><div style="font-size:20px;font-weight:600;color:${nettoKleur}">${nettoTxt}</div></div>` +
+    '</div>';
+  html += svg;
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">' +
+    knop('zonder', '#2a78d6', 'zonder activiteit') +
+    knop('met', '#eb6834', 'met activiteit') +
+    knop('veld', '#888780', 'veld tonen') +
+    '</div>';
+  html += '<div id="ladderverloop-detail" style="margin-top:10px;font-size:12px;color:var(--dark);min-height:18px">Tik op een punt voor details.</div>';
+  if (st.reconMelding) {
+    html += `<div style="margin-top:8px;font-size:11px;color:var(--mid);font-style:italic">${esc(st.reconMelding)}</div>`;
+  } else if (recon.length) {
+    html += '<div style="margin-top:8px;font-size:11px;color:var(--mid);font-style:italic">Vager gedeelte links = gereconstrueerd; vol = exacte snapshots.</div>';
+  }
+
+  inhoud.innerHTML = html;
+}
+
 window.openSpelermatrix = openSpelermatrix;
+window.openLadderverloop = openLadderverloop;
+window._lvToggle = _lvToggle;
+window._lvToonPunt = _lvToonPunt;
 
 // Vult de ladder-keuze in de Spelermatrix-beheerkaart (zelfde patroon als invite).
 function vulMatrixSelect() {

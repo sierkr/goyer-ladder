@@ -389,9 +389,11 @@ async function slaSnapshotOp(label, ladderId) {
   try {
     if (!ladderId) ladderId = activeLadderId;
     if (!ladderId) return;
-    // Verwijder snapshots ouder dan 30 dagen
-    const dertig = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const oudeSnaps = await getDocs(query(SNAPSHOTS_COL, where('timestamp', '<', dertig)));
+    // v3.0.7: retentie verlengd van 30 naar 730 dagen (2 jaar), zodat het
+    // ladderverloop per speler een volledig seizoen kan tonen uit exacte
+    // snapshots i.p.v. alleen de laatste maand.
+    const retentieGrens = Date.now() - 730 * 24 * 60 * 60 * 1000;
+    const oudeSnaps = await getDocs(query(SNAPSHOTS_COL, where('timestamp', '<', retentieGrens)));
     for (const d of oudeSnaps.docs) {
       try { await deleteDoc(d.ref); } catch(e) { /* stil */ }
     }
