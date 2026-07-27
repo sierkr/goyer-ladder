@@ -519,9 +519,27 @@ async function initFirestore() {
     checkInviteLink();
   }
 
+  // v3.0.6: bepaal de auth-status VÓÓR de zware Firestore-init. authStateReady()
+  // wacht tot Firebase de persistente sessie lokaal heeft ingelezen (snelle,
+  // netwerkloze read). Zo weten we meteen of er een geldige (herstelde) sessie is
+  // en tonen we nooit ten onrechte het loginscherm terwijl de gebruiker in feite
+  // gewoon ingelogd is. Dit is het patroon van de matchcheck-app: eerst lokaal
+  // beslissen, dan pas laden.
+  let hersteldeSessie = false;
+  try {
+    await auth.authStateReady();
+    hersteldeSessie = !!auth.currentUser;
+  } catch(e) { console.warn('authStateReady mislukt (niet fataal):', e); }
+
+  // v3.0.6: fallback toont het loginscherm ALLEEN als er geen invite is én
+  // Firebase bevestigd heeft dat er geen gebruiker is. Bij een herstelde sessie
+  // blijft de laad-overlay staan tot vervolgIngelogd() hem weghaalt — geen
+  // flikkering meer. De onAuthStateChanged-handler (verderop) haalt de overlay
+  // sowieso weg zodra de auth-status definitief is; de 10s-veiligheidstimer vangt
+  // extreme gevallen op.
   const loginFallback = setTimeout(() => {
-    toonLaadOverlay(false);
-    if (!heeftInvite && !huidigeBruiker) {
+    if (!heeftInvite && !hersteldeSessie && !huidigeBruiker) {
+      toonLaadOverlay(false);
       document.getElementById('login-scherm').classList.add('actief');
     }
   }, 3000);
@@ -1238,6 +1256,41 @@ export async function herstelLadderIntegriteit(ladderId) {
   const rangenGewijzigd = await normaliseerLadderRangen(ladderId);
 
   return { weesVerwijderd, standenAangemaakt, rangenGewijzigd };
+}
+
+// ============================================================
+//  RESUME-REFRESH — v3.0.6
+//  Op iOS bevriest de Firestore-realtimeverbinding zodra de app naar de
+//  achtergrond gaat (bv. terwijl je op je watch een score invult). Bij
+//  terugkeer kan een via de watch ingevulde score nog niet gepusht zijn en
+//  duurt het onregelmatig lang voordat de listener herverbindt. Deze functie
+//  forceert een verse read van de ladder-docs en hertekent de actieve pagina,
+//  zodat de laatste scores meteen zichtbaar zijn — hetzelfde effect als het
+//  (voorheen nodige) opnieuw inloggen, maar zonder inloggen.
+// ============================================================
+export async function herlaadNaResume() {
+  if (!huidigeBruiker) return;
+  try {
+    await Promise.all(alleLadders.map(async (ladder) => {
+      const snap = await getDoc(doc(db, 'ladders', ladder.id));
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const idx  = alleLadders.findIndex(l => l.id === ladder.id);
+      if (idx < 0) return;
+      alleLadders[idx].spelerIds       = data.spelerIds       || [];
+      alleLadders[idx].actievePartijen = data.actievePartijen || [];
+      alleLadders[idx].data            = data;
+    }));
+  } catch(e) { console.warn('herlaadNaResume mislukt (niet fataal):', e); }
+
+  const ap = document.querySelector('.page.active')?.id?.replace('page-', '');
+  if (ap === 'ladder')    renderLadder();
+  if (ap === 'uitslagen') renderUitslagen();
+  if (ap === 'ronde')     renderRonde();
+  if (ap === 'admin')     renderAdmin();
+  if (ap === 'profiel')   renderProfiel();
+  if (ap === 'toernooi' && huidigeBruiker) renderToernooi();
+  updateSiteTitel();
 }
 
 export {

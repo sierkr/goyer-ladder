@@ -618,7 +618,11 @@
 </div>
 
 <!-- LOGIN SCHERM -->
-<div id="login-scherm" class="actief">
+<!-- v3.0.6: NIET standaard 'actief'. De laad-overlay staat bovenop tijdens het
+     opstarten; het loginscherm wordt pas getoond nadat Firebase heeft bevestigd
+     dat er geen (herstelde) sessie is. Zo flikkert het loginscherm niet meer
+     op bij een geldige sessie (o.a. iOS koude start). -->
+<div id="login-scherm">
   <div class="login-box">
     <div class="login-logo">⛳ Goyer Golf MP Ladder</div>
     <div class="login-sub">Goyer Golf Club</div>
