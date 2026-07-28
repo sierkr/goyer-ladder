@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Firebase ophaal-tool (read-only) — Goyer Golf MP Ladder</title>
+<style>
+  :root {
+    --green: #1f5c3a;
+    --dark: #142e20;
+    --mid: #5a6b60;
+    --border: #d8ddd8;
+    --bg: #f4f2ea;
+    --card: #ffffff;
+    --red: #b23b3b;
+    --gold: #b58a2e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 60px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--dark); line-height: 1.5;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--mid); font-size: 13px; margin: 0 0 20px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--green); margin: 0 0 12px; }
+  label { display: block; font-size: 12px; color: var(--mid); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .03em; }
+  input[type="text"], input[type="password"] {
+    width: 100%; padding: 10px 12px; border: 1.5px solid var(--border);
+    border-radius: 8px; font-size: 15px; margin-bottom: 12px; font-family: inherit;
+  }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 180px; }
+  button {
+    padding: 10px 16px; border-radius: 8px; border: 1.5px solid var(--green);
+    background: var(--green); color: white; font-size: 14px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+  }
+  button.ghost { background: white; color: var(--green); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .seg { display: inline-flex; border: 1.5px solid var(--green); border-radius: 8px; overflow: hidden; margin-bottom: 4px; }
+  .seg button { border: none; border-radius: 0; margin: 0; }
+  .seg button.off { background: white; color: var(--green); }
+  .status { font-size: 13px; padding: 10px 12px; border-radius: 8px; margin-top: 10px; display: none; }
+  .status.info { display: block; background: #eef4ef; color: var(--green); }
+  .status.err  { display: block; background: #f8ebeb; color: var(--red); }
+  .status.ok   { display: block; background: #edf6ed; color: #1c7a2e; }
+  .warn { font-size: 12px; color: var(--gold); background: #fbf5e6; border-radius: 8px; padding: 10px 12px; margin-top: 12px; }
+  textarea {
+    width: 100%; height: 340px; border: 1.5px solid var(--border); border-radius: 8px;
+    padding: 12px; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 11px;
+    white-space: pre; overflow: auto; background: #fbfbf9;
+  }
+  .summary { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; background: #fbfbf9; border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 12px; white-space: pre-wrap; }
+  .ro-badge { display: inline-block; background: #edf6ed; color: #1c7a2e; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 20px; letter-spacing: .04em; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔒 Firebase ophaal-tool <span class="ro-badge">ALLEEN LEZEN</span></h1>
+  <p class="sub">Goyer Golf MP Ladder · leest de volledige database uit voor diagnose. Schrijft, wijzigt of verwijdert niets. · tool v1</p>
+
+  <div class="card">
+    <h2>1 · Omgeving</h2>
+    <div class="seg" id="omgeving-seg">
+      <button id="btn-prod" class="off" onclick="kiesOmgeving(false)">Productie</button>
+      <button id="btn-test" onclick="kiesOmgeving(true)">Test</button>
+    </div>
+    <p class="sub" style="margin:6px 0 0" id="omgeving-tekst">Gekozen: <strong>Test</strong> (named database 'test')</p>
+  </div>
+
+  <div class="card" id="login-card">
+    <h2>2 · Inloggen</h2>
+    <div class="row">
+      <div>
+        <label>Gebruikersnaam of e-mail</label>
+        <input type="text" id="login-email" placeholder="bijv. sierk.roosma" autocomplete="username">
+      </div>
+      <div>
+        <label>Wachtwoord</label>
+        <input type="password" id="login-pass" autocomplete="current-password">
+      </div>
+    </div>
+    <div class="row">
+      <button onclick="doeLogin()">Inloggen</button>
+      <button class="ghost" onclick="doeGoogleLogin()">Inloggen met Google</button>
+    </div>
+    <div class="status" id="login-status"></div>
+  </div>
+
+  <div class="card hidden" id="ophaal-card">
+    <h2>3 · Ophalen</h2>
+    <p class="sub" style="margin:0 0 12px" id="wie-tekst"></p>
+    <div class="row">
+      <button id="btn-ophalen" onclick="haalAllesOp()">📥 Volledige database ophalen</button>
+      <button class="ghost" onclick="doeLogout()">Uitloggen</button>
+    </div>
+    <div class="status" id="ophaal-status"></div>
+    <div class="warn">
+      Let op: de legacy-documenten (o.a. <code>ladder/users</code>) kunnen persoonsgegevens bevatten.
+      Gebruik bij voorkeur de test-omgeving of controleer de inhoud voor je deelt.
+    </div>
+  </div>
+
+  <div class="card hidden" id="resultaat-card">
+    <h2>4 · Resultaat</h2>
+    <div class="summary" id="structuur-samenvatting"></div>
+    <div class="row" style="margin-bottom:12px">
+      <button class="ghost" onclick="kopieer()">📋 Kopieer JSON</button>
+      <button class="ghost" onclick="download()">💾 Download als bestand</button>
+    </div>
+    <textarea id="json-output" readonly></textarea>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js";
+
+  // Exact dezelfde config + App Check als de app (App Check is domeingebonden aan sierkr.github.io).
+  const firebaseConfig = {
+    apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
+    authDomain: "goyer-golf-mp-ladder.firebaseapp.com",
+    projectId: "goyer-golf-mp-ladder",
+    storageBucket: "goyer-golf-mp-ladder.firebasestorage.app",
+    messagingSenderId: "124116031878",
+    appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
+  };
+  const EMAIL_SUFFIX = '@MPladder.stb';
+
+  const app = initializeApp(firebaseConfig);
+  initializeAppCheck(app, {
+    provider: new ReCaptchaV3Provider('6LfOyhAtAAAAACKwXb70iOl_Pdrez2QQ_ktGhFSj'),
+    isTokenAutoRefreshEnabled: true
+  });
+  const auth = getAuth(app);
+  const googleProvider = new GoogleAuthProvider();
+
+  // Wat opgehaald wordt.
+  // Top-level collecties met uniforme leesregels: via getDocs (lijst-query).
+  const TOP_COLLECTIONS = ['ladders', 'uitslagen', 'toernooien', 'snapshots'];
+  // Subcollecties per collectie (Firestore-client kan deze niet ontdekken; namen uit de code).
+  const SUBCOLLECTIONS = { ladders: ['standen'], toernooien: ['live'] };
+  // Legacy 'ladder'-collectie heeft per-document verschillende leesregels,
+  // daarom document-voor-document ophalen met bekende id's (geen lijst-query).
+  const LEGACY_LADDER_DOCS = ['state', 'users', 'banen', 'archief', 'uitdagingen', 'toernooi', 'invite', 'config', 'watchPins'];
+
+  let gebruikTest = true;
+
+  // ---- UI helpers ----
+  function $(id) { return document.getElementById(id); }
+  function toonStatus(el, tekst, type) {
+    const n = $(el);
+    n.textContent = tekst;
+    n.className = 'status ' + type;
+  }
+
+  window.kiesOmgeving = function(test) {
+    gebruikTest = test;
+    $('btn-test').classList.toggle('off', !test);
+    $('btn-prod').classList.toggle('off', test);
+    $('omgeving-tekst').innerHTML = test
+      ? "Gekozen: <strong>Test</strong> (named database 'test')"
+      : "Gekozen: <strong>Productie</strong>";
+  };
+
+  function getDb() {
+    return gebruikTest ? getFirestore(app, 'test') : getFirestore(app);
+  }
+
+  // ---- Firestore-waarden veilig maken voor JSON ----
+  function sanitize(val) {
+    if (val === null || val === undefined) return val;
+    if (typeof val === 'object') {
+      // Firestore Timestamp
+      if (typeof val.toDate === 'function') {
+        try { return { _timestamp: val.toDate().toISOString() }; }
+        catch (e) { return { _timestamp: String(val) }; }
+      }
+      // DocumentReference
+      if (typeof val.path === 'string' && val.id && val.firestore) {
+        return { _ref: val.path };
+      }
+      // GeoPoint
+      if (typeof val.latitude === 'number' && typeof val.longitude === 'number' && Object.keys(val).length === 2) {
+        return { _geopoint: [val.latitude, val.longitude] };
+      }
+      if (Array.isArray(val)) return val.map(sanitize);
+      const out = {};
+      for (const k of Object.keys(val)) out[k] = sanitize(val[k]);
+      return out;
+    }
+    return val;
+  }
+
+  // ---- Login ----
+  window.doeLogin = async function() {
+    const invoer = $('login-email').value.trim();
+    const wachtwoord = $('login-pass').value;
+    if (!invoer || !wachtwoord) { toonStatus('login-status', 'Vul gebruikersnaam en wachtwoord in.', 'err'); return; }
+    const email = invoer.includes('@') ? invoer.toLowerCase() : (invoer.toLowerCase() + EMAIL_SUFFIX);
+    toonStatus('login-status', 'Bezig met inloggen…', 'info');
+    try {
+      await signInWithEmailAndPassword(auth, email, wachtwoord);
+    } catch (e) {
+      toonStatus('login-status', 'Inloggen mislukt: ' + (e.code || e.message), 'err');
+    }
+  };
+
+  window.doeGoogleLogin = async function() {
+    toonStatus('login-status', 'Bezig met Google-login…', 'info');
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (e) {
+      toonStatus('login-status', 'Google-login mislukt: ' + (e.code || e.message), 'err');
+    }
+  };
+
+  window.doeLogout = async function() {
+    try { await signOut(auth); } catch (e) { /* stil */ }
+  };
+
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      $('login-card').classList.add('hidden');
+      $('ophaal-card').classList.remove('hidden');
+      $('wie-tekst').innerHTML = 'Ingelogd als <strong>' + (user.email || user.uid) + '</strong>';
+    } else {
+      $('login-card').classList.remove('hidden');
+      $('ophaal-card').classList.add('hidden');
+      $('resultaat-card').classList.add('hidden');
+      $('login-status').className = 'status';
+    }
+  });
+
+  // ---- Ophalen ----
+  window.haalAllesOp = async function() {
+    const btn = $('btn-ophalen');
+    btn.disabled = true;
+    toonStatus('ophaal-status', 'Bezig met ophalen…', 'info');
+    const db = getDb();
+    const resultaat = {};
+    const meta = {
+      omgeving: gebruikTest ? 'test' : 'productie',
+      opgehaald: new Date().toISOString(),
+      collecties: {}
+    };
+
+    try {
+      // 1) Top-level collecties via lijst-query
+      for (const colName of TOP_COLLECTIONS) {
+        toonStatus('ophaal-status', 'Ophalen: ' + colName + '…', 'info');
+        try {
+          const snap = await getDocs(collection(db, colName));
+          const docs = {};
+          const velden = new Set();
+          for (const d of snap.docs) {
+            const data = sanitize(d.data());
+            Object.keys(data).forEach(k => velden.add(k));
+            const entry = Object.assign({}, data);
+            const subs = SUBCOLLECTIONS[colName] || [];
+            for (const subNaam of subs) {
+              try {
+                const subSnap = await getDocs(collection(db, colName, d.id, subNaam));
+                if (!subSnap.empty) {
+                  const subObj = {};
+                  subSnap.docs.forEach(sd => { subObj[sd.id] = sanitize(sd.data()); });
+                  entry['_sub_' + subNaam] = subObj;
+                }
+              } catch (subErr) {
+                entry['_sub_' + subNaam + '_error'] = (subErr.code || String(subErr));
+              }
+            }
+            docs[d.id] = entry;
+          }
+          resultaat[colName] = docs;
+          meta.collecties[colName] = { aantal: snap.size, velden: Array.from(velden).sort() };
+        } catch (e) {
+          resultaat[colName] = { _error: (e.code || String(e)) };
+          meta.collecties[colName] = { error: (e.code || String(e)) };
+        }
+      }
+
+      // 2) Legacy 'ladder'-documenten, document-voor-document
+      toonStatus('ophaal-status', 'Ophalen: ladder (legacy)…', 'info');
+      const ladderDocs = {};
+      let ladderGevonden = 0;
+      for (const docId of LEGACY_LADDER_DOCS) {
+        try {
+          const dsnap = await getDoc(doc(db, 'ladder', docId));
+          if (dsnap.exists()) {
+            ladderDocs[docId] = sanitize(dsnap.data());
+            ladderGevonden++;
+          }
+        } catch (e) {
+          ladderDocs[docId] = { _error: (e.code || String(e)) };
+        }
+      }
+      resultaat['ladder'] = ladderDocs;
+      meta.collecties['ladder'] = { aantal: ladderGevonden, opmerking: 'legacy losse documenten (bekende id\'s)' };
+
+      const totaal = Object.assign({ _meta: meta }, resultaat);
+      const json = JSON.stringify(totaal, null, 2);
+      $('json-output').value = json;
+      $('structuur-samenvatting').textContent = maakSamenvatting(meta);
+      $('resultaat-card').classList.remove('hidden');
+      toonStatus('ophaal-status', 'Klaar. ' + Math.round(json.length / 1024) + ' kB opgehaald.', 'ok');
+    } catch (e) {
+      toonStatus('ophaal-status', 'Fout tijdens ophalen: ' + (e.code || e.message), 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  function maakSamenvatting(meta) {
+    let s = 'STRUCTUUR — omgeving: ' + meta.omgeving + '  ·  ' + meta.opgehaald + '\n';
+    s += '─────────────────────────────────────────────\n';
+    for (const col of Object.keys(meta.collecties)) {
+      const c = meta.collecties[col];
+      if (c.error) {
+        s += col.padEnd(14) + '  FOUT: ' + c.error + '\n';
+      } else {
+        s += col.padEnd(14) + '  ' + String(c.aantal).padStart(4) + ' docs';
+        if (c.velden && c.velden.length) s += '   velden: ' + c.velden.join(', ');
+        if (c.opmerking) s += '   (' + c.opmerking + ')';
+        s += '\n';
+      }
+    }
+    return s;
+  }
+
+  // ---- Output-acties ----
+  window.kopieer = async function() {
+    const ta = $('json-output');
+    try {
+      await navigator.clipboard.writeText(ta.value);
+      toonStatus('ophaal-status', 'JSON gekopieerd naar klembord.', 'ok');
+    } catch (e) {
+      ta.focus(); ta.select();
+      toonStatus('ophaal-status', 'Kon niet automatisch kopiëren — selecteer handmatig (Ctrl/Cmd+C).', 'info');
+    }
+  };
+
+  window.download = function() {
+    const blob = new Blob([$('json-output').value], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    a.href = url;
+    a.download = 'firebase-dump-' + (gebruikTest ? 'test' : 'prod') + '-' + stamp + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+</script>
+</body>
+</html>
