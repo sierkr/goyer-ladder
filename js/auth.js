@@ -261,7 +261,16 @@ function pasToernooiModusNavToe() {
   const isDeelnemerViaToernooiModus = actief &&
     (actief.spelers || []).some(s => s.uid === huidigeBruiker.uid);
 
-  if (!isToernooiSpeler && !isDeelnemerViaToernooiModus) return;
+  if (!isToernooiSpeler && !isDeelnemerViaToernooiModus) {
+    // v3.0.9: geen actieve toernooi-modus (meer) → herstel de normale tabs.
+    // Voorheen een early-return, waardoor eerder verborgen tabs verborgen bleven
+    // en de deelnemer na einde/annulering met alleen 'Profiel' achterbleef (app onbruikbaar).
+    ['ladder', 'partij', 'ronde', 'uitslagen', 'help', 'profiel'].forEach(tab => {
+      const b = document.getElementById(`nav-${tab}-btn`);
+      if (b) b.style.display = '';
+    });
+    return;
+  }
 
   // Verberg alle tabs behalve Toernooi en Uitslag
   // v3.0.0-11.74: uitslagen verborgen — ladder-partijen zijn niet relevant voor toernooi-deelnemers
@@ -280,6 +289,11 @@ function pasToernooiModusNavToe() {
     document.getElementById('page-toernooi')?.classList.add('active');
     document.getElementById('nav-toernooi-btn')?.classList.add('active');
   }
+
+  // v3.0.9: render de toernooipagina meteen, zodat de deelnemer zijn scorekaart
+  // ziet i.p.v. de standaard-HTML ("NIEUW TOERNOOI"). Voorheen werd de pagina wel
+  // geactiveerd maar niet gerenderd, waardoor pas na een modus-toggle iets verscheen.
+  renderToernooi();
 }
 
 // Luister naar toernooiModusGewijzigd event vanuit toernooi.js
