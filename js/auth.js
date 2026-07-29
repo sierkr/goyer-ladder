@@ -612,6 +612,18 @@ async function initFirestore() {
       // Altijd: nav-tabs en titelbalk bijwerken op basis van actuele toestand
       if (huidigeBruiker) {
         pasToernooiModusNavToe();
+        // v3.0.8: toon de Toernooi-tab alsnog zodra de toernooidata is geladen,
+        // ook voor deelnemers die al ingelogd waren voordat het toernooi bestond.
+        // Voorheen werd de tab alleen bij inloggen bepaald (race met deze listener),
+        // waardoor de tab verborgen bleef en niets hem daarna alsnog toonde.
+        const tBtn = document.getElementById('nav-toernooi-btn');
+        if (tBtn && !isBeheerderRol() && !isCoordinatorRol()) {
+          const uid = huidigeBruiker.uid;
+          const isDeelnemer = (alleToernooien || []).some(t =>
+            (t.spelers || []).some(s => uid && s.uid === uid)
+          );
+          if (isDeelnemer || huidigeBruiker.toernooiSpeler) tBtn.style.display = '';
+        }
         updateSiteTitel();
       }
 
