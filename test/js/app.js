@@ -7,7 +7,7 @@ import { initApp, uitloggen, loginSubmit, loginMetGoogle, autoAdvance,
   genereerInviteLink, kopieerInviteLink, registreerSpeler,
   laadInviteStatus, registreerNotificatieToken,
   wisselLadder, toonLaadOverlay, checkInviteLink,
-  slaEersteLoginOp } from './auth.js';
+  slaEersteLoginOp, herlaadNaResume } from './auth.js';
 
 import { showPage } from './nav.js';
 import { renderLadder, toggleLadderKaart } from './ladder.js';
@@ -221,7 +221,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v3.0.4';
+  const VERSION = 'v3.1.1';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -262,7 +262,7 @@ window.toggleTRankingLadder = toggleTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v3.0.4';
+  const LOKALE_VERSIE = 'v3.1.1';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 
@@ -322,7 +322,15 @@ window.toggleTRankingLadder = toggleTRankingLadder;
 
   // c) Check zodra app vanuit achtergrond terugkomt (tab focus / PWA resume)
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') checkVersie();
+    if (document.visibilityState === 'visible') {
+      checkVersie();
+      // v3.0.6: forceer een verse read + her-render van de actieve pagina zodat
+      // scores die via de watch zijn ingevuld terwijl de telefoon in de
+      // achtergrond stond, meteen zichtbaar zijn (niet wachten op de trage
+      // herverbinding van de Firestore-listener op iOS).
+      Promise.resolve(herlaadNaResume()).catch(e =>
+        console.warn('resume-refresh mislukt:', e));
+    }
   });
 
   // d) Check na SW_ACTIVATED bericht van nieuwe service worker

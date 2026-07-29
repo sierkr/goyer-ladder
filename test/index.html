@@ -618,7 +618,11 @@
 </div>
 
 <!-- LOGIN SCHERM -->
-<div id="login-scherm" class="actief">
+<!-- v3.0.6: NIET standaard 'actief'. De laad-overlay staat bovenop tijdens het
+     opstarten; het loginscherm wordt pas getoond nadat Firebase heeft bevestigd
+     dat er geen (herstelde) sessie is. Zo flikkert het loginscherm niet meer
+     op bij een geldige sessie (o.a. iOS koude start). -->
+<div id="login-scherm">
   <div class="login-box">
     <div class="login-logo">⛳ Goyer Golf MP Ladder</div>
     <div class="login-sub">Goyer Golf Club</div>
@@ -943,6 +947,15 @@
     <h3 id="spelermatrix-titel">Spelermatrix</h3>
     <div id="spelermatrix-inhoud" style="margin-top:8px"></div>
     <button class="btn btn-ghost btn-block" style="margin-top:16px" onclick="closeModal('modal-spelermatrix')">Sluiten</button>
+  </div>
+</div>
+
+<!-- Ladderverloop per speler (v3.0.7) -->
+<div class="modal-overlay" id="modal-ladderverloop">
+  <div class="modal" style="max-width:min(95vw,560px);width:100%">
+    <h3 id="ladderverloop-titel">Ladderverloop</h3>
+    <div id="ladderverloop-inhoud" style="margin-top:8px"></div>
+    <button class="btn btn-ghost btn-block" style="margin-top:16px" onclick="closeModal('modal-ladderverloop')">Sluiten</button>
   </div>
 </div>
 
@@ -1357,7 +1370,9 @@
 <div id="page-toernooi" class="page">
 
   <!-- Geen actief toernooi -->
-  <div id="toernooi-setup-wrap">
+  <div id="toernooi-setup-wrap" style="display:none">
+    <!-- v3.0.9: standaard verborgen; renderToernooi() toont dit alleen voor coordinators.
+         Voorkomt dat een deelnemer het aanmaakscherm ("NIEUW TOERNOOI") ziet. -->
     <div class="card">
       <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
         <h2>Nieuw Toernooi</h2>
@@ -1561,10 +1576,9 @@
       <div id="admin-ladders-list"></div>
     </div>
   </div>
-  <div class="card" style="display:none">
-    <!-- v3.0.0-11.30: Ladder herstellen UI tijdelijk verborgen.
-         Automatische snapshots worden nog steeds aangemaakt en bewaard.
-         Sporadisch terugzetten van een speler kan via admin → Stand aanpassen → pijltjes. -->
+  <div class="card">
+    <!-- v3.0.8: Ladder herstellen UI weer standaard zichtbaar voor de beheerder.
+         Automatische snapshots worden aangemaakt en bewaard; terugzetten kan hier. -->
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Ladder herstellen</h2>
       <div onclick="event.stopPropagation()">

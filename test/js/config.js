@@ -8,7 +8,8 @@ import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword,
   signOut, GoogleAuthProvider, signInWithPopup,
   sendPasswordResetEmail, updatePassword, EmailAuthProvider,
-  reauthenticateWithCredential, createUserWithEmailAndPassword
+  reauthenticateWithCredential, createUserWithEmailAndPassword,
+  setPersistence, indexedDBLocalPersistence, browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js";
@@ -37,6 +38,16 @@ export const appCheck = initializeAppCheck(app, {
 export const IS_TEST = typeof location !== 'undefined' && location.pathname.includes('/test/');
 export const db = IS_TEST ? getFirestore(app, 'test') : getFirestore(app);
 export const auth = getAuth(app);
+
+// v3.0.6: pin de auth-persistentie expliciet op IndexedDB (robuust op iOS,
+// ook als PWA op het beginscherm). Valt terug op localStorage als IndexedDB
+// niet beschikbaar is (bv. privémodus). Fouten zijn niet fataal — Firebase
+// gebruikt dan zijn eigen standaard-hiërarchie. Dit garandeert dat de sessie
+// bewaard blijft tot de gebruiker zelf uitlogt.
+setPersistence(auth, indexedDBLocalPersistence).catch(() =>
+  setPersistence(auth, browserLocalPersistence).catch(() => {})
+);
+
 export const googleProvider = new GoogleAuthProvider();
 
 // v3.0.0-11.2: Cloud Functions in europe-west1 voor reset-wachtwoord

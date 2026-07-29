@@ -263,13 +263,13 @@ function renderScores() {
   // v3.0.0-11.37: haal data uit actieve dag
   const dag = (t.dagen || [])[(t.actiefDagNr || 1) - 1] || null;
   const holes   = dag?.holes   || t.holes   || [];
-  const flights = dag?.flights || t.flights || [{ naam: 'Flight', spelerIds: t.spelers.map(s => s.id) }];
+  const flights = dag?.flights || t.flights || [{ naam: 'Flight', spelerIds: t.spelers.map(s => s.uid) }];
   // v3.0.0-11.106: merge live scores met dag.scores
   const scores  = dag ? getLiveScoresVoorDag(dag) : (t.scores || {});
   let html = '';
 
   flights.forEach(flight => {
-    const flightSpelers = t.spelers.filter(s => (flight.spelerIds || []).map(String).includes(String(s.id)));
+    const flightSpelers = t.spelers.filter(s => (flight.spelerIds || []).map(String).includes(String(s.uid)));
     if (flightSpelers.length === 0) return;
 
     html += `<div class="card">
@@ -288,7 +288,7 @@ function renderScores() {
           <span style="font-size:10px;color:var(--light);margin-left:3px">p${hole.par}</span>
         </td>`;
       flightSpelers.forEach(s => {
-        const sScores = scores?.[s.id] || scores?.[String(s.id)] || [];
+        const sScores = scores?.[s.uid] || scores?.[String(s.uid)] || [];
         const val = sScores[i];
         let cls = '';
         if (val != null) {
@@ -305,7 +305,7 @@ function renderScores() {
     // Totaalrij
     html += '<tr style="background:var(--green-pale);font-weight:700"><td>Totaal</td>';
     flightSpelers.forEach(s => {
-      const sScores = scores?.[s.id] || scores?.[String(s.id)] || [];
+      const sScores = scores?.[s.uid] || scores?.[String(s.uid)] || [];
       const filled = sScores.filter(v => v != null);
       const tot = filled.length ? filled.reduce((a,b) => a+Number(b), 0) : null;
       html += `<td>${tot !== null ? tot : '—'}</td>`;
@@ -340,7 +340,7 @@ function berekenStrokeplayRanglijst(t, dagNrOverride) {
   const scores = dag ? getLiveScoresVoorDag(dag) : (t.scores || {});
   const aantalHoles = holes.length;
   return t.spelers.map(s => {
-    const sScores = scores?.[s.id] || scores?.[String(s.id)] || [];
+    const sScores = scores?.[s.uid] || scores?.[String(s.uid)] || [];
     const hcp = Math.round(s.hcp);
     let bruttoTotaal = 0, nettoSlagen = 0, stableford = 0, holesGespeeld = 0;
     holes.forEach((hole, i) => {
@@ -451,8 +451,8 @@ function renderRanglijst() {
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         const sA = spelers[i], sB = spelers[j];
-        const scoresA = rlScores?.[sA.id] || rlScores?.[String(sA.id)] || [];
-        const scoresB = rlScores?.[sB.id] || rlScores?.[String(sB.id)] || [];
+        const scoresA = rlScores?.[sA.uid] || rlScores?.[String(sA.uid)] || [];
+        const scoresB = rlScores?.[sB.uid] || rlScores?.[String(sB.uid)] || [];
         let standA = 0, gespeeld = 0;
         rlHoles.forEach((hole, hi) => {
           const vA = scoresA[hi], vB = scoresB[hi];

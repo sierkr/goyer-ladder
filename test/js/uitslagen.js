@@ -5,7 +5,7 @@ import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, AR
 import { store, alleLadders, activeLadderId, _beheerPartijId, _beheerWinnaars } from './store.js';
 import { slaActievePartijenOp, slaUitslagenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { mijnPartij } from './partij.js';
-import { getLadderSpelers } from './ladder-view.js';
+import { getLadderSpelers, ladderStandenGeladen } from './ladder-view.js';
 import { renderLadder } from './ladder.js';
 import { renderRonde, showLadderChanges, syncStandenNaBevestigUitslag, verwijderPartijMetRetry } from './ronde.js';
 import { slaSnapshotOp } from './beheer.js';
@@ -224,9 +224,23 @@ async function bevestigBeheerUitslag() {
     return;
   }
 
+  // v3.0.5: guard — nooit rangen herschrijven op basis van een nog niet geladen
+  // standen-cache (zie audit). Anders hernummert de bevestiging de hele ladder
+  // alfabetisch omdat getLadderSpelers() dan rang 0 voor iedereen teruggeeft.
+  if (!ladderStandenGeladen(p.ladderId)) {
+    toast('Ladder is nog aan het laden — probeer over een paar seconden opnieuw');
+    return;
+  }
+
   closeModal('modal-beheer-partij');
 
   const rankSpelers = getLadderSpelers(p.ladderId).map(s => ({ ...s }));
+
+  // v3.0.5: tweede vangnet — alle spelers rang 0 ⇒ standen niet betrouwbaar geladen.
+  if (rankSpelers.length > 0 && rankSpelers.every(s => !(s.rank > 0))) {
+    toast('Ladderstanden nog niet geladen — probeer opnieuw');
+    return;
+  }
   rankSpelers.forEach(s => { s.prevRank = s.rank; });
   const changes = [];
 

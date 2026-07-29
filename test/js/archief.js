@@ -110,7 +110,7 @@ async function bevestigNieuwSeizoen() {
           }))
         };
         archiefData.unshift(seizoen);
-        await setDoc(ARCHIEF_DOC, { seizoenen: archiefData });
+        await setDoc(ARCHIEF_DOC, { seizoenen: archiefData }, { merge: true }); // v3.1.0: merge zodat het toernooien-veld niet gewist wordt
         alleIdsArchiefOK.push(ladderId);
 
         // 3) Bepaal nieuwe volgorde: omdraaien of behouden
@@ -281,7 +281,7 @@ async function verwijderArchiefSeizoen(idx) {
   if (!confirm(`Seizoen "${label}" permanent uit archief verwijderen?`)) return;
   try {
     const verwijderd = archiefData.splice(idx, 1)[0];
-    await setDoc(ARCHIEF_DOC, { seizoenen: archiefData });
+    await setDoc(ARCHIEF_DOC, { seizoenen: archiefData }, { merge: true }); // v3.1.0: merge zodat het toernooien-veld niet gewist wordt
     renderArchief();
     toast('Seizoen verwijderd ✓');
   } catch(e) {
@@ -312,7 +312,13 @@ async function openToernooiDetail(idx) {
 
   document.getElementById('archief-detail-titel').textContent = `🏅 ${t.naam}`;
 
-  let html = `<p style="font-size:13px;color:var(--light);margin-bottom:16px">${t.datum} · ${t.baan} · ${t.holes} holes</p>`;
+  // v3.1.0: datum/baan/holes staan per dag in dagen[]; top-level velden bestaan niet
+  // (waren daarom 'undefined'). Val terug op de eerste dag.
+  const eersteDag = (t.dagen && t.dagen[0]) || {};
+  const aDatum = t.datum || eersteDag.datum || '?';
+  const aBaan  = t.baan  || eersteDag.baan  || '?';
+  const aHoles = (t.holes ?? eersteDag.holes ?? '?');
+  let html = `<p style="font-size:13px;color:var(--light);margin-bottom:16px">${aDatum} · ${aBaan} · ${aHoles} holes</p>`;
 
   // Ranglijst
   html += `<p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:8px">Eindranglijst</p>`;

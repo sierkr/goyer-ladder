@@ -261,7 +261,16 @@ function pasToernooiModusNavToe() {
   const isDeelnemerViaToernooiModus = actief &&
     (actief.spelers || []).some(s => s.uid === huidigeBruiker.uid);
 
-  if (!isToernooiSpeler && !isDeelnemerViaToernooiModus) return;
+  if (!isToernooiSpeler && !isDeelnemerViaToernooiModus) {
+    // v3.0.9: geen actieve toernooi-modus (meer) → herstel de normale tabs.
+    // Voorheen een early-return, waardoor eerder verborgen tabs verborgen bleven
+    // en de deelnemer na einde/annulering met alleen 'Profiel' achterbleef (app onbruikbaar).
+    ['ladder', 'partij', 'ronde', 'uitslagen', 'help', 'profiel'].forEach(tab => {
+      const b = document.getElementById(`nav-${tab}-btn`);
+      if (b) b.style.display = '';
+    });
+    return;
+  }
 
   // Verberg alle tabs behalve Toernooi en Uitslag
   // v3.0.0-11.74: uitslagen verborgen — ladder-partijen zijn niet relevant voor toernooi-deelnemers
@@ -280,6 +289,11 @@ function pasToernooiModusNavToe() {
     document.getElementById('page-toernooi')?.classList.add('active');
     document.getElementById('nav-toernooi-btn')?.classList.add('active');
   }
+
+  // v3.0.9: render de toernooipagina meteen, zodat de deelnemer zijn scorekaart
+  // ziet i.p.v. de standaard-HTML ("NIEUW TOERNOOI"). Voorheen werd de pagina wel
+  // geactiveerd maar niet gerenderd, waardoor pas na een modus-toggle iets verscheen.
+  renderToernooi();
 }
 
 // Luister naar toernooiModusGewijzigd event vanuit toernooi.js
@@ -519,9 +533,27 @@ async function initFirestore() {
     checkInviteLink();
   }
 
+  // v3.0.6: bepaal de auth-status VÓÓR de zware Firestore-init. authStateReady()
+  // wacht tot Firebase de persistente sessie lokaal heeft ingelezen (snelle,
+  // netwerkloze read). Zo weten we meteen of er een geldige (herstelde) sessie is
+  // en tonen we nooit ten onrechte het loginscherm terwijl de gebruiker in feite
+  // gewoon ingelogd is. Dit is het patroon van de matchcheck-app: eerst lokaal
+  // beslissen, dan pas laden.
+  let hersteldeSessie = false;
+  try {
+    await auth.authStateReady();
+    hersteldeSessie = !!auth.currentUser;
+  } catch(e) { console.warn('authStateReady mislukt (niet fataal):', e); }
+
+  // v3.0.6: fallback toont het loginscherm ALLEEN als er geen invite is én
+  // Firebase bevestigd heeft dat er geen gebruiker is. Bij een herstelde sessie
+  // blijft de laad-overlay staan tot vervolgIngelogd() hem weghaalt — geen
+  // flikkering meer. De onAuthStateChanged-handler (verderop) haalt de overlay
+  // sowieso weg zodra de auth-status definitief is; de 10s-veiligheidstimer vangt
+  // extreme gevallen op.
   const loginFallback = setTimeout(() => {
-    toonLaadOverlay(false);
-    if (!heeftInvite && !huidigeBruiker) {
+    if (!heeftInvite && !hersteldeSessie && !huidigeBruiker) {
+      toonLaadOverlay(false);
       document.getElementById('login-scherm').classList.add('actief');
     }
   }, 3000);
@@ -594,6 +626,18 @@ async function initFirestore() {
       // Altijd: nav-tabs en titelbalk bijwerken op basis van actuele toestand
       if (huidigeBruiker) {
         pasToernooiModusNavToe();
+        // v3.0.8: toon de Toernooi-tab alsnog zodra de toernooidata is geladen,
+        // ook voor deelnemers die al ingelogd waren voordat het toernooi bestond.
+        // Voorheen werd de tab alleen bij inloggen bepaald (race met deze listener),
+        // waardoor de tab verborgen bleef en niets hem daarna alsnog toonde.
+        const tBtn = document.getElementById('nav-toernooi-btn');
+        if (tBtn && !isBeheerderRol() && !isCoordinatorRol()) {
+          const uid = huidigeBruiker.uid;
+          const isDeelnemer = (alleToernooien || []).some(t =>
+            (t.spelers || []).some(s => uid && s.uid === uid)
+          );
+          if (isDeelnemer || huidigeBruiker.toernooiSpeler) tBtn.style.display = '';
+        }
         updateSiteTitel();
       }
 
@@ -1238,6 +1282,41 @@ export async function herstelLadderIntegriteit(ladderId) {
   const rangenGewijzigd = await normaliseerLadderRangen(ladderId);
 
   return { weesVerwijderd, standenAangemaakt, rangenGewijzigd };
+}
+
+// ============================================================
+//  RESUME-REFRESH — v3.0.6
+//  Op iOS bevriest de Firestore-realtimeverbinding zodra de app naar de
+//  achtergrond gaat (bv. terwijl je op je watch een score invult). Bij
+//  terugkeer kan een via de watch ingevulde score nog niet gepusht zijn en
+//  duurt het onregelmatig lang voordat de listener herverbindt. Deze functie
+//  forceert een verse read van de ladder-docs en hertekent de actieve pagina,
+//  zodat de laatste scores meteen zichtbaar zijn — hetzelfde effect als het
+//  (voorheen nodige) opnieuw inloggen, maar zonder inloggen.
+// ============================================================
+export async function herlaadNaResume() {
+  if (!huidigeBruiker) return;
+  try {
+    await Promise.all(alleLadders.map(async (ladder) => {
+      const snap = await getDoc(doc(db, 'ladders', ladder.id));
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const idx  = alleLadders.findIndex(l => l.id === ladder.id);
+      if (idx < 0) return;
+      alleLadders[idx].spelerIds       = data.spelerIds       || [];
+      alleLadders[idx].actievePartijen = data.actievePartijen || [];
+      alleLadders[idx].data            = data;
+    }));
+  } catch(e) { console.warn('herlaadNaResume mislukt (niet fataal):', e); }
+
+  const ap = document.querySelector('.page.active')?.id?.replace('page-', '');
+  if (ap === 'ladder')    renderLadder();
+  if (ap === 'uitslagen') renderUitslagen();
+  if (ap === 'ronde')     renderRonde();
+  if (ap === 'admin')     renderAdmin();
+  if (ap === 'profiel')   renderProfiel();
+  if (ap === 'toernooi' && huidigeBruiker) renderToernooi();
+  updateSiteTitel();
 }
 
 export {
