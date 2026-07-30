@@ -41,7 +41,7 @@ function showPage(name, evt) {
   }
   if (name === 'toernooi') {
     // v3.2.0: schakelaar oud/nieuw. Zet op false om terug te vallen op de oude setup.
-    const GEBRUIK_TOERNOOI2 = false;
+    const GEBRUIK_TOERNOOI2 = true;
     if (GEBRUIK_TOERNOOI2) {
       herlaadToernooien()
         .then(() => laadLaatsteConcept())
