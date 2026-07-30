@@ -10,9 +10,17 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v4.0.0**
+Huidige versie: **v4.0.1**
 
 ### Changelog
+- **v4.0.1** — Fix 7.8: flightgenoten konden elkaars toernooiscores niet
+  invoeren. De Firestore-regel voor `toernooien/{id}/live/{uid}` stond alleen
+  schrijven op de eigen uid toe (of coordinator), waardoor bij invoer voor de
+  hele flight alleen de eigen score doorkwam. Nieuw: `allow write: if
+  isIngelogd();` — elke ingelogde speler mag live-scores schrijven (de app
+  toont andere flights toch niet; coordinator/beheerder vallen hier automatisch
+  onder). LET OP: `firestore.rules` moet handmatig in de Firebase console
+  worden gepubliceerd, de zip deployt geen rules.
 - **v4.0.0** — Zeven robuustheidsfixes in de toernooimodus (`js/toernooi.js`):
   - **7.1 Concept-opslag setup**: het setup-formulier (naam, dagen, spelers,
     flights-instellingen, ladder-selecties) wordt debounced als concept in

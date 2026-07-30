@@ -111,12 +111,15 @@ service cloud.firestore {
       allow read:  if true;
       allow write: if isCoordinator();
 
-      // v3.0.0-11.106: live-scores subcollectie - spelers schrijven eigen scores hier.
-      // Coordinator mag ook andermans scores schrijven (score-invoer namens speler).
+      // v3.0.0-11.106: live-scores subcollectie - spelers schrijven scores hier.
+      // v4.0.1 (fix 7.8): elke ingelogde speler mag live-scores schrijven, zodat
+      // een speler de scores van zijn flightgenoten kan invoeren (kaart bijhouden
+      // voor de hele flight). Voorheen blokkeerde de regel alles behalve de eigen
+      // uid of de coordinator - waardoor alleen de eigen score doorkwam.
       // Read publiek zodat toernooi-live.html real-time scores kan tonen.
       match /live/{uid} {
         allow read:  if true;
-        allow write: if isIngelogd() && (request.auth.uid == uid || isCoordinator());
+        allow write: if isIngelogd();
       }
     }
 
