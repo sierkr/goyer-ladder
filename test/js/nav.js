@@ -4,6 +4,7 @@
 import { db, auth } from './config.js';
 import { store, alleLadders } from './store.js';
 import { herlaadToernooien, renderToernooi } from './toernooi.js';
+import { renderToernooi2, laadLaatsteConcept } from './toernooi2.js'; // v3.2.0: nieuwbouw toernooi-setup
 import { initPartijForm } from './partij.js';
 import { laadInviteStatus } from './auth.js';
 import { renderAdmin, renderProfiel } from './admin.js';
@@ -38,7 +39,18 @@ function showPage(name, evt) {
     renderAdminLadders();
     laadInviteStatus();
   }
-  if (name === 'toernooi') { herlaadToernooien().then(() => renderToernooi()).catch(() => renderToernooi()); }
+  if (name === 'toernooi') {
+    // v3.2.0: schakelaar oud/nieuw. Zet op false om terug te vallen op de oude setup.
+    const GEBRUIK_TOERNOOI2 = true;
+    if (GEBRUIK_TOERNOOI2) {
+      herlaadToernooien()
+        .then(() => laadLaatsteConcept())
+        .catch(() => {})
+        .then(() => renderToernooi2());
+    } else {
+      herlaadToernooien().then(() => renderToernooi()).catch(() => renderToernooi());
+    }
+  }
   if (name === 'profiel') renderProfiel();
   if (name === 'archief') { renderArchief(); verwijderOudeUitslagen(); }
 }
