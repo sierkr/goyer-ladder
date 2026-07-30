@@ -1707,7 +1707,12 @@ function renderTScorecard() {
     html += `<tr><td class="player-col" style="font-weight:600">${holeIdx+1}<span class="hole-par">p${h.par} SI${h.si}</span></td>`;
     spelers.forEach((s, si) => {
       const val = dag.scores?.[s.uid]?.[holeIdx];
-      const tabIdx = tabOffset + si * dag.holes.length + spelRij + 1;
+      // v4.0.2: cursor-richting per rol. Beheerder vult per speler in
+      // (kolom omlaag), spelers vullen per hole in (rij naar rechts:
+      // hole 1 speler 1 → hole 1 speler 2 → ... → hole 2 speler 1).
+      const tabIdx = isBeheerder
+        ? tabOffset + si * dag.holes.length + spelRij + 1
+        : tabOffset + spelRij * spelers.length + si + 1;
       if (dagAfgerond) {
         html += `<td style="text-align:center;font-family:'DM Mono',monospace;font-size:14px">${val !== null && val !== undefined ? val : '—'}</td>`;
       } else if (!isBeheerder && t.scoresVerborgen && s.uid !== mijnUid2) {
@@ -1893,13 +1898,15 @@ function getTHcpSlagen(spelerA, spelerB, hole, hcpPct) {
 
 // Bereken matchplay punten voor één dag
 function berekenTPuntenVoorDag(t, dag) {
-  if (!dag) return { punten: [], won: [], tied: [], lost: [], matrix: [] };
+  if (!dag) return { punten: [], won: [], tied: [], lost: [], matrix: [], standen: [] };
   const n = t.spelers.length;
   const punten = new Array(n).fill(0);
   const won    = new Array(n).fill(0);
   const tied   = new Array(n).fill(0);
   const lost   = new Array(n).fill(0);
   const matrix = Array.from({length: n}, () => new Array(n).fill(null));
+  // v4.0.2: standen[i][j] = met hoeveel holes speler i voorstaat op speler j
+  const standen = Array.from({length: n}, () => new Array(n).fill(null));
 
   for (let i = 0; i < n; i++) {
     for (let j = i+1; j < n; j++) {
@@ -1926,6 +1933,9 @@ function berekenTPuntenVoorDag(t, dag) {
 
       if (!gespeeld) continue;
 
+      standen[i][j] = standA;   // v4.0.2: marge (positief = i staat voor)
+      standen[j][i] = -standA;
+
       if (standA > 0) {
         punten[i] += t.ptWin; punten[j] += t.ptLoss;
         won[i]++; lost[j]++;
@@ -1941,7 +1951,7 @@ function berekenTPuntenVoorDag(t, dag) {
       }
     }
   }
-  return { punten, won, tied, lost, matrix };
+  return { punten, won, tied, lost, matrix, standen };
 }
 
 // berekenTPunten: voor matrix/ranglijst — gebruikt actieve dag of totaal
@@ -1957,6 +1967,7 @@ function berekenTPunten(dagNrOverride) {
     const totTied   = new Array(n).fill(0);
     const totLost   = new Array(n).fill(0);
     const totMatrix = Array.from({length: n}, () => new Array(n).fill(null));
+    const totStanden = Array.from({length: n}, () => new Array(n).fill(null)); // v4.0.2
 
     (t.dagen || []).forEach(dag => {
       const res = berekenTPuntenVoorDag(t, dag);
@@ -1974,10 +1985,14 @@ function berekenTPunten(dagNrOverride) {
               ? (totMatrix[i][j] === res.matrix[i][j] ? totMatrix[i][j] : 'M')
               : res.matrix[i][j];
           }
+          // v4.0.2: marges optellen over dagen
+          if (res.standen?.[i]?.[j] !== null && res.standen?.[i]?.[j] !== undefined) {
+            totStanden[i][j] = (totStanden[i][j] ?? 0) + res.standen[i][j];
+          }
         }
       }
     });
-    return { punten: totPunten, won: totWon, tied: totTied, lost: totLost, matrix: totMatrix };
+    return { punten: totPunten, won: totWon, tied: totTied, lost: totLost, matrix: totMatrix, standen: totStanden };
   } else {
     const dag = getDag(t, rlDag) || actieveDag(t);
     return berekenTPuntenVoorDag(t, dag);
@@ -2192,12 +2207,9 @@ function renderTMatrix() {
   if (!t) return;
   const n = t.spelers.length;
   const rlDag = window._ranglijstDagNr ?? (t.actiefDagNr || 1);
-  const { matrix } = berekenTPunten(rlDag);
+  const { matrix, standen } = berekenTPunten(rlDag);
 
   const kleur = { W: '#d4edda', L: '#f8d7da', T: '#fff3cd' };
-  const dag = actieveDag(t);
-  const uitslag = dag?.uitslagZichtbaar === true;
-  const tekst = uitslag ? { W: 'W', L: 'L', T: 'T' } : { W: 'UP', L: 'DOWN', T: 'TIED' };
 
   let html = `<table style="border-collapse:collapse;font-size:11px;width:100%">`;
   html += `<tr><th style="padding:4px;background:var(--green);color:white"></th>`;
@@ -2213,8 +2225,18 @@ function renderTMatrix() {
         html += `<td style="background:var(--border);text-align:center;padding:4px">—</td>`;
       } else {
         const res = matrix[i][j];
-        const bg = res ? (kleur[res] || 'var(--subtle-bg)') : 'transparent';
-        const tx = res ? (tekst[res] || res) : '';
+        // v4.0.2: toon de marge (met hoeveel holes voor/achter) i.p.v. UP/DOWN.
+        // Kleur = richting (groen voor, rood achter, geel gelijk); TIED bij 0.
+        const stand = standen?.[i]?.[j];
+        let bg = 'transparent', tx = '';
+        if (stand !== null && stand !== undefined) {
+          if (stand > 0)      { bg = kleur.W; tx = String(stand); }
+          else if (stand < 0) { bg = kleur.L; tx = String(Math.abs(stand)); }
+          else                { bg = kleur.T; tx = 'TIED'; }
+        } else if (res) {
+          bg = kleur[res] || 'var(--subtle-bg)';
+          tx = res;
+        }
         html += `<td style="background:${bg};text-align:center;padding:4px;font-weight:700">${tx}</td>`;
       }
     });

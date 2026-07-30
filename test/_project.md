@@ -10,9 +10,20 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v4.0.1**
+Huidige versie: **v4.0.2**
 
 ### Changelog
+- **v4.0.2** — Twee UX-verbeteringen toernooimodus (`js/toernooi.js`):
+  - **Matrix toont marge**: de onderlinge stand toont nu het aantal holes
+    voorsprong/achterstand als getal (kleur = richting: groen voor, rood
+    achter); bij gelijke stand blijft TIED staan. Implementatie:
+    `berekenTPuntenVoorDag()` retourneert extra `standen[i][j]`-matrix
+    (positief = i staat voor), `berekenTPunten()` telt marges op voor de
+    totaalstand, `renderTMatrix()` rendert het getal.
+  - **Cursor-richting per rol**: in de toernooiscorekaart springt de cursor
+    voor de beheerder per speler (kolom omlaag, zoals voorheen) en voor
+    spelers per hole (rij naar rechts: alle flightgenoten van hole 1, dan
+    hole 2). Alleen de tabindex-berekening in `renderTScorecard()` gewijzigd.
 - **v4.0.1** — Fix 7.8: flightgenoten konden elkaars toernooiscores niet
   invoeren. De Firestore-regel voor `toernooien/{id}/live/{uid}` stond alleen
   schrijven op de eigen uid toe (of coordinator), waardoor bij invoer voor de
