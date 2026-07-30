@@ -10,9 +10,56 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v3.0.2**
+Huidige versie: **v4.0.2**
 
 ### Changelog
+- **v4.0.2** — Twee UX-verbeteringen toernooimodus (`js/toernooi.js`):
+  - **Matrix toont marge**: de onderlinge stand toont nu het aantal holes
+    voorsprong/achterstand als getal (kleur = richting: groen voor, rood
+    achter); bij gelijke stand blijft TIED staan. Implementatie:
+    `berekenTPuntenVoorDag()` retourneert extra `standen[i][j]`-matrix
+    (positief = i staat voor), `berekenTPunten()` telt marges op voor de
+    totaalstand, `renderTMatrix()` rendert het getal.
+  - **Cursor-richting per rol**: in de toernooiscorekaart springt de cursor
+    voor de beheerder per speler (kolom omlaag, zoals voorheen) en voor
+    spelers per hole (rij naar rechts: alle flightgenoten van hole 1, dan
+    hole 2). Alleen de tabindex-berekening in `renderTScorecard()` gewijzigd.
+- **v4.0.1** — Fix 7.8: flightgenoten konden elkaars toernooiscores niet
+  invoeren. De Firestore-regel voor `toernooien/{id}/live/{uid}` stond alleen
+  schrijven op de eigen uid toe (of coordinator), waardoor bij invoer voor de
+  hele flight alleen de eigen score doorkwam. Nieuw: `allow write: if
+  isIngelogd();` — elke ingelogde speler mag live-scores schrijven (de app
+  toont andere flights toch niet; coordinator/beheerder vallen hier automatisch
+  onder). LET OP: `firestore.rules` moet handmatig in de Firebase console
+  worden gepubliceerd, de zip deployt geen rules.
+- **v4.0.0** — Zeven robuustheidsfixes in de toernooimodus (`js/toernooi.js`):
+  - **7.1 Concept-opslag setup**: het setup-formulier (naam, dagen, spelers,
+    flights-instellingen, ladder-selecties) wordt debounced als concept in
+    localStorage bewaard (`toernooiConcept_v1`) en bij eerste laden hersteld;
+    gewist na succesvol starten. Functies: `slaToernooiConceptOp()`,
+    `herstelToernooiConcept()`, `pasConceptDagenToe()`, `koppelConceptAutosave()`,
+    `wisToernooiConcept()`.
+  - **7.2 Geannuleerde toernooien**: nieuw beheerdersblok "Geannuleerde
+    toernooien" onderaan de toernooipagina met Herstellen (status → actief) en
+    Definitief verwijderen (incl. live/-subdocs). Confirm-tekst bij annuleren
+    eerlijk gemaakt (was: "alle scores gaan verloren").
+  - **7.3 Terug-naar-setup vangnet**: `heeftGeenScores()` checkt nu ook de
+    live-cache; `bewerkToernooi()` leest de live/-subcollectie vers uit
+    Firestore en blokkeert bij aanwezige scores.
+  - **7.4 Dag bekijken is lokaal**: `selecteerDag()` schrijft niet meer naar
+    Firestore; `window._bekijkDagNr` bepaalt lokaal de getoonde dag en
+    `actieveDag()` respecteert die. Score-invoer/live-writes gebruiken
+    `dag.dagNr`. Reset bij toernooi-wissel, nieuwe dag en herstel.
+  - **7.5 Speler verwijderen**: geblokkeerd als de speler scores heeft op een
+    afgesloten dag; anders uitgebreidere confirm. Live-doc van de speler wordt
+    mee opgeruimd.
+  - **7.6 Gerichte updates**: toggles (toernooiModus, scoresVerborgen,
+    matrixIngeklapt, _ranglijstModus) via `updateDoc` met één veld i.p.v.
+    `setDoc` van het hele document — geen stille overschrijvingen meer bij
+    gelijktijdig beheer.
+  - **7.7 Opschonen**: verouderde `verwijderToernooiSpeler()` verwijderd
+    (incl. export + `app.js`-bindings); gast-ID's bevatten nu een timestamp
+    (`gast_<tijd>_<random>`).
 - **v3.0.2** — Fix discrepantie uitslagbericht vs. ladderpositie. Het
   LADDERWIJZIGINGEN-bericht (`showLadderChanges` in `js/ronde.js`) toonde de
   rauwe *competitierank* (`rank` uit `standen/{uid}`), terwijl de ladderlijst en
