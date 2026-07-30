@@ -707,8 +707,13 @@ async function startToernooi() {
     const ptTie    = parseFloat(document.getElementById('t-pt-tie').value);
     const ptLoss   = parseFloat(document.getElementById('t-pt-loss').value);
     const hcpPct   = parseFloat(document.getElementById('t-hcp-pct').value) / 100;
-    const ladderId = [..._tRankingLadderIds][0] || null;
-    const rankingLadderIds = [..._tRankingLadderIds];
+    // v3.1.1: als er geen ranking-ladder is aangevinkt, val terug op de spelers-ladder(s),
+    // zodat een toernooi altijd de ladder bijwerkt waar de deelnemers vandaan komen.
+    // Voorkomt dat de ranking leeg blijft (o.a. na het per ongeluk uitzetten van het vinkje
+    // of de reset na 'start'), waardoor de ladder-update niet draaide.
+    const _rankingSet = _tRankingLadderIds.size > 0 ? _tRankingLadderIds : _tSpelersLadderIds;
+    const rankingLadderIds = [..._rankingSet];
+    const ladderId = rankingLadderIds[0] || null;
     const modus    = document.querySelector('input[name="t-modus"]:checked')?.value || 'matchplay';
     const starttijd = document.getElementById('t-starttijd')?.value || '09:00';
     const interval  = parseInt(document.getElementById('t-interval')?.value) || 0;
@@ -2190,7 +2195,7 @@ async function bevestigToernooiAfsluiten() {
         const spelerIds = new Set(ladderData.spelerIds || []);
         const deelnemers = volgorde.filter(e =>
           !e.s.gast && e.s.uid && spelerIds.has(e.s.uid) && standenMap[e.s.uid]
-        ).filter(e => (standenMap[e.s.uid]?.partijen || 0) >= 5);
+        ); // v3.1.1: ≥5-partijen-filter verwijderd — iedere deelnemer in de uitslag telt mee op de ladder
 
         if (deelnemers.length > 0) {
           // Sla prevRank op
@@ -2244,7 +2249,18 @@ async function bevestigToernooiAfsluiten() {
     }
 
     // Archief — sla alle dagen op
-    const archief = { seizoenen: archiefData, toernooien: window._archiefToernooienCache || [] };
+    // v3.1.0: lees de bestaande archieftoernooien VERS uit het document i.p.v. een
+    // mogelijk lege in-memory cache. Voorheen werd, als de archiefpagina nog niet
+    // was geopend, op een lege lijst geunshift → alle eerdere toernooien gewist.
+    let bestaandeToernooien = [];
+    try {
+      const _archiefSnap = await getDoc(ARCHIEF_DOC);
+      if (_archiefSnap.exists()) bestaandeToernooien = _archiefSnap.data().toernooien || [];
+    } catch (e) {
+      console.warn('Archief vers lezen mislukt, terugval op cache:', e);
+      bestaandeToernooien = window._archiefToernooienCache || [];
+    }
+    const archief = { seizoenen: archiefData, toernooien: bestaandeToernooien };
     if (!archief.toernooien) archief.toernooien = [];
 
     const matrixArchief = {};
@@ -2264,6 +2280,7 @@ async function bevestigToernooiAfsluiten() {
       timestamp: Date.now()
     });
     await setDoc(ARCHIEF_DOC, archief);
+    window._archiefToernooienCache = archief.toernooien; // v3.1.0: cache synchroon houden
 
     if (actieveToernooiId) await setDoc(doc(db, 'toernooien', actieveToernooiId), { ...toernooiData, status: 'afgerond' });
 
