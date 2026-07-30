@@ -13,7 +13,7 @@ import { db, esc, escAttr } from './config.js';
 import { alleLadders, huidigeBruiker, alleToernooien } from './store.js';
 import { isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { getLadderSpelers } from './ladder-view.js';
-import { renderToernooiActief, herlaadToernooien } from './toernooi.js';
+import { renderToernooiActief, herlaadToernooien, renderToernooi, selecteerToernooi } from './toernooi.js';
 import { alleBANEN } from './partij.js';
 import { doc, setDoc, getDocs, collection, query, where }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -93,25 +93,72 @@ function beschikbareSpelers() {
 }
 
 // ============================================================
-//  ENTRY
+//  ENTRY / ROUTING + in-app schakelaar oud/nieuw
 // ============================================================
-export function renderToernooi2() {
+const SETUP_KEY = 'toernooiSetupNieuw';
+
+function gebruikNieuw() {
+  try { return localStorage.getItem(SETUP_KEY) === 'true'; } catch (e) { return false; }
+}
+
+function renderSchakelaar(page) {
+  const bestaat = document.getElementById('t2-schakelaar');
+  if (!isBeheerderRol()) { if (bestaat) bestaat.remove(); return; }
+  let bar = bestaat;
+  if (!bar) { bar = document.createElement('div'); bar.id = 't2-schakelaar'; page.insertBefore(bar, page.firstChild); }
+  const nieuw = gebruikNieuw();
+  const knop = (aan, label, actief) =>
+    `<button onclick="t2WisselSetup(${aan})" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--green,#1f5c3a);cursor:pointer;font-weight:600;font-family:inherit;font-size:13px;${actief ? 'background:var(--green,#1f5c3a);color:#fff' : 'background:#fff;color:var(--green,#1f5c3a)'}">${label}</button>`;
+  bar.innerHTML =
+    `<div style="display:flex;align-items:center;gap:8px;padding:10px 4px;font-size:12px;color:var(--mid)">
+       <span style="text-transform:uppercase;letter-spacing:.04em">Toernooi-setup:</span>
+       ${knop(false, 'Oud', !nieuw)} ${knop(true, 'Nieuw', nieuw)}
+     </div>`;
+}
+
+window.t2WisselSetup = function (nieuw) {
+  try { localStorage.setItem(SETUP_KEY, nieuw ? 'true' : 'false'); } catch (e) {}
+  routeToernooiTab();
+};
+
+// Enige tab-entry: schakelaar + kies oud/nieuw
+export function routeToernooiTab() {
   const page = document.getElementById('page-toernooi');
   if (!page) return;
+  renderSchakelaar(page);
+
+  let c = document.getElementById('t2-container');
+  if (!c) { c = document.createElement('div'); c.id = 't2-container'; page.appendChild(c); }
+  const oudeKinderen = [...page.children].filter(el => el.id !== 't2-container' && el.id !== 't2-schakelaar');
 
   const uid = huidigeBruiker?.uid;
   const actief = (alleToernooien || []).find(t => t.status === 'actief' &&
     ((t.spelers || []).some(s => s.uid === uid) || isCoordinatorRol() || isBeheerderRol()));
-  if (actief) { renderToernooiActief(); return; }
 
-  if (!isBeheerderRol() && !isCoordinatorRol()) {
-    page.innerHTML = `<div class="card"><p style="color:var(--mid)">Geen actief toernooi.</p></div>`;
-    return;
+  // Nieuwbouw alleen voor de SETUP-fase (geen actief toernooi) en alleen voor beheerder/coordinator.
+  if (gebruikNieuw() && !actief && (isBeheerderRol() || isCoordinatorRol())) {
+    oudeKinderen.forEach(el => el.style.display = 'none');
+    c.style.display = '';
+    renderSetup(c);
+  } else {
+    // Oude, bewezen flow (ook voor de actieve fase in nieuw-modus)
+    c.style.display = 'none';
+    oudeKinderen.forEach(el => el.style.display = '');
+    if (actief) selecteerToernooi(actief.id); else renderToernooi();
   }
+}
 
+function renderSetup(c) {
   if (!blad) blad = leegBlad();
   if (!bronLadderId) bronLadderId = blad.rankingLadderIds[0] || (alleLadders[0] && alleLadders[0].id) || '';
-  page.innerHTML = setupHtml();
+  c.innerHTML = setupHtml();
+}
+
+// In-place her-render van de setup (gebruikt door de handlers)
+export function renderToernooi2() {
+  const c = document.getElementById('t2-container');
+  if (c && c.style.display !== 'none') renderSetup(c);
+  else routeToernooiTab();
 }
 
 // ============================================================
@@ -121,7 +168,7 @@ function setupHtml() {
   const b = blad;
   const banen = Object.keys(alleBANEN());
   const startBtn = magStarten()
-    ? `<button class="btn-primary" onclick="t2Start()">Toernooi starten</button>`
+    ? `<button class="t2-start" onclick="t2Start()">Toernooi starten</button>`
     : `<button class="btn-primary" disabled style="opacity:.5">Toernooi starten</button>
        <p style="font-size:12px;color:var(--gold);margin-top:6px">Starten kan pas op ${eersteDatum() ? esc(eersteDatum()) : 'de ingevulde datum'}.</p>`;
 
@@ -138,6 +185,8 @@ function setupHtml() {
     #page-toernooi .t2-btn2{padding:9px 14px;border-radius:8px;border:1.5px solid var(--green,#1f5c3a);background:#fff;color:var(--green,#1f5c3a);font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
     #page-toernooi .t2-x{border:none;background:#f4eaea;color:#b23b3b;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:17px;flex:0 0 auto}
     #page-toernooi .t2-in{padding:9px 11px;border:1.5px solid var(--border,#d8ddd8);border-radius:8px;font-size:15px;font-family:inherit;width:100%;box-sizing:border-box}
+    #page-toernooi .t2-start{padding:12px 22px;border-radius:10px;border:none;background:var(--green,#1f5c3a);color:#fff;font-weight:700;font-size:15px;cursor:pointer;font-family:inherit}
+    #page-toernooi .card{padding:16px 18px}
   </style>
 
   <div class="card">
@@ -312,7 +361,7 @@ window.t2Start = async function () {
   await herlaadToernooien();
   toast('Toernooi gestart');
   blad = null;
-  renderToernooi2();
+  routeToernooiTab();
 };
 
 window.t2Annuleer = async function () {
