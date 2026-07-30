@@ -10,9 +10,37 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v3.0.2**
+Huidige versie: **v4.0.0**
 
 ### Changelog
+- **v4.0.0** — Zeven robuustheidsfixes in de toernooimodus (`js/toernooi.js`):
+  - **7.1 Concept-opslag setup**: het setup-formulier (naam, dagen, spelers,
+    flights-instellingen, ladder-selecties) wordt debounced als concept in
+    localStorage bewaard (`toernooiConcept_v1`) en bij eerste laden hersteld;
+    gewist na succesvol starten. Functies: `slaToernooiConceptOp()`,
+    `herstelToernooiConcept()`, `pasConceptDagenToe()`, `koppelConceptAutosave()`,
+    `wisToernooiConcept()`.
+  - **7.2 Geannuleerde toernooien**: nieuw beheerdersblok "Geannuleerde
+    toernooien" onderaan de toernooipagina met Herstellen (status → actief) en
+    Definitief verwijderen (incl. live/-subdocs). Confirm-tekst bij annuleren
+    eerlijk gemaakt (was: "alle scores gaan verloren").
+  - **7.3 Terug-naar-setup vangnet**: `heeftGeenScores()` checkt nu ook de
+    live-cache; `bewerkToernooi()` leest de live/-subcollectie vers uit
+    Firestore en blokkeert bij aanwezige scores.
+  - **7.4 Dag bekijken is lokaal**: `selecteerDag()` schrijft niet meer naar
+    Firestore; `window._bekijkDagNr` bepaalt lokaal de getoonde dag en
+    `actieveDag()` respecteert die. Score-invoer/live-writes gebruiken
+    `dag.dagNr`. Reset bij toernooi-wissel, nieuwe dag en herstel.
+  - **7.5 Speler verwijderen**: geblokkeerd als de speler scores heeft op een
+    afgesloten dag; anders uitgebreidere confirm. Live-doc van de speler wordt
+    mee opgeruimd.
+  - **7.6 Gerichte updates**: toggles (toernooiModus, scoresVerborgen,
+    matrixIngeklapt, _ranglijstModus) via `updateDoc` met één veld i.p.v.
+    `setDoc` van het hele document — geen stille overschrijvingen meer bij
+    gelijktijdig beheer.
+  - **7.7 Opschonen**: verouderde `verwijderToernooiSpeler()` verwijderd
+    (incl. export + `app.js`-bindings); gast-ID's bevatten nu een timestamp
+    (`gast_<tijd>_<random>`).
 - **v3.0.2** — Fix discrepantie uitslagbericht vs. ladderpositie. Het
   LADDERWIJZIGINGEN-bericht (`showLadderChanges` in `js/ronde.js`) toonde de
   rauwe *competitierank* (`rank` uit `standen/{uid}`), terwijl de ladderlijst en

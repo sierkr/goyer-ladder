@@ -4,7 +4,6 @@
 import { db, auth } from './config.js';
 import { store, alleLadders } from './store.js';
 import { herlaadToernooien, renderToernooi } from './toernooi.js';
-import { routeToernooiTab, laadLaatsteConcept } from './toernooi2.js'; // v3.2.2: routing + in-app schakelaar
 import { initPartijForm } from './partij.js';
 import { laadInviteStatus } from './auth.js';
 import { renderAdmin, renderProfiel } from './admin.js';
@@ -39,13 +38,7 @@ function showPage(name, evt) {
     renderAdminLadders();
     laadInviteStatus();
   }
-  if (name === 'toernooi') {
-    // v3.2.2: in-app schakelaar (localStorage) bepaalt oud/nieuw; routeToernooiTab regelt beide.
-    herlaadToernooien()
-      .then(() => laadLaatsteConcept())
-      .catch(() => {})
-      .then(() => routeToernooiTab());
-  }
+  if (name === 'toernooi') { herlaadToernooien().then(() => renderToernooi()).catch(() => renderToernooi()); }
   if (name === 'profiel') renderProfiel();
   if (name === 'archief') { renderArchief(); verwijderOudeUitslagen(); }
 }
