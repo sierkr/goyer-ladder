@@ -652,9 +652,30 @@
   html[data-theme="matchcheck"] .card { box-shadow: none; border: 1px solid var(--border); border-radius: var(--radius); }
   html[data-theme="matchcheck"] .card-header h2 { color: var(--dark) !important; font-size: 14px !important; font-weight: 600 !important; letter-spacing: 0 !important; text-transform: none !important; }
 
-  html[data-theme="matchcheck"] .btn { border-radius: 6px; box-shadow: none; }
+  /* Compactere "boxen": minder padding/hoogte voor knoppen, invoervelden en
+     de speltype-keuzevakjes. Lettergrootte van invoervelden blijft 16px
+     (voorkomt automatisch inzoomen op iPhone) — alleen de ruimte eromheen krimpt. */
+  html[data-theme="matchcheck"] .btn { border-radius: 6px; box-shadow: none; padding: 9px 14px !important; min-height: 38px !important; }
+  html[data-theme="matchcheck"] .btn-sm { padding: 6px 12px !important; min-height: 32px !important; }
   html[data-theme="matchcheck"] input,
-  html[data-theme="matchcheck"] select { border-radius: 6px; }
+  html[data-theme="matchcheck"] select {
+    border-radius: 6px;
+    padding: 8px 12px !important;
+    min-height: 38px !important;
+  }
+  html[data-theme="matchcheck"] #speltype-wrap label {
+    padding: 8px 10px !important;
+  }
+  /* Groene vulling voor de geselecteerde speltype-optie (Matchplay/Amerikaantje/
+     High-Low), i.p.v. alleen een groene rand. Werkt puur via CSS (:has), geen
+     wijziging aan partij.js nodig. */
+  html[data-theme="matchcheck"] #speltype-wrap label:has(input:checked) {
+    background: var(--green) !important;
+    border-color: var(--green) !important;
+  }
+  html[data-theme="matchcheck"] #speltype-wrap label:has(input:checked) span {
+    color: var(--on-primary) !important;
+  }
 
   /* Ladderlijst compacter: minder padding/regelhoogte en kleinere tekst,
      zelfde rijen/velden/volgorde als in de standaardstijl. */

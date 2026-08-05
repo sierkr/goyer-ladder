@@ -791,7 +791,7 @@ function renderLadderRij(s, ladderId) {
     <div class="rank-badge ${rang <= 3 ? 'top3' : isZelf ? 'zelf' : ''}">${rang}</div>
     <div class="player-name" style="${isZelf ? 'font-weight:700;color:var(--green);' : ''}">${esc(s.naam)}${icoonHtml ? '&nbsp;' + icoonHtml : ''}</div>
     <div style="min-width:30px;text-align:center">${deltaHtml}</div>
-    <div class="player-stats" style="text-align:right;min-width:52px">${s.partijen}P ${s.gewonnen}W<br>${winpct}%</div>
+    <div class="player-stats" style="text-align:right;min-width:52px">${s.partijen}P · ${s.gewonnen}W · ${winpct}%</div>
     <div style="width:42px;text-align:center;flex-shrink:0">${uitdagingBtnHtml}</div>
   </div>`;
 }
