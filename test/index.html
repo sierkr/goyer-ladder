@@ -557,6 +557,128 @@
     margin-bottom: 12px;
     display: none;
   }
+
+  /* UI-stijl keuzeknoppen (Beheer) — werkt in beide stijlen via var(--green) */
+  .uistijl-optie { justify-content: flex-start !important; text-align: left; }
+  .uistijl-optie.uistijl-actief {
+    border-color: var(--green) !important;
+    background: var(--green-pale) !important;
+    color: var(--green) !important;
+    font-weight: 700;
+  }
+
+  /* ============================================================
+     MATCHCHECK-STIJL — v4.1.0
+     Alleen het uiterlijk verandert (kleuren, lettertype, randen i.p.v.
+     schaduw, dichtheid). De HTML-structuur en werking van elk scherm
+     blijven ONGEWIJZIGD — er wordt hier bewust niets herschreven, alleen
+     overschreven met CSS. Actief zodra <html data-theme="matchcheck">.
+     ============================================================ */
+  html[data-theme="matchcheck"] {
+    --green: #1a7a4a;
+    --green-light: #23935c;
+    --green-pale: #d5f0e2;
+    --gold: #b5882a;
+    --gold-light: #e9c46a;
+    --cream: #f7f8fa;
+    --dark: #1a1a2e;
+    --mid: #6b7280;
+    --light: #9aa0aa;
+    --white: #ffffff;
+    --red: #c0392b;
+    --blue: #2471a3;
+    --radius: 10px;
+    --shadow: none;
+    --card-bg: #ffffff;
+    --border: #dde1e7;
+    --input-bg: #ffffff;
+    --nav-bg: #ffffff;
+    --alert-bg: #fdecea;
+    --alert-text: #c0392b;
+    --info-bg: #d6eaf8;
+    --info-text: #1a3d5c;
+    --warning-bg: #fdebd0;
+    --warning-text: #7d3a00;
+    --soft-bg: #f7f8fa;
+    --soft-text: #6b7280;
+    --subtle-bg: #f7f8fa;
+    --success-bg: #d5f0e2;
+    --success-text: #0f5a30;
+    --on-primary: #ffffff;
+    --on-dark-surface: #f0f0f0;
+  }
+
+  /* Eén systeemfont overal, i.p.v. Bebas Neue / DM Sans / DM Mono. Dit raakt
+     alleen lettertype-weergave — geen enkel element wordt verplaatst of
+     verwijderd. !important is nodig omdat sommige plekken in de code het
+     lettertype rechtstreeks per element instellen i.p.v. via dit stijlblad. */
+  html[data-theme="matchcheck"] * {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  }
+  /* iOS-zoom-preventie blijft intact: invoervelden minimaal 16px lettergrootte */
+  html[data-theme="matchcheck"] input,
+  html[data-theme="matchcheck"] select { font-size: 16px !important; }
+
+  html[data-theme="matchcheck"] body { background: var(--cream); }
+
+  html[data-theme="matchcheck"] header {
+    background: var(--card-bg);
+    color: var(--dark);
+    box-shadow: none;
+    border-bottom: 1px solid var(--border);
+  }
+  html[data-theme="matchcheck"] header h1 { color: var(--green) !important; font-size: 17px !important; font-weight: 600 !important; letter-spacing: 0 !important; }
+  html[data-theme="matchcheck"] header .subtitle { color: var(--mid) !important; }
+  html[data-theme="matchcheck"] #logout-btn,
+  html[data-theme="matchcheck"] #versie-badge { color: var(--mid) !important; background: transparent !important; border: 1px solid var(--border) !important; }
+
+  html[data-theme="matchcheck"] nav { background: var(--card-bg); border-bottom: 1px solid var(--border); box-shadow: none; }
+  html[data-theme="matchcheck"] nav button span.nav-label {
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    color: var(--mid) !important;
+    padding: 10px 4px !important;
+    border-bottom: 2px solid transparent !important;
+  }
+  html[data-theme="matchcheck"] nav button.active span.nav-label {
+    color: var(--green) !important;
+    border-bottom-color: var(--green) !important;
+    background: transparent !important;
+    font-weight: 600 !important;
+  }
+
+  html[data-theme="matchcheck"] .card { box-shadow: none; border: 1px solid var(--border); border-radius: var(--radius); }
+  html[data-theme="matchcheck"] .card-header h2 { color: var(--dark) !important; font-size: 14px !important; font-weight: 600 !important; letter-spacing: 0 !important; text-transform: none !important; }
+
+  html[data-theme="matchcheck"] .btn { border-radius: 6px; box-shadow: none; }
+  html[data-theme="matchcheck"] input,
+  html[data-theme="matchcheck"] select { border-radius: 6px; }
+
+  html[data-theme="matchcheck"] .rank-badge.top3 { color: var(--gold) !important; }
+  html[data-theme="matchcheck"] .rank-badge.zelf { color: var(--green) !important; }
+
+  html[data-theme="matchcheck"] .scorecard th { background: var(--green) !important; color: #fff !important; }
+  html[data-theme="matchcheck"] .scorecard input[type=number] { border: 1px solid var(--border) !important; border-radius: 6px !important; }
+  html[data-theme="matchcheck"] .hole-si { color: var(--gold) !important; }
+  html[data-theme="matchcheck"] .match-vs { color: var(--light) !important; font-size: 13px !important; }
+
+  html[data-theme="matchcheck"] .modal { border-radius: 10px 10px 0 0; box-shadow: none; border: 1px solid var(--border); }
+  html[data-theme="matchcheck"] .modal h3 { color: var(--dark) !important; font-size: 16px !important; letter-spacing: 0 !important; }
+
+  html[data-theme="matchcheck"] #login-scherm { background: var(--cream); }
+  html[data-theme="matchcheck"] .login-box { box-shadow: none; border: 1px solid var(--border); border-radius: 10px; }
+  html[data-theme="matchcheck"] .login-logo { color: var(--dark) !important; font-size: 18px !important; letter-spacing: 0 !important; }
+  html[data-theme="matchcheck"] .login-sub { letter-spacing: 0.04em !important; }
+
+  html[data-theme="matchcheck"] #laad-overlay { background: var(--cream); }
+  html[data-theme="matchcheck"] #laad-overlay .laad-logo { color: var(--dark) !important; font-size: 18px !important; letter-spacing: 0 !important; }
+
+  html[data-theme="matchcheck"] .standing-result { background: var(--green); }
+  html[data-theme="matchcheck"] .standing-result .change { font-size: 22px !important; letter-spacing: 0 !important; }
+
+  html[data-theme="matchcheck"] .section-title { color: var(--mid) !important; font-size: 11px !important; letter-spacing: 0.06em !important; text-transform: uppercase; }
+
 @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
@@ -1640,6 +1762,25 @@
           <input id="admin-nieuw-wachtwoord" type="text" class="input" placeholder="minimaal 4 tekens"
             style="margin-bottom:10px;font-family:'DM Mono',monospace;letter-spacing:1px">
           <button class="btn btn-primary btn-block" onclick="slaInitieelWachtwoordOp()">✓ Opslaan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- v4.1.0: Globale UI-stijl (huidige stijl / MatchCheck-stijl) -->
+  <div class="card" id="admin-sectie-uistijl">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+      <h2>UI-stijl</h2>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">
+          Bepaalt het uiterlijk (kleuren, lettertype, randen) van de app voor <strong>alle</strong> gebruikers.
+          De opbouw en werking van elk scherm blijven in beide stijlen exact hetzelfde.
+        </p>
+        <div id="uistijl-keuze" style="display:flex;flex-direction:column;gap:8px">
+          <button type="button" class="btn btn-ghost btn-block uistijl-optie" data-stijl="club" onclick="kiesUiStijl('club')">Standaard (huidige stijl)</button>
+          <button type="button" class="btn btn-ghost btn-block uistijl-optie" data-stijl="matchcheck" onclick="kiesUiStijl('matchcheck')">MatchCheck-stijl</button>
         </div>
       </div>
     </div>

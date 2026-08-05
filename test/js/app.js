@@ -29,6 +29,7 @@ import { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer,
   closeModal, kopieerCredentials,
   vraagResetWachtwoord,
   toggleWachtwoordBeheer, slaInitieelWachtwoordOp,
+  renderUiStijlKaart, kiesUiStijl,
   openBulkImport, sluitBulkImport, voegBulkRijToe, startBulkImport, kopieerBulkCredentials } from './admin.js';
 import { renderArchief, openArchiefDetail, openNieuwSeizoenModal,
   bevestigNieuwSeizoen, stuurUitdaging, reageerUitdaging,
@@ -115,6 +116,7 @@ window.kopieerCredentials = kopieerCredentials;
 window.vraagResetWachtwoord = vraagResetWachtwoord;
 window.toggleWachtwoordBeheer = toggleWachtwoordBeheer;
 window.slaInitieelWachtwoordOp = slaInitieelWachtwoordOp;
+window.kiesUiStijl = kiesUiStijl;
 window.openBulkImport = openBulkImport;
 window.sluitBulkImport = sluitBulkImport;
 window.voegBulkRijToe = voegBulkRijToe;
@@ -220,7 +222,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v4.0.2';
+  const VERSION = 'v4.1.0';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -261,7 +263,7 @@ window.toggleTRankingLadder = toggleTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v4.0.2';
+  const LOKALE_VERSIE = 'v4.1.0';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 

@@ -7,6 +7,7 @@ import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
   INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB_MIGRATIE, esc, escAttr,
   EMAIL_SUFFIX, DEFAULT_HCP, CONFIG_DOC, laadInitieelWachtwoord,
+  laadUiStijl, pasUiStijlToe,
   genereerEmail, loginNaamVan, functions, httpsCallable } from './config.js';
 import { store, DEFAULT_LADDER_CONFIG,
   alleLadders, activeLadderId, alleSpelersData, huidigeBruiker,
@@ -572,6 +573,11 @@ async function initFirestore() {
     // De fout bubbelt naar initApp() → toonLoginFout() zodat de beheerder actie kan ondernemen.
     await laadInitieelWachtwoord(store);
 
+    // v4.1.0: globale UI-stijl laden en meteen toepassen (voor eerste render van
+    // login/app-scherm). Faalt nooit hard — valt terug op 'club' bij problemen.
+    await laadUiStijl(store);
+    pasUiStijlToe(store.uiStijl);
+
     store.archiefData     = archiefSnap.exists()  ? (archiefSnap.data().seizoenen  || []) : [];
     store.uitdagingenData = uitdSnap.exists()      ? (uitdSnap.data().lijst         || []) : [];
     // v3.0.0-11.34: laad alle banen uit Firestore — geen hardcoded BANEN_DB meer.
@@ -602,6 +608,17 @@ async function initFirestore() {
   // Vervangt de eenmalige getDocs — reageert direct bij ophalen én bij elke
   // wijziging (toernooi gestart, modus aan/uit, scores verborgen, status gewijzigd).
   // Hierdoor zijn tabs, titelbalk en scorekaart altijd actueel zonder navigatie.
+  // v4.1.0: live meeschakelen als de beheerder de UI-stijl wijzigt terwijl
+  // deze gebruiker de app al open heeft staan (geen herlaad nodig).
+  _vasteListeners.push(onSnapshot(CONFIG_DOC, (snap) => {
+    if (!snap.exists()) return;
+    const nieuweStijl = (snap.data().uiStijl === 'matchcheck') ? 'matchcheck' : 'club';
+    if (nieuweStijl !== store.uiStijl) {
+      store.uiStijl = nieuweStijl;
+      pasUiStijlToe(nieuweStijl);
+    }
+  }));
+
   _vasteListeners.push(onSnapshot(
     query(TOERNOOIEN_COL, where('status', '==', 'actief')),
     (snap) => {

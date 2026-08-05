@@ -181,6 +181,35 @@ export async function laadInitieelWachtwoord(storeRef) {
   storeRef.initieelWachtwoord = w;
 }
 
+// v4.1.0: ladder/config — veld uiStijl bepaalt de globale weergavestijl.
+// Anders dan laadInitieelWachtwoord() gooit dit GEEN fout als het veld of
+// document ontbreekt: valt dan gewoon stil terug op 'club' (huidige stijl).
+// Zo blijft de app werken ook als deze functionaliteit nooit is ingesteld.
+export async function laadUiStijl(storeRef) {
+  try {
+    const snap = await getDoc(CONFIG_DOC);
+    const waarde = snap.exists() ? snap.data().uiStijl : null;
+    storeRef.uiStijl = (waarde === 'matchcheck') ? 'matchcheck' : 'club';
+  } catch(e) {
+    console.warn('laadUiStijl mislukt, val terug op club-stijl:', e);
+    storeRef.uiStijl = 'club';
+  }
+}
+
+/**
+ * Past de gegeven UI-stijl toe op de pagina door het data-theme attribuut op
+ * <html> te zetten. De bijbehorende CSS (in index.html, [data-theme="matchcheck"])
+ * verandert alleen kleuren/typografie/randen — nooit de HTML-structuur.
+ */
+export function pasUiStijlToe(waarde) {
+  const stijl = (waarde === 'matchcheck') ? 'matchcheck' : 'club';
+  if (stijl === 'club') {
+    document.documentElement.removeAttribute('data-theme');
+  } else {
+    document.documentElement.setAttribute('data-theme', stijl);
+  }
+}
+
 /**
  * Genereer emailadres uit voornaam + achternaam.
  * Spaties weg, lowercase, gescheiden door punt.

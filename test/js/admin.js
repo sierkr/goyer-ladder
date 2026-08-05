@@ -7,7 +7,7 @@ import { db, auth, firebaseConfig, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAG
   SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC,
   INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr,
   EMAIL_SUFFIX, DEFAULT_HCP,
-  genereerEmail, loginNaamVan,
+  genereerEmail, loginNaamVan, pasUiStijlToe,
   functions, httpsCallable } from './config.js';
 import { store, alleLadders, activeLadderId,
   huidigeBruiker, uitdagingenData } from './store.js';
@@ -48,10 +48,11 @@ function renderAdmin() {
   const isBeheerder = isBeheerderRol();
   const isCoord     = isCoordinatorRol();
 
-  ['admin-sectie-spelers','admin-sectie-seizoen','admin-sectie-wachtwoord'].forEach(id => {
+  ['admin-sectie-spelers','admin-sectie-seizoen','admin-sectie-wachtwoord','admin-sectie-uistijl'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = isBeheerder ? '' : 'none';
   });
+  if (isBeheerder) renderUiStijlKaart();
   const ladderSectie = document.getElementById('admin-sectie-ladders');
   if (ladderSectie) ladderSectie.style.display = isCoord ? '' : 'none';
   const nieuweLadderBtn = ladderSectie?.querySelector('button[onclick="openNieuweLadderModal()"]');
@@ -933,6 +934,36 @@ async function slaInitieelWachtwoordOp() {
 
 
 // ============================================================
+//  UI-STIJL BEHEER — v4.1.0
+// ============================================================
+// Globale weergavestijl van de app ('club' = huidige stijl, 'matchcheck' =
+// MatchCheck-stijl). Geldt voor alle gebruikers; alleen de beheerder mag dit
+// wijzigen. Verandert uitsluitend het uiterlijk (kleuren/typografie/randen) —
+// de opbouw en werking van elk scherm blijven ongewijzigd.
+function renderUiStijlKaart() {
+  const huidige = store.uiStijl || 'club';
+  document.querySelectorAll('#uistijl-keuze .uistijl-optie').forEach(btn => {
+    btn.classList.toggle('uistijl-actief', btn.getAttribute('data-stijl') === huidige);
+  });
+}
+
+async function kiesUiStijl(waarde) {
+  if (waarde !== 'club' && waarde !== 'matchcheck') return;
+  try {
+    const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    await setDoc(doc(db, 'ladder', 'config'), { uiStijl: waarde }, { merge: true });
+    store.uiStijl = waarde;
+    pasUiStijlToe(waarde);
+    renderUiStijlKaart();
+    toast(waarde === 'matchcheck' ? 'MatchCheck-stijl actief voor iedereen ✓' : 'Standaardstijl actief voor iedereen ✓');
+  } catch(e) {
+    console.error('kiesUiStijl mislukt:', e);
+    toast('Opslaan mislukt: ' + (e.message || e.code));
+  }
+}
+
+
+// ============================================================
 //  BULK IMPORT TOERNOOI-SPELERS — v3.0.0-11.67
 // ============================================================
 
@@ -1381,5 +1412,6 @@ export {
   verschuifRank, resetData, closeModal,
   kopieerCredentials, vraagResetWachtwoord,
   toggleWachtwoordBeheer, slaInitieelWachtwoordOp,
+  renderUiStijlKaart, kiesUiStijl,
   openBulkImport, sluitBulkImport, voegBulkRijToe, startBulkImport, kopieerBulkCredentials,
 };
