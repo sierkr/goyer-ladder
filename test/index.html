@@ -633,18 +633,19 @@
   html[data-theme="matchcheck"] #versie-badge { color: var(--mid) !important; background: transparent !important; border: 1px solid var(--border) !important; }
 
   html[data-theme="matchcheck"] nav { background: var(--card-bg); border-bottom: 1px solid var(--border); box-shadow: none; }
+  /* Dun kader om elk tab-label (i.p.v. het dikke 1.5px kader van de standaardstijl),
+     met een groen vlak bij het actieve tab i.p.v. een onderstreping. */
   html[data-theme="matchcheck"] nav button span.nav-label {
-    border: none !important;
-    border-radius: 0 !important;
-    background: transparent !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 6px !important;
+    background: var(--card-bg) !important;
     color: var(--mid) !important;
-    padding: 10px 4px !important;
-    border-bottom: 2px solid transparent !important;
+    padding: 5px 10px !important;
   }
   html[data-theme="matchcheck"] nav button.active span.nav-label {
-    color: var(--green) !important;
-    border-bottom-color: var(--green) !important;
-    background: transparent !important;
+    border-color: var(--green) !important;
+    background: var(--green) !important;
+    color: var(--on-primary) !important;
     font-weight: 600 !important;
   }
 
@@ -655,8 +656,18 @@
   html[data-theme="matchcheck"] input,
   html[data-theme="matchcheck"] select { border-radius: 6px; }
 
+  /* Ladderlijst compacter: minder padding/regelhoogte en kleinere tekst,
+     zelfde rijen/velden/volgorde als in de standaardstijl. */
+  html[data-theme="matchcheck"] .ladder-item { padding: 9px 14px !important; min-height: auto !important; gap: 8px !important; }
+  html[data-theme="matchcheck"] .rank-badge { font-size: 13px !important; min-width: 22px !important; color: var(--light) !important; }
   html[data-theme="matchcheck"] .rank-badge.top3 { color: var(--gold) !important; }
   html[data-theme="matchcheck"] .rank-badge.zelf { color: var(--green) !important; }
+  html[data-theme="matchcheck"] .player-name { font-size: 13px !important; }
+  html[data-theme="matchcheck"] .player-hcp { font-size: 11px !important; }
+  html[data-theme="matchcheck"] .player-stats { font-size: 11px !important; }
+  /* Eigen rij: vlakke groene balk i.p.v. groene rand-highlight (border-left komt
+     als inline stijl uit ladder.js mee — hier bewust overschreven, geen JS-wijziging). */
+  html[data-theme="matchcheck"] .ladder-item { border-left: none !important; margin-left: 0 !important; }
 
   html[data-theme="matchcheck"] .scorecard th { background: var(--green) !important; color: #fff !important; }
   html[data-theme="matchcheck"] .scorecard input[type=number] { border: 1px solid var(--border) !important; border-radius: 6px !important; }
