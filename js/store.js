@@ -39,6 +39,10 @@ export let huidigeBruiker = null;
 // v3.0.0-11.62: initieel wachtwoord wordt geladen uit Firestore (ladder/config)
 // Geen hardcoded waarde — null totdat initFirestore() laadInitieelWachtwoord() heeft aangeroepen
 export let initieelWachtwoord = null;
+// v4.1.0: globale UI-stijl ('club' = huidige stijl, 'matchcheck' = MatchCheck-stijl).
+// Geladen uit Firestore (ladder/config, veld uiStijl) — zie config.js laadUiStijl().
+// Geldt voor alle gebruikers; alleen de beheerder kan dit wijzigen (Beheer-tab).
+export let uiStijl = 'club';
 export let _usersCache = null;
 export let _bezigMetRegistratie = false;
 export let _firestoreReady = false;
@@ -120,6 +124,8 @@ export const store = {
   get huidigeBruiker() { return huidigeBruiker; },
   set initieelWachtwoord(v) { initieelWachtwoord = v; },
   get initieelWachtwoord() { return initieelWachtwoord; },
+  set uiStijl(v) { uiStijl = v; },
+  get uiStijl() { return uiStijl; },
   set _usersCache(v) { _usersCache = v; _syncAlleSpelersDataFromUsers(); },
   get _usersCache() { return _usersCache; },
   set _bezigMetRegistratie(v) { _bezigMetRegistratie = v; },

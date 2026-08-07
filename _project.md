@@ -6,13 +6,184 @@
 | Bestand | Locatie | Formaat |
 |---|---|---|
 | `version.json` | root | `{"version": "v3.0.0-11.XX"}` |
-| `sw.js` | regel 2 | `const CACHE_VERSION = 'v1XX';` |
+| `sw.js` | regel 2 | `const CACHE_VERSION = 'v2XX';` |
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v4.0.2**
+Huidige versie: **v5.0.1**
 
 ### Changelog
+- **v5.0.1** — Deploy-configuratie toegevoegd. De zip bevatte geen
+  `firebase.json` en geen `.firebaserc`, waardoor `firebase deploy` niet wist
+  wat er gedeployd moest worden. Nieuw:
+  - `firebase.json` — koppelt `firestore.rules` aan **beide** databases
+    (`(default)` en `test`; een named database heeft eigen regels) en wijst
+    `functions/` aan als functiesmap.
+  - `.firebaserc` — legt vast dat het om project `goyer-golf-mp-ladder` gaat,
+    zodat de CLI daar niet meer naar vraagt.
+  - `functions/.gitignore` — houdt `node_modules/` uit de repo.
+  - `DEPLOYEN.md` — stap-voor-stap commando's, inclusief de volgorde
+    (secret zetten vóór de eerste deploy, anders mislukt die) en de twee
+    handmatige stappen die alleen in de Firebase console kunnen.
+  Geen functionele wijzigingen aan de app zelf.
+
+- **v5.0.0** — Beveiligings- en datamodelherziening naar aanleiding van een
+  code-review. Zeven punten; de eerste vier waren echte fouten, de rest is
+  opruimen. **Let op: `firestore.rules` moet handmatig worden gepubliceerd en
+  de Cloud Functions moeten opnieuw worden gedeployed.**
+
+  - **1. Watch-PIN lekte alle accounts (kritiek).** `ladder/watchPins` stond op
+    `allow read: if true` en bevatte per PIN een Firebase *refreshToken* —
+    een permanente sleutel waarmee je onbeperkt nieuwe inlogtokens maakt. Het
+    project-ID staat in de broncode, dus iedereen kon dat document met één
+    ongeauthenticeerde request ophalen en inloggen als élke speler die ooit het
+    rondescherm had geopend, beheerder inbegrepen. De PIN was geen drempel: de
+    tokens waren direct leesbaar.
+    Nu: `maakWatchPin` (server-side, 6 cijfers, alleen een SHA-256 hash
+    opgeslagen, 15 minuten geldig, eenmalig) en `wisselWatchPin` (ruilt de PIN
+    om voor een custom token, met foutteller tegen brute force). Het horloge
+    regelt daarmee zijn eigen sessie; er staan geen tokens meer in Firestore.
+    `watchPins` is volledig dichtgezet. De PIN wordt niet meer automatisch
+    aangemaakt maar op verzoek, via de gele badge in de Ronde-tab.
+
+  - **2. Uitslag werd niet gecontroleerd.** `verwerkPartijUitslag` checkte
+    alleen "zit je in deze ladder" en geloofde verder klakkeloos welke winnaar
+    de client meestuurde — geen partij, geen deelnemerscheck, geen bescherming
+    tegen dubbel verwerken. Met de browserconsole kon je jezelf in een paar
+    aanroepen op plek 1 zetten.
+    Nu wordt gecontroleerd: (a) de partij bestaat op `partijId`, (b) de
+    matchups komen overeen met wat bij het starten is vastgelegd, (c) de
+    aanroeper speelde zelf mee (of is coördinator), (d) de partij is niet al
+    verwerkt (`ladders/{id}/verwerkt/{partijId}` — lost ook dubbeltelling na
+    een netwerkhapering op), en (e) áls er scores staan die de match
+    onmiskenbaar beslissen, moet de opgegeven winnaar daarmee kloppen.
+    **Scores blijven expliciet optioneel**: geen scores of gelijkspel betekent
+    dat de keuze van de speler gewoon telt, precies zoals voorheen. Wie de
+    uitslag indiende wordt vastgelegd, en de coördinator kan een uitslag
+    terugdraaien (`draaiPartijTerug`, knop bij Uitslagen).
+
+  - **3. Zichtbare stand was vrij schrijfbaar.** `standen/{uid}` mocht door elk
+    ladderlid worden aangepast, voor élke speler — terwijl de afgeschermde
+    punten wel op slot zaten. Het slot zat dus op een getal dat niemand ziet.
+    Nu: `standen` is read-only voor spelers, op de eigen handicap na
+    (`onlyHcp()`); coördinator/beheerder houden hun beheerschermen. De dode
+    functie `syncStandenNaBevestigUitslag()` is verwijderd — die hield die
+    schrijfroute open.
+
+  - **4. Scores overschreven elkaar.** Alle scores stonden in één array
+    (`actievePartijen[]`) in het ladderdocument. Firestore ziet een array als
+    één ondeelbare waarde, dus elke toetsaanslag schreef de complete array van
+    de hele ladder terug. Twee flights op dezelfde ladder wisten elkaars holes;
+    het horloge deed hetzelfde met een fire-and-forget PATCH.
+    Nieuw datamodel: `ladders/{id}/partijen/{partijId}` met subcollectie
+    `scores/{uid}`, waarin per hole één veld wordt geschreven. Botsen kan
+    structureel niet meer, en flightgenoten die elkaars kaart bijhouden worden
+    samengevoegd in plaats van overschreven. Nieuw bestand: `js/scores.js`.
+    Bijvangst: alleen nog de scoredocumenten van je eigen partij worden
+    gedownload in plaats van het hele ladderdocument bij elke toetsaanslag van
+    elke speler (scheelt data en accu op de baan), en de 1MB-documentlimiet is
+    voor `actievePartijen` van de baan.
+    **Overgang:** deze versie schrijft nog steeds naar de oude array, maar als
+    afgeleide, vertraagde kopie (max 1× per 5 s). Bij lezen heeft de
+    subcollectie altijd voorrang. In v5.1.0 verdwijnt de array.
+    Ook aan: Firestore offline-cache (`persistentLocalCache`) — kon pas veilig
+    ná deze omzetting, want een uitgestelde schrijfactie van de hele array
+    wiste alles wat er intussen gebeurd was. En debounce van 400 ms op het
+    opslaan.
+
+  - **5. Migratietools uit de zip.** `migratie-uid.html` en
+    `migratie-standen.html` (destructieve bulk-schrijftools met fuzzy
+    naam-matching) stonden in de productiebundel. Ook `watch_backup_v11_86.html`
+    is eruit.
+
+  - **6. Activiteit op uid in plaats van naam.** De activiteitsstatistiek
+    (inactiviteit/frequentie/diversiteit) werd per spelersnaam bijgehouden.
+    Twee spelers met dezelfde naam smolten samen en een naamswijziging wiste
+    iemands historie — terwijl die statistiek meebepaalt waar je staat.
+    Uitslagen krijgen nu `spelerUids` en `matchupUids` naast de namen.
+    Historische uitslagen bevatten alleen namen; die worden vertaald via een
+    naam→uid-map, en alleen als de naam éénduidig is. Bij dubbele namen valt
+    het terug op het oude gedrag — nooit slechter, maar met terugwerkende
+    kracht niet te repareren.
+
+  - **7. Dubbele rekenregels weg.** `verrijkMetActiviteit()` +
+    `sorteerOpActiviteit()` in `js/ladder.js` waren een tweede volledige
+    implementatie van de ranking-regels naast die in `functions/index.js`, en
+    het Ladderverloop had er nog een derde (`_lvReconstrueer`, `_lvMetRang`).
+    Vervangen door `bepaalActiviteitsIconen()`, dat alleen nog de gegevens voor
+    de iconen (🔥🌟⬇️⏳) berekent — geen positie, geen sortering.
+    `berekenWeergaveRangen()` gebruikt nu simpelweg de serverpositie, waarmee
+    het verschil tussen uitslagbericht en ladderlijst per definitie weg is.
+    Ladderverloop toont voortaan de daadwerkelijk vastgelegde standen
+    (snapshots + archief) in plaats van het verleden na te bootsen; de tweede
+    lijn "met activiteit" is vervallen omdat de opgeslagen rank die correctie
+    al bevat.
+
+  - **Extra vondst tijdens het bouwen:** in `firestore.rules` worden meerdere
+    `allow read`-regels met OR gecombineerd. De algemene regel
+    `allow read: if isIngelogd()` op `ladder/{doc}` maakte daardoor ook
+    `ladder/config` leesbaar voor élke ingelogde speler, ondanks de striktere
+    beheerder-only regel verderop. Elke speler kon dus het initiële wachtwoord
+    van nieuwe accounts opvragen. Nu expliciet uitgezonderd.
+
+  - **Nog te doen (bewust niet in deze versie):** geen tests/build/linting, en
+    de oude `actievePartijen`-array bestaat nog tot v5.1.0.
+
+- **v4.2.0** — Puntensysteem: het rangnummer-herverdeel-algoritme is vervangen
+  door een score per speler, berekend en opgeslagen server-side.
+  - **Nieuw datamodel**: `ladders/{id}/punten/{uid}` (nieuwe, afgeschermde
+    subcollectie) bevat `score` (= `basisScore + activiteitDelta`),
+    `basisScore` en `activiteitDelta`. De publieke positie 1..N blijft in
+    `ladders/{id}/standen/{uid}.rank` staan — voor spelers verandert er
+    zichtbaar niets.
+  - **Cloud Functions** (`functions/index.js`): `verwerkPartijUitslag`
+    (vervangt de client-side berekening in `bevestigUitslag()` van
+    `js/ronde.js` én `bevestigBeheerUitslag()` van `js/uitslagen.js`),
+    `pasPuntenAan` (handmatige puntenaanpassing) en
+    `herbereikenActiviteitDagelijks` (dagelijkse scheduled function om
+    posities ook zonder nieuwe partijen actueel te houden). Alle drie
+    respecteren `isTest` en schrijven naar de juiste Firestore-database
+    (productie of de named database `test`), zodat een sessie in de
+    testomgeving nooit productiedata raakt en andersom.
+  - **Identieke uitkomst als voorheen**: de win/verlies-regels (laagStijg,
+    hoogStijg, laagZak, hoogZak, drempel, verliezerNaarWinnaar) zijn
+    ongewijzigd. In plaats van na elke partij alle andere spelers over
+    "beschikbare plekken" te herverdelen (de bron van meerdere eerdere bugs,
+    zie v3.0.0-11.23 hieronder), krijgt na verwerking gewoon IEDEREEN een
+    schone score volgens zijn nieuwe positie — een simpele volledige
+    hersortering die niet meer fout kan gaan.
+  - **Inactiviteit/frequentie/diversiteit blijvend i.p.v. tijdelijk**: dezelfde
+    wiskunde als `verrijkMetActiviteit()` (`js/ladder.js`), maar nu verwerkt
+    in de echte, opgeslagen score in plaats van een tijdelijke
+    weergavecorrectie. Voorkomt de terugkerende discrepantie tussen
+    "uitslagbericht" en "ladderlijst" structureel, omdat er nu nog maar één
+    getal per speler bestaat.
+  - **Zichtbaarheid**: alleen het account met `puntenBeheerder:true` op zijn
+    `spelers/{uid}`-document kan de ruwe punten lezen — technisch afgedwongen
+    via `firestore.rules` (niet alleen verborgen in het scherm). Niemand kan
+    er rechtstreeks in schrijven; dat loopt uitsluitend via de Cloud
+    Functions. **Handmatige stap vereist**: zet dit vlag zelf via de Firebase
+    console op jouw eigen account — er is bewust geen schermpje dat dit kan
+    instellen.
+  - **Beheerscherm**: de "↕ Stand"-knop met pijltjes-omhoog/omlaag
+    (`openStandAanpassen`) is verwijderd. In de bestaande "👥 Spelers"-modal
+    (`openLadderSpelersModal`, `js/beheer.js`) staat voor de puntenbeheerder
+    nu een extra kolom: puntenaantal + potlood, met live herberekende positie
+    terwijl je typt (puur client-side, geen extra reads). Voor ieder ander
+    account is dit scherm ongewijzigd. Een speler uitvinken verwijdert hem
+    alleen uit de ladderlijst — zijn punten/stand-document blijft bestaan en
+    komt terug zodra hij opnieuw wordt aangevinkt.
+  - **Migratie**: geen aparte migratieknop nodig — alle drie de Cloud
+    Functions bootstrappen ontbrekende punten automatisch uit de huidige
+    `rank` (zelfde volgorde blijft behouden) zodra een ladder voor het eerst
+    wordt aangeraakt (eerste partij, eerste handmatige aanpassing, of de
+    eerste nachtelijke herberekening).
+  - **Bekende beperking**: de historische grafiek in "Ladderverloop"
+    (`openLadderverloop` in `js/ladder.js`) reconstrueert het verleden nog
+    met het oude plek-algoritme, puur voor de weergave — dit heeft geen
+    invloed op de actuele stand.
+  - Zie `puntensysteem-plan.md` (los aangeleverd) voor de volledige
+    ontwerpgeschiedenis van dit besluit.
 - **v4.0.2** — Twee UX-verbeteringen toernooimodus (`js/toernooi.js`):
   - **Matrix toont marge**: de onderlinge stand toont nu het aantal holes
     voorsprong/achterstand als getal (kleur = richting: groen voor, rood
@@ -128,15 +299,32 @@ ladders/{ladderId}
     .startHole                # 1-gebaseerd (bijv. 1 of 10)
   .uitslagen[]
   .spelerIds[]                # UIDs van leden
-  .standen/{uid}              # Stand per speler
+  .standen/{uid}              # Stand per speler: rank (publiek, 1..N), partijen, gewonnen, prevRank
+  .partijen/{partijId}        # v5.0.0 — metadata van een lopende partij (baan, holes,
+                              # spelers, matchups, speltype). Vervangt actievePartijen[]
+                              # als bron van waarheid; die array bestaat nog tot v5.1.0
+                              # als vertraagde, alleen-lezen kopie.
+    .scores/{uid}             # v5.0.0 — { holes: {"0":4,"1":5,...} } per speler.
+                              # Per hole één veld geschreven, zodat twee spelers
+                              # elkaar niet kunnen overschrijven. Zie js/scores.js.
+  .verwerkt/{partijId}        # v5.0.0 — idempotency-stempel van verwerkPartijUitslag
+                              # + momentopname voor draaiPartijTerug. Server-only.
+  .teruggedraaid/{partijId}   # v5.0.0 — archief van teruggedraaide uitslagen
+  .punten/{uid}                # v4.2.0 — AFGESCHERMD: score, basisScore, activiteitDelta.
+                              # Read alleen puntenBeheerder-account (firestore.rules). Write
+                              # alleen via Cloud Functions (verwerkPartijUitslag, pasPuntenAan,
+                              # herbereikenActiviteitDagelijks) — geen enkele client schrijft hier direct.
 
 spelers/{uid}
   .naam, .email, .hcp, .rol, .eersteLogin
+  .puntenBeheerder            # v4.2.0 — true op precies ÉÉN account: handmatig gezet via de
+                              # Firebase console (spelers/{jouw-uid}), niet via de app zelf.
 
-ladder/watchPins              # { [4-digit PIN]: { uid, naam, email, refreshToken, expires } }
-                              # refreshToken wordt gebruikt door watch.html om in te loggen
-                              # zonder wachtwoord. Aangemaakt door renderWatchPin() in ronde.js.
-                              # Publieke read-regel in firestore.rules (watch.html is niet auth'd)
+ladder/watchPins              # v5.0.0 — { [sha256(PIN)]: { uid, expires, gebruikt, gemaakt } }
+                              # GEEN tokens meer. Volledig dichtgezet in firestore.rules:
+                              # alleen de Cloud Functions maakWatchPin / wisselWatchPin
+                              # komen hier nog bij (Admin SDK).
+ladder/watchPinPogingen       # v5.0.0 — { fouten, venster } foutteller tegen brute force
 ladder/config                 # { initieelWachtwoord }
 ladder/banen                  # Alle beschikbare banen
 ladder/uitdagingen            # Lopende uitdagingen

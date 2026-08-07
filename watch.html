@@ -146,13 +146,15 @@
 <div id="scherm-pin" class="scherm actief">
   <div class="logo">⛳</div>
   <div class="app-titel">Watch Score</div>
-  <div class="app-sub">Voer je 4-cijferige PIN in</div>
+  <div class="app-sub">Voer je 6-cijferige PIN in</div>
   <div class="kaart">
     <div class="pin-display">
       <div class="pin-dot" id="dot-0"></div>
       <div class="pin-dot" id="dot-1"></div>
       <div class="pin-dot" id="dot-2"></div>
       <div class="pin-dot" id="dot-3"></div>
+      <div class="pin-dot" id="dot-4"></div>
+      <div class="pin-dot" id="dot-5"></div>
     </div>
     <div class="numpad">
       <button class="num-btn" onclick="pinTik('1')">1</button>
@@ -236,6 +238,12 @@ const PROJECT   = 'goyer-golf-mp-ladder';
 const FS        = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`;
 const AUTH_URL  = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`;
 const TOKEN_URL = `https://securetoken.googleapis.com/v1/token?key=${API_KEY}`;
+// v5.0.0 (punt 1): inloggen gaat via een custom token dat de Cloud Function
+// wisselWatchPin teruggeeft. Er staan geen refreshTokens meer in Firestore.
+const CUSTOM_URL = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${API_KEY}`;
+const FN_BASE    = `https://europe-west1-${PROJECT}.cloudfunctions.net`;
+// De watch draait altijd tegen productie; de testomgeving gebruikt de app zelf.
+const IS_TEST_WATCH = location.pathname.includes('/test/');
 
 // ── STATE ────────────────────────────────────────────────────
 let idToken      = null;
@@ -254,8 +262,14 @@ let actieveUid = null;
 let tapStartX  = 0;
 let tapStartY  = 0;
 
-// Dirty flag — true als er een score gewijzigd is die nog niet naar Firestore is geschreven
-let dirty = false;
+// v5.0.0 (punt 4): bijhouden WELKE scores nog niet zijn weggeschreven.
+// Vroeger was dit een simpele dirty-vlag en werd bij een hole-wissel de
+// COMPLETE actievePartijen-array van de hele ladder teruggeschreven met een
+// fire-and-forget PATCH. Daarmee kon het horloge de holes wissen die een
+// flightgenoot of de telefoon-app intussen had ingevuld. Nu schrijven we per
+// speler één veld in ladders/{id}/partijen/{partijId}/scores/{uid}.
+let vuilePunten = new Set(); // "uid|holeIdx"
+let dirty = false;           // afgeleid: vuilePunten.size > 0
 
 // ══════════════════════════════════════════════════════════════
 //  FIRESTORE CONVERTERS
@@ -297,11 +311,11 @@ function toonScherm(id) {
 // ══════════════════════════════════════════════════════════════
 //  PIN
 // ══════════════════════════════════════════════════════════════
-function pinTik(c) { if (pinWaarde.length >= 4) return; pinWaarde += c; pinDisplay(); if (pinWaarde.length === 4) setTimeout(controleerPin, 120); }
+function pinTik(c) { if (pinWaarde.length >= 6) return; pinWaarde += c; pinDisplay(); if (pinWaarde.length === 6) setTimeout(controleerPin, 120); }
 function pinWis()  { if (!pinWaarde.length) return; pinWaarde = pinWaarde.slice(0,-1); pinDisplay(); document.getElementById('pin-fout').textContent = ''; }
 function pinReset(){ pinWaarde = ''; pinDisplay(); document.getElementById('pin-fout').textContent = ''; }
 function pinDisplay() {
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 6; i++) {
     const d = document.getElementById('dot-'+i);
     d.textContent = pinWaarde[i] || '';
     d.classList.toggle('actief', i < pinWaarde.length);
@@ -309,33 +323,57 @@ function pinDisplay() {
 }
 function pinFout(t) { document.getElementById('pin-fout').textContent = t; pinWaarde = ''; pinDisplay(); }
 
+// v5.0.0 (punt 1) — HOE DIT VROEGER WERKTE EN WAAROM DAT FOUT WAS:
+// deze functie haalde ladder/watchPins op zonder enige authenticatie (dat
+// document stond publiek leesbaar) en las daar de refreshToken van de speler
+// uit. Dat betekende dat iedereen die de URL kende alle refreshTokens van alle
+// spelers kon downloaden - en een refreshToken geeft permanent toegang tot een
+// account. De PIN was daarbij geen beveiliging, want je kon de tokens gewoon
+// rechtstreeks lezen.
+//
+// Nu: de PIN gaat naar de Cloud Function wisselWatchPin, die hem controleert
+// (hash, geldigheid, eenmalig gebruik, foutteller) en een custom token
+// teruggeeft. De watch regelt daarmee zijn eigen sessie. Firestore bevat geen
+// tokens meer en dit scherm leest daar niets meer uit.
 async function controleerPin() {
   document.getElementById('pin-fout').textContent = '';
   try {
-    const resp = await fetch(`${FS}/ladder/watchPins?key=${API_KEY}`);
-    const data = await resp.json();
-    if (!resp.ok) { pinFout('Kon PIN niet controleren. Probeer opnieuw.'); return; }
-    const pins = fromFsMap(data.fields || {});
-    const sessie = pins[pinWaarde];
-    if (!sessie)              { pinFout('Ongeldige PIN. Probeer opnieuw.'); return; }
-    if (sessie.expires < Date.now()) { pinFout('PIN verlopen. Genereer een nieuwe via de app.'); return; }
-    gevondenPin = sessie;
+    const resp = await fetch(`${FN_BASE}/wisselWatchPin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: { pin: pinWaarde, isTest: IS_TEST_WATCH } })
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const melding = body?.error?.message || '';
+      if (/te veel/i.test(melding)) pinFout('Te veel pogingen. Wacht 10 minuten.');
+      else pinFout('Ongeldige of verlopen PIN.');
+      return;
+    }
+    const res = body?.result || {};
+    if (!res.customToken) { pinFout('Inloggen mislukt. Probeer opnieuw.'); return; }
+    gevondenPin = { uid: res.uid, naam: res.naam };
     toonScherm('scherm-ww');
-    await inloggenMetToken(sessie.refreshToken);
+    await inloggenMetCustomToken(res.customToken);
   } catch(e) { console.error('PIN check fout:',e); pinFout('Verbindingsfout. Probeer opnieuw.'); }
 }
 
 // ══════════════════════════════════════════════════════════════
 //  AUTH
 // ══════════════════════════════════════════════════════════════
-async function inloggenMetToken(rToken) {
+async function inloggenMetCustomToken(customToken) {
   document.getElementById('ww-fout').textContent = '';
   document.getElementById('ww-terug').style.display = 'none';
   try {
-    const resp = await fetch(TOKEN_URL, { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:`grant_type=refresh_token&refresh_token=${encodeURIComponent(rToken)}` });
+    const resp = await fetch(CUSTOM_URL, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ token: customToken, returnSecureToken: true })
+    });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error?.message || 'Token fout');
-    idToken = data.id_token; refreshToken = data.refresh_token; uid = data.user_id;
+    // Vanaf hier heeft alleen dit horloge de tokens - ze gaan nooit terug
+    // naar Firestore.
+    idToken = data.idToken; refreshToken = data.refreshToken; uid = data.localId;
     setInterval(vernieuwToken, 55*60*1000);
     toonScherm('scherm-score');
     laadPartij();
@@ -357,7 +395,7 @@ async function vernieuwToken() {
 function uitloggen() {
   if (pollingTimer) clearInterval(pollingTimer);
   idToken = refreshToken = uid = partij = null;
-  huidigHole = 0; actieveUid = null; dirty = false;
+  huidigHole = 0; actieveUid = null; dirty = false; vuilePunten.clear();
   pinReset(); toonScherm('scherm-pin');
 }
 
@@ -381,10 +419,50 @@ async function haalPartijOp() {
       const fields = fromFsMap(ldoc.fields||{});
       const actief = fields.actievePartijen||[];
       const match  = actief.find(p => (p.spelers||[]).some(s => s.uid === uid));
-      if (match) { partij = match; ladderId = ldoc.name.split('/').pop(); allePartijen = actief; return true; }
+      if (match) {
+        partij = match;
+        ladderId = ldoc.name.split('/').pop();
+        allePartijen = actief;
+        // v5.0.0 (punt 4): de scores uit de subcollectie hebben voorrang op de
+        // kopie in actievePartijen. Die kopie is tijdens de overgang nog
+        // aanwezig maar loopt bewust achter.
+        await haalScoresOp();
+        return true;
+      }
     }
     return false;
   } catch(e) { console.error('haalPartijOp fout:',e); return false; }
+}
+
+async function haalScoresOp() {
+  if (!partij || !ladderId || !partij.partijId) return;
+  try {
+    const url = `${FS}/ladders/${ladderId}/partijen/${partij.partijId}/scores?key=${API_KEY}`;
+    const resp = await fetch(url, { headers:{'Authorization':`Bearer ${idToken}`} });
+    if (!resp.ok) return; // val stil terug op partij.scores uit de array
+    const data = await resp.json();
+    const docs = data.documents || [];
+    if (!docs.length) return;
+    const aantal = (partij.holes||[]).length;
+    const nieuw = {};
+    for (const d of docs) {
+      const spelerUid = d.name.split('/').pop();
+      const holes = fromFsMap(d.fields||{}).holes || {};
+      const arr = new Array(aantal).fill(null);
+      for (const [k,v] of Object.entries(holes)) {
+        const i = parseInt(k,10);
+        if (Number.isInteger(i) && i >= 0 && i < aantal) arr[i] = (v === undefined ? null : v);
+      }
+      nieuw[spelerUid] = arr;
+    }
+    // Nog niet weggeschreven eigen wijzigingen niet overschrijven.
+    for (const punt of vuilePunten) {
+      const [u,h] = punt.split('|');
+      const idx = parseInt(h,10);
+      if (nieuw[u] && partij.scores?.[u]) nieuw[u][idx] = partij.scores[u][idx];
+    }
+    partij.scores = { ...(partij.scores||{}), ...nieuw };
+  } catch(e) { console.warn('haalScoresOp mislukt:', e); }
 }
 
 function startPolling() {
@@ -395,17 +473,62 @@ function startPolling() {
 // ══════════════════════════════════════════════════════════════
 //  HOLE NAVIGATIE
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+//  SCORES OPSLAAN — v5.0.0 (punt 4)
+//  Eén PATCH per speler, met alleen de gewijzigde holes. Raakt nooit de
+//  scores van een andere speler of van een andere flight.
+// ══════════════════════════════════════════════════════════════
+let opslaanTimer = null;
+
+function planOpslaan() {
+  if (opslaanTimer) clearTimeout(opslaanTimer);
+  opslaanTimer = setTimeout(slaScoresOp, 800);
+}
+
+async function slaScoresOp() {
+  if (!partij || !ladderId || vuilePunten.size === 0) return;
+  const teSchrijven = Array.from(vuilePunten);
+  vuilePunten.clear();
+  dirty = false;
+
+  // Groepeer per speler zodat het één request per speler is.
+  const perSpeler = {};
+  for (const punt of teSchrijven) {
+    const [u, h] = punt.split('|');
+    (perSpeler[u] || (perSpeler[u] = [])).push(parseInt(h, 10));
+  }
+
+  for (const [u, holes] of Object.entries(perSpeler)) {
+    // updateMask per hole: alleen deze velden worden aangeraakt, de rest van
+    // het document (andere holes) blijft staan.
+    const maskParams = holes.map(h => `updateMask.fieldPaths=holes.${h}`).join('&');
+    const velden = {};
+    for (const h of holes) {
+      const waarde = partij.scores?.[u]?.[h];
+      velden[String(h)] = fsVal(waarde === undefined ? null : waarde);
+    }
+    const url = `${FS}/ladders/${ladderId}/partijen/${partij.partijId}/scores/${u}`
+              + `?${maskParams}&key=${API_KEY}`;
+    try {
+      const resp = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: { holes: { mapValue: { fields: velden } } } })
+      });
+      if (!resp.ok) throw new Error('status ' + resp.status);
+    } catch (err) {
+      console.error('Score opslaan mislukt:', err);
+      // Terugzetten zodat de volgende poging het opnieuw probeert.
+      for (const h of holes) vuilePunten.add(`${u}|${h}`);
+      dirty = true;
+    }
+  }
+  startPolling();
+}
+
 function gaNaarHole(idx) {
   if (!partij || idx < 0 || idx >= partij.holes.length) return;
-  // Schrijf naar Firestore als er een gewijzigde score klaarstaat
-  if (dirty) {
-    dirty = false;
-    fetch(`${FS}/ladders/${ladderId}?updateMask.fieldPaths=actievePartijen&key=${API_KEY}`, {
-      method: 'PATCH',
-      headers: {'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json'},
-      body: JSON.stringify({ fields: { actievePartijen: fsVal(allePartijen) } })
-    }).then(() => startPolling()).catch(err => console.error('Score opslaan mislukt:', err));
-  }
+  if (dirty) slaScoresOp();
   actieveUid = null;
   huidigHole = idx;
   renderHole();
@@ -440,7 +563,7 @@ function renderHole() {
 
   // Score grid — altijd 4 slots
   let html = '';
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 6; i++) {
     const s = spelers[i];
     if (!s) {
       html += `<div class="score-cel"><div class="blok-naam" style="color:var(--licht)">—</div><div class="score-blok leeg-blok"></div></div>`;
@@ -528,8 +651,10 @@ grid.addEventListener('touchend', e => {
   renderStand();
   renderTotaal(naamMap, partij.spelers||[]);
 
-  // Score gewijzigd — wordt naar Firestore geschreven bij hole-wissel
+  // Score gewijzigd — wordt per hole naar Firestore geschreven.
+  vuilePunten.add(`${actieveUid}|${huidigHole}`);
   dirty = true;
+  planOpslaan();
 });
 
 // ══════════════════════════════════════════════════════════════
@@ -537,7 +662,7 @@ grid.addEventListener('touchend', e => {
 // ══════════════════════════════════════════════════════════════
 function renderTotaal(naamMap, spelers) {
   let html = '';
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 6; i++) {
     const s = spelers[i];
     if (!s) {
       html += `<div class="score-cel"><div class="blok-naam" style="color:var(--licht)">—</div><div class="totaal-blok leeg-blok"></div></div>`;

@@ -29,51 +29,85 @@ function _uitslagTs(u) {
   return null;
 }
 
-// Verrijk een spelerslijst met activiteitsstatus (_act) op basis van de
-// ladderconfig en de partijhistorie. Muteert niet; geeft nieuwe objecten terug.
-function verrijkMetActiviteit(spelers, ladder, cfg, nu = Date.now(), toernooien = []) {
+// ============================================================
+//  ACTIVITEITSICONEN — v5.0.0 (punt 7)
+// ------------------------------------------------------------
+//  WAT ER MIS WAS: hier stond een tweede, volledige implementatie van de
+//  ranking-regels (verrijkMetActiviteit + sorteerOpActiviteit), naast de
+//  implementatie in functions/index.js. v4.2.0 verplaatste de berekening naar
+//  de server maar liet deze kopie staan "alleen voor de iconen" — met een
+//  sorteerfunctie er nog naast die een eigen weergaverang uitrekende. Twee
+//  implementaties van dezelfde regels lopen altijd een keer uiteen; dat is
+//  precies wat v3.0.2 en v4.2.0 al eerder hebben moeten repareren.
+//
+//  WAT ER NU STAAT: alleen nog de gegevens die nodig zijn om de iconen
+//  (🔥 frequent · 🌟 divers · ⏳/⬇️ inactief) te kunnen tonen. Geen effectieve
+//  positie, geen groepering, geen sortering. De positie komt uitsluitend uit
+//  standen/{uid}.rank, die de server schrijft.
+//
+//  Net als server-side (punt 6) wordt hier op uid geteld waar dat kan, met
+//  terugval op de naam voor uitslagen van vóór v5.0.0.
+// ============================================================
+function bepaalActiviteitsIconen(spelers, ladder, cfg, nu = Date.now(), toernooien = []) {
   const uitslagen = (ladder && (ladder.data?.uitslagen || ladder.uitslagen)) || [];
   const refTs = new Date(cfg.inactiviteitReferentiedatum || '2026-04-01').getTime();
-  const drempel    = cfg.inactiviteitDrempelWeken ?? 4;
-  const model      = cfg.inactiviteitModel || 'zacht';
-  const inactAan   = cfg.inactiviteitAan !== false;
-  const freqAan    = cfg.frequentieBonusAan !== false;
-  const divAan     = cfg.diversiteitsBonusAan !== false;
-  const freqMin    = cfg.frequentieBonusPartijen ?? 3;
-  const freqPlek   = cfg.frequentieBonusPlekken ?? 1;
-  const divMin     = cfg.diversiteitsBonusDrempel ?? 6;
-  const divPlek    = cfg.diversiteitsBonusPlekken ?? 2;
+  const drempel  = cfg.inactiviteitDrempelWeken ?? 4;
+  const model    = cfg.inactiviteitModel || 'zacht';
+  const inactAan = cfg.inactiviteitAan !== false;
+  const freqAan  = cfg.frequentieBonusAan !== false;
+  const divAan   = cfg.diversiteitsBonusAan !== false;
+  const freqMin  = cfg.frequentieBonusPartijen ?? 3;
+  const freqPlek = cfg.frequentieBonusPlekken ?? 1;
+  const divMin   = cfg.diversiteitsBonusDrempel ?? 6;
+  const divPlek  = cfg.diversiteitsBonusPlekken ?? 2;
 
   const nuD = new Date(nu);
   const huidigeMaand = nuD.getFullYear() * 12 + nuD.getMonth();
 
-  // Reconstrueer per spelernaam: laatste speeldatum, partijen deze maand,
-  // unieke tegenstanders sinds de referentiedatum.
+  // naam -> uid, alleen voor eenduidige namen (zie functions/index.js).
+  const perNaam = {};
+  for (const sp of spelers) {
+    const k = String(sp.naam || '').trim().toLowerCase();
+    if (k) (perNaam[k] || (perNaam[k] = [])).push(sp.uid);
+  }
+  const naamNaarUid = {};
+  for (const [n, uids] of Object.entries(perNaam)) if (uids.length === 1) naamNaarUid[n] = uids[0];
+  const sleutel = (uid, naam) => {
+    if (uid) return uid;
+    const n = String(naam || '').trim();
+    if (!n) return null;
+    return naamNaarUid[n.toLowerCase()] || n;
+  };
+
   const stat = {};
-  const ensure = n => (stat[n] || (stat[n] = { laatst: null, maand: 0, opp: new Set() }));
+  const ensure = k => (stat[k] || (stat[k] = { laatst: null, maand: 0, opp: new Set() }));
+
   for (const u of uitslagen) {
     const ts = _uitslagTs(u);
     if (ts == null) continue;
     const d = new Date(ts);
     const maandKey = d.getFullYear() * 12 + d.getMonth();
-    for (const n of (u.spelers || [])) {
-      const s = ensure(n);
-      if (s.laatst == null || ts > s.laatst) s.laatst = ts;
-      if (maandKey === huidigeMaand) s.maand++;
+    const deelnemers = Array.isArray(u.spelerUids)
+      ? u.spelerUids.map(uid => sleutel(uid, null))
+      : (u.spelers || []).map(n => sleutel(null, n));
+    for (const k of deelnemers) {
+      if (!k) continue;
+      const st = ensure(k);
+      if (st.laatst == null || ts > st.laatst) st.laatst = ts;
+      if (maandKey === huidigeMaand) st.maand++;
     }
     if (ts >= refTs) {
-      for (const m of (u.matchups || [])) {
-        if (m.a && m.b) { ensure(m.a).opp.add(m.b); ensure(m.b).opp.add(m.a); }
+      const mus = (Array.isArray(u.matchupUids) && u.matchupUids.length)
+        ? u.matchupUids.map(m => ({ a: sleutel(m.a, null), b: sleutel(m.b, null) }))
+        : (u.matchups || []).map(m => ({ a: sleutel(null, m.a), b: sleutel(null, m.b) }));
+      for (const m of mus) {
+        if (m.a && m.b && m.a !== m.b) { ensure(m.a).opp.add(m.b); ensure(m.b).opp.add(m.a); }
       }
     }
   }
 
-  // v3.0.0-11.104: toernooipartijen tellen ook mee als activiteit. Een
-  // toernooidag geldt als 'gespeeld' zodra hij is afgerond (of, als dat veld
-  // ontbreekt, zodra de dagdatum in het verleden ligt). Elke gespeelde dag
-  // telt als één partij; flight-genoten van die dag tellen als tegenstanders
-  // voor de diversiteit. Toernooien en ladderuitslagen zijn gescheiden
-  // datastromen, dus er is geen dubbeltelling.
+  // Toernooidagen tellen ook als activiteit (v3.0.0-11.104). Toernooispelers
+  // hebben altijd een uid, dus daar is geen naam-terugval nodig.
   for (const t of (toernooien || [])) {
     for (const dag of (t.dagen || [])) {
       const gespeeld = dag.afgerond === true || (dag.datum && new Date(dag.datum).getTime() <= nu);
@@ -83,21 +117,19 @@ function verrijkMetActiviteit(spelers, ladder, cfg, nu = Date.now(), toernooien 
       const dd = new Date(ts);
       const maandKey = dd.getFullYear() * 12 + dd.getMonth();
       const flights = Array.isArray(dag.flights) ? dag.flights : [];
-      // Deelnemers van de dag: uit de flights, anders de hele toernooilijst.
       const dagDeelnemers = flights.length
-        ? flights.flatMap(f => (f.spelers || []).map(s => s.naam))
-        : (t.spelers || []).map(s => s.naam);
-      for (const naam of dagDeelnemers) {
-        if (!naam) continue;
-        const s = ensure(naam);
-        if (s.laatst == null || ts > s.laatst) s.laatst = ts;
-        if (maandKey === huidigeMaand) s.maand++;
+        ? flights.flatMap(f => (f.spelers || []).map(x => sleutel(x.uid, x.naam)))
+        : (t.spelers || []).map(x => sleutel(x.uid, x.naam));
+      for (const k of dagDeelnemers) {
+        if (!k) continue;
+        const st = ensure(k);
+        if (st.laatst == null || ts > st.laatst) st.laatst = ts;
+        if (maandKey === huidigeMaand) st.maand++;
       }
-      // Diversiteit: flight-genoten als tegenstanders (sinds referentiedatum).
       if (ts >= refTs) {
         for (const f of flights) {
-          const namen = (f.spelers || []).map(s => s.naam).filter(Boolean);
-          for (const a of namen) for (const b of namen) {
+          const inFlight = (f.spelers || []).map(x => sleutel(x.uid, x.naam)).filter(Boolean);
+          for (const a of inFlight) for (const b of inFlight) {
             if (a !== b) ensure(a).opp.add(b);
           }
         }
@@ -105,81 +137,57 @@ function verrijkMetActiviteit(spelers, ladder, cfg, nu = Date.now(), toernooien 
     }
   }
 
-  function straf(weken) {
+  function strafWeken(weken) {
     if (!inactAan || weken < drempel) return 0;
     const over = weken - drempel + 1;
     if (model === 'zacht') return Math.min(6, over);
     if (model === 'middel') return Math.min(14, over * 2);
-    return 9999; // 'fors' → harde scheiding via groep
+    return 9999; // 'fors' -> harde scheiding, alleen als icoon relevant
   }
 
   return spelers.map(sp => {
-    const st = stat[sp.naam] || { laatst: null, maand: 0, opp: new Set() };
+    const st = stat[sp.uid] || stat[sp.naam] || { laatst: null, maand: 0, opp: new Set() };
     const actief = st.laatst != null && st.laatst >= refTs;
     const inactiefSinds = st.laatst ? Math.max(st.laatst, refTs) : refTs;
     const weken = refTs ? Math.max(0, Math.floor((nu - inactiefSinds) / _WEEK_MS)) : 0;
-    const strafPlek = straf(weken);
     const uniek = st.opp.size;
     const fb = (freqAan && st.maand > freqMin) ? freqPlek : 0;
     const db = (divAan && uniek > divMin) ? divPlek : 0;
-    const baseRank = sp.rank || 999;
-    let groep = 0, eff;
-    if (model === 'fors' && inactAan) { groep = actief ? 0 : 1; eff = baseRank - fb - db; }
-    else { eff = baseRank + strafPlek - fb - db; }
-    return { ...sp, _act: { weken, straf: strafPlek, maand: st.maand, uniek, fb, db, actief, groep, eff } };
+    // Let op: hier staat bewust GEEN effectieve positie of sortering meer.
+    // Deze waarden zijn uitsluitend voor de iconen en de tooltip.
+    return { ...sp, _act: { weken, straf: strafWeken(weken), maand: st.maand, uniek, fb, db, actief } };
   });
 }
 
-// Sorteer verrijkte spelers op effectieve positie en ken weergaverang toe.
-function sorteerOpActiviteit(verrijkt) {
-  const arr = [...verrijkt].sort((a, b) =>
-    (a._act.groep - b._act.groep) ||
-    (a._act.eff - b._act.eff) ||
-    ((a.rank || 999) - (b.rank || 999)));
-  arr.forEach((s, i) => { s._weergaveRang = i + 1; });
-  return arr;
-}
-
-// Geef de spelers in weergavevolgorde voor een ladder. Als het
-// activiteitssysteem uit staat, gewoon op competitierank.
+// Geef de spelers in weergavevolgorde voor een ladder.
+// De volgorde komt uitsluitend uit standen/{uid}.rank, die de server schrijft.
+// bepaalActiviteitsIconen() voegt alleen de iconen (🔥🌟⬇️⏳) toe en raakt de
+// volgorde niet aan — zie punt 7 hierboven.
 function getLadderSpelersWeergave(ladderId) {
+  const spelers = getLadderSpelers(ladderId); // al gesorteerd op rank (volledige positie)
+  if (spelers.length === 0) return spelers;
   const ladder = alleLadders.find(l => l.id === ladderId);
-  const spelers = getLadderSpelers(ladderId);
   const cfg = getLadderConfig(ladderId) || DEFAULT_LADDER_CONFIG;
-  const actiefSysteem = cfg.inactiviteitAan !== false || cfg.frequentieBonusAan !== false || cfg.diversiteitsBonusAan !== false;
-  if (!actiefSysteem || spelers.length === 0) return spelers;
-  return sorteerOpActiviteit(verrijkMetActiviteit(spelers, ladder, cfg, Date.now(), alleToernooien));
+  const verrijkt = bepaalActiviteitsIconen(spelers, ladder, cfg, Date.now(), alleToernooien);
+  return spelers.map((s, i) => ({ ...s, _act: verrijkt[i]?._act }));
 }
 
-// v3.0.2: Bereken de weergaverang (activiteits-gecorrigeerde ladderpositie)
-// voor een MEEGEGEVEN spelerslijst, zonder de standen-cache te raadplegen.
-// Geeft een map uid -> weergaverang terug. Zo kan ronde.js het uitslagbericht
-// in exact dezelfde nummers tonen als de ladderlijst (fix discrepantie).
-// extraUitslag (optioneel) telt een zojuist gespeelde partij mee voor de
-// activiteitsberekening, zodat de "na"-stand overeenkomt met de ladder direct
-// na afsluiten.
-function berekenWeergaveRangen(ladderId, spelers, extraUitslag = null) {
+// berekenWeergaveRangen — v5.0.0 (punt 7)
+//
+// Was: een tweede berekening van de weergavepositie, met een eigen kopie van
+// de activiteitsregels, zodat het uitslagbericht dezelfde nummers toonde als
+// de ladderlijst (fix v3.0.2). Sinds v4.2.0 IS standen/{uid}.rank al de
+// volledige, activiteits-gecorrigeerde weergavepositie — die door de server
+// wordt berekend. Nog een keer client-side rekenen kon alleen maar afwijken.
+//
+// Nu: gewoon de serverpositie, oplopend genummerd. Daarmee is er per definitie
+// geen verschil meer tussen het uitslagbericht en de ladderlijst.
+function berekenWeergaveRangen(ladderId, spelers) {
   const map = {};
   if (!Array.isArray(spelers) || spelers.length === 0) return map;
-  const cfg = getLadderConfig(ladderId) || DEFAULT_LADDER_CONFIG;
-  const actiefSysteem = cfg.inactiviteitAan !== false || cfg.frequentieBonusAan !== false || cfg.diversiteitsBonusAan !== false;
-  if (!actiefSysteem) {
-    // Zonder activiteitssysteem is de weergaverang gewoon de competitierank-volgorde.
-    [...spelers].sort((a, b) => (a.rank || 999) - (b.rank || 999))
-      .forEach((s, i) => { if (s.uid) map[s.uid] = i + 1; });
-    return map;
-  }
-  const ladder = alleLadders.find(l => l.id === ladderId);
-  let ladderVoorCalc = ladder;
-  if (extraUitslag && ladder) {
-    const bestaande = (ladder.data?.uitslagen || ladder.uitslagen) || [];
-    // data-veld leegzetten zodat verrijkMetActiviteit onze uitgebreide lijst pakt.
-    ladderVoorCalc = { ...ladder, data: undefined, uitslagen: [...bestaande, extraUitslag] };
-  }
-  const gesorteerd = sorteerOpActiviteit(
-    verrijkMetActiviteit(spelers, ladderVoorCalc, cfg, Date.now(), alleToernooien)
-  );
-  gesorteerd.forEach(s => { if (s.uid) map[s.uid] = s._weergaveRang; });
+  [...spelers]
+    .sort((a, b) => (a.rank || 999) - (b.rank || 999))
+    .forEach((s, i) => { if (s.uid) map[s.uid] = i + 1; });
   return map;
 }
 
@@ -203,7 +211,7 @@ function renderSpelermatrixHtml(ladderId) {
   const cfg = getLadderConfig(ladderId) || DEFAULT_LADDER_CONFIG;
   // Spelers op competitierank (vaste volgorde voor de matrix), verrijkt met activiteit.
   const basis = getLadderSpelers(ladderId).slice().sort((a, b) => (a.rank || 999) - (b.rank || 999));
-  const spelers = verrijkMetActiviteit(basis, ladder, cfg, Date.now(), alleToernooien);
+  const spelers = bepaalActiviteitsIconen(basis, ladder, cfg, Date.now(), alleToernooien);
   if (spelers.length === 0) return '<p style="padding:16px;color:var(--mid)">Geen spelers in deze ladder.</p>';
 
   // Onderlinge telling uit ladderuitslagen (matchups a vs b, op naam).
@@ -287,81 +295,23 @@ function _lvTs(u) {
   return null;
 }
 
-function _lvRanksMap(standen) {
-  const m = {};
-  for (const s of standen) m[s.naam] = s.rank;
-  return m;
-}
-
-// Eén matchup toepassen op de standen (op naam). Repliceert exact de logica
-// van bevestigUitslag() in ronde.js -- geen extra clamps, zodat de
-// reconstructie identiek is aan de echte historie.
-function _lvPasMatchupToe(standen, winnaarNaam, verliezerNaam, cfg) {
-  const sw = standen.find(s => s.naam === winnaarNaam);
-  const sv = standen.find(s => s.naam === verliezerNaam);
-  if (!sw || !sv) return; // gast of onbekende speler -> geen rangwijziging
-  const swRank = sw.rank, svRank = sv.rank;
-  let newWrank, newVrank;
-  if (swRank > svRank) {
-    newWrank = Math.max(1, swRank - cfg.laagStijg);
-    const verschil = swRank - svRank;
-    if (cfg.verliezerNaarWinnaar && verschil <= cfg.drempel) newVrank = swRank;
-    else newVrank = svRank + cfg.laagZak;
-  } else {
-    newWrank = Math.max(1, swRank - cfg.hoogStijg);
-    newVrank = svRank + cfg.hoogZak;
-  }
-  const n = standen.length;
-  const gereserveerd = new Set([newWrank, newVrank]);
-  const beschikbaar = [];
-  for (let r = 1; r <= n; r++) if (!gereserveerd.has(r)) beschikbaar.push(r);
-  const anderen = standen.filter(s => s !== sw && s !== sv).sort((a, b) => a.rank - b.rank);
-  anderen.forEach((s, i) => { s.rank = beschikbaar[i]; });
-  sw.rank = newWrank; sv.rank = newVrank;
-}
-
-// Reconstrueer de volledige standen na elke uitslag, startend vanaf baseline.
-// Geeft een lijst { ts, ranks:{naam->rank} } terug (incl. baseline op start).
-function _lvReconstrueer(baselineOrder, uitslagenAsc, cfg, startTs) {
-  const standen = baselineOrder.map((naam, i) => ({ naam, rank: i + 1 }));
-  const states = [{ ts: startTs, ranks: _lvRanksMap(standen) }];
-  for (const u of uitslagenAsc) {
-    const ts = _lvTs(u);
-    for (const m of (u.matchups || [])) {
-      if (m.winnaar && m.a && m.b) {
-        const verliezer = m.winnaar === m.a ? m.b : (m.winnaar === m.b ? m.a : null);
-        if (verliezer) _lvPasMatchupToe(standen, m.winnaar, verliezer, cfg);
-      }
-    }
-    states.push({ ts, ranks: _lvRanksMap(standen) });
-  }
-  return states;
-}
-
-// Valideer reconstructie tegen snapshots: elke snapshot moet exact matchen met
-// de gereconstrueerde stand op dat tijdstip. Retourneert true/false.
-function _lvValideer(states, snapshots) {
-  if (!snapshots.length) return true; // niets om tegen te toetsen -> vertrouw baseline
-  for (const snap of snapshots) {
-    let st = states[0];
-    for (const s of states) { if (s.ts != null && s.ts <= snap.timestamp) st = s; }
-    for (const sp of (snap.spelers || [])) {
-      if (st.ranks[sp.naam] == null) return false;      // roster-verschil
-      if (st.ranks[sp.naam] !== sp.rank) return false;  // afwijking
-    }
-  }
-  return true;
-}
-
-// Activiteits-gecorrigeerde positie van een speler bij een gegeven stand + tijdstip.
-function _lvMetRang(spelersLijst, cfg, ladder, ts, matchUid, matchNaam) {
-  const alle = ((ladder && (ladder.data?.uitslagen || ladder.uitslagen)) || []);
-  const uitslagenTot = alle.filter(u => { const t = _lvTs(u); return t != null && t <= ts; });
-  const override = { ...(ladder || {}), data: undefined, uitslagen: uitslagenTot };
-  const verrijkt = sorteerOpActiviteit(verrijkMetActiviteit(spelersLijst, override, cfg, ts, alleToernooien));
-  const hit = verrijkt.find(s => (matchUid && s.uid === matchUid) || s.naam === matchNaam);
-  return hit ? hit._weergaveRang : null;
-}
+// ============================================================
+//  LADDERVERLOOP — v5.0.0 (punt 7)
+// ------------------------------------------------------------
+//  WAT ER MIS WAS: de grafiek reconstrueerde het verleden door het OUDE
+//  plek-herverdeel-algoritme opnieuw af te spelen over de uitslagen
+//  (_lvReconstrueer/_lvPasMatchupToe), en berekende daar bovenop nog een
+//  tweede lijn "met activiteit" via _lvMetRang(). Dat was een derde kopie van
+//  de ranking-regels, bovenop die in functions/index.js en die in dit bestand.
+//  Sinds v4.2.0 klopte die reconstructie bovendien niet meer met de werkelijke
+//  berekening (v4.2.0 noemde dat zelf al een "bekende beperking").
+//
+//  WAT ER NU GEBEURT: de grafiek toont de standen zoals ze DAADWERKELIJK zijn
+//  vastgelegd, uit de snapshots (die na elke bevestigde partij worden gemaakt)
+//  plus de eindstand uit het seizoensarchief. Geen reconstructie, geen tweede
+//  algoritme. De getoonde positie is de echte, activiteits-gecorrigeerde
+//  positie van dat moment - want dat is precies wat er in de snapshot staat.
+// ============================================================
 
 // Detailtekst voor een punt: datum + tegenstander(s) + uitslag.
 function _lvDetail(uitslagen, ts, naam) {
@@ -384,25 +334,28 @@ function _lvDetail(uitslagen, ts, naam) {
 }
 
 function _lvBouwPunten(ctx) {
-  const { ladder, cfg, uid, spelerNaam, snaps, states, reconstructieOk, eersteSnapTs, uitslagen } = ctx;
+  const { uid, spelerNaam, snaps, uitslagen, archBaseline, startTs } = ctx;
   const punten = [];
-  if (reconstructieOk && states) {
-    for (const state of states) {
-      if (state.ts == null || state.ts >= eersteSnapTs) continue;
-      const zonder = state.ranks[spelerNaam];
-      if (zonder == null) continue;
-      const spelersLijst = Object.entries(state.ranks).map(([naam, rank]) => ({ naam, rank }));
-      const met = _lvMetRang(spelersLijst, cfg, ladder, state.ts, null, spelerNaam) ?? zonder;
-      punten.push({ ts: state.ts, zonder, met, bron: 'recon', detail: _lvDetail(uitslagen, state.ts, spelerNaam) });
-    }
+
+  // Startpunt uit het seizoensarchief, als dat er is: de vastgelegde eindstand
+  // van vorig seizoen is de eerste echte, gemeten positie.
+  if (archBaseline && archBaseline.rank != null && startTs) {
+    punten.push({
+      ts: startTs, zonder: archBaseline.rank, met: archBaseline.rank,
+      bron: 'archief', detail: 'Startstand seizoen',
+    });
   }
+
   for (const snap of snaps) {
     const mij = (snap.spelers || []).find(s => s.uid === uid);
-    if (!mij) continue;
-    const zonder = mij.rank;
-    const spelersLijst = (snap.spelers || []).map(s => ({ uid: s.uid, naam: s.naam, rank: s.rank }));
-    const met = _lvMetRang(spelersLijst, cfg, ladder, snap.timestamp, uid, spelerNaam) ?? zonder;
-    punten.push({ ts: snap.timestamp, zonder, met, bron: 'snap', detail: _lvDetail(uitslagen, snap.timestamp, spelerNaam) });
+    if (!mij || mij.rank == null) continue;
+    // `zonder` en `met` zijn sinds v4.2.0 hetzelfde getal: de opgeslagen rank
+    // is al de activiteits-gecorrigeerde positie. De tweede lijn is daarmee
+    // vervallen (zie de toelichting hierboven).
+    punten.push({
+      ts: snap.timestamp, zonder: mij.rank, met: mij.rank,
+      bron: 'snap', detail: _lvDetail(uitslagen, snap.timestamp, spelerNaam),
+    });
   }
   punten.sort((a, b) => a.ts - b.ts);
   return punten;
@@ -450,9 +403,6 @@ async function openLadderverloop(ladderId, uid) {
       .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     const arch = archMatches[0] || null;
     const startTs = arch ? (arch.timestamp || 0) : 0;
-    const baselineOrder = arch && Array.isArray(arch.eindstand)
-      ? [...arch.eindstand].sort((a, b) => (a.rank || 999) - (b.rank || 999)).map(e => e.naam)
-      : null;
 
     let snaps = [];
     try {
@@ -466,21 +416,18 @@ async function openLadderverloop(ladderId, uid) {
       .filter(u => { const t = _lvTs(u); return t != null && t >= startTs; })
       .sort((a, b) => (_lvTs(a) || 0) - (_lvTs(b) || 0));
 
-    let states = null, reconstructieOk = false, reconMelding = '';
-    const eersteSnapTs = snaps.length ? snaps[0].timestamp : Infinity;
-    if (baselineOrder && baselineOrder.length) {
-      states = _lvReconstrueer(baselineOrder, uitslagen, cfg, startTs);
-      reconstructieOk = _lvValideer(states, snaps);
-      if (!reconstructieOk) {
-        const states2 = _lvReconstrueer([...baselineOrder].reverse(), uitslagen, cfg, startTs);
-        if (_lvValideer(states2, snaps)) { states = states2; reconstructieOk = true; }
-      }
-      if (!reconstructieOk) reconMelding = 'Oudere historie kon niet betrouwbaar gereconstrueerd worden - alleen exacte snapshotdata getoond.';
-    } else if (snaps.length) {
-      reconMelding = 'Geen archief van vorig seizoen - grafiek start bij de oudste snapshot.';
+    // v5.0.0 (punt 7): geen reconstructie meer met het oude algoritme.
+    // De grafiek toont uitsluitend vastgelegde standen: de eindstand uit het
+    // seizoensarchief als startpunt, plus elke snapshot daarna.
+    let reconMelding = '';
+    if (!snaps.length) {
+      reconMelding = 'Nog geen snapshots dit seizoen - het verloop verschijnt zodra er partijen zijn gespeeld.';
     }
+    const archBaseline = arch && Array.isArray(arch.eindstand)
+      ? arch.eindstand.find(e => e.uid === uid || e.naam === spelerNaam) || null
+      : null;
 
-    const punten = _lvBouwPunten({ ladder, cfg, uid, spelerNaam, snaps, states, reconstructieOk, eersteSnapTs, uitslagen });
+    const punten = _lvBouwPunten({ uid, spelerNaam, snaps, uitslagen, archBaseline, startTs });
     if (punten.length === 0) {
       inhoud.innerHTML = '<p style="padding:20px;color:var(--mid)">Nog geen verloop-data voor deze speler dit seizoen.</p>';
       return;
@@ -488,7 +435,7 @@ async function openLadderverloop(ladderId, uid) {
 
     _lvState = {
       punten, spelerNaam,
-      toon: { zonder: true, met: true, veld: false },
+      toon: { zonder: true, met: false, veld: false },
       veldData: _lvVeldData(snaps, uid),
       reconMelding
     };
@@ -608,8 +555,7 @@ function _lvRender() {
     '</div>';
   html += svg;
   html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">' +
-    knop('zonder', '#2a78d6', 'zonder activiteit') +
-    knop('met', '#eb6834', 'met activiteit') +
+    knop('zonder', '#2a78d6', 'ladderpositie') +
     knop('veld', '#888780', 'veld tonen') +
     '</div>';
   html += '<div id="ladderverloop-detail" style="margin-top:10px;font-size:12px;color:var(--dark);min-height:18px">Tik op een punt voor details.</div>';
@@ -745,14 +691,15 @@ function renderLadderRij(s, ladderId) {
   const winpct = s.partijen > 0 ? Math.round(s.gewonnen/s.partijen*100) : 0;
   
   let deltaHtml = '';
-  // Bij actief activiteitssysteem is de getoonde rang de effectieve positie;
-  // de prevRank-delta (competitierank) zou dan misleiden, dus verbergen.
-  if (!s._act && s.prevRank != null && s.prevRank !== s.rank) {
+  // v4.2.0: rank en prevRank zijn nu allebei server-side volledige (activiteits-
+  // gecorrigeerde) posities uit hetzelfde puntensysteem — geen aparte "ruwe
+  // competitierank" meer die zou kunnen misleiden. De delta klopt dus altijd.
+  if (s.prevRank != null && s.prevRank !== s.rank) {
     const d = s.prevRank - s.rank;
     deltaHtml = d > 0
       ? `<span class="delta-up" style="font-size:12px">▲${d}</span>`
       : `<span class="delta-down" style="font-size:12px">▼${Math.abs(d)}</span>`;
-  } else if (!s._act && s.prevRank != null) {
+  } else if (s.prevRank != null) {
     deltaHtml = `<span style="font-size:11px;color:var(--light)">—</span>`;
   }
 
@@ -791,7 +738,7 @@ function renderLadderRij(s, ladderId) {
     <div class="rank-badge ${rang <= 3 ? 'top3' : isZelf ? 'zelf' : ''}">${rang}</div>
     <div class="player-name" style="${isZelf ? 'font-weight:700;color:var(--green);' : ''}">${esc(s.naam)}${icoonHtml ? '&nbsp;' + icoonHtml : ''}</div>
     <div style="min-width:30px;text-align:center">${deltaHtml}</div>
-    <div class="player-stats" style="text-align:right;min-width:52px">${s.partijen}P ${s.gewonnen}W<br>${winpct}%</div>
+    <div class="player-stats" style="text-align:right;min-width:52px">${s.partijen}P · ${s.gewonnen}W · ${winpct}%</div>
     <div style="width:42px;text-align:center;flex-shrink:0">${uitdagingBtnHtml}</div>
   </div>`;
 }

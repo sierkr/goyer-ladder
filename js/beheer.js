@@ -1,8 +1,14 @@
 // ============================================================
 //  beheer.js
 // ============================================================
-import { db, auth, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
-import { store, alleLadders, activeLadderId, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG } from './store.js';
+import { db, auth, IS_TEST, functions, httpsCallable, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
+import { store, alleLadders, activeLadderId, huidigeBruiker, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG } from './store.js';
+
+// v4.2.0: puntensysteem — handmatige aanpassing door de puntenbeheerder.
+const _pasPuntenAanFn = httpsCallable(functions, 'pasPuntenAan');
+// Lokale cache van de zojuist geladen punten voor de open Spelers-modal,
+// gebruikt voor de live positie-preview terwijl je typt (geen extra reads).
+let _puntenModalScores = {}; // uid -> score
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen, normaliseerLadderRangen, herstelLadderIntegriteit } from './auth.js';
 import { laadInviteStatus } from './auth.js';
 import { renderLadder } from './ladder.js';
@@ -12,86 +18,12 @@ import { closeModal } from './admin.js';
 
 //  LADDER INSTELLINGEN
 // ============================================================
-async function openStandAanpassen(ladderId) {
-
-  try {
-  const ladder = alleLadders.find(l => l.id === ladderId);
-  if (!ladder) return;
-  store._standAanpassenLadderId = ladderId;
-
-  const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
-  if (!snapExists) return;
-  // Laad ranking uit spelerIds + standen/{uid} — geen ladder.spelers[] meer
-  const spelerIds = snapData.spelerIds || [];
-  const standenSnaps = await Promise.all(
-    spelerIds.map(uid => getDoc(doc(db, 'ladders', ladderId, 'standen', uid)).catch(() => null))
-  );
-  const spelersUitStanden = spelerIds.map((uid, i) => {
-    const d = standenSnaps[i]?.exists() ? standenSnaps[i].data() : {};
-    const profiel = (store._usersCache || []).find(u => u.uid === uid) || {};
-    return {
-      uid,
-      naam:     profiel.naam     || uid,
-      hcp:      profiel.hcp      ?? 0,
-      rank:     d.rank           || 0,
-      partijen: d.partijen       || 0,
-      gewonnen: d.gewonnen       || 0,
-      prevRank: d.prevRank       ?? null,
-    };
-  });
-  store._standAanpassenSpelers = spelersUitStanden.sort((a, b) => (a.rank || 999) - (b.rank || 999));
-
-  document.getElementById('stand-aanpassen-titel').textContent = `Stand — ${ladder.naam}`;
-  renderStandAanpassenLijst();
-  document.getElementById('modal-stand-aanpassen').classList.add('open');
-  } catch(e) { console.error('openStandAanpassen mislukt:', e); }
-}
-
-function renderStandAanpassenLijst() {
-  const lijst = document.getElementById('stand-aanpassen-lijst');
-  lijst.innerHTML = _standAanpassenSpelers.map((s, idx) => `
-    <div class="admin-row" style="padding:8px 0">
-      <span style="font-family:'Bebas Neue';font-size:20px;color:var(--light);min-width:28px">${idx + 1}</span>
-      <span style="flex:1;font-weight:500">${esc(s.naam)}</span>
-      <span style="font-size:12px;color:var(--light);margin-right:8px">hcp ${Math.round(s.hcp)}</span>
-      <div style="display:flex;flex-direction:column;gap:2px">
-        <button onclick="verschuifStand(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}
-          style="background:${idx===0?'#f0ede4':'var(--green-pale)'};border:none;border-radius:4px;width:26px;height:26px;cursor:${idx===0?'default':'pointer'};font-size:13px;color:${idx===0?'var(--light)':'var(--green)'}">↑</button>
-        <button onclick="verschuifStand(${idx}, 1)" ${idx === _standAanpassenSpelers.length-1 ? 'disabled' : ''}
-          style="background:${idx===_standAanpassenSpelers.length-1?'#f0ede4':'#fde8e8'};border:none;border-radius:4px;width:26px;height:26px;cursor:${idx===_standAanpassenSpelers.length-1?'default':'pointer'};font-size:13px;color:${idx===_standAanpassenSpelers.length-1?'var(--light)':'var(--red)'}">↓</button>
-      </div>
-    </div>
-  `).join('');
-}
-
-function verschuifStand(idx, delta) {
-  const nieuwIdx = idx + delta;
-  if (nieuwIdx < 0 || nieuwIdx >= _standAanpassenSpelers.length) return;
-  [_standAanpassenSpelers[idx], _standAanpassenSpelers[nieuwIdx]] = [_standAanpassenSpelers[nieuwIdx], _standAanpassenSpelers[idx]];
-  renderStandAanpassenLijst();
-}
-
-async function slaStandOp() {
-  try {
-    const ladderId = _standAanpassenLadderId;
-    if (!ladderId) return;
-    _standAanpassenSpelers.forEach((s, idx) => s.rank = idx + 1);
-
-    // Schrijf uitsluitend naar standen/{uid} — ladder.spelers[] is niet meer de bron
-    const writes = _standAanpassenSpelers
-      .filter(s => s.uid)
-      .map(s => {
-        const payload = { rank: s.rank || 0, partijen: s.partijen || 0, gewonnen: s.gewonnen || 0 };
-        if (s.prevRank != null) payload.prevRank = s.prevRank;
-        return setDoc(doc(db, 'ladders', ladderId, 'standen', s.uid), payload);
-      });
-    await Promise.all(writes);
-
-    closeModal('modal-stand-aanpassen');
-    renderLadder();
-    toast('Stand bijgewerkt ✓');
-  } catch(e) { console.error('slaStandOp mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
-}
+// v4.2.0: de "Stand aanpassen"-modal met pijltjes-omhoog/omlaag
+// (openStandAanpassen/renderStandAanpassenLijst/verschuifStand/slaStandOp)
+// is verwijderd. Handmatig een speler verplaatsen bestaat niet meer — in
+// plaats daarvan past de puntenbeheerder in de "Spelers"-modal hieronder
+// direct het puntenaantal aan (zie openLadderSpelersModal), waaruit de
+// positie 1..N wordt afgeleid.
 
 function openLadderInstellingen(ladderId) {
   const ladder = alleLadders.find(l => l.id === ladderId);
@@ -274,6 +206,19 @@ async function openLadderSpelersModal(ladderId) {
     // Huidige leden — primary check op uid
     const huidigeUids = new Set(ladderDataVers.spelerIds?.filter(id => typeof id === 'string' && id.length > 10) || []);
 
+    // v4.2.0: puntensysteem — alleen het puntenBeheerder-account leest de
+    // afgeschermde punten-subcollectie (firestore.rules staat dat voor
+    // niemand anders toe, dus voor ieder ander account blijft dit scherm
+    // ongewijzigd: geen puntenkolom).
+    const magPunten = huidigeBruiker?.puntenBeheerder === true;
+    _puntenModalScores = {};
+    if (magPunten) {
+      try {
+        const puntenSnap = await getDocs(collection(db, 'ladders', ladderId, 'punten'));
+        puntenSnap.forEach(d => { _puntenModalScores[d.id] = d.data().score; });
+      } catch(e) { console.warn('Punten laden mislukt (mogelijk geen rechten):', e.code || e); }
+    }
+
     // Toon alle bekende spelers — uit spelers/ collectie (uid-based)
     const gesorteerd = [...users].sort((a, b) =>
       (a.naam || '').localeCompare(b.naam || '', 'nl')
@@ -284,6 +229,17 @@ async function openLadderSpelersModal(ladderId) {
       : gesorteerd.map(u => {
           const inLadder = huidigeUids.has(u.uid);
           const hcp = u.hcp != null ? u.hcp : '—';
+          const puntenHtml = (magPunten && inLadder) ? `
+            <span style="display:flex;align-items:center;gap:6px;margin-left:8px">
+              <input type="number" step="1" value="${_puntenModalScores[u.uid] ?? ''}"
+                data-punten-uid="${escAttr(u.uid)}"
+                oninput="puntenVeldGewijzigd('${escAttr(u.uid)}', this.value)"
+                placeholder="punten"
+                style="width:82px;padding:3px 6px;font-size:12px;font-family:'DM Mono',monospace;border:1.5px solid #e0ddd4;border-radius:5px">
+              <span id="punten-positie-${escAttr(u.uid)}" style="font-size:11px;color:var(--light);min-width:34px">
+                ${_puntenModalScores[u.uid] != null ? '#' + _puntenPositieVan(u.uid) : ''}
+              </span>
+            </span>` : '';
           return `<label style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer">
             <input type="checkbox" value="${escAttr(u.uid)}" ${inLadder ? 'checked' : ''}
               data-naam="${esc(u.naam || '')}"
@@ -291,12 +247,33 @@ async function openLadderSpelersModal(ladderId) {
               style="width:18px;height:18px;accent-color:var(--green);cursor:pointer">
             <span style="flex:1">${esc(u.naam || u.email)}</span>
             <span style="font-size:12px;color:var(--light)">hcp ${hcp}</span>
+            ${puntenHtml}
           </label>`;
         }).join('');
 
     document.getElementById('modal-ladder-spelers').classList.add('open');
   } catch(e) { console.error('openLadderSpelersModal mislukt:', e); }
 }
+
+// Positie (1-gebaseerd) die uid zou krijgen bij de huidige _puntenModalScores,
+// puur lokaal berekend (geen netwerk) — voor de live preview terwijl je typt.
+function _puntenPositieVan(uid) {
+  const volgorde = Object.entries(_puntenModalScores)
+    .filter(([, score]) => score != null)
+    .sort((a, b) => b[1] - a[1]);
+  const idx = volgorde.findIndex(([u]) => u === uid);
+  return idx === -1 ? '?' : idx + 1;
+}
+
+// Live preview: bijgewerkt bij elke toetsaanslag in een punten-invoerveld.
+// Schrijft niets naar Firestore — dat gebeurt pas bij "Opslaan" in slaLadderSpelersOp().
+function puntenVeldGewijzigd(uid, waarde) {
+  const getal = waarde === '' ? null : Number(waarde);
+  _puntenModalScores[uid] = (getal != null && Number.isFinite(getal)) ? getal : null;
+  const label = document.getElementById(`punten-positie-${uid}`);
+  if (label) label.textContent = _puntenModalScores[uid] != null ? '#' + _puntenPositieVan(uid) : '';
+}
+window.puntenVeldGewijzigd = puntenVeldGewijzigd;
 
 async function slaLadderSpelersOp() {
   try {
@@ -312,26 +289,34 @@ async function slaLadderSpelersOp() {
 
     const huidigeUids = new Set(ladderData.spelerIds || []);
     const nieuweUids  = geselecteerdeUids.filter(uid => !huidigeUids.has(uid));
-    const verwijderdeUids = [...huidigeUids].filter(uid => !geselecteerdeUids.includes(uid));
 
-    // v3.0.0-11.105: alle mutaties in één atomaire batch. Slaagt alles of niets,
-    // zodat spelerIds[] en de standen/-subcollectie niet kunnen divergeren.
+    // v4.2.0: uitvinken verwijdert een speler alleen uit de ladderlijst.
+    // Het stand-document (en de punten) blijven bestaan — vink je iemand
+    // later weer aan, dan staat hij gewoon weer op zijn oude punten/positie.
     const batch = writeBatch(db);
-    // Nieuwe spelers: voorlopige hoge rang (achteraan); normalisatie hercompacteert.
     nieuweUids.forEach((uid, i) => {
-      batch.set(doc(db, 'ladders', ladderId, 'standen', uid), { rank: 9000 + i, partijen: 0, gewonnen: 0 });
+      batch.set(doc(db, 'ladders', ladderId, 'standen', uid), { rank: 9000 + i, partijen: 0, gewonnen: 0 }, { merge: true });
     });
-    // Verwijderde spelers: stand-document weg.
-    verwijderdeUids.forEach(uid => {
-      batch.delete(doc(db, 'ladders', ladderId, 'standen', uid));
-    });
-    // spelerIds via merge — nooit het hele document herschrijven.
     batch.set(doc(db, 'ladders', ladderId), { spelerIds: geselecteerdeUids }, { merge: true });
     await batch.commit();
 
-    // Rangen naar een schone permutatie 1..N (bestaande volgorde blijft behouden,
-    // nieuwe spelers komen achteraan, wezen bestaan niet meer).
+    // Rangen naar een schone permutatie 1..N voor de huidige leden (nieuwe
+    // spelers komen achteraan; wie eruit gevinkt is telt niet meer mee).
     await normaliseerLadderRangen(ladderId);
+
+    // v4.2.0: handmatige puntenaanpassingen opslaan (alleen als dit scherm
+    // voor de puntenbeheerder geopend was — anders is _puntenModalScores leeg).
+    if (huidigeBruiker?.puntenBeheerder === true) {
+      const puntenInputs = document.querySelectorAll('#ladder-spelers-lijst input[data-punten-uid]');
+      for (const input of puntenInputs) {
+        const uid = input.dataset.puntenUid;
+        const nieuw = input.value === '' ? null : Number(input.value);
+        if (nieuw == null || !Number.isFinite(nieuw)) continue;
+        try {
+          await _pasPuntenAanFn({ ladderId, isTest: IS_TEST, uid, score: nieuw });
+        } catch(e) { console.error('pasPuntenAan mislukt voor', uid, e); toast('Puntenaanpassing voor één speler mislukt'); }
+      }
+    }
 
     const idx = alleLadders.findIndex(l => l.id === ladderId);
     if (idx >= 0) {
@@ -367,7 +352,6 @@ async function renderAdminLadders() {
         <div style="font-size:11px;color:var(--light)">${(l.spelerIds||[]).length} spelers${(l.data?.type || l.type) === 'knockout' ? ' · knock-out' : ''}</div>
       </div>
       <button class="btn btn-sm btn-ghost" onclick="openLadderSpelersModal('${escAttr(l.id)}')">👥 Spelers</button>
-      <button class="btn btn-sm btn-ghost" onclick="openStandAanpassen('${escAttr(l.id)}')">↕ Stand</button>
       ${isBeheerder ? `
         <button class="btn btn-sm btn-ghost" onclick="openLadderInstellingen('${escAttr(l.id)}')">⚙️</button>
         ${l.id !== 'mp' ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="verwijderLadder('${escAttr(l.id)}')">✕</button>` : '<div style="width:38px"></div>'}
@@ -652,4 +636,4 @@ window.kiesBackupBestand = kiesBackupBestand;
 // Expose functions to global scope (needed because script is type=module)
 // ============================================================
 
-export { openStandAanpassen, renderStandAanpassenLijst, verschuifStand, slaStandOp, openLadderInstellingen, slaLadderInstellingenOp, openNieuweLadderModal, maakNieuweLadder, verschuifLadder, verwijderLadder, openLadderSpelersModal, slaLadderSpelersOp, renderAdminLadders, openSnapshotsModal, slaSnapshotOp, laadSnapshots, herstelSnapshot };
+export { openLadderInstellingen, slaLadderInstellingenOp, openNieuweLadderModal, maakNieuweLadder, verschuifLadder, verwijderLadder, openLadderSpelersModal, slaLadderSpelersOp, puntenVeldGewijzigd, renderAdminLadders, openSnapshotsModal, slaSnapshotOp, laadSnapshots, herstelSnapshot };

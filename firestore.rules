@@ -1,4 +1,30 @@
 rules_version = '2';
+// ============================================================
+//  Goyer Golf MP Ladder - Firestore security rules v5.0.0
+// ------------------------------------------------------------
+//  WIJZIGINGEN v5.0.0 (lees dit voor je publiceert):
+//
+//  1. ladder/watchPins is VOLLEDIG dichtgezet (read en write op false).
+//     Dit document stond op `allow read: if true` en bevatte Firebase
+//     refreshTokens - permanente sleutels waarmee iedereen ter wereld kon
+//     inloggen als elke speler. Het horloge logt nu in via de Cloud Functions
+//     maakWatchPin / wisselWatchPin, die als enige (via de Admin SDK) nog bij
+//     dit document komen. Ook nieuw: ladder/watchPinPogingen (foutteller).
+//
+//  3. ladders/{id}/standen/{uid} is READ-ONLY voor clients geworden. De
+//     zichtbare positie was tot v4.2.0 door elk ladderlid te overschrijven,
+//     voor elke speler - terwijl de afgeschermde punten wel op slot zaten.
+//     Alle schrijfacties lopen nu via de Cloud Functions.
+//
+//  4. NIEUW: ladders/{id}/partijen/{partijId} met subcollectie scores/{uid}.
+//     Scores stonden in een array in het ladderdocument, waardoor elke
+//     toetsaanslag de complete array van de hele ladder terugschreef en twee
+//     flights elkaars holes wisten. Elke speler heeft nu een eigen
+//     scoredocument; botsen kan structureel niet meer.
+//     Ook nieuw: ladders/{id}/verwerkt/{partijId} (idempotency-stempel van
+//     verwerkPartijUitslag) en ladders/{id}/teruggedraaid/{partijId} -
+//     allebei alleen door de Cloud Functions beschreven.
+// ============================================================
 // Goyer Golf MP Ladder - Firestore security rules v3.0.0-10 (fase 10 V-2)
 // Wijzigingen t.o.v. v2:
 //  - ladder/{doc}: write gesplitst per doc-type. Coordinator-only voor archief,
@@ -13,6 +39,11 @@ rules_version = '2';
 //    speler-identiteit - niet gedeeld met iedere speler).
 //  - ladders/{id}/standen/{uid}: write door elke ingelogde speler die in de ladder
 //    zit (nodig voor syncStandenNaBevestigUitslag). Delete blijft coordinator.
+//  - v4.2.0: ladders/{id}/punten/{uid} toegevoegd (puntensysteem). Read alleen
+//    voor het puntenBeheerder-account; write voor niemand rechtstreeks — alle
+//    schrijfacties lopen via Cloud Functions (Admin SDK). LET OP: het veld
+//    puntenBeheerder:true moet handmatig op één spelers/{uid}-document worden
+//    gezet via de Firebase console — zie _project.md.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -37,6 +68,15 @@ service cloud.firestore {
         getSpelerData(request.auth.uid) != null &&
         (getSpelerData(request.auth.uid).rol == 'coordinator' ||
          getSpelerData(request.auth.uid).rol == 'beheerder');
+    }
+    // v4.2.0: puntensysteem — losstaand van rol, apart vlag op spelers/{uid}.
+    // Alleen dit account mag de ruwe punten (score) lezen. Instellen kan
+    // alleen handmatig in de Firebase console (eenmalige bootstrap), zodat
+    // geen enkele client dit voor zichzelf kan aanzetten.
+    function magPuntenZien() {
+      return isIngelogd() &&
+        getSpelerData(request.auth.uid) != null &&
+        getSpelerData(request.auth.uid).puntenBeheerder == true;
     }
     function onlyHcp() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hcp']);
@@ -90,18 +130,77 @@ service cloud.firestore {
                    || (isIngelogd() && isInLadder(ladderId))
                    || (isIngelogd() && heeftGeldigeInvite(ladderId));
 
-      // Stand per speler in deze ladder
+      // Stand per speler in deze ladder.
+      // v5.0.0 (punt 3): rank is niet langer door gewone spelers te wijzigen.
+      //
+      // Tot v4.2.0 mocht ELK ladderlid de stand van ELKE speler overschrijven -
+      // en juist die rank is wat iedereen ziet. Het slot op de punten-
+      // subcollectie beschermde dus een getal dat niemand ziet, terwijl het
+      // getal dat telt open stond.
+      //
+      // Wat wel moet blijven werken:
+      //  - de Cloud Functions schrijven de rank na een partij (Admin SDK,
+      //    omzeilt deze regels);
+      //  - coordinator/beheerder beheren standen vanuit de admin-schermen
+      //    (speler toevoegen/verwijderen, snapshot terugzetten, seizoen
+      //    archiveren, toernooi-uitslag verwerken);
+      //  - een speler synchroniseert zijn EIGEN handicap naar zijn eigen
+      //    stand-document na de eerste login.
+      // Alleen dat laatste is nog een speler-write, en die is beperkt tot het
+      // hcp-veld op het eigen document via onlyHcp().
       match /standen/{uid} {
         allow read:   if isIngelogd();
-        // Create: eigen stand mag door speler zelf (nodig bij registratie-flow,
-        // als de speler nog niet in spelerIds[] staat). Coord+in-ladder check
-        // dekt alle andere gevallen (bv. syncStandenNaBevestigUitslag).
-        allow create: if request.auth.uid == uid
-                     || isCoordinator()
-                     || isInLadder(ladderId);
-        // Update: alleen coord of bestaand ladder-lid (standen bijwerken na partij)
-        allow update: if isCoordinator() || isInLadder(ladderId);
+        allow create: if request.auth.uid == uid || isCoordinator();
+        allow update: if isCoordinator()
+                     || (request.auth.uid == uid && onlyHcp());
         allow delete: if isCoordinator();
+      }
+
+      // v5.0.0 (punt 4): partijen als eigen documenten i.p.v. een array in het
+      // ladderdocument. Metadata (baan, holes, spelers, matchups) staat in het
+      // partij-document; de scores staan per speler in een eigen document.
+      match /partijen/{partijId} {
+        allow read:   if isIngelogd();
+        // Aanmaken/wijzigen van een partij mag elk ladderlid (partij starten,
+        // speler toevoegen/verwijderen) - net als voorheen op het ladderdoc.
+        allow create, update: if isCoordinator() || isInLadder(ladderId);
+        allow delete: if isCoordinator() || isInLadder(ladderId);
+
+        // Scores: elke ingelogde speler die in de ladder zit mag schrijven.
+        // Bewust niet beperkt tot de eigen uid: flightgenoten houden elkaars
+        // kaart bij (zelfde reden als fix 7.8 bij de toernooiscores). Het
+        // verschil met vroeger is dat je nu alleen het document van EEN speler
+        // raakt, niet de scores van de hele ladder.
+        match /scores/{spelerUid} {
+          allow read:  if isIngelogd();
+          allow write: if isCoordinator() || isInLadder(ladderId);
+        }
+      }
+
+      // v5.0.0 (punt 2): verwerkings-stempel per partij. Dit is de
+      // idempotency-sleutel van verwerkPartijUitslag en tegelijk de
+      // momentopname voor draaiPartijTerug. Uitsluitend server-side beschreven;
+      // read is open voor ingelogde spelers zodat de app kan tonen wie een
+      // uitslag heeft ingediend.
+      match /verwerkt/{partijId} {
+        allow read:  if isIngelogd();
+        allow write: if false;
+      }
+      match /teruggedraaid/{partijId} {
+        allow read:  if isCoordinator();
+        allow write: if false;
+      }
+
+      // v4.2.0: puntensysteem — de ruwe score per speler. Read uitsluitend
+      // voor het puntenBeheerder-account (technisch afgedwongen, niet alleen
+      // verborgen in het scherm). Write staat voor NIEMAND rechtstreeks open:
+      // alle wijzigingen lopen via de Cloud Functions verwerkPartijUitslag,
+      // pasPuntenAan en herbereikenActiviteitDagelijks (Admin SDK, omzeilt
+      // deze rules bewust). Zo kan geen enkele client — ook een gemanipuleerde
+      // oude cache van de app niet — hier direct in schrijven.
+      match /punten/{uid} {
+        allow read:  if magPuntenZien();
+        allow write: if false;
       }
     }
 
@@ -146,8 +245,25 @@ service cloud.firestore {
     // Meerdere singleton-documents onder /ladder - splitsen per doc-type
     match /ladder/{doc} {
       // Read: ingelogde spelers voor alle app-data; invite-docs mogen ongeauthenticeerd
-      // gelezen worden (checkInviteLink doet dit voor login)
-      allow read: if isIngelogd() || doc.matches('invite_.*');
+      // gelezen worden (checkInviteLink doet dit voor login).
+      //
+      // v5.0.0 - BELANGRIJK: in Firestore worden meerdere `allow read`-regels
+      // met OR gecombineerd. Een latere, striktere regel maakt een eerdere
+      // ruimere regel dus NIET ongedaan. Daarom moeten de gevoelige documenten
+      // hier expliciet worden uitgezonderd; een aparte regel verderop volstaat
+      // niet.
+      //
+      // Uitgezonderd:
+      //  - watchPins / watchPinPogingen: alleen de Cloud Functions (punt 1)
+      //  - config: bevat initieelWachtwoord. Dit stond t/m v4.2.0 leesbaar voor
+      //    ELKE ingelogde speler, ondanks de beheerder-only regel verderop -
+      //    precies door dit OR-gedrag. Elke speler kon dus het initiele
+      //    wachtwoord van alle nieuwe accounts opvragen.
+      allow read: if (isIngelogd()
+                      && doc != 'watchPins'
+                      && doc != 'watchPinPogingen'
+                      && doc != 'config')
+                   || doc.matches('invite_.*');
 
       // archief: seizoen-historiek - alleen coordinator schrijft
       allow write: if doc == 'archief' && isCoordinator();
@@ -176,11 +292,21 @@ service cloud.firestore {
       allow read:  if doc == 'config' && isBeheerder();
       allow write: if doc == 'config' && isBeheerder();
 
-      // watchPins: 4-cijferige PIN → email koppeling voor watch.html login
-      // v3.0.0-11.77: publieke read zodat watch.html PIN kan opzoeken zonder auth.
-      // Bevat alleen @MPladder.stb e-mailadressen (geen echte e-mails).
-      allow read:  if doc == 'watchPins';
-      allow write: if doc == 'watchPins' && isIngelogd();
+      // watchPins: v5.0.0 VOLLEDIG DICHT (punt 1).
+      // Tot v4.2.0: `allow read: if true` op een document met Firebase
+      // refreshTokens erin. Een refreshToken is geen tijdelijk sleuteltje maar
+      // een permanente loper waarmee je onbeperkt nieuwe idTokens maakt. Omdat
+      // het project-ID in de broncode staat, kon iedereen dat document met een
+      // enkele ongeauthenticeerde request ophalen en inloggen als elke speler
+      // die ooit het rondescherm had geopend - beheerder inbegrepen.
+      // Nu: alleen gehashte, eenmalige PIN's met 15 minuten geldigheid, en
+      // uitsluitend benaderd door de Cloud Functions maakWatchPin en
+      // wisselWatchPin via de Admin SDK. Geen enkele client leest of schrijft
+      // hier nog. watchPinPogingen is de bijbehorende foutteller.
+      // Er staat hier bewust GEEN allow-regel voor watchPins/watchPinPogingen:
+      // in Firestore is "geen enkele regel die toestaat" gelijk aan weigeren.
+      // Een `allow ...: if false` toevoegen zou niets doen (regels worden met
+      // OR gecombineerd), dus het weren gebeurt in de read-regel hierboven.
 
       // invite_{ladderId}: genereren alleen coordinator; teller ophogen iedere ingelogde
       allow create: if doc.matches('invite_.*') && isCoordinator();

@@ -1,13 +1,16 @@
 // ============================================================
 //  uitslagen.js
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
+import { db, auth, functions, httpsCallable, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, alleLadders, activeLadderId, _beheerPartijId, _beheerWinnaars } from './store.js';
+
+// v4.2.0: zelfde Cloud Function als in ronde.js — zie de toelichting daar.
+const _verwerkPartijUitslagFnBeheer = httpsCallable(functions, 'verwerkPartijUitslag');
 import { slaActievePartijenOp, slaUitslagenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { mijnPartij } from './partij.js';
 import { getLadderSpelers, ladderStandenGeladen } from './ladder-view.js';
 import { renderLadder } from './ladder.js';
-import { renderRonde, showLadderChanges, syncStandenNaBevestigUitslag, verwijderPartijMetRetry } from './ronde.js';
+import { renderRonde, showLadderChanges, verwijderPartijMetRetry, wachtOpScoreOpslag } from './ronde.js';
 import { slaSnapshotOp } from './beheer.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { closeModal } from './admin.js';
@@ -133,7 +136,10 @@ function renderUitslagen() {
 
   // Gespeelde partijen
   const list = document.getElementById('uitslagen-list');
-  const alleUitslagen = alleLadders.flatMap(l => l.data?.uitslagen || []).sort((a, b) => (b.scoreTs || 0) - (a.scoreTs || 0));
+  // v5.0.0: ladderId meenemen zodat de coordinator een uitslag kan terugdraaien.
+  const alleUitslagen = alleLadders
+    .flatMap(l => (l.data?.uitslagen || []).map(u => ({ ...u, ladderId: u.ladderId || l.id })))
+    .sort((a, b) => (b.scoreTs || 0) - (a.scoreTs || 0));
   document.getElementById('uitslagen-count').textContent = alleUitslagen.length;
   if (alleUitslagen.length === 0) {
     list.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><p>Nog geen uitslagen.</p></div>';
@@ -154,9 +160,34 @@ function renderUitslagen() {
           <span>${esc(m.a)} vs ${esc(m.b)}</span>
           <span class="badge badge-green">⛳ ${esc(m.winnaar)}</span>
         </div>`).join('')}
-      ${heeftScorekaart && !ouderDan30Dagen ? `<button class="btn btn-sm btn-ghost" onclick="openScorekaartDetail(${JSON.stringify(u).replace(/"/g,'&quot;')})" style="margin-top:8px">📋 Scorekaart</button>` : ''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+        ${heeftScorekaart && !ouderDan30Dagen ? `<button class="btn btn-sm btn-ghost" onclick="openScorekaartDetail(${JSON.stringify(u).replace(/"/g,'&quot;')})">📋 Scorekaart</button>` : ''}
+        ${isBeheerder && u.partijId ? `<button class="btn btn-sm btn-ghost" style="color:var(--red);border-color:#f5c6cb" onclick="draaiUitslagTerug('${escAttr(u.ladderId || '')}','${escAttr(u.partijId)}')" title="Zet de ladderstand terug naar vóór deze partij">↩ Terugdraaien</button>` : ''}
+      </div>
     </div>`;
   }).join('');
+}
+
+// ============================================================
+//  UITSLAG TERUGDRAAIEN — v5.0.0 (punt 2)
+//  Scores blijven optioneel, dus de server kan een verkeerd gerapporteerde
+//  uitslag niet tegenhouden. Daarom moet hij herstelbaar zijn: deze knop zet
+//  standen en punten terug naar de momentopname van vóór het verwerken.
+//  Alleen zichtbaar en toegestaan voor coordinator/beheerder.
+// ============================================================
+const _draaiPartijTerugFn = httpsCallable(functions, 'draaiPartijTerug');
+
+async function draaiUitslagTerug(ladderId, partijId) {
+  if (!ladderId || !partijId) { toast('Deze uitslag kan niet worden teruggedraaid (geen partij-id)'); return; }
+  if (!confirm('Deze uitslag terugdraaien? De ladderstand gaat terug naar de situatie vóór deze partij.')) return;
+  try {
+    await _draaiPartijTerugFn({ ladderId, partijId, isTest: IS_TEST });
+    toast('Uitslag teruggedraaid — de ladderstand is hersteld');
+    renderUitslagen();
+  } catch(e) {
+    console.error('draaiPartijTerug mislukt:', e);
+    toast(e?.message || 'Terugdraaien mislukt');
+  }
 }
 
 function openBeheerPartij(partijId) {
@@ -234,66 +265,63 @@ async function bevestigBeheerUitslag() {
 
   closeModal('modal-beheer-partij');
 
-  const rankSpelers = getLadderSpelers(p.ladderId).map(s => ({ ...s }));
+  // v4.2.0: net als in ronde.js — de rang/puntenberekening loopt via de
+  // Cloud Function, niet meer lokaal.
+  const matchupsPayload = p.matchups
+    .map((m, idx) => ({ m, kant: _beheerWinnaars[idx] }))
+    .filter(x => x.kant !== 'SKIP')
+    .map(({ m, kant }) => ({
+      spelerAUid: m.spelerA.uid,
+      spelerBUid: m.spelerB.uid,
+      winnaarUid: kant === 'A' ? m.spelerA.uid : m.spelerB.uid,
+    }));
 
-  // v3.0.5: tweede vangnet — alle spelers rang 0 ⇒ standen niet betrouwbaar geladen.
-  if (rankSpelers.length > 0 && rankSpelers.every(s => !(s.rank > 0))) {
-    toast('Ladderstanden nog niet geladen — probeer opnieuw');
-    return;
-  }
-  rankSpelers.forEach(s => { s.prevRank = s.rank; });
-  const changes = [];
-
-  p.matchups.forEach((m, idx) => {
-    const kant = _beheerWinnaars[idx];
-    if (kant === 'SKIP') return;
-    const winnaar = kant === 'A' ? m.spelerA : m.spelerB;
-    const verliezer = kant === 'A' ? m.spelerB : m.spelerA;
-    const sw = rankSpelers.find(s => s.uid === winnaar.uid);
-    const sv = rankSpelers.find(s => s.uid === verliezer.uid);
-    if (!sw || !sv) { return; }
-    const oldWrank = sw.rank, oldVrank = sv.rank;
-    sw.partijen++; sv.partijen++; sw.gewonnen++;
-    let newWrank, newVrank;
-    const swRank = sw.rank;
-    const svRank = sv.rank;
-    const cfg2 = getLadderConfig(p.ladderId);
-    if (swRank > svRank) {
-      newWrank = Math.max(1, swRank - cfg2.laagStijg);
-      const verschil2 = swRank - svRank;
-      if (cfg2.verliezerNaarWinnaar && verschil2 <= cfg2.drempel) {
-        newVrank = swRank;
-      } else {
-        newVrank = svRank + cfg2.laagZak;
-      }
-    } else {
-      newWrank = Math.max(1, swRank - cfg2.hoogStijg);
-      newVrank = svRank + cfg2.hoogZak;
+  let changes = [];
+  if (matchupsPayload.length > 0) {
+    // v5.0.0 (punt 4): wachten tot openstaande scores zijn weggeschreven.
+    await wachtOpScoreOpslag();
+    try {
+      // v5.0.0 (punt 2): partijId gaat mee zodat de server kan controleren dat
+      // de partij bestaat, de matchups erbij horen en hij niet al verwerkt is.
+      const resultaat = await _verwerkPartijUitslagFnBeheer({
+        ladderId: p.ladderId,
+        partijId: _beheerPartijId,
+        isTest: IS_TEST,
+        matchups: matchupsPayload,
+      });
+      changes = resultaat?.data?.changes || [];
+    } catch(e) {
+      console.error('verwerkPartijUitslag (beheer) mislukt:', e);
+      const melding = e?.message && e.code !== 'internal'
+        ? e.message
+        : 'Ladderstand bijwerken mislukt — probeer opnieuw.';
+      toast(melding);
+      return;
     }
-    const n2 = rankSpelers.length;
-    const gereserveerd2 = new Set([newWrank, newVrank]);
-    const beschikbaar2 = [];
-    for (let r = 1; r <= n2; r++) { if (!gereserveerd2.has(r)) beschikbaar2.push(r); }
-    const anderen2 = rankSpelers
-      .filter(s => s.uid !== sw.uid && s.uid !== sv.uid)
-      .sort((a, b) => a.rank - b.rank);
-    anderen2.forEach((s, i) => { s.rank = beschikbaar2[i]; });
-    changes.push({ winnaar: sw.naam, verliezer: sv.naam, wOud: oldWrank, wNieuw: newWrank, vOud: oldVrank, vNieuw: newVrank });
-    sw.rank = newWrank; sv.rank = newVrank;
-  });
+  }
 
-  [...rankSpelers].sort((a,b) => a.rank - b.rank).forEach((s,i) => s.rank = i+1);
-
+  // v5.0.0 (punt 6): uids naast de namen, zodat de activiteitsberekening
+  // niet meer op spelersnaam hoeft te werken.
   const uitslag = {
     datum: new Date().toLocaleDateString('nl-NL'),
+    scoreTs: Date.now(),
     baan: p.baan,
+    partijId: _beheerPartijId,
     spelers: p.spelers.map(s => s.naam),
+    spelerUids: p.spelers.map(s => s.uid),
     matchups: p.matchups
       .map((m, i) => ({ m, kant: _beheerWinnaars[i] }))
       .filter(x => x.kant !== 'SKIP')
       .map(({ m, kant }) => ({
         a: m.spelerA.naam, b: m.spelerB.naam,
         winnaar: kant === 'A' ? m.spelerA.naam : m.spelerB.naam
+      })),
+    matchupUids: p.matchups
+      .map((m, i) => ({ m, kant: _beheerWinnaars[i] }))
+      .filter(x => x.kant !== 'SKIP')
+      .map(({ m, kant }) => ({
+        a: m.spelerA.uid, b: m.spelerB.uid,
+        winnaar: kant === 'A' ? m.spelerA.uid : m.spelerB.uid
       }))
   };
   const lIdx = alleLadders.findIndex(l => l.id === p.ladderId);
@@ -306,7 +334,7 @@ async function bevestigBeheerUitslag() {
       .filter(ap => ap.partijId !== _beheerPartijId);
   }
   await verwijderPartijMetRetry(p.ladderId, _beheerPartijId);
-  await syncStandenNaBevestigUitslag(p.ladderId, rankSpelers);
+  // v4.2.0: standen/{uid} is al bijgewerkt door de Cloud Function hierboven.
   slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam.split(' ')[0]).join(' vs ')}`, p.ladderId);
   showLadderChanges(changes);
   } catch(e) { console.error('bevestigBeheerUitslag mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
@@ -504,4 +532,4 @@ window.verversLiveScoreBord = verversLiveScoreBord;
 
 // ============================================================
 
-export { bevestigBeheerUitslag, openScorekaartDetail, renderUitslagen };
+export { bevestigBeheerUitslag, openScorekaartDetail, renderUitslagen , draaiUitslagTerug };
