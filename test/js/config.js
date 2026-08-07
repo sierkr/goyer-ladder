@@ -3,7 +3,11 @@
 // ============================================================
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import {
+  getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc,
+  query, where, orderBy
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword,
   signOut, GoogleAuthProvider, signInWithPopup,
@@ -36,7 +40,40 @@ export const appCheck = initializeAppCheck(app, {
 // named Firestore database 'test' (los van productie). Auth en App Check zijn
 // gedeeld (zelfde project + zelfde sierkr.github.io-domein).
 export const IS_TEST = typeof location !== 'undefined' && location.pathname.includes('/test/');
-export const db = IS_TEST ? getFirestore(app, 'test') : getFirestore(app);
+
+// v5.0.0: Firestore offline-cache aanzetten.
+//
+// WAAROM DIT NODIG IS: op de baan is het bereik vaak slecht. Zonder offline-
+// cache houdt de SDK schrijfacties alleen in het geheugen vast; sluit de app
+// (of iOS de PWA) af, dan is de score weg. Met de persistente cache overleven
+// wachtende schrijfacties het afsluiten en worden ze bij verbinding alsnog
+// verstuurd.
+//
+// Dit kon pas veilig aan ná de omzetting naar scores-per-speler (punt 4). In
+// de oude opzet schreef elke wijziging de complete actievePartijen-array van
+// de hele ladder; een schrijfactie die tien minuten later alsnog binnenkwam,
+// overschreef dan alles wat er intussen was gebeurd. Nu raakt zo'n uitgestelde
+// schrijfactie alleen het document van één speler.
+//
+// persistentMultipleTabManager: nodig omdat de app in meerdere tabs of naast
+// de PWA open kan staan. Valt stil terug op de geheugencache als IndexedDB
+// niet beschikbaar is (privémodus, oudere browsers) — dan werkt de app als
+// voorheen, alleen zonder offline-bescherming.
+function _maakDb() {
+  const instellingen = {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  };
+  try {
+    return IS_TEST
+      ? initializeFirestore(app, instellingen, 'test')
+      : initializeFirestore(app, instellingen);
+  } catch (e) {
+    console.warn('Firestore offline-cache niet beschikbaar, val terug op standaard:', e);
+    return IS_TEST ? getFirestore(app, 'test') : getFirestore(app);
+  }
+}
+
+export const db = _maakDb();
 export const auth = getAuth(app);
 
 // v3.0.6: pin de auth-persistentie expliciet op IndexedDB (robuust op iOS,

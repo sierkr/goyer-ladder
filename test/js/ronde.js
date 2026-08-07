@@ -1,13 +1,30 @@
 // ============================================================
 //  ronde.js
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
+import { db, auth, functions, httpsCallable, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, alleLadders, activeLadderId, _usersCache, _verwijderdePartijIds } from './store.js';
 import { slaActievePartijenOp, slaUitslagenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { closeModal } from './admin.js';
 import { kortNaamMap, mijnPartij, renderHcpBlok } from './partij.js';
 import { getLadderSpelers, ladderStandenGeladen } from './ladder-view.js';
 import { renderLadder, berekenWeergaveRangen } from './ladder.js';
+
+// v4.2.0: puntensysteem — de partij-uitslag wordt niet meer client-side
+// verwerkt maar via een Cloud Function (verwerkPartijUitslag), zodat de
+// afgeschermde punten (ladders/{id}/punten/{uid}) correct berekend kunnen
+// worden zonder dat een gewone speler ze hoeft te kunnen lezen. isTest gaat
+// mee zodat de functie gegarandeerd in dezelfde database schrijft als waar
+// de speler op dat moment zit (productie of test — nooit de verkeerde).
+const _verwerkPartijUitslagFn = httpsCallable(functions, 'verwerkPartijUitslag');
+// v5.0.0 (punt 1): watch-PIN wordt server-side gemaakt; er staan geen
+// refreshTokens meer in Firestore.
+const _maakWatchPinFn = httpsCallable(functions, 'maakWatchPin');
+// v5.0.0 (punt 4): scores per speler in een eigen document.
+import {
+  schrijfScore, luisterOpScores, leesScores, maakPartijDocument,
+  voegSpelerToeAanPartij, verwijderSpelerUitPartijDoc, verwijderPartijDocument,
+  arrayNaarHolesMap
+} from './scores.js';
 import { slaSnapshotOp } from './beheer.js';
 import { verwerkKnockoutUitslag } from './knockout.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -20,13 +37,46 @@ import { renderUitslagen } from './uitslagen.js';
 
 //  RONDE (live scorekaart)
 // ============================================================
+// ─── Live scores van de eigen partij ─────────────────────────
+// v5.0.0 (punt 4): we luisteren op de scoredocumenten van de partij waar de
+// speler zelf in zit — een handvol kleine documenten in plaats van het
+// complete ladderdocument bij elke toetsaanslag van elke speler. Scheelt
+// merkbaar dataverbruik en accu op de baan.
+let _scoreUnsub = null;
+let _scoreUnsubPartijId = null;
+
+function koppelScoreListener(p) {
+  if (!p || !p.ladderId || !p.partijId) return;
+  if (_scoreUnsubPartijId === p.partijId && _scoreUnsub) return; // al gekoppeld
+  ontkoppelScoreListener();
+  _scoreUnsubPartijId = p.partijId;
+  _scoreUnsub = luisterOpScores(p.ladderId, p.partijId, p, () => {
+    // Scores van (bijvoorbeeld) een flightgenoot binnengekomen: kaart en
+    // matchstand verversen. renderScorecard() alleen aanroepen als het
+    // scherm daadwerkelijk zichtbaar is, om typen niet te onderbreken.
+    try {
+      const zichtbaar = document.getElementById('page-ronde')?.classList.contains('active');
+      if (zichtbaar) renderScorecard();
+      renderMatchOverview();
+    } catch (e) { console.warn('score-update renderen mislukt:', e); }
+  });
+}
+
+function ontkoppelScoreListener() {
+  if (_scoreUnsub) { try { _scoreUnsub(); } catch(_) {} }
+  _scoreUnsub = null;
+  _scoreUnsubPartijId = null;
+}
+
 function renderRonde() {
   const p = mijnPartij();
   if (!p) {
+    ontkoppelScoreListener();
     document.getElementById('ronde-empty').style.display = 'block';
     document.getElementById('ronde-content').style.display = 'none';
     return;
   }
+  koppelScoreListener(p);
   document.getElementById('ronde-empty').style.display = 'none';
   document.getElementById('ronde-content').style.display = 'block';
   document.getElementById('ronde-baan-naam').textContent = p.baan;
@@ -176,15 +226,116 @@ function renderScorecard() {
   }
 }
 
-async function updateScore(spelerId, holeIdx, val) {
+// ============================================================
+//  SCORE OPSLAAN — v5.0.0 (punt 4)
+// ------------------------------------------------------------
+//  Tot v4.2.0 schreef elke toetsaanslag via slaActievePartijenOp() de
+//  COMPLETE actievePartijen-array van de hele ladder terug. Twee flights op
+//  dezelfde ladder wisten daarmee elkaars holes, en het horloge deed hetzelfde
+//  op datzelfde veld. Zie js/scores.js voor de volledige uitleg.
+//
+//  Nu: één veld van één speler (`holes.7` in
+//  ladders/{id}/partijen/{partijId}/scores/{uid}). Botsen kan niet meer.
+//
+//  De oude array wordt nog wel bijgewerkt, maar vertraagd en als afgeleide
+//  kopie — zie _planLegacySync() hieronder.
+// ============================================================
 
+// Verzamelt schrijfacties per (partij, speler, hole) en stuurt ze na een korte
+// stilte weg. Voorkomt drie schrijfacties als iemand een score twee keer
+// corrigeert, zonder dat een score ooit langer dan een halve seconde blijft
+// hangen. Bij het afsluiten van de partij wordt de buffer eerst geleegd.
+const _scoreDebounce = new Map(); // sleutel -> timeoutId
+const _scoreInVlucht = new Set(); // sleutels die nog wachten op wegschrijven
+const SCORE_DEBOUNCE_MS = 400;
+
+function _scoreSleutel(ladderId, partijId, uid, holeIdx) {
+  return `${ladderId}|${partijId}|${uid}|${holeIdx}`;
+}
+
+async function _flushScore(ladderId, partijId, uid, holeIdx, waarde) {
+  const sleutel = _scoreSleutel(ladderId, partijId, uid, holeIdx);
   try {
-  const p = mijnPartij();
-  if (!p) return;
-  p.scores[spelerId][holeIdx] = val === '' ? null : parseInt(val);
-  await slaActievePartijenOp(p.ladderId);
-  renderMatchOverview();
+    await schrijfScore(ladderId, partijId, uid, holeIdx, waarde);
+  } catch (e) {
+    // Niet stil laten mislukken: de speler denkt anders dat de score staat.
+    console.error('[updateScore] opslaan mislukt:', e?.code || e);
+    toast('Score kon niet worden opgeslagen — controleer je verbinding');
+  } finally {
+    _scoreInVlucht.delete(sleutel);
+    _scoreDebounce.delete(sleutel);
+  }
+  _planLegacySync(ladderId);
+}
+
+/**
+ * Wacht tot alle openstaande scores zijn weggeschreven. Wordt aangeroepen
+ * vóór het afsluiten van een partij, zodat de laatste hole gegarandeerd
+ * meetelt in de uitslagcontrole van de Cloud Function.
+ */
+async function wachtOpScoreOpslag() {
+  // Alle lopende debounces meteen uitvoeren.
+  for (const [sleutel, info] of Array.from(_scoreDebounce.entries())) {
+    clearTimeout(info.timeoutId);
+    _scoreDebounce.delete(sleutel);
+    await _flushScore(info.ladderId, info.partijId, info.uid, info.holeIdx, info.waarde);
+  }
+  // Kort wachten tot eventueel nog vliegende writes klaar zijn.
+  for (let i = 0; i < 20 && _scoreInVlucht.size > 0; i++) {
+    await new Promise(r => setTimeout(r, 50));
+  }
+}
+
+async function updateScore(spelerId, holeIdx, val) {
+  try {
+    const p = mijnPartij();
+    if (!p) return;
+
+    const waarde = (val === '' || val === null || val === undefined) ? null : parseInt(val);
+    if (waarde !== null && !Number.isFinite(waarde)) return;
+
+    // Lokaal meteen bijwerken zodat het scherm direct reageert; de listener
+    // in luisterOpScores() bevestigt dit zo meteen vanuit Firestore.
+    if (!p.scores) p.scores = {};
+    if (!Array.isArray(p.scores[spelerId])) {
+      p.scores[spelerId] = new Array(p.holes.length).fill(null);
+    }
+    p.scores[spelerId][holeIdx] = waarde;
+    renderMatchOverview();
+
+    const sleutel = _scoreSleutel(p.ladderId, p.partijId, spelerId, holeIdx);
+    const bestaand = _scoreDebounce.get(sleutel);
+    if (bestaand) clearTimeout(bestaand.timeoutId);
+    _scoreInVlucht.add(sleutel);
+    const info = {
+      ladderId: p.ladderId, partijId: p.partijId, uid: spelerId, holeIdx, waarde,
+      timeoutId: setTimeout(() => {
+        _scoreDebounce.delete(sleutel);
+        _flushScore(p.ladderId, p.partijId, spelerId, holeIdx, waarde);
+      }, SCORE_DEBOUNCE_MS),
+    };
+    _scoreDebounce.set(sleutel, info);
   } catch(e) { console.error('updateScore mislukt:', e); }
+}
+
+// ─── Overgangskopie naar de oude array ───────────────────────
+// Tijdens de dubbel-schrijven-periode blijft actievePartijen[].scores gevuld,
+// zodat een speler die de update nog niet binnen heeft de kaart blijft zien.
+// Dit gebeurt vertraagd (max één keer per 5 seconden) en op basis van de
+// lokale cache — die wordt gevoed door de scores-listener en bevat dus de
+// samengevoegde waarheid van alle spelers in de partij. Raakt deze kopie een
+// keer achter doordat twee flights tegelijk schrijven, dan is dat onschadelijk:
+// de echte scores staan in de subcollectie en die heeft bij lezen voorrang.
+const _legacyTimers = new Map();
+const LEGACY_SYNC_MS = 5000;
+
+function _planLegacySync(ladderId) {
+  if (_legacyTimers.has(ladderId)) return;
+  _legacyTimers.set(ladderId, setTimeout(async () => {
+    _legacyTimers.delete(ladderId);
+    try { await slaActievePartijenOp(ladderId); }
+    catch (e) { console.warn('[legacy-sync] actievePartijen bijwerken mislukt:', e?.code || e); }
+  }, LEGACY_SYNC_MS));
 }
 
 function toggleScorecard() {
@@ -522,6 +673,14 @@ async function bevestigToevoegenRonde() {
   p.spelers.push(nieuweSpeler);
   p.scores[speler.uid] = Array(p.holes.length).fill(null);
 
+  // v5.0.0 (punt 4): ook een leeg scoredocument voor de nieuwe speler, en de
+  // gewijzigde matchups in het partij-document bijwerken (de server gebruikt
+  // die om de uitslag te controleren).
+  try {
+    await voegSpelerToeAanPartij(p.ladderId, p.partijId, nieuweSpeler, p.holes.length);
+    await maakPartijDocument(p.ladderId, p);
+  } catch(e) { console.warn('partij-document bijwerken mislukt:', e?.code || e); }
+
   await slaActievePartijenOp(p.ladderId);
   closeModal('modal-toevoegen-ronde');
   renderRonde();
@@ -551,10 +710,25 @@ async function editPartijHcp(spelerId) {
     m.hcpOntvanger = hoger.uid;
     m.hcpSlagen = hcpDiff;
   });
+  // v5.0.0: de server controleert de uitslag tegen de matchups in het
+  // partij-document, dus die moet mee als de slagen wijzigen.
+  await synchroniseerPartijDoc(p);
   await slaActievePartijenOp(p.ladderId);
   renderRonde();
   toast(`Handicap ${speler.naam.split(' ')[0]} bijgewerkt ✓`);
   } catch(e) { console.error('editPartijHcp mislukt:', e); }
+}
+
+// ============================================================
+//  Partij-document bijwerken (v5.0.0, punt 4)
+//  Aanroepen zodra de METADATA van een lopende partij verandert: spelers,
+//  matchups, handicapslagen, speltype. De scores zelf gaan niet via deze weg —
+//  die staan per speler in de scores-subcollectie.
+// ============================================================
+async function synchroniseerPartijDoc(p) {
+  if (!p?.ladderId || !p?.partijId) return;
+  try { await maakPartijDocument(p.ladderId, p); }
+  catch (e) { console.warn('[synchroniseerPartijDoc] mislukt:', e?.code || e); }
 }
 
 async function verwijderSpelerUitRonde(spelerId) {
@@ -586,6 +760,10 @@ async function verwijderSpelerUitRonde(spelerId) {
   delete p.scores[spelerId];
   delete p.scores[speler.uid]; // veiligheid
 
+  // v5.0.0 (punt 4): scoredocument van deze speler opruimen.
+  try { await verwijderSpelerUitPartijDoc(p.ladderId, p.partijId, spelerId); }
+  catch(e) { console.warn('scoredocument verwijderen mislukt:', e?.code || e); }
+
   if (wordtMatchplay) {
     // Zet speltype om naar matchplay
     p.speltype = 'matchplay';
@@ -602,10 +780,12 @@ async function verwijderSpelerUitRonde(spelerId) {
     }];
     // Reconstrueer match-stand over reeds gespeelde holes via berekenMatchStand()
     // — dat werkt automatisch zodra matchup aanwezig is en scores bestaan.
+    await synchroniseerPartijDoc(p);
     await slaActievePartijenOp(p.ladderId);
     renderRonde();
     toast(`${speler.naam.split(' ')[0]} verwijderd · Omgezet naar matchplay ⚡`);
   } else {
+    await synchroniseerPartijDoc(p);
     await slaActievePartijenOp(p.ladderId);
     renderRonde();
     toast(`${speler.naam.split(' ')[0]} verwijderd uit partij`);
@@ -900,106 +1080,73 @@ async function bevestigUitslag() {
 
   closeModal('modal-uitslag');
 
-  const changes = [];
-  // Laad actuele ranking uit standen/{uid} via getLadderSpelers — niet uit singleton state
-  // Maak een mutable lokale kopie voor de rank-berekening
-  const rankSpelers = getLadderSpelers(p.ladderId).map(s => ({ ...s }));
-
-  // v3.0.5: tweede vangnet — als (ondanks de guard) elke speler rang 0 heeft,
-  // zijn de standen niet betrouwbaar geladen; afbreken i.p.v. alles te overschrijven.
-  if (rankSpelers.length > 0 && rankSpelers.every(s => !(s.rank > 0))) {
-    toast('Ladderstanden nog niet geladen — probeer opnieuw');
-    return;
-  }
-  rankSpelers.forEach(s => { s.prevRank = s.rank; });
-
-  // v3.0.2: Snapshot van de WEERGAVERANG (activiteits-gecorrigeerde positie)
-  // vóór verwerking. Het uitslagbericht toont deze nummers i.p.v. de rauwe
-  // competitierank, zodat het bericht overeenkomt met de ladderlijst.
-  const weergaveVoor = berekenWeergaveRangen(p.ladderId, rankSpelers.map(s => ({ ...s })));
-
-  // Sorteer matchups op volgorde van afronding (timestamp)
+  // Sorteer matchups op volgorde van afronding (timestamp) — bepaalt alleen de
+  // verwerkingsvolgorde bij meerdere matchups in dezelfde partij.
   const timestamps = p._modalTimestamps || p.matchups.map(() => 0);
   const volgorde = p.matchups
     .map((m, idx) => ({ m, idx, ts: timestamps[idx] ?? Infinity }))
     .sort((a, b) => a.ts - b.ts);
 
-  volgorde.forEach(({ m, idx }) => {
-    // Overgeslagen matchups tellen niet mee voor de ladder
-    if (p._modalSkipped?.[idx]) return;
-    const winnaarKant = p._modalWinnaars[idx];
-    const winnaar = winnaarKant === 'A' ? m.spelerA : m.spelerB;
-    const verliezer = winnaarKant === 'A' ? m.spelerB : m.spelerA;
+  // v4.2.0: geen lokale rang/puntenberekening meer — dat gebeurt server-side
+  // in de Cloud Function verwerkPartijUitslag, zodat de afgeschermde punten
+  // (ladders/{id}/punten/{uid}) nooit door een gewone speler gelezen hoeven
+  // te worden om zijn eigen nieuwe positie te kunnen bepalen.
+  const matchupsPayload = volgorde
+    .filter(({ idx }) => !p._modalSkipped?.[idx])
+    .map(({ m, idx }) => ({
+      spelerAUid: m.spelerA.uid,
+      spelerBUid: m.spelerB.uid,
+      winnaarUid: p._modalWinnaars[idx] === 'A' ? m.spelerA.uid : m.spelerB.uid,
+    }));
 
-    // Zoek speler in lokale rankSpelers kopie op uid
-    const sw = rankSpelers.find(s => s.uid === winnaar.uid) || null;
-    const sv = rankSpelers.find(s => s.uid === verliezer.uid) || null;
-
-    // Gastspelers of spelers niet in ladder — niet verwerken in ladderstand
-    const heeftGast = winnaar.uid?.startsWith('gast_') || verliezer.uid?.startsWith('gast_') ||
-                      !sw || !sv;
-    if (heeftGast) {
+  let changes = [];
+  if (matchupsPayload.length > 0) {
+    // v5.0.0 (punt 4): eerst zeker weten dat elke ingevulde hole is
+    // weggeschreven. Anders zou de server de laatste hole nog niet zien bij
+    // de uitslagcontrole hieronder.
+    await wachtOpScoreOpslag();
+    try {
+      // v5.0.0 (punt 2): partijId gaat mee. De server controleert daarmee dat
+      // de partij bestaat, dat deze matchups erbij horen, dat jij meespeelde,
+      // en dat de partij niet al eerder is verwerkt. Scores blijven optioneel:
+      // alleen als ze de match onmiskenbaar beslissen wordt de winnaar getoetst.
+      const resultaat = await _verwerkPartijUitslagFn({
+        ladderId: p.ladderId,
+        partijId: p.partijId,
+        isTest: IS_TEST,
+        matchups: matchupsPayload,
+      });
+      changes = resultaat?.data?.changes || [];
+      if (resultaat?.data?.alVerwerkt) {
+        console.info('[bevestig] partij was al verwerkt — geen dubbeltelling');
+      }
+    } catch(e) {
+      console.error('verwerkPartijUitslag mislukt:', e);
+      // De server geeft nu begrijpelijke redenen terug (verkeerde winnaar bij
+      // ingevulde scores, geen deelnemer, partij niet gevonden). Die tonen we
+      // letterlijk, want ze zijn voor de speler oplosbaar.
+      const melding = e?.message && e.code !== 'internal'
+        ? e.message
+        : 'Ladderstand bijwerken mislukt — scores zijn niet verwerkt. Probeer opnieuw.';
+      toast(melding);
       return;
     }
-    const oldWrank = sw.rank;
-    const oldVrank = sv.rank;
+  }
 
-    sw.partijen++; sv.partijen++; sw.gewonnen++;
-
-    let newWrank, newVrank;
-    const swRank = sw.rank;
-    const svRank = sv.rank;
-    const cfg = getLadderConfig(p.ladderId);
-
-    if (swRank > svRank) {
-      // Lager gerankte wint
-      newWrank = Math.max(1, swRank - cfg.laagStijg);
-      // Verliezer naar plek van winnaar als verschil <= drempel?
-      const verschil = swRank - svRank;
-      if (cfg.verliezerNaarWinnaar && verschil <= cfg.drempel) {
-        newVrank = swRank; // verliezer naar oorspronkelijke plek winnaar
-      } else {
-        newVrank = svRank + cfg.laagZak;
-      }
-      // v3.0.0-11.23: oude regel `if (newWrank >= newVrank) newVrank = newWrank + 1`
-      // verwijderd — die gooide bij grote rank-verschillen de verliezer onterecht
-      // naar de plek van de (gestegen) winnaar (bv. ▼58 plekken na 1 verlies).
-      // In de "lager-gerankte wint" tak geldt altijd newWrank < newVrank, dus
-      // de check is daar ook overbodig.
-    } else {
-      // Hoger gerankte wint
-      newWrank = Math.max(1, swRank - cfg.hoogStijg);
-      newVrank = svRank + cfg.hoogZak;
-    }
-
-    // Wijs beschikbare ranks toe aan andere spelers in relatieve volgorde
-    const n = rankSpelers.length;
-    const gereserveerd = new Set([newWrank, newVrank]);
-    const beschikbaar = [];
-    for (let r = 1; r <= n; r++) { if (!gereserveerd.has(r)) beschikbaar.push(r); }
-    const anderen = rankSpelers
-      .filter(s => s.uid !== sw.uid && s.uid !== sv.uid)
-      .sort((a, b) => a.rank - b.rank);
-    anderen.forEach((s, i) => { s.rank = beschikbaar[i]; });
-
-    changes.push({
-      winnaar: sw.naam, verliezer: sv.naam,
-      winnaarUid: sw.uid, verliezerUid: sv.uid,
-      // Competitierank-fallback (gebruikt als weergaverang ontbreekt)
-      wRankOud: oldWrank, wRankNieuw: newWrank, vRankOud: oldVrank, vRankNieuw: newVrank,
-    });
-    sw.rank = newWrank;
-    sv.rank = newVrank;
-  });
-
-  // Ranks zijn al correct toegewezen per matchup — geen extra normalisatie nodig
-
-  // Save uitslag in state (samenvatting)
+  // Save uitslag in state (samenvatting) — blijft client-side, telt mee voor
+  // de activiteitsberekening (inactiviteit/frequentie/diversiteit) van volgende partijen.
+  // v5.0.0 (punt 6): uids gaan mee naast de namen. De activiteitsberekening
+  // (inactiviteit/frequentie/diversiteit) werkte op spelersnaam, waardoor twee
+  // spelers met dezelfde naam samensmolten en een naamswijziging iemands
+  // historie wiste — terwijl die statistiek meebepaalt waar je op de ladder
+  // staat. De namen blijven staan zodat oude schermen blijven werken.
   const uitslag = {
     datum: new Date().toLocaleDateString('nl-NL'),
     scoreTs: Date.now(),
     baan: p.baan,
     spelers: p.spelers.map(s => s.naam),
+    spelerUids: p.spelers.map(s => s.uid),
+    partijId: p.partijId,
     matchups: p.matchups
       .filter((m, i) => !p._modalSkipped?.[i])
       .map((m, i) => {
@@ -1008,23 +1155,17 @@ async function bevestigUitslag() {
           a: m.spelerA.naam, b: m.spelerB.naam,
           winnaar: p._modalWinnaars[origIdx] === 'A' ? m.spelerA.naam : m.spelerB.naam
         };
+      }),
+    matchupUids: p.matchups
+      .filter((m, i) => !p._modalSkipped?.[i])
+      .map((m) => {
+        const origIdx = p.matchups.indexOf(m);
+        return {
+          a: m.spelerA.uid, b: m.spelerB.uid,
+          winnaar: p._modalWinnaars[origIdx] === 'A' ? m.spelerA.uid : m.spelerB.uid
+        };
       })
   };
-  // v3.0.2: Bereken de WEERGAVERANG NÁ verwerking en zet de changes om naar
-  // deze getallen (dezelfde die op de ladderlijst staan). De net gespeelde
-  // partij telt mee voor de activiteitsberekening via extraUitslag, zodat de
-  // "na"-positie klopt met wat de ladder direct na afsluiten toont. Belangrijk:
-  // dit gebeurt VÓÓR de unshift hieronder, anders zou de partij dubbel tellen.
-  const weergaveNa = berekenWeergaveRangen(
-    p.ladderId, rankSpelers,
-    { spelers: uitslag.spelers, matchups: uitslag.matchups }
-  );
-  changes.forEach(c => {
-    c.wOud   = weergaveVoor[c.winnaarUid]   ?? c.wRankOud;
-    c.wNieuw = weergaveNa[c.winnaarUid]     ?? c.wRankNieuw;
-    c.vOud   = weergaveVoor[c.verliezerUid] ?? c.vRankOud;
-    c.vNieuw = weergaveNa[c.verliezerUid]   ?? c.vRankNieuw;
-  });
 
   // Sla uitslag op in alleLadders[idx] en naar Firestore
   const ladderIdx = alleLadders.findIndex(l => l.id === p.ladderId);
@@ -1065,13 +1206,10 @@ async function bevestigUitslag() {
 
   // Verifieer dat de partij echt weg is (race-conditie protection)
   await verwijderPartijMetRetry(p.ladderId, p.partijId);
-  // Sync rankSpelers naar standen/{uid}
-  await syncStandenNaBevestigUitslag(p.ladderId, rankSpelers, {
-    matchups: p.matchups,
-    winnaars: p._modalWinnaars,
-    skipped: p._modalSkipped,
-    spelers: p.spelers,
-  });
+  // v4.2.0: standen/{uid} (rank/partijen/gewonnen) is al bijgewerkt door de
+  // Cloud Function hierboven — syncStandenNaBevestigUitslag() is hier niet
+  // meer nodig (en zou anders de server-berekening overschrijven met stale
+  // client-data, aangezien rankSpelers niet meer lokaal wordt bijgehouden).
   slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam).join(' vs ')}`, p.ladderId);
 
   // Update knockout bracket als dit een knockout ladder is
@@ -1085,6 +1223,14 @@ async function bevestigUitslag() {
 // terwijl andere instances tegelijk wijzigen.
 async function verwijderPartijMetRetry(ladderId, partijId, maxPogingen = 3) {
   if (!ladderId || !partijId) return;
+
+  // v5.0.0 (punt 4): dit is het enige punt waar een partij wordt opgeruimd,
+  // dus ook de plek om het partij-document en de scoredocumenten weg te halen.
+  // Eerst de listener loskoppelen: anders luistert die nog op documenten die
+  // we net verwijderen.
+  if (_scoreUnsubPartijId === partijId) ontkoppelScoreListener();
+  await verwijderPartijDocument(ladderId, partijId);
+
   for (let poging = 1; poging <= maxPogingen; poging++) {
     try {
       const ladderRef = doc(db, 'ladders', ladderId);
@@ -1232,150 +1378,95 @@ async function editMatchupSlagen(matchIdx) {
 window.editMatchupSlagen = editMatchupSlagen;
 
 // ============================================================
-//  FASE 9B: Sync state.spelers ranks/stats naar standen/{uid}
+//  syncStandenNaBevestigUitslag — VERWIJDERD in v5.0.0 (punt 3)
+// ------------------------------------------------------------
+//  Deze functie schreef standen/{uid} rechtstreeks vanuit de client. Sinds
+//  v4.2.0 werd hij al niet meer aangeroepen (de Cloud Function
+//  verwerkPartijUitslag doet dit werk), maar hij stond nog wel geexporteerd —
+//  en zolang die schrijfroute bestond, moest firestore.rules elk ladderlid
+//  schrijfrechten op de stand van elke speler geven.
+//
+//  Nu de functie weg is, kunnen die rechten dicht: standen is read-only voor
+//  clients, op de eigen handicap na. Zie firestore.rules.
 // ============================================================
-// Na elke bevestigUitslag schrijven we naast ladders.spelers[] ook
-// naar de standen/{uid} subcollectie zodat de view-laag up-to-date is.
-// Sync standen/{uid} na bevestigUitslag — uid staat nu direct op speler
-async function syncStandenNaBevestigUitslag(ladderId, rankSpelers, partijInfo = null) {
-  try {
-    const ladder = alleLadders.find(l => l.id === ladderId);
-    if (!ladder) return;
-    const spelerIdSet = new Set(
-      (ladder.spelerIds || ladder.data?.spelerIds || []).filter(id => typeof id === 'string' && id.length > 10)
-    );
-    if (spelerIdSet.size === 0) return;
 
-    const now = Date.now();
-    const maandKey = `${new Date().getFullYear()}-${new Date().getMonth()}`;
-
-    // Bouw map: uid → set van unieke tegenstanders in deze partij
-    const tegenstandersInPartij = {};
-    if (partijInfo?.matchups) {
-      partijInfo.matchups.forEach((m, idx) => {
-        if (partijInfo.skipped?.[idx]) return;
-        const uidA = m.spelerA.uid;
-        const uidB = m.spelerB.uid;
-        if (!tegenstandersInPartij[uidA]) tegenstandersInPartij[uidA] = new Set();
-        if (!tegenstandersInPartij[uidB]) tegenstandersInPartij[uidB] = new Set();
-        tegenstandersInPartij[uidA].add(uidB);
-        tegenstandersInPartij[uidB].add(uidA);
-      });
-    }
-
-    // Spelers die actief waren in deze partij
-    const actieveUids = new Set(Object.keys(tegenstandersInPartij));
-
-    const writes = [];
-    (rankSpelers || []).forEach(s => {
-      const uid = s.uid;
-      if (!uid || !spelerIdSet.has(uid)) return;
-      const payload = {
-        rank:     s.rank     || 0,
-        partijen: s.partijen || 0,
-        gewonnen: s.gewonnen || 0,
-      };
-      if (s.prevRank != null) payload.prevRank = s.prevRank;
-
-      // Activiteitsvelden alleen bijwerken voor spelers die in deze partij speelden
-      if (actieveUids.has(uid)) {
-        payload.laatstGespeeld = now;
-        payload.inactieveWeken = 0;
-        // maandPartijen: gebruik Firestore FieldValue.increment via een aparte write
-        // (hier doen we het simpel: ophogen via huidige cache)
-        const huidigStand = store._standenCache?.[ladderId]?.[uid] || {};
-        const huidigMaandKey = huidigStand.maandKey;
-        const huidigPartijen = huidigMaandKey === maandKey ? (huidigStand.maandPartijen || 0) : 0;
-        payload.maandPartijen = huidigPartijen + 1;
-        payload.maandKey = maandKey;
-
-        // Unieke tegenstanders dit seizoen samenvoegen
-        const bestaand = huidigStand.uniekeTegenstanderIds || [];
-        const nieuw = Array.from(tegenstandersInPartij[uid] || []);
-        const samengevoegd = Array.from(new Set([...bestaand, ...nieuw]));
-        payload.uniekeTegenstanderIds = samengevoegd;
-      }
-
-      writes.push(
-        setDoc(doc(db, 'ladders', ladderId, 'standen', uid), payload)
-          .catch(err => console.warn('standen sync mislukt voor', uid, err.code))
-      );
-    });
-    await Promise.all(writes);
-  } catch(e) { console.warn('syncStandenNaBevestigUitslag:', e); }
-}
 
 // ============================================================
-//  WATCH PIN — v3.0.0-11.79
-//  Auto: wordt aangeroepen vanuit renderRonde().
-//  Hergebruikt bestaande geldige PIN; genereert alleen nieuw
-//  als er geen of verlopen PIN is. Toont PIN in gele badge.
+//  WATCH PIN — v5.0.0 (punt 1)
+// ------------------------------------------------------------
+//  WAT ER MIS WAS: deze functie schreef de Firebase *refreshToken* van de
+//  ingelogde speler naar ladder/watchPins, een document dat in firestore.rules
+//  op `allow read: if true` stond. Een refreshToken is geen tijdelijk
+//  sleuteltje maar een permanente loper: daarmee maak je onbeperkt nieuwe
+//  inlogtokens. Omdat het project-ID gewoon in de broncode staat, kon iedereen
+//  ter wereld dat document met één ongeauthenticeerde request ophalen en
+//  inloggen als élke speler die ooit dit scherm had geopend. De 4-cijferige
+//  PIN was daarbij niet eens een drempel — je had hem niet nodig.
+//
+//  HOE HET NU WERKT: de PIN wordt server-side gemaakt (Cloud Function
+//  maakWatchPin). Firestore bewaart alleen een hash, 15 minuten geldig en
+//  eenmalig bruikbaar. Het horloge wisselt de PIN via wisselWatchPin om voor
+//  een custom token en regelt zijn eigen sessie. Er staan geen tokens meer in
+//  Firestore, en de client leest dat document niet meer.
+//
+//  Gevolg voor de gebruiker: de PIN is 6 cijfers en 15 minuten geldig (was
+//  4 cijfers en 24 uur). Hij wordt gemaakt op het moment dat je hem nodig
+//  hebt, via de knop bij de gele badge.
 // ============================================================
-let _watchPinBezig = false; // debounce — voorkom dubbele Firestore writes
+let _watchPinBezig = false;
+let _watchPinVerlooptOp = 0;
 
 async function renderWatchPin() {
-  if (!store.huidigeBruiker?.uid) return;
-  if (_watchPinBezig) return;
-
+  // De PIN wordt niet meer automatisch aangemaakt: hij is kortlevend en
+  // eenmalig, dus alleen zinvol op het moment dat je het horloge koppelt.
+  // Deze functie zet nu alleen de badge klaar als knop.
   const badge = document.getElementById('ronde-watch-pin');
   if (!badge) return;
+  if (!store.huidigeBruiker?.uid) { badge.style.display = 'none'; return; }
+
+  const nu = Date.now();
+  if (_watchPinVerlooptOp > nu && badge.dataset.pin) {
+    const resterend = Math.max(0, Math.ceil((_watchPinVerlooptOp - nu) / 60000));
+    badge.textContent = `⌚ ${badge.dataset.pin} (${resterend} min)`;
+  } else {
+    badge.dataset.pin = '';
+    badge.textContent = '⌚ Koppel horloge';
+  }
+  badge.style.display = '';
+  badge.style.cursor = 'pointer';
+  badge.onclick = vraagWatchPin;
+}
+
+/**
+ * Vraag een nieuwe watch-PIN op bij de server en toon hem in de badge.
+ * Aangeroepen door op de gele badge te tikken.
+ */
+async function vraagWatchPin() {
+  if (_watchPinBezig) return;
+  const badge = document.getElementById('ronde-watch-pin');
+  if (!badge || !store.huidigeBruiker?.uid) return;
 
   _watchPinBezig = true;
+  const vorigeTekst = badge.textContent;
+  badge.textContent = '⌚ …';
   try {
-    const pinsRef = doc(db, 'ladder', 'watchPins');
-    const pinsSnap = await getDoc(pinsRef);
-    const pins = pinsSnap.exists() ? { ...pinsSnap.data() } : {};
-    const nu = Date.now();
+    const res = await _maakWatchPinFn({ isTest: IS_TEST });
+    const pin = res?.data?.pin;
+    const geldig = (res?.data?.verlooptOver || 900) * 1000;
+    if (!pin) throw new Error('geen PIN ontvangen');
 
-    // Zoek bestaande geldige PIN voor deze gebruiker
-    let bestaandePIN = null;
-    Object.entries(pins).forEach(([k, v]) => {
-      if (v.uid === store.huidigeBruiker.uid && v.expires > nu) bestaandePIN = k;
-    });
-
-    if (bestaandePIN) {
-      // Bestaande PIN tonen — update token als dat nog ontbreekt (v3.0.0-11.84)
-      if (!pins[bestaandePIN].refreshToken) {
-        pins[bestaandePIN].refreshToken = auth.currentUser?.refreshToken || '';
-        await setDoc(pinsRef, pins);
-      }
-      badge.textContent = '⌚ ' + bestaandePIN;
-      badge.style.display = '';
-      return;
-    }
-
-    // Geen geldige PIN — verwijder verlopen en genereer nieuw
-    Object.keys(pins).forEach(k => {
-      if (pins[k].expires < nu || pins[k].uid === store.huidigeBruiker.uid) delete pins[k];
-    });
-
-    let nieuwePIN;
-    let pogingen = 0;
-    do {
-      nieuwePIN = String(Math.floor(1000 + Math.random() * 9000));
-      pogingen++;
-    } while (pins[nieuwePIN] && pogingen < 20);
-
-    pins[nieuwePIN] = {
-      uid:          store.huidigeBruiker.uid,
-      naam:         store.huidigeBruiker.gebruikersnaam,
-      email:        store.huidigeBruiker.email,
-      refreshToken: auth.currentUser?.refreshToken || '',
-      expires:      nu + 24 * 60 * 60 * 1000
-    };
-
-    await setDoc(pinsRef, pins);
-
-    badge.textContent = '⌚ ' + nieuwePIN;
-    badge.style.display = '';
-
+    _watchPinVerlooptOp = Date.now() + geldig;
+    badge.dataset.pin = pin;
+    renderWatchPin();
+    toast(`PIN ${pin} — ${Math.round(geldig / 60000)} minuten geldig, eenmalig bruikbaar`);
   } catch (e) {
-    console.error('renderWatchPin mislukt:', e);
-    // Badge verbergen bij fout — geen toast, want renderRonde wordt vaker aangeroepen
+    console.error('watch-PIN aanvragen mislukt:', e);
+    badge.textContent = vorigeTekst;
+    toast('PIN aanvragen mislukt — probeer het opnieuw');
   } finally {
     _watchPinBezig = false;
   }
 }
 
-export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij, syncStandenNaBevestigUitslag, verwijderPartijMetRetry };
+export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij, verwijderPartijMetRetry, wachtOpScoreOpslag, vraagWatchPin, synchroniseerPartijDoc };
 // v3.0.2

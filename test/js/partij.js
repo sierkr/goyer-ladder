@@ -6,6 +6,8 @@ import { store, alleLadders, activeLadderId, alleToernooien, huidigeBruiker, pla
 import { slaActievePartijenOp, getLadderData, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { objNaarRondes } from './knockout.js';
 import { getLadderSpelers, isInLadder } from './ladder-view.js';
+// v5.0.0 (punt 4): partijen krijgen een eigen document met scores per speler.
+import { maakPartijDocument, verwijderPartijDocument } from './scores.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 //  PARTIJ SETUP
@@ -782,7 +784,11 @@ async function startPartij() {
   }
 
   const nieuwePartij = {
-    partijId: `p_${Date.now()}`,
+    // v5.0.0: partijId wordt vanaf nu een documentnaam in
+    // ladders/{id}/partijen/{partijId}, dus hij moet echt uniek zijn.
+    // `p_${Date.now()}` alleen kon botsen als twee spelers in dezelfde
+    // milliseconde startten; daarom een willekeurig achtervoegsel.
+    partijId: `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     ladderId: partijLadderId,
     baan: baanNaam,
     holes: activeHoles,
@@ -810,6 +816,12 @@ async function startPartij() {
   // mislukt, verwijder de lokaal toegevoegde partij weer zodat de staat
   // consistent blijft, en toon een foutmelding in plaats van naar een lege ronde te navigeren.
   try {
+    // v5.0.0 (punt 4): de partij krijgt een eigen document met een
+    // scoredocument per speler. Dit is vanaf nu de bron van waarheid voor
+    // scores. De schrijfactie naar actievePartijen[] blijft er tijdens de
+    // overgang naast staan, zodat clients die nog niet zijn bijgewerkt de
+    // partij blijven zien.
+    await maakPartijDocument(partijLadderId, nieuwePartij);
     await slaActievePartijenOp(partijLadderId);
   } catch(e) {
     // Draai lokale toevoeging terug
@@ -817,7 +829,10 @@ async function startPartij() {
       alleLadders[ladderIdx].actievePartijen = (alleLadders[ladderIdx].actievePartijen || [])
         .filter(p => p.partijId !== nieuwePartij.partijId);
     }
-    console.error('[startPartij] slaActievePartijenOp mislukt:', e);
+    // Ruim een half aangemaakt partij-document op, zodat er geen partij
+    // achterblijft die nergens meer in beeld komt.
+    try { await verwijderPartijDocument(partijLadderId, nieuwePartij.partijId); } catch(_) {}
+    console.error('[startPartij] opslaan partij mislukt:', e);
     toast('Partij kon niet worden opgeslagen — controleer je verbinding of rechten');
     return;
   }

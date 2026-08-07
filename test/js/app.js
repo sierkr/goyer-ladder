@@ -19,8 +19,8 @@ import { renderRonde, renderScorecard, updateScore, toggleScorecard,
   openUitslagModal, bevestigUitslag, setWinnaar, skipMatchup,
   editPartijHcp, verwijderSpelerUitRonde, openToevoegenModal,
   bevestigToevoegenRonde, sluitUitslagEnGaNaarLadder, showLadderChanges,
-  annuleerEigenPartij, verwijderActievePartij } from './ronde.js';
-import { renderUitslagen, openScorekaartDetail, bevestigBeheerUitslag } from './uitslagen.js';
+  annuleerEigenPartij, verwijderActievePartij , vraagWatchPin } from './ronde.js';
+import { renderUitslagen, openScorekaartDetail, bevestigBeheerUitslag , draaiUitslagTerug } from './uitslagen.js';
 import { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer,
   toggleHandmatigToevoegen, voegAccountToeAlsSpeler, saveNewPlayer,
   openEditPlayer, saveEditPlayer, removePlayer, renderProfiel,
@@ -53,8 +53,7 @@ import { renderToernooi, herlaadToernooien, selecteerToernooi, gaNaarToernooiOve
   toggleTScorecard, openToernooiAfsluiten, bevestigToernooiAfsluiten,
   annuleerToernooi, toggleTSpelersLadder, toggleTRankingLadder,
   selecteerDag, openNieuweDagModal, voegDagToe, sluitDagAf, renderDagBlokken } from './toernooi.js';
-import { openStandAanpassen, verschuifStand, slaStandOp,
-  openLadderInstellingen, slaLadderInstellingenOp,
+import { openLadderInstellingen, slaLadderInstellingenOp,
   openNieuweLadderModal, maakNieuweLadder, verschuifLadder,
   verwijderLadder, openLadderSpelersModal, slaLadderSpelersOp,
   renderAdminLadders, openSnapshotsModal, slaSnapshotOp,
@@ -187,9 +186,6 @@ window.sluitDagAf = sluitDagAf;
 window.renderDagBlokken = renderDagBlokken;
 window.openFlightIndelingDag = openFlightIndelingDag;
 window.slaFlightIndelingDagOp = slaFlightIndelingDagOp;
-window.openStandAanpassen = openStandAanpassen;
-window.verschuifStand = verschuifStand;
-window.slaStandOp = slaStandOp;
 window.openLadderInstellingen = openLadderInstellingen;
 window.slaLadderInstellingenOp = slaLadderInstellingenOp;
 window.openNieuweLadderModal = openNieuweLadderModal;
@@ -222,7 +218,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v4.1.2';
+  const VERSION = 'v5.0.1';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -248,6 +244,10 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 window.openScorekaartDetail = openScorekaartDetail;
+// v5.0.0 (punt 2): coordinator kan een uitslag terugdraaien.
+window.draaiUitslagTerug = draaiUitslagTerug;
+// v5.0.0 (punt 1): watch-PIN wordt op verzoek server-side gemaakt.
+window.vraagWatchPin = vraagWatchPin;
 window.bevestigBeheerUitslag = bevestigBeheerUitslag;
 
 window.annuleerEigenPartij = annuleerEigenPartij;
@@ -263,7 +263,7 @@ window.toggleTRankingLadder = toggleTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v4.1.2';
+  const LOKALE_VERSIE = 'v5.0.1';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 

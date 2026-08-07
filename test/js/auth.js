@@ -82,6 +82,10 @@ function setIngelogdVanafProfiel(firebaseUser, profiel) {
     eersteLogin:    profiel.eersteLogin === true, // v3.0.0-11
     toernooiSpeler: profiel.toernooiSpeler === true, // v3.0.0-11.74
     toernooiNaam:   profiel.toernooiNaam   || null,  // v3.0.0-11.74
+    // v4.2.0: puntensysteem — alleen dit account ziet/wijzigt de ruwe punten.
+    // Wordt uitsluitend handmatig gezet in de Firebase console (spelers/{uid}),
+    // nooit via de app zelf. Ook technisch afgedwongen in firestore.rules.
+    puntenBeheerder: profiel.puntenBeheerder === true,
   };
 
   vervolgIngelogd();

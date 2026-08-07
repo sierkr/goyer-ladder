@@ -30,7 +30,8 @@ import { openNieuweLadderModal, renderAdminLadders } from './beheer.js';
 import { reageerUitdaging, verwijderUitdaging } from './archief.js';
 import { renderLadder } from './ladder.js';
 import { getLadderSpelers } from './ladder-view.js';
-import { syncStandenNaBevestigUitslag } from './ronde.js';
+// v5.0.0 (punt 3): syncStandenNaBevestigUitslag is verwijderd — standen
+// worden uitsluitend nog server-side geschreven (Cloud Functions).
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
   GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, updatePassword,
   EmailAuthProvider, reauthenticateWithCredential, createUserWithEmailAndPassword }

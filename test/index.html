@@ -982,18 +982,8 @@
   </div>
 </div>
 
-<!-- Stand aanpassen modal -->
-<div class="modal-overlay" id="modal-stand-aanpassen">
-  <div class="modal">
-    <h3 id="stand-aanpassen-titel">Stand aanpassen</h3>
-    <p style="font-size:13px;color:var(--mid);margin-bottom:12px">Versleep of gebruik de pijltjes om de stand aan te passen.</p>
-    <div id="stand-aanpassen-lijst"></div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-stand-aanpassen')">Annuleren</button>
-      <button class="btn btn-primary" style="flex:2" onclick="slaStandOp()">Opslaan</button>
-    </div>
-  </div>
-</div>
+<!-- v4.2.0: "Stand aanpassen"-modal (pijltjes-omhoog/omlaag) verwijderd —
+     puntenaanpassing loopt nu via de "Spelers"-modal (modal-ladder-spelers). -->
 
 <!-- Flight indeling modal -->
 <div class="modal-overlay" id="modal-flight-indeling">
@@ -1382,7 +1372,7 @@
       <div class="card-header">
         <h2 id="ronde-baan-naam">—</h2>
         <span class="badge badge-gold" id="ronde-holes-badge">18 holes</span>
-        <span class="badge badge-gold" id="ronde-watch-pin" style="display:none;cursor:default" title="Watch PIN">⌚ –</span>
+        <span class="badge badge-gold" id="ronde-watch-pin" style="display:none;cursor:pointer" title="Tik om een PIN voor je horloge te maken (6 cijfers, 15 minuten geldig, eenmalig)">⌚ Koppel horloge</span>
       </div>
     </div>
 
