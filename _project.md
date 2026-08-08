@@ -10,9 +10,46 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.5.0**
+Huidige versie: **v5.5.1**
 
 ### Changelog
+- **v5.5.1** — Meldingen die vertellen wat er aan de hand is. Raakt
+  `watch.html`, `js/ronde.js` en `js/uitslagen.js`. **Geen functions-deploy
+  nodig** (die van v5.5.0 staat mogelijk nog wél open).
+
+  - **De watch verzweeg elke oorzaak.** `controleerPin()` perste iedere
+    mislukking samen tot "Ongeldige of verlopen PIN", terwijl de server een
+    precieze reden meestuurt in `body.error.message`. Onder die ene zin gingen
+    minstens vijf situaties schuil: code uit de verkeerde omgeving, verlopen
+    code, al gebruikte code, een server die nog geen inlogtokens mag maken, en
+    een adres dat niet bestaat. Dat kostte een avond zoeken in logboeken naar
+    iets wat het apparaat gewoon had kunnen zeggen. De echte reden wordt nu
+    getoond, met de HTTP-statuscode klein eronder.
+
+  - **De omgeving staat er nu bij.** Watch-codes worden per database bewaard:
+    een code die in de test-app is aangevraagd bestaat niet in productie en
+    andersom. Dat verschil was nergens zichtbaar. Het PIN-scherm toont onder
+    `/test/` nu "⚠ testomgeving", de foutmelding noemt waar de watch kijkt, en
+    de app zet bij een code uit de testomgeving "LET OP: alleen voor de
+    test-watch" in de melding.
+
+  - **De ingetikte code blijft staan** na een fout. Voorheen werd hij gewist en
+    moest je zes cijfers opnieuw intikken op een horlogescherm, terwijl de code
+    meestal prima was.
+
+  - **De app vertelt waaróm het aanvragen van een code mislukte.** "Probeer het
+    opnieuw" hielp niemand als de oorzaak was dat de server geen inlogtokens mag
+    maken — dan helpt opnieuw proberen juist niet.
+
+  - **De scorekaart meldde het verkeerde.** Er was maar één tekst: "ouder dan 30
+    dagen". Maar een uitslag die via het BEHEERSCHERM is bevestigd krijgt wel
+    een tijdstempel en géén scorekaart-document — dat wordt alleen vanuit het
+    rondescherm weggeschreven. De app zocht ernaar, vond niets, en concludeerde
+    dat hij verlopen was. Hij was niet verlopen; hij heeft nooit bestaan. Nu
+    worden drie situaties onderscheiden: echt ouder dan 30 dagen, nooit een
+    scorekaart gemaakt, en een bewaarde kaart zonder ingevulde holes (scores
+    zijn uitdrukkelijk optioneel, dus dat is een normale situatie die een
+    normale uitleg verdient in plaats van een leeg raster).
 - **v5.5.0** — Test en productie schreven op twee punten door elkaar heen. Plus
   drie openstaande punten afgehecht. **Vraagt een Cloud Functions-deploy**, niet
   alleen een GitHub-upload.

@@ -147,6 +147,12 @@
   <div class="logo">⛳</div>
   <div class="app-titel">Watch Score</div>
   <div class="app-sub">Voer je 6-cijferige PIN in</div>
+  <!-- v5.5.1: laat zien welke omgeving deze pagina bevraagt. De codes worden
+       per database bewaard: een code die in de test-app is aangevraagd bestaat
+       niet in productie en andersom. Zonder dit label zie je dat verschil
+       nergens, en krijg je alleen "Ongeldige of verlopen PIN" — wat waar is,
+       maar niet vertelt dat je in de verkeerde omgeving zit. -->
+  <div class="app-sub" id="omgeving-label" style="font-size:11px;opacity:.75"></div>
   <div class="kaart">
     <div class="pin-display">
       <div class="pin-dot" id="dot-0"></div>
@@ -240,6 +246,8 @@ const PROJECT   = 'goyer-golf-mp-ladder';
 // je nooit een partij — die stond in de named database 'test'. Deze vlag moet
 // dus VOOR de FS-constante staan, want die gebruikt hem.
 const IS_TEST_WATCH = location.pathname.includes('/test/');
+// v5.5.1: in gewone taal, voor op het scherm en in foutmeldingen.
+const OMGEVING_NAAM = IS_TEST_WATCH ? 'de testomgeving' : 'de gewone app';
 const DB_NAAM   = IS_TEST_WATCH ? 'test' : '(default)';
 const FS        = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/${DB_NAAM}/documents`;
 const AUTH_URL  = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`;
@@ -326,7 +334,22 @@ function pinDisplay() {
     d.classList.toggle('actief', i < pinWaarde.length);
   }
 }
-function pinFout(t) { document.getElementById('pin-fout').textContent = t; pinWaarde = ''; pinDisplay(); }
+// v5.5.1: de ingetikte code blijft staan. Voorheen werd hij gewist, zodat je
+// bij elke poging opnieuw zes cijfers moest intikken op een horlogescherm —
+// terwijl de code meestal prima was en er iets anders aan de hand was.
+// Wissen kan met de wis-toets; opnieuw beginnen met "Andere PIN".
+function pinFout(t, technisch) {
+  const el = document.getElementById('pin-fout');
+  el.innerHTML = '';
+  el.appendChild(document.createTextNode(t));
+  if (technisch) {
+    const klein = document.createElement('div');
+    klein.style.cssText = 'font-size:10px;opacity:.7;margin-top:4px';
+    klein.textContent = technisch;
+    el.appendChild(klein);
+  }
+  pinDisplay();
+}
 
 // v5.0.0 (punt 1) — HOE DIT VROEGER WERKTE EN WAAROM DAT FOUT WAS:
 // deze functie haalde ladder/watchPins op zonder enige authenticatie (dat
@@ -350,9 +373,30 @@ async function controleerPin() {
     });
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) {
+      // v5.5.1 — WAT HIER MIS WAS. Elke mislukking werd hier samengeperst tot
+      // "Ongeldige of verlopen PIN", terwijl de server een precieze reden
+      // meestuurt in body.error.message. Onder die ene zin gingen minstens vijf
+      // verschillende situaties schuil: verkeerde omgeving, verlopen code, al
+      // gebruikte code, een server die nog geen inlogtokens mag maken, en een
+      // adres dat niet bestaat. Dat kostte een avond zoeken in logboeken naar
+      // iets wat het apparaat gewoon had kunnen zeggen.
       const melding = body?.error?.message || '';
-      if (/te veel/i.test(melding)) pinFout('Te veel pogingen. Wacht 10 minuten.');
-      else pinFout('Ongeldige of verlopen PIN.');
+      const code    = body?.error?.status || '';
+      const technisch = `${resp.status}${code ? ' · ' + code : ''}`;
+
+      if (/te veel/i.test(melding)) {
+        pinFout('Te veel pogingen. Wacht 10 minuten.', technisch);
+      } else if (/ongeldige of verlopen/i.test(melding)) {
+        // De drie oorzaken die hier écht achter zitten, benoemd — want dit is
+        // de melding die je in de praktijk krijgt.
+        pinFout('Code niet gevonden. Is hij ouder dan 15 minuten, al gebruikt, '
+              + `of aangevraagd in de andere omgeving? Deze watch kijkt in: ${OMGEVING_NAAM}.`,
+                technisch);
+      } else if (melding) {
+        pinFout(melding, technisch);
+      } else {
+        pinFout('Inloggen mislukt.', technisch + ' · geen uitleg van de server');
+      }
       return;
     }
     const res = body?.result || {};
@@ -831,6 +875,20 @@ document.getElementById('scherm-score').addEventListener('touchend', e => {
   const dx = e.changedTouches[0].clientX - holeSwipeX;
   if (Math.abs(dx) > 55) dx<0?gaNaarHole(huidigHole+1):gaNaarHole(huidigHole-1);
 }, { passive:true });
+
+// ══════════════════════════════════════════════════════════════
+//  v5.5.1 — OMGEVINGSLABEL
+// ══════════════════════════════════════════════════════════════
+//  De watch-codes worden per database bewaard. Een code die in de test-app is
+//  aangevraagd bestaat niet in productie, en omgekeerd. Dat verschil was op dit
+//  scherm nergens te zien; je kreeg alleen "Ongeldige of verlopen PIN" — waar,
+//  maar niet behulpzaam. Nu staat het er gewoon.
+(function toonOmgeving() {
+  const el = document.getElementById('omgeving-label');
+  if (!el) return;
+  el.textContent = IS_TEST_WATCH ? '⚠ testomgeving' : '';
+  if (IS_TEST_WATCH) el.style.color = 'var(--geel, #e8b900)';
+})();
 </script>
 </body>
 </html>

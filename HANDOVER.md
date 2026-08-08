@@ -1,4 +1,4 @@
-# HANDOVER — Goyer Golf MP Ladder, v5.5.0
+# HANDOVER — Goyer Golf MP Ladder, v5.5.1
 
 > Plak dit bestand als eerste bericht in een nieuwe chat, samen met de zip.
 > Lees daarna `_project.md` voor de volledige structuur en changelog.
@@ -49,7 +49,7 @@ wachtwoordwijziging in test ook het echte wachtwoord.
 
 ## 3. Waar we nu staan
 
-Versie in de zip: **v5.5.0**.
+Versie in de zip: **v5.5.1**.
 
 ### De testopzet is groen
 
@@ -64,7 +64,7 @@ Alle vier de CI-jobs op GitHub Actions slagen:
 Dat was een traject van 1 geslaagde test naar alles groen. Onderweg zijn er
 **drie echte fouten in de app** uit gekomen die spelers raakten — zie hieronder.
 
-### Wat er in productie draait (v5.4.4 t/m v5.5.0)
+### Wat er in productie draait (v5.4.4 t/m v5.5.1)
 
 - **Het opstarten kan niet meer in zijn geheel omvallen.** `initFirestore()`
   laadde documenten in één blok; ging er één mis, dan werd alles daarna
@@ -87,6 +87,29 @@ Dat was een traject van 1 geslaagde test naar alles groen. Onderweg zijn er
   standen binnenkomen en zet de listeners anders opnieuw op (vijf pogingen,
   daarna stopt hij). Hij is met v5.4.6 meegegaan naar productie.
 - **v5.5.0: test en productie schrijven niet meer door elkaar.** Zie hieronder.
+- **v5.5.1: meldingen die iets zeggen.** De watch perste elke mislukte
+  inlogpoging samen tot "Ongeldige of verlopen PIN" en gooide de precieze reden
+  van de server weg; de scorekaart meldde altijd "ouder dan 30 dagen", ook als er
+  simpelweg nooit een scorekaart is gemaakt.
+
+### Watch-PIN — wat je moet weten
+
+De codes worden **per database** bewaard in `ladder/watchPins`. Een code die in
+de test-app is aangevraagd bestaat niet in productie en andersom. Het adres van
+de watch-pagina bepaalt waar hij zoekt:
+`…/goyer-ladder/watch.html` = productie, `…/goyer-ladder/test/watch.html` = test.
+Dit was de oorzaak van een lange zoektocht: de server gaf keurig 403
+("Ongeldige of verlopen PIN") omdat de code in de andere la lag, maar dat was op
+het scherm niet te zien. Sinds v5.5.1 toont het PIN-scherm de omgeving.
+
+Een code is 15 minuten geldig en werkt precies één keer. De foutteller is
+**globaal**: twintig mislukte pogingen binnen tien minuten blokkeert het voor
+iedereen.
+
+Logs bekijken gaat het makkelijkst via de Firebase-console → Functions →
+tabblad Logs. In de Logs Explorer van Google Cloud loggen deze functies onder
+`cloud_run_revision`, niet onder `cloud_function` — filteren op het oude type
+geeft altijd nul resultaten.
 
 ### v5.5.0 vraagt een Cloud Functions-deploy
 

@@ -1464,11 +1464,19 @@ async function vraagWatchPin() {
     _watchPinVerlooptOp = Date.now() + geldig;
     badge.dataset.pin = pin;
     renderWatchPin();
-    toast(`PIN ${pin} — ${Math.round(geldig / 60000)} minuten geldig, eenmalig bruikbaar`);
+    // v5.5.1: erbij zetten voor welke omgeving deze code geldt. De codes worden
+    // per database bewaard, dus een code uit de testomgeving werkt niet op de
+    // gewone watch-pagina en andersom. Dat verschil was nergens zichtbaar.
+    const waar = IS_TEST ? ' — LET OP: alleen voor de test-watch' : '';
+    toast(`PIN ${pin} — ${Math.round(geldig / 60000)} minuten geldig, eenmalig bruikbaar${waar}`);
   } catch (e) {
     console.error('watch-PIN aanvragen mislukt:', e);
     badge.textContent = vorigeTekst;
-    toast('PIN aanvragen mislukt — probeer het opnieuw');
+    // v5.5.1: de reden meesturen. "Probeer het opnieuw" hielp niemand verder
+    // als de oorzaak was dat de server geen inlogtokens mag maken of dat je
+    // niet meer ingelogd bent — dan helpt opnieuw proberen namelijk niets.
+    const reden = e?.message || e?.code || '';
+    toast(reden ? `PIN aanvragen mislukt: ${reden}` : 'PIN aanvragen mislukt — probeer het opnieuw');
   } finally {
     _watchPinBezig = false;
   }
