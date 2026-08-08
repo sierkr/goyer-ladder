@@ -6,16 +6,17 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/fireba
 import {
   getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc,
-  query, where, orderBy
+  query, where, orderBy, connectFirestoreEmulator
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword,
   signOut, GoogleAuthProvider, signInWithPopup,
   sendPasswordResetEmail, updatePassword, EmailAuthProvider,
   reauthenticateWithCredential, createUserWithEmailAndPassword,
-  setPersistence, indexedDBLocalPersistence, browserLocalPersistence
+  setPersistence, indexedDBLocalPersistence, browserLocalPersistence,
+  connectAuthEmulator
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
+import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js";
 
 export const firebaseConfig = {
@@ -29,9 +30,19 @@ export const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 
+// v5.4.0: draait de app lokaal (browsertests tegen de emulator)? Dan geen
+// App Check en geen emulator-verbindingen in productie. De app wordt in
+// productie en test altijd vanaf sierkr.github.io geserveerd, dus deze
+// voorwaarde is nooit waar voor een echte gebruiker.
+export const IS_EMULATOR =
+  typeof location !== 'undefined' &&
+  (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+
 // v3.0.0-11.100: App Check — reCAPTCHA v3. Beschermt Firestore/Auth tegen
 // requests van buiten de echte app. Moet vóór getFirestore/getAuth gebeuren.
-export const appCheck = initializeAppCheck(app, {
+// Overgeslagen op localhost: reCAPTCHA kan daar geen token ophalen en zou de
+// geautomatiseerde tests laten vastlopen.
+export const appCheck = IS_EMULATOR ? null : initializeAppCheck(app, {
   provider: new ReCaptchaV3Provider('6LfOyhAtAAAAACKwXb70iOl_Pdrez2QQ_ktGhFSj'),
   isTokenAutoRefreshEnabled: true
 });
@@ -76,6 +87,17 @@ function _maakDb() {
 export const db = _maakDb();
 export const auth = getAuth(app);
 
+// v5.4.0: verbind met de lokale Firebase-emulator (zie IS_EMULATOR hierboven).
+if (IS_EMULATOR) {
+  try {
+    connectFirestoreEmulator(db, '127.0.0.1', 8080);
+    connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+    console.info('[test] verbonden met de lokale Firebase-emulator');
+  } catch (e) {
+    console.error('[test] verbinden met de emulator mislukt:', e);
+  }
+}
+
 // v3.0.6: pin de auth-persistentie expliciet op IndexedDB (robuust op iOS,
 // ook als PWA op het beginscherm). Valt terug op localStorage als IndexedDB
 // niet beschikbaar is (bv. privémodus). Fouten zijn niet fataal — Firebase
@@ -89,6 +111,10 @@ export const googleProvider = new GoogleAuthProvider();
 
 // v3.0.0-11.2: Cloud Functions in europe-west1 voor reset-wachtwoord
 export const functions = getFunctions(app, 'europe-west1');
+if (IS_EMULATOR) {
+  try { connectFunctionsEmulator(functions, '127.0.0.1', 5001); }
+  catch (e) { console.error('[test] functions-emulator koppelen mislukt:', e); }
+}
 export { httpsCallable };
 // Firestore refs
 export const STATE_DOC = doc(db, 'ladder', 'state'); // legacy — voor migratie
