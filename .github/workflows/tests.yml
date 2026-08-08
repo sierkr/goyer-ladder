@@ -1,15 +1,12 @@
 name: Tests
 
-# Draait bij elke push en bij elk pull request. Faalt er iets, dan zie je een
-# rood kruis bij je commit op GitHub en krijg je een mail.
 on:
   push:
   pull_request:
-  workflow_dispatch:      # handmatig starten kan ook, via het tabblad Actions
+  workflow_dispatch:
 
 jobs:
 
-  # ── Laag 1: rekentests. Snel, geen emulator nodig. ──────────
   rekenkern:
     name: Rekenkern (unit)
     runs-on: ubuntu-latest
@@ -21,7 +18,6 @@ jobs:
       - name: Tests draaien
         run: node tests/run.cjs
 
-  # ── Laag 2 en 3: regels en functies tegen de emulator ───────
   emulator:
     name: Regels en Cloud Functions
     runs-on: ubuntu-latest
@@ -36,7 +32,7 @@ jobs:
           java-version: '17'
 
       - name: Testgereedschap installeren
-        run: npm ci --prefix tests || npm install --prefix tests
+        run: npm install --prefix tests
 
       - name: Functie-dependencies installeren
         run: npm install --prefix functions
@@ -49,7 +45,7 @@ jobs:
 
       - name: Firestore-regels testen
         run: >
-          npx --prefix tests firebase-tools emulators:exec
+          ./tests/node_modules/.bin/firebase emulators:exec
           --project demo-goyer --only firestore
           "node tests/emulator/rules.test.cjs"
 
@@ -57,11 +53,10 @@ jobs:
         env:
           GCLOUD_PROJECT: demo-goyer
         run: >
-          npx --prefix tests firebase-tools emulators:exec
+          ./tests/node_modules/.bin/firebase emulators:exec
           --project demo-goyer --only firestore,auth,functions
           "node tests/emulator/functions.test.cjs"
 
-  # ── Laag 4: browsertests ───────────────────────────────────
   browser:
     name: Browser (end-to-end)
     runs-on: ubuntu-latest
@@ -76,13 +71,13 @@ jobs:
           java-version: '17'
 
       - name: Testgereedschap installeren
-        run: npm ci --prefix tests || npm install --prefix tests
+        run: npm install --prefix tests
 
       - name: Functie-dependencies installeren
         run: npm install --prefix functions
 
       - name: Browser installeren
-        run: npx --prefix tests playwright install --with-deps chromium
+        run: ./tests/node_modules/.bin/playwright install --with-deps chromium
 
       - name: Emulators cachen
         uses: actions/cache@v4
@@ -95,9 +90,9 @@ jobs:
           GCLOUD_PROJECT: demo-goyer
           CI: 'true'
         run: >
-          npx --prefix tests firebase-tools emulators:exec
+          ./tests/node_modules/.bin/firebase emulators:exec
           --project demo-goyer --only firestore,auth,functions
-          "node tests/e2e/seed.cjs && npx --prefix tests playwright test --config=playwright.config.cjs"
+          "node tests/e2e/seed.cjs && ./tests/node_modules/.bin/playwright test --config=playwright.config.cjs"
 
       - name: Rapport bewaren bij een fout
         if: failure()
