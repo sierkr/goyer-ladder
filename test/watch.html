@@ -235,15 +235,20 @@
 
 const API_KEY   = 'AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens';
 const PROJECT   = 'goyer-golf-mp-ladder';
-const FS        = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`;
+// v5.1.1: de watch koos altijd de productiedatabase, ook onder /test/.
+// Daardoor kon je in de testomgeving wel inloggen (auth is gedeeld) maar zag
+// je nooit een partij — die stond in de named database 'test'. Deze vlag moet
+// dus VOOR de FS-constante staan, want die gebruikt hem.
+const IS_TEST_WATCH = location.pathname.includes('/test/');
+const DB_NAAM   = IS_TEST_WATCH ? 'test' : '(default)';
+const FS        = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/${DB_NAAM}/documents`;
 const AUTH_URL  = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`;
 const TOKEN_URL = `https://securetoken.googleapis.com/v1/token?key=${API_KEY}`;
 // v5.0.0 (punt 1): inloggen gaat via een custom token dat de Cloud Function
 // wisselWatchPin teruggeeft. Er staan geen refreshTokens meer in Firestore.
 const CUSTOM_URL = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${API_KEY}`;
 const FN_BASE    = `https://europe-west1-${PROJECT}.cloudfunctions.net`;
-// De watch draait altijd tegen productie; de testomgeving gebruikt de app zelf.
-const IS_TEST_WATCH = location.pathname.includes('/test/');
+// IS_TEST_WATCH staat hierboven, bij de FS-constante die hem nodig heeft.
 
 // ── STATE ────────────────────────────────────────────────────
 let idToken      = null;

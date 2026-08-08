@@ -10,9 +10,37 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.1.0**
+Huidige versie: **v5.1.1**
 
 ### Changelog
+- **v5.1.1** — Drie punten, gevonden tijdens het testen van v5.1.0.
+
+  - **Watch las de verkeerde database.** `watch.html` had de productiedatabase
+    hardgecodeerd (`databases/(default)`), ook als hij onder `/test/` draaide.
+    Auth is gedeeld tussen test en productie, dus inloggen lukte wél — maar de
+    partij stond in de named database `test` en werd nooit gevonden
+    ("Je hebt geen actieve partij"). Zat al in eerdere versies; viel niet op
+    omdat de watch nooit in test was gebruikt. Nu kiest hij de database op
+    dezelfde manier als de app: `test` onder `/test/`, anders `(default)`.
+
+  - **Een mislukte watch-login kostte je je PIN.** `wisselWatchPin` schreef de
+    PIN af in de transactie en maakte pas daarna het inlogtoken. Ging dat mis,
+    dan was de PIN weg zonder dat de gebruiker iets had. Dat gebeurde ook
+    daadwerkelijk: het serviceaccount miste `iam.serviceAccounts.signBlob`.
+    Nu wordt eerst het token gemaakt en pas daarna de PIN verbruikt. Mislukt
+    het token, dan blijft de PIN gewoon geldig. De foutmelding noemt bovendien
+    expliciet de ontbrekende IAM-rol, zodat die niet meer uit de logs hoeft te
+    worden opgediept.
+    **Eenmalige handmatige stap (Google Cloud IAM):** geef
+    `<projectnummer>-compute@developer.gserviceaccount.com` de rol
+    **Service Account Token Creator**. Zonder die rol kan geen enkele
+    watch-login een token krijgen.
+
+  - **Runtime naar Node.js 22.** Node 20 is per 2026-04-30 afgeschreven en
+    wordt op 2026-10-30 uitgezet; daarna kun je niet meer deployen. Alleen
+    `functions/package.json` gewijzigd (`engines.node`). Geen codewijziging
+    nodig — `firebase-admin` 12 en `firebase-functions` 5 ondersteunen Node 22.
+
 - **v5.1.0** — Activiteitssysteem losgekoppeld van de partijverwerking.
   Aanleiding: een verliezer steeg 5 plekken op de ladder.
 
