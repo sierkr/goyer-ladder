@@ -11,9 +11,40 @@
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 | `watch.html` | bij de constanten | `const WATCH_VERSIE = 'v3.0.0-11.XX';` — v5.5.2, anders herlaadt de watch-pagina zichzelf eindeloos |
 
-Huidige versie: **v5.5.3**
+Huidige versie: **v5.5.4**
 
 ### Changelog
+- **v5.5.4** — Scores kwamen wél op elk PC-scherm en op de watch, maar niet op
+  de telefoon. Raakt `js/ronde.js` en `js/auth.js`.
+
+  - **DE FOUT.** `koppelScoreListener()` besloot of hij opnieuw moest koppelen
+    op basis van het partijId alleen. De listener schrijft binnenkomende scores
+    echter rechtstreeks in het partij-OBJECT dat hij bij het koppelen meekreeg,
+    en dat object wordt op twee plekken vervangen terwijl het partijId
+    hetzelfde blijft: in `herlaadNaResume()` en in de onSnapshot op het
+    ladderdocument. Beide zetten `actievePartijen` op de verse kopie uit het
+    ladderdocument — met de VEROUDERDE scores-array, want de echte scores staan
+    sinds v5.0.0 in de subcollectie.
+
+    Gevolg: de listener bleef hangen aan het weggegooide object en het nieuwe
+    object, dat op het scherm stond, kreeg nooit meer een score binnen.
+
+  - **Waarom uitsluitend op de telefoon.** `herlaadNaResume()` gaat af zodra de
+    app terugkomt uit de achtergrond. Op een PC-tabblad dat gewoon openstaat
+    gebeurt dat nooit; op een telefoon voortdurend. De watch heeft eigen code en
+    haalt de scores zelf op. Vandaar het beeld: alle PC-schermen synchroon, de
+    watch synchroon, alleen de telefoon niet.
+
+    Pijnlijk detail: het commentaar bij die resume-functie zegt dat hij is
+    toegevoegd zodat scores die via de watch zijn ingevuld meteen zichtbaar
+    zijn. Hij deed precies het omgekeerde.
+
+  - **De reparatie.** De listener onthoudt nu ook op welk object hij luistert en
+    koppelt opnieuw zodra dat object vervangen is. Dat dicht meteen hetzelfde
+    gat bij de live-verversing van het ladderdocument. Daarnaast haalt
+    `herlaadNaResume()` de scores vers uit de subcollectie voordat het scherm
+    wordt getekend, zodat er geen moment is waarop een verouderde score in beeld
+    staat.
 - **v5.5.3** — De watch schreef nooit één score weg. Alleen `watch.html`.
 
   - **DE FOUT.** Het horloge praat rechtstreeks met de Firestore-API en stelde

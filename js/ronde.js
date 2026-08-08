@@ -44,12 +44,41 @@ import { renderUitslagen } from './uitslagen.js';
 // merkbaar dataverbruik en accu op de baan.
 let _scoreUnsub = null;
 let _scoreUnsubPartijId = null;
+// v5.5.4: ook onthouden op WELK object we luisteren, niet alleen welk partijId.
+let _scoreUnsubObj = null;
 
 function koppelScoreListener(p) {
   if (!p || !p.ladderId || !p.partijId) return;
-  if (_scoreUnsubPartijId === p.partijId && _scoreUnsub) return; // al gekoppeld
+
+  // ────────────────────────────────────────────────────────────
+  // v5.5.4 — WAT ER MIS WAS, EN WAAROM ALLEEN OP DE TELEFOON.
+  //
+  // Hier stond alleen een vergelijking op partijId:
+  //     if (_scoreUnsubPartijId === p.partijId && _scoreUnsub) return;
+  //
+  // De listener schrijft binnenkomende scores rechtstreeks in het partij-object
+  // dat hij bij het koppelen meekreeg. Maar dat object wordt op twee plekken
+  // VERVANGEN terwijl het partijId hetzelfde blijft:
+  //   - herlaadNaResume() in auth.js, zodra de app terugkomt uit de achtergrond
+  //   - de onSnapshot op het ladderdocument
+  // Beide zetten alleLadders[idx].actievePartijen op de verse kopie uit het
+  // ladderdocument — een oude kopie van de scores, want de echte scores staan
+  // sinds v5.0.0 in de subcollectie.
+  //
+  // Omdat het partijId niet veranderde, dacht deze functie "ik luister al" en
+  // bleef hij hangen aan het weggegooide object. Het nieuwe object, dat op het
+  // scherm stond, kreeg nooit meer een score binnen.
+  //
+  // Op een PC valt dat niet op: het tabblad blijft zichtbaar, dus die
+  // resume-functie gaat nooit af. Op een telefoon gaat de app voortdurend naar
+  // de achtergrond en terug — vandaar dat het uitsluitend daar misging.
+  // ────────────────────────────────────────────────────────────
+  if (_scoreUnsubPartijId === p.partijId && _scoreUnsub && _scoreUnsubObj === p) {
+    return; // al gekoppeld aan precies dit object
+  }
   ontkoppelScoreListener();
   _scoreUnsubPartijId = p.partijId;
+  _scoreUnsubObj = p;
   _scoreUnsub = luisterOpScores(p.ladderId, p.partijId, p, () => {
     // Scores van (bijvoorbeeld) een flightgenoot binnengekomen: kaart en
     // matchstand verversen. renderScorecard() alleen aanroepen als het
@@ -66,6 +95,7 @@ function ontkoppelScoreListener() {
   if (_scoreUnsub) { try { _scoreUnsub(); } catch(_) {} }
   _scoreUnsub = null;
   _scoreUnsubPartijId = null;
+  _scoreUnsubObj = null;
 }
 
 function renderRonde() {

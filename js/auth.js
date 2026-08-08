@@ -20,6 +20,7 @@ import { closeModal, renderAdmin, renderProfiel } from './admin.js';
 import { renderRonde } from './ronde.js';
 import { renderToernooi, getActiefToernooiMetModus, herlaadToernooiListeners } from './toernooi.js';
 import { renderUitslagen } from './uitslagen.js';
+import { leesScores } from './scores.js';
 import { startAlleStandenListeners, stopAlleStandenListeners,
          startStandenWachthond } from './ladder-view.js';
 
@@ -1466,6 +1467,30 @@ export async function herlaadNaResume() {
       alleLadders[idx].spelerIds       = data.spelerIds       || [];
       alleLadders[idx].actievePartijen = data.actievePartijen || [];
       alleLadders[idx].data            = data;
+
+      // ────────────────────────────────────────────────────────
+      // v5.5.4 — de scores erbij halen uit de subcollectie.
+      //
+      // De regel hierboven vervangt de partij-objecten door de kopie uit het
+      // ladderdocument. Die kopie bevat een VEROUDERDE scores-array: sinds
+      // v5.0.0 staan de echte scores in ladders/{id}/partijen/{pid}/scores/{uid}
+      // en loopt de array in het ladderdocument bewust achter.
+      //
+      // Zonder deze aanvulling toonde de telefoon na elke terugkeer uit de
+      // achtergrond de oude scores — precies het scherm waar je op dat moment
+      // naar kijkt. Dat de listener daarna opnieuw koppelt (zie ronde.js)
+      // repareert het uiteindelijk, maar dit voorkomt dat er ook maar één
+      // moment een verkeerde score in beeld staat.
+      // ────────────────────────────────────────────────────────
+      for (const p of alleLadders[idx].actievePartijen) {
+        if (!p?.partijId) continue;
+        try {
+          const verse = await leesScores(ladder.id, p.partijId, (p.holes || []).length);
+          if (verse) p.scores = { ...(p.scores || {}), ...verse };
+        } catch (e) {
+          console.warn('[resume] scores verversen mislukt voor', p.partijId, e?.code || e);
+        }
+      }
     }));
   } catch(e) { console.warn('herlaadNaResume mislukt (niet fataal):', e); }
 
