@@ -10,9 +10,53 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.4.9**
+Huidige versie: **v5.5.0**
 
 ### Changelog
+- **v5.5.0** — Test en productie schreven op twee punten door elkaar heen. Plus
+  drie openstaande punten afgehecht. **Vraagt een Cloud Functions-deploy**, niet
+  alleen een GitHub-upload.
+
+  - **Testen beschadigde productiedata.** `voltooiEersteLogin` en
+    `resetSpelerWachtwoord` gebruikten `admin.firestore()`, en dat is altijd de
+    `(default)`-database — dus productie, ook als de aanroep uit `/test/` kwam.
+    De helper `fsVoor(isTest)` bestond al en werd door zestien andere functies
+    gewoon gebruikt; deze twee waren overgeslagen, net als
+    `getInitieelWachtwoord()`.
+
+    Wat dat opleverde: een speler die in `/test/` het eerste-loginscherm
+    invulde, kreeg `eersteLogin:false` én zijn nieuwe handicap weggeschreven
+    naar de **echte** database. De testdatabase bleef op `true` staan, dus het
+    scherm kwam bij elke login terug — het zichtbare symptoom. Onzichtbaar, en
+    erger: zijn handicap in de live-omgeving was overschreven. En een reset
+    vanuit het testbeheerscherm zette `eersteLogin:true` op het echte
+    spelersdocument, waarna die speler bij zijn volgende bezoek aan de gewone
+    app ongevraagd het verplichte profielscherm kreeg.
+
+    De client stuurt nu `isTest` mee bij beide aanroepen, zoals overal elders al
+    gebeurde. **Let op:** `js/auth.js` importeerde `IS_TEST` nog niet — dat is
+    meegenomen, anders zou de reparatie zelf een fout opleveren op het moment
+    dat een speler het scherm invulde.
+
+  - **Browsertest voor het zelfherstel.** De wachthond uit v5.4.1 draaide al in
+    productie maar was nooit in een browser beproefd. De nieuwe test haalt de
+    standen weg, controleert dat de app het eerlijk meldt met een werkende knop
+    en nérgens "ververs de pagina" zegt, zet de gegevens terug en controleert
+    dat de ladder zichzelf vult zónder herladen. Eerlijk gezegd: dit test de
+    belofte die de speler merkt, niet de binnenkant van de wachthond — die is
+    van buiten de app niet aan te spreken.
+
+  - **`firebase-functions` van `^5` naar `^6`.** De emulator waarschuwde erover.
+    `index.js` gebruikt al de v2-API, dus dit is één major en laag risico. De
+    nieuwste is `^7`, maar twee majors tegelijk springen midden in een testronde
+    is vragen om problemen. `firebase-admin` blijft bewust op `^12`. Werkt de
+    deploy niet, zet `firebase-functions` dan terug op `^5.0.0` en deploy
+    opnieuw.
+
+  - **`HANDOVER.md` herschreven** naar de werkelijke stand. Beschreef nog rode
+    browsertests en een niet-goedgekeurde v5.4.1, en had een volgende sessie op
+    een verkeerd spoor gezet. Bevat nu ook de bestandslijst voor het bijwerken
+    van de achterlopende productiemap.
 - **v5.4.9** — Alleen `tests/e2e/app.spec.cjs`. **Raakt de app niet aan.**
   v5.4.8 bracht de browsertests van 4 rood naar 1 rood; dit is die laatste.
 
