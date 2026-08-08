@@ -366,6 +366,25 @@ async function controleerPin() {
 // ══════════════════════════════════════════════════════════════
 //  AUTH
 // ══════════════════════════════════════════════════════════════
+
+// Leest de uid uit een Firebase idToken. Een idToken is een JWT: drie delen
+// gescheiden door punten, waarvan het middelste deel base64url-gecodeerde JSON
+// is met daarin `user_id` (en `sub`). Puur uitlezen, geen controle — dat doet
+// Firestore zelf al bij elke aanroep. Dit is de terugval voor het geval de
+// uid niet uit wisselWatchPin komt.
+function uidUitToken(token) {
+  try {
+    const deel = String(token || '').split('.')[1];
+    if (!deel) return null;
+    const json = atob(deel.replace(/-/g, '+').replace(/_/g, '/'));
+    const payload = JSON.parse(json);
+    return payload.user_id || payload.sub || null;
+  } catch (e) {
+    console.warn('uid uit token lezen mislukt:', e);
+    return null;
+  }
+}
+
 async function inloggenMetCustomToken(customToken) {
   document.getElementById('ww-fout').textContent = '';
   document.getElementById('ww-terug').style.display = 'none';
@@ -378,7 +397,22 @@ async function inloggenMetCustomToken(customToken) {
     if (!resp.ok) throw new Error(data.error?.message || 'Token fout');
     // Vanaf hier heeft alleen dit horloge de tokens - ze gaan nooit terug
     // naar Firestore.
-    idToken = data.idToken; refreshToken = data.refreshToken; uid = data.localId;
+    idToken = data.idToken; refreshToken = data.refreshToken;
+
+    // v5.1.2 — WAT ER MIS WAS: hier stond `uid = data.localId`. Maar het
+    // antwoord van signInWithCustomToken bevat dat veld helemaal niet; het
+    // geeft alleen idToken, refreshToken en expiresIn terug (localId komt wel
+    // terug bij signInWithPassword, vandaar de verwarring). `uid` bleef dus
+    // leeg, en omdat de partij wordt gezocht met
+    // `p.spelers.some(s => s.uid === uid)` vond hij nooit iets: je was
+    // ingelogd maar zag altijd "Je hebt geen actieve partij".
+    //
+    // Nu: de uid komt uit het antwoord van wisselWatchPin (die weet precies
+    // bij welke speler de PIN hoorde). Lukt dat niet, dan lezen we hem uit
+    // het idToken zelf — zo kan dit niet nog een keer stilletjes misgaan.
+    uid = gevondenPin?.uid || uidUitToken(idToken) || null;
+    if (!uid) throw new Error('Kon niet bepalen welke speler dit is');
+
     setInterval(vernieuwToken, 55*60*1000);
     toonScherm('scherm-score');
     laadPartij();

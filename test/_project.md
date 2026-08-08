@@ -10,9 +10,31 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.1.1**
+Huidige versie: **v5.1.2**
 
 ### Changelog
+- **v5.1.2** — Watch vond nooit een partij. Alleen `watch.html` gewijzigd;
+  geen nieuwe deploy van de Cloud Functions of rules nodig.
+
+  - **De fout.** `inloggenMetCustomToken()` deed `uid = data.localId`, maar het
+    antwoord van `accounts:signInWithCustomToken` bevat dat veld niet — dat
+    geeft alleen `idToken`, `refreshToken` en `expiresIn` terug. (`localId`
+    komt wél terug bij `signInWithPassword`, wat de verwarring verklaart: de
+    oude watch-login gebruikte een andere endpoint.) `uid` bleef dus leeg, en
+    omdat de partij wordt gezocht met `p.spelers.some(s => s.uid === uid)`
+    matchte er nooit iets. Resultaat: je was correct ingelogd, het scorescherm
+    verscheen, maar er stond altijd "Je hebt geen actieve partij" — ook in een
+    verse incognitosessie met een nieuwe PIN. Geïntroduceerd in v5.0.0 bij het
+    omzetten naar custom tokens.
+
+  - **De oplossing.** De uid komt nu uit het antwoord van `wisselWatchPin`,
+    die precies weet bij welke speler de PIN hoorde. Nieuwe hulpfunctie
+    `uidUitToken()` leest hem anders alsnog uit het idToken (JWT-payload,
+    veld `user_id` of `sub`). Lukt geen van beide, dan mislukt de login met
+    een duidelijke melding in plaats van stil door te gaan met een lege uid.
+    Getest met 7 controles op `uidUitToken()`, inclusief lege en misvormde
+    tokens.
+
 - **v5.1.1** — Drie punten, gevonden tijdens het testen van v5.1.0.
 
   - **Watch las de verkeerde database.** `watch.html` had de productiedatabase
