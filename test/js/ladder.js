@@ -7,7 +7,7 @@ import { getLadderConfig, getLadderData, isBeheerderRol, isCoordinatorRol, toast
 import { stuurUitdaging } from './archief.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { renderKnockoutLadderKaart } from './knockout.js';
-import { getLadderSpelers, isInLadder } from './ladder-view.js';
+import { getLadderSpelers, isInLadder, ladderStandenGeladen } from './ladder-view.js';
 
 // ============================================================
 //  ACTIVITEITSSYSTEEM — deterministisch berekend uit partijhistorie
@@ -664,9 +664,16 @@ async function renderLadder() {
     // Gebruik view-laag (fase 9a) — haalt spelers uit spelers/{uid} + standen/{uid}
     // v3.0.0-11.102: weergavevolgorde via activiteitssysteem (inactiviteit/bonussen)
     const spelers = getLadderSpelersWeergave(l.id);
-    const lijstHtml = spelers.length === 0
-      ? '<div class="empty"><p>Nog geen spelers.</p></div>'
-      : spelers.map(s => renderLadderRij(s, l.id)).join('');
+    // v5.3.1: als de standen-cache nog leeg is terwijl er wel spelers in de
+    // ladder zitten, geeft getLadderSpelers() voor iedereen rang 0 terug en
+    // zou de lijst alfabetisch met 0P/0W verschijnen — een stand die klopt
+    // noch bestaat. Liever eerlijk melden dat hij nog laadt.
+    const standenKlaar = ladderStandenGeladen(l.id);
+    const lijstHtml = !standenKlaar
+      ? '<div class="empty"><p>Ladderstand wordt geladen…</p><p style="font-size:12px;color:var(--light)">Blijft dit staan? Ververs de pagina.</p></div>'
+      : spelers.length === 0
+        ? '<div class="empty"><p>Nog geen spelers.</p></div>'
+        : spelers.map(s => renderLadderRij(s, l.id)).join('');
 
     return `<div class="card" style="margin-bottom:16px">
       <div class="card-header inklapbaar" onclick="toggleLadderKaart(this,'${escAttr(l.id)}')">
@@ -758,6 +765,8 @@ async function deelLadderAlsAfbeelding(ladderId) {
   const ladder = alleLadders.find(l => l.id === ladderId);
   const spelers = getLadderSpelersWeergave(ladderId);
   if (spelers.length === 0) { toast('Geen spelers om te delen'); return; }
+  // v5.3.1: nooit een afbeelding delen van een stand die nog niet geladen is.
+  if (!ladderStandenGeladen(ladderId)) { toast('Ladderstand is nog aan het laden — probeer zo opnieuw'); return; }
 
   const naam = ladder?.naam || 'Ladder';
   const datum = new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });

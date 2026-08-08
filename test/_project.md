@@ -10,9 +10,47 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.3.0**
+Huidige versie: **v5.3.1**
 
 ### Changelog
+- **v5.3.1** — Lege ladder bij eerste login. Alleen app-bestanden; geen deploy
+  van Cloud Functions of rules nodig. **Er is geen data verloren gegaan** — de
+  standen stonden gewoon in Firestore en waren voor andere gebruikers normaal
+  zichtbaar.
+
+  - **Wat er gebeurde.** Een speler die voor het eerst inlogde zag alle 70
+    spelers op rang 0, alfabetisch gesorteerd, met 0P · 0W · 0%.
+
+  - **De oorzaak.** `startAlleStandenListeners()` werd uitsluitend aangeroepen
+    vanuit `onAuthStateChanged`. Die handler kan vuren VOORDAT
+    `getDocs(LADDERS_COL)` in `initFirestore()` klaar is. Loopt hij dan over
+    een nog lege `alleLadders`, dan wordt er geen enkele standen-listener
+    gestart — en er was geen tweede poging. De standen-cache bleef daardoor
+    de hele sessie leeg, `getLadderSpelers()` gaf voor iedereen rang 0 terug
+    en de lijst viel terug op de volgorde van `spelerIds`.
+    Bij een eerste login is die volgorde het waarschijnlijkst omgedraaid,
+    doordat de verplichte profielflow (handicap + wachtwoord kiezen) de timing
+    verschuift. De persistente Firestore-cache uit v5.0.0 maakt het
+    IndexedDB-opstarten bovendien iets trager, wat de race waarschijnlijker
+    maakt dan voorheen.
+
+  - **De reparatie.**
+    - `startAlleStandenListeners()` wordt nu óók aangeroepen zodra de ladders
+      geladen zijn in `initFirestore()`. `startStandenListener()` is
+      idempotent, dus beide volgordes zijn nu gedekt.
+    - Een listener die met een fout stopt ruimt zichzelf op en probeert het na
+      vier seconden opnieuw, in plaats van stilzwijgend een lege cache achter
+      te laten.
+    - De ladder toont "Ladderstand wordt geladen…" zolang de standen niet
+      binnen zijn, in plaats van een lijst met rang 0 die er echt uitziet maar
+      nergens op slaat. Hetzelfde geldt voor "deel als afbeelding": die
+      weigert nu een stand te exporteren die nog niet geladen is.
+
+  - **Waarom de tests dit niet vingen:** dit zit in de opstartvolgorde van
+    listeners en de renderlaag, niet in de rekenkern. De suite dekt berekening,
+    geen browser- en Firestore-timing. Dat blijft zo tot er een testopzet met
+    een draaiende emulator komt.
+
 - **v5.3.0** — Toernooi en knockout doorgelicht met een nieuwe, permanente
   testsuite. Vijf bevindingen in de toernooimodule, waarvan twee die een
   toernooi daadwerkelijk kunnen laten mislukken. Knockout bleek schoon.
