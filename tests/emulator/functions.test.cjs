@@ -128,7 +128,13 @@ async function main() {
   await R.magWel('partij afsluiten zonder scores lukt (uitdrukkelijke eis)',
     () => roepAan('verwerkPartijUitslag', { ladderId: 'mp', partijId: 'p1', matchups: matchup }, tokenA));
   R.check('winnaar Bram staat nu eerste', await rang(SPELER_B), 1);
-  R.check('verliezer Anna is gezakt', await rang(SPELER_A), 2);
+  // v5.4.3: verwachting was 2, dat was fout. Met laagZak = 2 zakt de
+  // verliezer twee plekken: Anna stond 1e, dus 1 + 2 = 3. Cees schuift
+  // daardoor op naar 2. Dit is exact wat de rekenkern voorschrijft (zie
+  // tests/partij.test.cjs, 'verliezer zakt laagZak') en wat de Cloud
+  // Function ook deed — de test lag ernaast, niet de app.
+  R.check('verliezer Anna is twee plekken gezakt', await rang(SPELER_A), 3);
+  R.check('Cees is opgeschoven naar de tweede plek', await rang(SPELER_C), 2);
 
   // Idempotentie: een tweede aanroep (netwerkhapering, dubbele tik) mag de
   // partij niet nog een keer laten meetellen.

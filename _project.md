@@ -10,9 +10,49 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.4.2**
+Huidige versie: **v5.4.3**
 
 ### Changelog
+- **v5.4.3** — Alleen testbestanden. **Raakt de app niet aan**: geen deploy
+  nodig, niets wat een speler kan merken. Twee rode CI-jobs opgelost, en in
+  beide gevallen lag de fout in de test, niet in de app.
+
+  - **Cloud Functions-job: "verliezer Anna is gezakt — kreeg 3, verwacht 2".**
+    De test verwachtte dat Anna van plek 1 naar plek 2 zou zakken. Met
+    `laagZak: 2` zakt de verliezer echter twee plekken: 1 + 2 = 3, waarna Cees
+    opschuift naar 2. De Cloud Function deed dit dus goed, en het klopt met de
+    164 groene rekentests (`tests/partij.test.cjs`, "verliezer zakt laagZak").
+    De verwachting is gecorrigeerd naar 3 en er is een tweede controle
+    bijgekomen die vastlegt dat Cees naar 2 gaat — anders zou een fout in het
+    opschuiven van de tussenliggende spelers onopgemerkt blijven.
+
+  - **Browser-job: 7 van de 8 tests vielen om op één regel.** De inlogstap
+    klikte op `button:has-text("Inloggen")` binnen `#login-scherm`. Daar staan
+    twee knoppen met dat woord erin: "Inloggen met Google" (verborgen) en
+    "Inloggen →". Playwright werkt in strict mode en weigert dan te klikken
+    ("resolved to 2 elements"), dus viel elke test die inlogt om nog vóórdat er
+    iets getest werd. Alleen de watch-PIN-test logt niet in en die kwam door —
+    dat verklaart precies "1 passed" en zeven rood. Er wordt nu geklikt op
+    `#login-scherm button.btn-primary`, dat exact één keer voorkomt.
+
+    Dezelfde soort fout zat een tweede keer in het bestand:
+    `page.locator('#page-ronde, #page-ladder')` past ook op twee elementen.
+    Daar staat nu `.first()` achter.
+
+  - **Verwachting voor de volgende run.** Dit haalt de blokkade weg; het maakt
+    de acht tests niet in één keer groen. Ze draaien nu voor het eerst écht
+    tegen de app, en de selectors zijn destijds uit de broncode afgeleid en
+    nooit in een draaiende browser gecontroleerd. Reken op nieuwe fouten en
+    werk ze per foutmelding af.
+
+  - **Nog open (niet in deze versie):** de banenlijst die leeg blijft bij het
+    aanmaken van een nieuwe partij. Analyse staat klaar: `initFirestore()` in
+    `auth.js` breekt af bij `laadInitieelWachtwoord()` — de enige stap zonder
+    eigen foutopvang — waardoor alles erna wordt overgeslagen, inclusief de
+    banen. Daarnaast schrijven `slaAangepasteBaanOp()` en
+    `verwijderAangepasteBaan()` de volledige lijst uit het geheugen over het
+    document heen, zodat één klik met een lege lijst alle banen voor alle
+    spelers kan wissen. Dat laatste is de gevaarlijkste openstaande post.
 - **v5.4.2** — Alleen `playwright.config.cjs`. **Raakt de app niet aan**: geen
   deploy, geen wijziging die een speler kan merken. Uitsluitend nodig om de
   browsertests op GitHub te laten starten.

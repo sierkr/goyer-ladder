@@ -9,12 +9,20 @@
 const { test, expect } = require('@playwright/test');
 
 const WACHTWOORD = 'test1234';
+// v5.4.3: de inlogknop op EEN plek. Niet op tekst zoeken: in #login-scherm
+// staan twee knoppen met het woord Inloggen erin ('Inloggen met Google',
+// verborgen, en 'Inloggen ->'). Playwright werkt in strict mode en weigert
+// dan te klikken ('resolved to 2 elements'), waardoor elke test die inlogt
+// omvalt nog voordat er iets getest is. btn-primary komt precies een keer
+// voor in het loginscherm.
+const klikInloggen = (page) => page.click('#login-scherm button.btn-primary');
+
 const inloggen = async (page, login) => {
   await page.goto('/index.html');
   await page.waitForSelector('#login-scherm', { state: 'visible' });
   await page.fill('#login-email', login);
   await page.fill('#login-pass', WACHTWOORD);
-  await page.click('#login-scherm button:has-text("Inloggen")');
+  await klikInloggen(page);
 };
 
 // Wacht tot de ladderlijst gevuld is met echte rangen.
@@ -79,7 +87,7 @@ test.describe('Inloggen en ladderstand', () => {
     await page.waitForSelector('#login-scherm', { state: 'visible' });
     await page.fill('#login-email', 'anna');
     await page.fill('#login-pass', 'fout-wachtwoord');
-    await page.click('#login-scherm button:has-text("Inloggen")');
+    await klikInloggen(page);
     await expect(page.locator('#login-fout')).not.toBeEmpty({ timeout: 15000 });
     await expect(page.locator('#login-scherm')).toBeVisible();
   });
@@ -126,7 +134,11 @@ test.describe('Partij en scores', () => {
     await page.waitForTimeout(2000);
 
     await page.reload();
-    await expect(page.locator('#page-ronde, #page-ladder')).toBeVisible({ timeout: 20000 });
+    // v5.4.3: .first() erbij - deze selector past op twee elementen en dat is
+    // in strict mode ook een fout. Het gaat er hier alleen om dat de app na
+    // het herladen weer een pagina toont.
+    await expect(page.locator('#page-ronde, #page-ladder').first())
+      .toBeVisible({ timeout: 20000 });
     await page.click('#nav-ronde-btn');
     const naHerladen = page.locator('#scorecard-body input[type=number]').first();
     await expect(naHerladen).toHaveValue('4', { timeout: 20000 });
