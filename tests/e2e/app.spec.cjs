@@ -25,7 +25,10 @@ const inloggen = async (page, login) => {
   await klikInloggen(page);
 };
 
-// v5.4.7: vertellen wat er werkelijk op het scherm staat.
+// v5.4.7/v5.4.9: gereedschap om te zien wat er werkelijk op het scherm staat.
+// De aanroepen zijn eruit nu de ladder-tests groen zijn; de functies blijven
+// staan zodat ze bij een volgend raadsel meteen inzetbaar zijn — zet een
+// toonSchermstatus(page, 'label') vlak vóór de assertie die faalt.
 //
 // De ladder-tests vielen om met "element(s) not found" op #ladder-list-mp,
 // maar dat zegt niet WAAROM. renderLadder() in ladder.js kent vier uitkomsten
@@ -81,15 +84,9 @@ const ladderRijen = (page) => page.locator('#ladder-list-mp .ladder-rij, #ladder
 test.describe('Inloggen en ladderstand', () => {
 
   test('bestaande speler ziet de echte ladderstand', async ({ page }) => {
-    const toonConsole = volgConsole(page, 'bestaande speler');
     await inloggen(page, 'anna');
     await expect(page.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
 
-    // v5.4.7: even de tijd geven en dan afdrukken wat er staat — ook als de
-    // test hierna slaagt. Dit staat in het CI-log en kost niets.
-    await page.waitForTimeout(6000);
-    await toonSchermstatus(page, 'bestaande speler, 6s na inloggen');
-    toonConsole();
 
     const lijst = page.locator('#ladder-list-mp');
     await expect(lijst).toBeVisible();
@@ -168,21 +165,36 @@ test.describe('Partij en scores', () => {
   test('partij starten en scores invoeren blijft bewaard na herladen', async ({ page }) => {
     await inloggen(page, 'anna');
     await expect(page.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
+    // v5.4.9: wacht tot de namen er echt zijn. startPartij() weigert met
+    // "Spelersdata nog niet geladen" zolang de spelerslijst leeg is.
+    await expect(page.locator('#ladder-list-mp'))
+      .toContainText('Bram Speler', { timeout: 25000 });
 
     await page.click('#nav-partij-btn');
     await expect(page.locator('#page-partij')).toHaveClass(/active/);
 
-    // Tegenstander kiezen in het eerste vrije slot en de partij starten.
     await page.selectOption('#partij-ladder-select', 'mp').catch(() => {});
-    await page.selectOption('#baan-select', { index: 1 }).catch(() => {});
-    const slot = page.locator('#player-slots #slot-2 input, #player-slots #slot-2 select').first();
-    if (await slot.isVisible().catch(() => false)) {
-      await slot.click();
-      await page.keyboard.type('Bram');
-      await page.locator('text=Bram Speler').first().click().catch(() => {});
-    }
-    await page.locator('button:has-text("Partij starten")').first().click();
+    await page.selectOption('#baan-select', 'De Goyer');
 
+    // ── Tegenstander kiezen ──────────────────────────────────
+    // v5.4.9 — WAT HIER MIS WAS. Er stond:
+    //   await page.locator('text=Bram Speler').first().click().catch(() => {});
+    // "Bram Speler" staat óók in de ladderlijst, en die pagina zit nog gewoon in
+    // de DOM (alleen zonder de klasse 'active', dus onzichtbaar). Playwright
+    // pakte met .first() die verborgen regel, wachtte tot hij klikbaar werd, en
+    // liep na 15 seconden dood. Dat mislukken werd door .catch(() => {})
+    // stilletjes opgeslikt, waarna slot 2 leeg bleef en startPartij() afketste
+    // op "Selecteer minimaal 2 spelers". De test faalde daarna op een heel
+    // andere regel, wat het spoor volledig uitwiste.
+    //
+    // Nu: zoeken binnen de zoeklijst van slot 2 zelf, en daarna hard
+    // controleren dat de speler ook echt gekozen is. Geen stille mislukking.
+    await page.fill('#player-2', 'Bram');
+    await page.locator('#speler-lijst-2 .speler-zoek-item', { hasText: 'Bram Speler' })
+      .first().click();
+    await expect(page.locator('#slot-2')).toHaveAttribute('data-speler-id', /\S/);
+
+    await page.locator('#page-partij button:has-text("Partij starten")').first().click();
     await expect(page.locator('#page-ronde')).toHaveClass(/active/, { timeout: 20000 });
 
     // Score voor hole 1 invullen.
@@ -192,11 +204,13 @@ test.describe('Partij en scores', () => {
     await page.waitForTimeout(2000);
 
     await page.reload();
-    // v5.4.3: .first() erbij - deze selector past op twee elementen en dat is
-    // in strict mode ook een fout. Het gaat er hier alleen om dat de app na
-    // het herladen weer een pagina toont.
-    await expect(page.locator('#page-ronde, #page-ladder').first())
-      .toBeVisible({ timeout: 20000 });
+    // v5.4.9: wacht tot de app na het herladen echt klaar is met opstarten
+    // voordat we op een tabblad klikken. Eerder werd meteen op de ronde-tab
+    // geklikt, waarna die getekend werd met data die er nog niet was — en niets
+    // tekende hem daarna opnieuw. Een gevulde ladderlijst is het bewijs dat de
+    // standen én de namen binnen zijn.
+    await expect(page.locator('#ladder-list-mp'))
+      .toContainText('Anna Speler', { timeout: 25000 });
     await page.click('#nav-ronde-btn');
     const naHerladen = page.locator('#scorecard-body input[type=number]').first();
     await expect(naHerladen).toHaveValue('4', { timeout: 20000 });
@@ -305,8 +319,6 @@ test.describe('Opstarten blijft overeind', () => {
       await expect(page.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
 
       // De ladder moet er staan, ook zonder ladder/config.
-      await page.waitForTimeout(6000);
-      await toonSchermstatus(page, 'zonder ladder/config, 6s na inloggen');
       await expect(page.locator('#ladder-list-mp'))
         .toContainText('Coen Coordinator', { timeout: 25000 });
 
@@ -322,3 +334,5 @@ test.describe('Opstarten blijft overeind', () => {
   });
 });
 
+// Voorkomt dat de hulpfuncties als ongebruikt worden gezien.
+module.exports = { toonSchermstatus, volgConsole };

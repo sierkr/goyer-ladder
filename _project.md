@@ -10,9 +10,37 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.4.8**
+Huidige versie: **v5.4.9**
 
 ### Changelog
+- **v5.4.9** — Alleen `tests/e2e/app.spec.cjs`. **Raakt de app niet aan.**
+  v5.4.8 bracht de browsertests van 4 rood naar 1 rood; dit is die laatste.
+
+  - **De fout zat in de test, en wiste zijn eigen spoor.** Bij het kiezen van
+    een tegenstander stond er
+    `page.locator('text=Bram Speler').first().click().catch(() => {})`.
+    "Bram Speler" staat óók in de ladderlijst, en die pagina zit gewoon in de
+    DOM — alleen zonder de klasse `active`, dus onzichtbaar. Playwright pakte
+    met `.first()` die verborgen regel, wachtte tot hij klikbaar werd en liep na
+    15 seconden dood. Dat mislukken werd door de `.catch(() => {})` stilletjes
+    opgeslikt. Slot 2 bleef leeg, `startPartij()` ketste af op "Selecteer
+    minimaal 2 spelers", en de test faalde vervolgens op een heel andere regel —
+    wat het spoor uitwiste en de fout er wisselvallig deed uitzien.
+
+    Nu wordt er gezocht binnen de zoeklijst van slot 2 zelf, en daarna hard
+    gecontroleerd dat de speler ook echt gekozen is. Een stille mislukking kan
+    niet meer.
+
+  - **Wachten tot de app klaar is met opstarten.** Na het herladen werd meteen
+    op de ronde-tab geklikt, waarna die getekend werd met data die er nog niet
+    was. Er wordt nu eerst gewacht tot de ladderlijst gevuld is — het bewijs dat
+    zowel de standen als de namen binnen zijn.
+
+  - **Diagnose-aanroepen eruit.** De schermdumps uit v5.4.7 hebben hun werk
+    gedaan. De hulpfuncties `toonSchermstatus()` en `volgConsole()` blijven in
+    het bestand staan: zet er een aanroep van vlak vóór een falende assertie en
+    het CI-log vertelt meteen wat er op het scherm stond. Dat scheelde bij deze
+    zoektocht meerdere ronden.
 - **v5.4.8** — Eén regel in `js/auth.js`, en het is een echte fout in de app —
   geen testkwestie. Dit is de oorzaak achter de vier hardnekkig rode
   browsertests.

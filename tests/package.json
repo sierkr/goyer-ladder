@@ -1,6 +1,6 @@
 {
   "name": "goyer-ladder-tests",
-  "version": "5.4.8",
+  "version": "5.4.9",
   "private": true,
   "description": "Testgereedschap voor de Goyer Golf MP Ladder. Alleen nodig voor de emulator- en browsertests; de rekentests draaien zonder dit alles.",
   "scripts": {
