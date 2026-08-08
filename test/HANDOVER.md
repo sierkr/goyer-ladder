@@ -1,4 +1,4 @@
-# HANDOVER — Goyer Golf MP Ladder, v5.5.0
+# HANDOVER — Goyer Golf MP Ladder, v5.5.5
 
 > Plak dit bestand als eerste bericht in een nieuwe chat, samen met de zip.
 > Lees daarna `_project.md` voor de volledige structuur en changelog.
@@ -15,7 +15,9 @@ Sierk, niet-technisch. Vier harde regels die altijd gelden:
    te hebben gesteld.
 2. **Verhoog altijd het versienummer**, hoe klein de wijziging ook is. Vier
    plekken plus `tests/package.json`, `_project.md` en dit bestand — zie de
-   tabel bovenin `_project.md`.
+   tabel bovenin `_project.md`. **Vergeet `WATCH_VERSIE` in `watch.html` niet**:
+   die pagina vergelijkt zichzelf met `version.json` en herlaadt bij elk bezoek
+   als het nummer achterloopt.
 3. **Altijd foutcontrole na een wijziging** (syntaxcheck + `node tests/run.cjs`).
 4. **Lever altijd een volledige downloadbare zip** van het hele project.
 
@@ -49,7 +51,7 @@ wachtwoordwijziging in test ook het echte wachtwoord.
 
 ## 3. Waar we nu staan
 
-Versie in de zip: **v5.5.0**.
+Versie in de zip: **v5.5.5**.
 
 ### De testopzet is groen
 
@@ -62,9 +64,10 @@ Alle vier de CI-jobs op GitHub Actions slagen:
 | Browser (end-to-end) | 11 Playwright-tests |
 
 Dat was een traject van 1 geslaagde test naar alles groen. Onderweg zijn er
-**drie echte fouten in de app** uit gekomen die spelers raakten — zie hieronder.
+**zes echte fouten in de app** uit gekomen die spelers raakten — drie via de
+testopzet en drie via Sierks toernooitest. Zie hieronder.
 
-### Wat er in productie draait (v5.4.4 t/m v5.5.0)
+### Wat er in productie draait (v5.4.4 t/m v5.5.4)
 
 - **Het opstarten kan niet meer in zijn geheel omvallen.** `initFirestore()`
   laadde documenten in één blok; ging er één mis, dan werd alles daarna
@@ -87,6 +90,75 @@ Dat was een traject van 1 geslaagde test naar alles groen. Onderweg zijn er
   standen binnenkomen en zet de listeners anders opnieuw op (vijf pogingen,
   daarna stopt hij). Hij is met v5.4.6 meegegaan naar productie.
 - **v5.5.0: test en productie schrijven niet meer door elkaar.** Zie hieronder.
+- **v5.5.1: meldingen die iets zeggen.** De watch perste elke mislukte
+  inlogpoging samen tot "Ongeldige of verlopen PIN" en gooide de precieze reden
+  van de server weg; de scorekaart meldde altijd "ouder dan 30 dagen", ook als er
+  simpelweg nooit een scorekaart is gemaakt.
+- **v5.5.2: de watch-pagina ververst zichzelf** en toont zijn versienummer.
+- **v5.5.3: de watch schreef nooit één score weg.** Een fout veldpad gaf bij elk
+  verzoek 400. Plus een zichtbare opslagstatus en een wachtrij met
+  conflictcontrole.
+- **v5.5.4: de telefoon toonde verouderde scores** terwijl PC en watch wel
+  klopten. De score-luisteraar bleef hangen aan een weggegooid partij-object.
+
+### v5.5.4 — waarom uitsluitend de telefoon achterliep
+
+De score-luisteraar schrijft binnenkomende scores rechtstreeks in het
+partij-OBJECT dat hij bij het koppelen meekreeg. Dat object wordt op twee
+plekken vervangen terwijl het partijId hetzelfde blijft: in `herlaadNaResume()`
+en in de onSnapshot op het ladderdocument. Beide zetten `actievePartijen` op de
+kopie uit het ladderdocument — met de verouderde scores-array, want de echte
+scores staan sinds v5.0.0 in de subcollectie.
+
+`koppelScoreListener()` vergeleek alleen het partijId, dacht "ik luister al", en
+bleef aan het weggegooide object hangen. Het nieuwe object op het scherm kreeg
+nooit meer een score binnen.
+
+`herlaadNaResume()` gaat af zodra de app uit de achtergrond terugkomt. Op een
+PC-tabblad dat openstaat gebeurt dat nooit, op een telefoon voortdurend. Vandaar
+het beeld: alle PC-schermen synchroon, de watch synchroon, alleen de telefoon
+niet. **Vuistregel: test dit soort dingen altijd óók door de app op een telefoon
+weg te schakelen en terug te halen.**
+
+### Watch-PIN — wat je moet weten
+
+De codes worden **per database** bewaard in `ladder/watchPins`. Een code die in
+de test-app is aangevraagd bestaat niet in productie en andersom. Het adres van
+de watch-pagina bepaalt waar hij zoekt:
+`…/goyer-ladder/watch.html` = productie, `…/goyer-ladder/test/watch.html` = test.
+Dit was de oorzaak van een lange zoektocht: de server gaf keurig 403
+("Ongeldige of verlopen PIN") omdat de code in de andere la lag, maar dat was op
+het scherm niet te zien. Sinds v5.5.1 toont het PIN-scherm de omgeving.
+
+Een code is 15 minuten geldig en werkt precies één keer. De foutteller is
+**globaal**: twintig mislukte pogingen binnen tien minuten blokkeert het voor
+iedereen.
+
+**v5.5.3 — de watch schreef nooit één score weg.** Het veldpad `holes.3` moet
+``holes.`3` `` zijn (accenttekens om een onderdeel dat met een cijfer begint),
+anders geeft Firestore 400. Elke hole is een cijfer, dus elk verzoek faalde, en
+de melding ging naar een console die op een horloge niemand ziet. Sinds v5.5.3
+staat de opslagstatus op het scherm en gaat elke score eerst naar de opslag van
+het toestel zelf. Bij het versturen wordt eerst gecontroleerd of iemand anders
+die hole intussen heeft gewijzigd — zo ja, dan wordt er niet overschreven maar
+gevraagd. **Les:** bouw je met de kale REST-API, dan doet de
+Firebase-bibliotheek een hoop stilzwijgend goed wat je zelf moet regelen.
+
+**De watch-pagina ververst zichzelf sinds v5.5.2** en toont zijn versienummer
+op het PIN-scherm. Dat was nodig omdat een horloge geen adresbalk en geen
+verversknop heeft: een reparatie kon in de browser werken en op het horloge
+tegelijk niets doen, zonder dat je kon zien dat daar een oude kopie stond.
+**Bij het bouwen moet `WATCH_VERSIE` in `watch.html` meeveranderen** met het
+versienummer — anders herlaadt de pagina zichzelf bij elk bezoek.
+
+Werkt een horloge toch niet mee: open het adres met `?v=iets` erachter, dat is
+voor het toestel een nieuwe pagina. Vervang daarna ook de opgeslagen
+snelkoppeling — een oude snelkoppeling kan naar een oud adres blijven wijzen.
+
+Logs bekijken gaat het makkelijkst via de Firebase-console → Functions →
+tabblad Logs. In de Logs Explorer van Google Cloud loggen deze functies onder
+`cloud_run_revision`, niet onder `cloud_function` — filteren op het oude type
+geeft altijd nul resultaten.
 
 ### v5.5.0 vraagt een Cloud Functions-deploy
 
@@ -105,13 +177,20 @@ op GitHub zetten is niet genoeg.
 
 ## 4. De eerstvolgende acties
 
-1. **Cloud Functions deployen** (v5.5.0). Zie `DEPLOYEN.md`. `cd functions &&
-   npm install` is altijd nodig — de Firebase CLI laadt `index.js` eerst lokaal.
-2. **Controleren of er productiedata is beschadigd.** Spelers die in `/test/`
+1. **Bevestigen dat v5.5.4 het telefoonprobleem oplost.** Dit is de laatste
+   openstaande melding. Test zo: corrigeer een hole op de watch, schakel op de
+   telefoon naar een andere app en weer terug, en kijk of de correctie er staat.
+   Dat weg-en-terug schakelen is de kern — zonder dat stap je over de fout heen.
+2. **Cloud Functions deployen** (v5.5.0). Nog niet bevestigd dat dit gebeurd is.
+   Controleren kan in de Firebase-console → Functions → Dashboard: staat er bij
+   `voltooiEersteLogin` geen recente datum, dan is de deploy nooit aangekomen.
+   Zie `DEPLOYEN.md`; `cd functions && npm install` is altijd nodig.
+3. **Controleren of er productiedata is beschadigd.** Spelers die in `/test/`
    het eerste-loginscherm hebben ingevuld, hebben mogelijk een verkeerde
    handicap in de live-database. Bekend geval: Ewout.
-3. **De productiemap bijwerken.** `goyer-ladder/` (zonder `/test/`) loopt achter
-   op `/test/`. Zie punt 6.
+4. **De productiemap bijwerken.** `goyer-ladder/` (zonder `/test/`) loopt fors
+   achter — er zijn sinds v5.4.3 tien versies uitgekomen. Zie punt 6 voor de
+   bestandslijst.
 
 ---
 
@@ -130,6 +209,10 @@ op GitHub zetten is niet genoeg.
 | Twee keer geraden bij de browsertests | Kostte twee ronden. Bij een onduidelijke testfout: eerst laten afdrukken wát er op het scherm staat (`toonSchermstatus()` staat klaar in `tests/e2e/app.spec.cjs`), dan pas repareren. |
 | `.catch(() => {})` achter een klik in een test | Slikt een mislukking op, waarna de test veel later op een andere regel faalt en het spoor weg is. Nooit doen. |
 | `page.locator('text=Naam')` in een test | Onzichtbare pagina's staan gewoon in de DOM. Scope altijd op het element waar het om gaat. |
+| `updateMask.fieldPaths=holes.3` in de kale REST-API | Een pad-onderdeel dat met een cijfer begint moet tussen accenttekens: ``holes.`3` ``. Zonder die tekens antwoordt Firestore met 400. De Firebase-bibliotheek doet dat automatisch, dus de app had er nooit last van en de watch faalde altijd. Kostte jaren aan wisselvallig gedrag. |
+| Een listener die in een object schrijft | Herkoppel ook als het OBJECT vervangen is, niet alleen als het id verandert. Anders schrijft hij in een weggegooide kopie en blijft het scherm op oude waarden staan. Zie v5.5.4. |
+| Een fout wegschrijven naar `console.error` op een horloge | Daar kijkt niemand ooit. Elke mislukking die de gebruiker raakt moet op het scherm komen. Dit is dit traject drie keer de oorzaak geweest van uren zoeken. |
+| Testen op een computer met de muis | `watch.html` luistert uitsluitend naar aanrakingen. Zet in het ontwikkelaarsvenster de aanraakstand aan (Ctrl+Shift+M), anders reageert er niets en lijkt het scherm stuk. |
 
 ---
 
@@ -175,8 +258,17 @@ op GitHub zetten is niet genoeg.
 4. **De wachthond is nu wél getest**, maar op zijn zichtbare gedrag (knop, geen
    "ververs de pagina", vult zichzelf zonder herladen), niet op zijn binnenkant
    — die is van buiten de app niet aan te spreken.
-5. **Sierk test op dit moment het toernooi uitgebreid.** Meldingen daarover zijn
-   waarschijnlijk nieuw terrein; het toernooi is in dit traject niet aangeraakt.
+5. **Sierk test het toernooi uitgebreid.** Dat testen heeft tot nu toe drie
+   echte fouten opgeleverd (watch-PIN, scorekaartmelding, watch-scores), geen
+   ervan in de toernooicode zelf. Het toernooi is in dit traject niet
+   aangeraakt, dus meldingen daarover zijn waarschijnlijk nieuw terrein.
+6. **De watch bewaart onverstuurde scores in de opslag van het toestel**
+   (`goyer-watch-scores-{partijId}` in localStorage). Bij het versturen wordt
+   eerst gelezen wat er nú op de server staat; is dat door iemand anders
+   gewijzigd, dan wordt er NIET overschreven maar een conflict getoond. Die
+   keuze is bewust door de gebruiker gemaakt — een oude watch-score mag nooit
+   stilletjes een nieuwere telefoon-invoer wegdrukken. Niet vereenvoudigen
+   zonder dat opnieuw te bespreken.
 
 ---
 

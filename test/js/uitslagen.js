@@ -38,10 +38,38 @@ async function openScorekaartDetail(uitslag) {
       where('timestamp', '<', uitslag.scoreTs + 60000)
     );
     const snap = await getDocs(q);
-    if (snap.empty) { toast('Scorekaart niet meer beschikbaar (ouder dan 30 dagen)'); return; }
+    if (snap.empty) {
+      // v5.5.1 — WAT HIER MIS WAS. Er was maar één melding: "ouder dan 30
+      // dagen". Maar een uitslag die via het BEHEERSCHERM is bevestigd krijgt
+      // wel een tijdstempel en géén scorekaart-document — dat wordt alleen
+      // vanuit het rondescherm weggeschreven. De app zocht er dan naar, vond
+      // niets, en concludeerde dat hij verlopen was. Hij was niet verlopen; hij
+      // heeft nooit bestaan.
+      const dagen = (Date.now() - (uitslag.scoreTs || 0)) / (24 * 60 * 60 * 1000);
+      toast(dagen > 30
+        ? 'Scorekaart niet meer beschikbaar — ouder dan 30 dagen'
+        : 'Voor deze partij is geen scorekaart bewaard. De uitslag is destijds ' +
+          'via het beheerscherm ingevoerd, zonder scores per hole.');
+      return;
+    }
     const data = snap.docs[0].data();
+
+    // v5.5.1: een bewaarde kaart zonder ingevulde holes is óók geen scorekaart.
+    // Scores zijn uitdrukkelijk optioneel, dus dit is een normale situatie —
+    // dan hoort er een normale uitleg bij, geen leeg raster.
+    const scores = data.scores || {};
+    const ietsIngevuld = Object.values(scores).some(rij =>
+      rij && typeof rij === 'object' && Object.values(rij).some(v => v != null && v !== ''));
+    if (!ietsIngevuld) {
+      toast('Bij deze partij zijn geen scores per hole ingevuld — alleen de uitslag is vastgelegd.');
+      return;
+    }
+
     toonScorekaartModal(data);
-  } catch(e) { toast('Scorekaart laden mislukt'); }
+  } catch(e) {
+    console.error('openScorekaartDetail mislukt:', e);
+    toast('Scorekaart laden mislukt: ' + (e?.code || e?.message || 'onbekende fout'));
+  }
 }
 
 function toonScorekaartModal(data) {

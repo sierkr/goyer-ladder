@@ -1,32 +1,3 @@
-
-
-cd C:\Users\sierk\OneDrive\Apps\goyer-ladder\test\functions
-
-npm install
-
-cd ..
-
-$env:FUNCTIONS_DISCOVERY_TIMEOUT=120
-
-firebase deploy --only functions
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # Deployen — Goyer Golf MP Ladder
 
 Wat waar draait:
@@ -75,11 +46,14 @@ Anthropic API-sleutel. Staat die er niet, dan mislukt de hele deploy — ook de
 functies die er niets mee te maken hebben.
 
 ```
-Set-Content -Path secret.txt -Value "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
-" -NoNewline
-firebase functions:secrets:set ANTHROPIC_API_KEY --data-file secret.txt
-Remove-Item secret.txt```
+firebase functions:secrets:set ANTHROPIC_API_KEY
+```
 
+Hij vraagt om de waarde; plakken en enter. Zie `README-API-SLEUTEL` hieronder.
+
+Gebruik je de scorekaart-scan niet? Zet dan gewoon een willekeurige tekst als
+waarde. De andere functies werken dan normaal; alleen de scanknop geeft een
+foutmelding.
 
 ### 3. Functies deployen
 
@@ -112,7 +86,7 @@ firebase deploy --only firestore:rules
 firebase functions:list
 ```
 
-Je hoort negen functies te zien:
+Je hoort veertien functies te zien:
 
 | Functie | Waarvoor |
 |---|---|
@@ -121,10 +95,62 @@ Je hoort negen functies te zien:
 | `verwerkPartijUitslag` | Partij-uitslag verwerken + controleren |
 | `draaiPartijTerug` | v5.0.0 — uitslag terugdraaien (coördinator) |
 | `pasPuntenAan` | Handmatige puntenaanpassing |
-| `herbereikenActiviteitDagelijks` | Nachtelijke herberekening (04:00) |
+| `verwerkActiviteitPeriodiek` | Activiteitscorrectie, maandag 04:00 |
+| `verwerkActiviteitNu` | Activiteitscorrectie handmatig draaien |
+| `draaiPartijTerug` | Uitslag terugdraaien (coordinator) |
 | `resetSpelerWachtwoord` | Wachtwoord resetten (beheerder) |
 | `voltooiEersteLogin` | Eerste login afronden |
 | `scanScorekaart` | Scorekaart uitlezen uit een foto |
+| `maakLadderSnapshot` | v5.2.0 - snapshot maken (incl. punten) |
+| `herstelLadderSnapshot` | v5.2.0 - snapshot terugzetten (incl. punten) |
+| `exporteerBackupExtra` | v5.2.0 - afgeschermde delen voor de backup |
+| `importeerBackupExtra` | v5.2.0 - afgeschermde delen terugzetten |
+
+---
+
+## Tests
+
+### Snel, lokaal, zonder installatie
+
+```
+node tests/run.cjs
+```
+
+164 tests over puntensysteem, activiteit, partijverwerking, toernooi en
+knockout. Twee seconden. Ze draaien op de echte code uit `js/` en `functions/`,
+dus een wijziging die iets breekt laat hier een test omvallen.
+
+### Compleet, automatisch, op GitHub
+
+Bij elke push draait GitHub alle vier de lagen: de rekenkern, de
+Firestore-regels, de Cloud Functions tegen een echte emulator, en de
+browsertests. Je hoeft daar niets voor te installeren.
+
+Waar je het ziet: ga op github.com naar je repository, tabblad **Actions**.
+Bij elke commit staat een groen vinkje of een rood kruis. Bij rood krijg je
+ook een mail. Klik erop om te zien welke test omviel.
+
+**Rood = niet uploaden naar productie.**
+
+### De zware tests ook lokaal (optioneel)
+
+Alleen als je wilt. Eenmalig:
+
+```
+cd tests
+npm install
+npx playwright install chromium
+cd ..
+```
+
+Daarna:
+
+```
+npx --prefix tests firebase-tools emulators:exec --project demo-goyer --only firestore "node tests/emulator/rules.test.cjs"
+```
+
+De eerste keer downloadt Firebase de emulator; dat duurt even. Java moet
+geinstalleerd zijn.
 
 ---
 

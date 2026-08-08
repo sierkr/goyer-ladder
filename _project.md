@@ -11,9 +11,30 @@
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 | `watch.html` | bij de constanten | `const WATCH_VERSIE = 'v3.0.0-11.XX';` — v5.5.2, anders herlaadt de watch-pagina zichzelf eindeloos |
 
-Huidige versie: **v5.5.4**
+Huidige versie: **v5.5.5**
 
 ### Changelog
+- **v5.5.5** — Alleen documentatie: `HANDOVER.md` bijgewerkt. **Raakt de app
+  niet aan.**
+
+  Het bestand liep vijf punten achter, allemaal van de laatste avond:
+
+  - het overzicht "wat er in productie draait" stopte bij v5.5.1; v5.5.2 t/m
+    v5.5.4 ontbraken, en juist v5.5.4 — de fout waar de gebruiker het langst
+    last van had — kwam er helemaal niet in voor
+  - de versieafspraak noemde `WATCH_VERSIE` in `watch.html` niet, terwijl die
+    sinds v5.5.2 mee moet veranderen
+  - de fouten-tabel miste vier lessen: het REST-veldpad met accenttekens, een
+    listener die moet herkoppelen als het object vervangen is, het wegschrijven
+    van fouten naar een console die op een horloge niemand ziet, en het testen
+    van `watch.html` met een muis in plaats van de aanraakstand
+  - "drie echte fouten" klopte niet meer — het zijn er zes
+  - de eerstvolgende acties waren verouderd; bovenaan staat nu het bevestigen
+    van v5.5.4 op de telefoon
+
+  Ook vastgelegd: de conflictregel van de watch (nooit stilletjes een nieuwere
+  invoer overschrijven) is een bewuste keuze van de gebruiker en mag niet
+  vereenvoudigd worden zonder overleg.
 - **v5.5.4** — Scores kwamen wél op elk PC-scherm en op de watch, maar niet op
   de telefoon. Raakt `js/ronde.js` en `js/auth.js`.
 
