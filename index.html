@@ -1103,7 +1103,7 @@
 <div class="modal-overlay" id="modal-snapshots">
   <div class="modal">
     <h3>Ladderstand herstellen</h3>
-    <p style="font-size:13px;color:var(--mid);margin-bottom:12px">Kies een moment om naar terug te keren. Snapshots worden 30 dagen bewaard.</p>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:12px">Kies een moment om naar terug te keren. Snapshots worden 2 jaar bewaard. De huidige stand wordt automatisch vastgelegd voordat er hersteld wordt.</p>
     <div id="snapshots-list"></div>
     <button class="btn btn-ghost btn-block" style="margin-top:16px" onclick="closeModal('modal-snapshots')">Sluiten</button>
   </div>
@@ -1750,6 +1750,7 @@
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Ladder herstellen</h2>
       <div onclick="event.stopPropagation()">
+        <button class="btn btn-sm btn-ghost" onclick="maakSnapshotNu()" title="Leg de huidige stand vast voordat je iets ingrijpends doet">📸 Snapshot maken</button>
         <button class="btn btn-sm btn-ghost" onclick="openSnapshotsModal()">Bekijk snapshots</button>
       </div>
     </div>

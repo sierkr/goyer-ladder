@@ -10,9 +10,51 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.1.2**
+Huidige versie: **v5.2.0**
 
 ### Changelog
+- **v5.2.0** — Vangnet gerepareerd. Snapshots en backup waren blijven staan op
+  het datamodel van v3 en misten alles wat er sinds v4.2.0 bij is gekomen.
+
+  - **Wat er ontbrak.** De snapshot bewaarde alleen `standen`; de backup
+    alleen ladders/spelers/toernooien/uitslagen/snapshots plus de
+    ladder-documenten. Niet meegenomen werden:
+    - `punten` — score en `activiteitVerschuiving`. Na een herstel klopten de
+      posities wel, maar dacht het systeem nog dat de activiteitscorrectie al
+      was toegepast; de eerstvolgende periodieke run rekende dan met een
+      verkeerd verschil.
+    - `partijen` + `scores` — een lopende ronde overleefde een herstel niet.
+    - `verwerkt` — de stempels tegen dubbel verwerken verdwenen, waardoor een
+      al afgesloten partij nogmaals kon meetellen.
+    - `teruggedraaid` — archief van teruggedraaide uitslagen.
+
+  - **Vier nieuwe Cloud Functions.** Nodig omdat `punten` en `verwerkt` in
+    firestore.rules afgeschermd zijn: alleen leesbaar voor het
+    puntenBeheerder-account respectievelijk niet schrijfbaar door welke client
+    dan ook. Een snapshot of backup vanuit de browser kan die dus niet
+    meenemen. Alle vier alleen voor coordinator/beheerder:
+    `maakLadderSnapshot`, `herstelLadderSnapshot`, `exporteerBackupExtra`,
+    `importeerBackupExtra`.
+
+  - **Knop "📸 Snapshot maken"** in het Beheer-scherm, met een eigen
+    omschrijving. Tot nu toe werden snapshots alleen automatisch gemaakt (na
+    een partij, na een toernooi, vóór een herstel) — er was geen manier om er
+    zelf een te maken vlak voordat je iets ingrijpends deed.
+
+  - **Herstellen zet nu standen én punten terug**, en legt eerst automatisch
+    de huidige staat vast. De score wordt daarbij opnieuw afgeleid uit de
+    herstelde positie, zodat score en rank per definitie bij elkaar horen.
+
+  - **Backup uitgebreid** met dezelfde vier collecties. Mislukt het ophalen
+    van de afgeschermde delen, dan stopt de backup met een foutmelding in
+    plaats van stilletjes een onvolledig bestand te downloaden — een backup
+    waarvan je denkt dat hij compleet is, is gevaarlijker dan geen backup.
+    Het bestand draagt nu `_meta.formaat: 'v5.2.0'`.
+
+  - **Oude snapshots en backups blijven bruikbaar.** Die bevatten geen punten;
+    dan worden alleen de posities hersteld, met een waarschuwing vooraf zodat
+    duidelijk is wat je krijgt.
+
 - **v5.1.2** — Watch vond nooit een partij. Alleen `watch.html` gewijzigd;
   geen nieuwe deploy van de Cloud Functions of rules nodig.
 

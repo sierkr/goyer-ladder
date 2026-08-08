@@ -86,7 +86,7 @@ firebase deploy --only firestore:rules
 firebase functions:list
 ```
 
-Je hoort negen functies te zien:
+Je hoort veertien functies te zien:
 
 | Functie | Waarvoor |
 |---|---|
@@ -95,10 +95,16 @@ Je hoort negen functies te zien:
 | `verwerkPartijUitslag` | Partij-uitslag verwerken + controleren |
 | `draaiPartijTerug` | v5.0.0 — uitslag terugdraaien (coördinator) |
 | `pasPuntenAan` | Handmatige puntenaanpassing |
-| `herbereikenActiviteitDagelijks` | Nachtelijke herberekening (04:00) |
+| `verwerkActiviteitPeriodiek` | Activiteitscorrectie, maandag 04:00 |
+| `verwerkActiviteitNu` | Activiteitscorrectie handmatig draaien |
+| `draaiPartijTerug` | Uitslag terugdraaien (coordinator) |
 | `resetSpelerWachtwoord` | Wachtwoord resetten (beheerder) |
 | `voltooiEersteLogin` | Eerste login afronden |
 | `scanScorekaart` | Scorekaart uitlezen uit een foto |
+| `maakLadderSnapshot` | v5.2.0 - snapshot maken (incl. punten) |
+| `herstelLadderSnapshot` | v5.2.0 - snapshot terugzetten (incl. punten) |
+| `exporteerBackupExtra` | v5.2.0 - afgeschermde delen voor de backup |
+| `importeerBackupExtra` | v5.2.0 - afgeschermde delen terugzetten |
 
 ---
 
