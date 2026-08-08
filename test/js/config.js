@@ -5,7 +5,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
   getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc,
+  doc, collection, onSnapshot, setDoc, getDoc, getDocFromServer, updateDoc, deleteDoc, getDocs, addDoc,
   query, where, orderBy, connectFirestoreEmulator
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
@@ -19,24 +19,41 @@ import {
 import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js";
 
+// v5.4.0: draait de app lokaal (browsertests tegen de emulator)? Dan geen
+// App Check en geen emulator-verbindingen in productie. De app wordt in
+// productie en test altijd vanaf sierkr.github.io geserveerd, dus deze
+// voorwaarde is nooit waar voor een echte gebruiker.
+// v5.4.4: deze regel staat nu bovenaan, omdat de projectnaam hieronder hem
+// nodig heeft. initializeApp() krijgt zijn instellingen maar één keer mee.
+export const IS_EMULATOR =
+  typeof location !== 'undefined' &&
+  (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+
+// v5.4.4: de projectnaam in de testopstelling.
+//
+// WAT ER MIS WAS: de emulator draait onder de naam `demo-goyer` en de testdata
+// wordt daar weggeschreven, maar de app vroeg altijd naar
+// `goyer-golf-mp-ladder`. Twee verschillende laden van dezelfde kast: inloggen
+// lukte wel (de inlog-emulator bedient maar één project en let niet op de
+// naam), maar de database was leeg. Vandaar "ladder/config ontbreekt" en een
+// app zonder ladder in de browsertests.
+//
+// De `demo-`naam blijft bewust staan: die is de veiligheidsgrendel waardoor de
+// emulator nooit per ongeluk bij de échte Firebase-diensten kan. Op
+// sierkr.github.io is IS_EMULATOR altijd onwaar, dus voor de spelers verandert
+// hier niets.
+export const PROJECT_ID = IS_EMULATOR ? 'demo-goyer' : 'goyer-golf-mp-ladder';
+
 export const firebaseConfig = {
   apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
   authDomain: "goyer-golf-mp-ladder.firebaseapp.com",
-  projectId: "goyer-golf-mp-ladder",
+  projectId: PROJECT_ID,
   storageBucket: "goyer-golf-mp-ladder.firebasestorage.app",
   messagingSenderId: "124116031878",
   appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
 };
 
 export const app = initializeApp(firebaseConfig);
-
-// v5.4.0: draait de app lokaal (browsertests tegen de emulator)? Dan geen
-// App Check en geen emulator-verbindingen in productie. De app wordt in
-// productie en test altijd vanaf sierkr.github.io geserveerd, dus deze
-// voorwaarde is nooit waar voor een echte gebruiker.
-export const IS_EMULATOR =
-  typeof location !== 'undefined' &&
-  (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
 
 // v3.0.0-11.100: App Check — reCAPTCHA v3. Beschermt Firestore/Auth tegen
 // requests van buiten de echte app. Moet vóór getFirestore/getAuth gebeuren.
@@ -257,6 +274,53 @@ export async function laadUiStijl(storeRef) {
     console.warn('laadUiStijl mislukt, val terug op club-stijl:', e);
     storeRef.uiStijl = 'club';
   }
+}
+
+// ============================================================
+//  v5.4.5 — BANEN LADEN, met onderscheid server / eigen kopie
+// ============================================================
+//  HET PROBLEEM DAT DIT OPLOST
+//
+//  Sinds v5.0.0 houdt de app een kopie van de database op het toestel bij,
+//  zodat scores bij slecht bereik op de baan niet verloren gaan. Daar zit een
+//  valkuil in: vraagt de app een document op dat niet in die kopie zit terwijl
+//  de server onbereikbaar is, dan komt er GEEN foutmelding terug maar het
+//  antwoord "dit document bestaat niet".
+//
+//  De app geloofde dat. Eén hapering bij het opstarten was genoeg om de
+//  banenlijst leeg te laten, en omdat de lijst maar één keer werd opgehaald
+//  bleef dat zo tot de app volledig opnieuw startte. Dat is precies de klacht
+//  uit de praktijk: een leeg uitklapmenu bij het aanmaken van een partij,
+//  terwijl alle banen gewoon in Firestore stonden.
+//
+//  Firestore vertelt zelf of een antwoord van de server komt of uit de eigen
+//  kopie (snap.metadata.fromCache). Daar keek de app nooit naar. Nu wel: een
+//  lege lijst uit de eigen kopie wordt niet geloofd.
+//
+//  Geeft terug: { gelukt, uitEigenKopie, lijst }
+//   - gelukt=false betekent "ik weet het niet", niet "er zijn geen banen".
+//     De aanroeper laat de bestaande lijst dan met rust en probeert later weer.
+// ============================================================
+export async function laadBanen(storeRef, { vanServer = false } = {}) {
+  let snap;
+  try {
+    snap = vanServer ? await getDocFromServer(BANEN_DOC) : await getDoc(BANEN_DOC);
+  } catch(e) {
+    console.warn('[banen] ophalen mislukt:', e.code || e.message);
+    return { gelukt: false, uitEigenKopie: false, lijst: null };
+  }
+
+  const uitEigenKopie = snap.metadata?.fromCache === true;
+  const lijst = snap.exists() ? (snap.data().lijst || []) : [];
+
+  if (lijst.length === 0 && uitEigenKopie) {
+    console.warn('[banen] lege lijst uit de eigen kopie — niet vertrouwd, ' +
+      'de server is kennelijk niet bereikbaar');
+    return { gelukt: false, uitEigenKopie: true, lijst: null };
+  }
+
+  storeRef.aangepasteBanen = lijst;
+  return { gelukt: true, uitEigenKopie, lijst };
 }
 
 /**

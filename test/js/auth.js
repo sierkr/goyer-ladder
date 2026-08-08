@@ -7,7 +7,7 @@ import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
   INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB_MIGRATIE, esc, escAttr,
   EMAIL_SUFFIX, DEFAULT_HCP, CONFIG_DOC, laadInitieelWachtwoord,
-  laadUiStijl, pasUiStijlToe,
+  laadUiStijl, pasUiStijlToe, laadBanen,
   genereerEmail, loginNaamVan, functions, httpsCallable } from './config.js';
 import { store, DEFAULT_LADDER_CONFIG,
   alleLadders, activeLadderId, alleSpelersData, huidigeBruiker,
@@ -566,38 +566,86 @@ async function initFirestore() {
 
   try {
     // v3.0.0-11.74: laad initieel wachtwoord parallel met overige docs
-    const [baanSnap, archiefSnap, uitdSnap, toernooiSnap, volgordeSnap] =
-      await Promise.all([
-        getDoc(BANEN_DOC),
+    // v5.4.4: Promise.allSettled in plaats van Promise.all.
+    //
+    // WAT ER MIS WAS: Promise.all breekt af zodra ÉÉN van de vijf reads
+    // mislukt, en levert dan geen enkel resultaat. Eén geweigerd of onbereikbaar
+    // document sleepte zo de andere vier mee. allSettled wacht op alle vijf en
+    // geeft per stuk terug of het gelukt is; een mislukte read levert nu null op
+    // en de rest komt gewoon binnen.
+    // v5.4.5: de banen lopen niet meer mee in deze verzamel-read maar via
+    // laadBanen(), omdat daar het onderscheid server / eigen kopie wordt
+    // gemaakt. laadBanen() gooit nooit een fout, dus Promise.all is hier veilig.
+    const [banenUitkomst, uitkomsten] = await Promise.all([
+      laadBanen(store),
+      Promise.allSettled([
         getDoc(ARCHIEF_DOC),
         getDoc(UITDAGINGEN_DOC),
         getDoc(TOERNOOI_DOC),
         getDoc(doc(db, 'ladder', 'ladderVolgorde'))
-      ]);
-    // Geen fallback — gooit een Error als ladder/config ontbreekt of leeg is.
-    // De fout bubbelt naar initApp() → toonLoginFout() zodat de beheerder actie kan ondernemen.
-    await laadInitieelWachtwoord(store);
+      ])
+    ]);
+    const _namen = ['archief', 'uitdagingen', 'toernooi', 'ladderVolgorde'];
+    const [archiefSnap, uitdSnap, toernooiSnap, volgordeSnap] =
+      uitkomsten.map((u, i) => {
+        if (u.status === 'fulfilled') return u.value;
+        console.warn(`[init] ladder/${_namen[i]} niet geladen:`,
+          u.reason?.code || u.reason?.message || u.reason);
+        return null;
+      });
+
+    // v5.4.4: laadInitieelWachtwoord() heeft nu eigen foutopvang.
+    //
+    // WAT ER MIS WAS: dit was de enige stap in het hele opstarten zonder eigen
+    // try/catch. Hij gooit een echte fout als ladder/config ontbreekt of, voor
+    // iedereen die geen beheerder is, niet gelezen mag worden — en dat mag
+    // volgens firestore.rules alleen een beheerder. Die fout werd pas helemaal
+    // onderaan opgevangen (catch met alleen een console.error), waardoor ALLES
+    // hierna werd overgeslagen: de UI-stijl, het archief, de uitdagingen, de
+    // banen én de ladders. De browsertest van v5.4.3 liet dat zwart op wit zien:
+    // "ladder/config ontbreekt" in de console, en daarna een app zonder ladder.
+    //
+    // Het initiële wachtwoord is alleen nodig in het beheerscherm. Ontbreekt het
+    // hier, dan wordt het na het inloggen alsnog opgehaald (zie
+    // onAuthStateChanged verderop, v3.0.4). Het mag het opstarten niet blokkeren.
+    try {
+      await laadInitieelWachtwoord(store);
+    } catch(e) {
+      console.warn('[init] initieel wachtwoord nog niet beschikbaar:',
+        e.code || e.message);
+    }
 
     // v4.1.0: globale UI-stijl laden en meteen toepassen (voor eerste render van
     // login/app-scherm). Faalt nooit hard — valt terug op 'club' bij problemen.
     await laadUiStijl(store);
     pasUiStijlToe(store.uiStijl);
 
-    store.archiefData     = archiefSnap.exists()  ? (archiefSnap.data().seizoenen  || []) : [];
-    store.uitdagingenData = uitdSnap.exists()      ? (uitdSnap.data().lijst         || []) : [];
+    // v5.4.4: ?. omdat een mislukte read nu null oplevert in plaats van te knallen.
+    store.archiefData     = archiefSnap?.exists() ? (archiefSnap.data().seizoenen || []) : [];
+    store.uitdagingenData = uitdSnap?.exists()    ? (uitdSnap.data().lijst        || []) : [];
     // v3.0.0-11.34: laad alle banen uit Firestore — geen hardcoded BANEN_DB meer.
     // migratieVasteBanen() schrijft de vijf vaste banen eenmalig naar Firestore
     // als ze er nog niet in staan, zodat de overgang naadloos verloopt.
-    let baanLijst = baanSnap.exists() ? (baanSnap.data().lijst || []) : [];
-    baanLijst = await migratieVasteBanen(baanLijst);
-    store.aangepasteBanen = baanLijst;
+    //
+    // v5.4.4/v5.4.5 — BELANGRIJK: de migratie draait ALLEEN op een echt
+    // serverantwoord. Bij een mislukte read, of een antwoord uit de eigen kopie
+    // op het toestel, zou migratieVasteBanen uit de lege lijst concluderen dat
+    // alle vijf vaste banen ontbreken en het banendocument overschrijven met
+    // alleen die vijf — waarmee elke zelf toegevoegde baan van iedereen
+    // verdwijnt. Een leeg of onzeker antwoord is geen bewijs dat er niets is.
+    if (banenUitkomst.gelukt && !banenUitkomst.uitEigenKopie) {
+      store.aangepasteBanen = await migratieVasteBanen(banenUitkomst.lijst);
+    } else if (!banenUitkomst.gelukt) {
+      console.warn('[init] banen nog niet betrouwbaar geladen — ' +
+        'wordt na het inloggen opnieuw geprobeerd');
+    }
     // v3.0.0-9c: alleSpelersData wordt niet meer uit ladder/spelers geladen.
     // Het is nu een afgeleide view van _usersCache (zie store.js) en wordt
     // gevuld zodra de spelers/ listener start na login.
-    const ladderVolgorde  = volgordeSnap.exists()  ? (volgordeSnap.data().volgorde  || []) : [];
+    const ladderVolgorde  = volgordeSnap?.exists() ? (volgordeSnap.data().volgorde || []) : [];
 
     // v3.0.0-11.74: legacy migratie (eenmalig, alleen als nodig)
-    if (toernooiSnap.exists() && toernooiSnap.data().status === 'actief') {
+    if (toernooiSnap?.exists() && toernooiSnap.data().status === 'actief') {
       const migSnap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
       if (migSnap.empty) {
         const legacyData = { ...toernooiSnap.data() };
@@ -678,11 +726,17 @@ async function initFirestore() {
 
     const laddersSnap = await getDocs(LADDERS_COL);
 
-    const stateSnap = await getDoc(STATE_DOC);
+    // v5.4.4: ook deze losse read mag het laden van de ladders niet meeslepen.
+    // ladder/state is een legacy-document dat alleen nog in de migratietak
+    // hieronder wordt gebruikt; is het onbereikbaar, dan gaan we gewoon door.
+    const stateSnap = await getDoc(STATE_DOC).catch(e => {
+      console.warn('[init] ladder/state niet geladen:', e.code || e.message);
+      return null;
+    });
     const mpDoc     = laddersSnap.docs.find(d => d.id === 'mp');
 
     if (!mpDoc) {
-      const bestaandeState = stateSnap.exists()
+      const bestaandeState = stateSnap?.exists()
         ? stateSnap.data()
         : JSON.parse(JSON.stringify(DEFAULT_STATE));
       if (!bestaandeState.actievePartijen) {
@@ -820,12 +874,56 @@ async function initFirestore() {
             store._usersCache = snap.docs.map(d => spelersDocNaarUserFormaat(d.data()));
             const ap = document.querySelector('.page.active')?.id?.replace('page-', '');
             if (ap === 'admin') renderAdmin();
+            // ────────────────────────────────────────────────────────
+            // v5.4.8: OOK de ladder opnieuw tekenen zodra de namen binnen zijn.
+            //
+            // WAT ER MIS WAS. De ladderlijst heeft twee bronnen nodig: de
+            // standen (wie staat waar) en de spelers (de namen en handicaps).
+            // Daar hangen twee aparte listeners aan. De standen-listener geeft
+            // het scherm een seintje om opnieuw te tekenen; deze spelers-
+            // listener vulde alleen stilletjes _usersCache en zei niets.
+            //
+            // Zonder namen geeft getLadderSpelers() een lege lijst terug en zet
+            // renderLadder() "Nog geen spelers." neer. Kwamen de namen daarna
+            // alsnog binnen, dan tekende niemand het scherm opnieuw en bleef
+            // die tekst staan.
+            //
+            // Dat is precies de volgorde die zich voordoet als de standen
+            // sneller binnen zijn dan de login: het seintje van de standen komt
+            // dan langs terwijl huidigeBruiker nog null is en wordt bewust
+            // genegeerd, en daarna komt het niet meer. In de emulator gebeurt
+            // dat altijd (alles is lokaal en instant); bij een snelle
+            // verbinding met een herstelde sessie kan het ook een speler raken.
+            //
+            // De wachthond uit v5.4.1 dekt dit niet af: die controleert of de
+            // STANDEN binnen zijn, en die zijn hier gewoon binnen.
+            // ────────────────────────────────────────────────────────
+            if (ap === 'ladder') renderLadder();
           },
           (err) => { console.warn('spelers/ listener error:', err.code); }
         ));
       }
       // Start standen/ listeners voor alle ladders (fase 9a view-laag)
       startAlleStandenListeners();
+
+      // v5.4.5: banen alsnog ophalen als ze bij het opstarten niet betrouwbaar
+      // binnenkwamen. initFirestore() draait bij een koude start voordat
+      // Firebase de sessie heeft hersteld, en wordt na het inloggen niet
+      // opnieuw uitgevoerd — zonder deze tweede poging bleef de banenlijst leeg
+      // tot de app volledig opnieuw startte. Nadrukkelijk van de server, zodat
+      // een lege eigen kopie niet opnieuw voor een leeg antwoord zorgt.
+      //
+      // LET OP — bewust NA startAlleStandenListeners() en bewust ZONDER await.
+      // getDocFromServer() wacht op de server. Juist bij slecht bereik op de
+      // baan — precies wanneer de banenlijst leeg is — kan dat lang duren. Zou
+      // deze regel het opstarten ophouden, dan startten de ladder-listeners pas
+      // daarna en bleef de ladderstand leeg. De banen komen binnen wanneer ze
+      // binnenkomen; niets anders wacht erop.
+      if (!S.aangepasteBanen || S.aangepasteBanen.length === 0) {
+        laadBanen(store, { vanServer: true })
+          .then(r => { if (r.gelukt) console.info(`[banen] alsnog geladen na inloggen: ${r.lijst.length}`); })
+          .catch(e => console.warn('[banen] tweede poging mislukt:', e.code || e.message));
+      }
       // v5.4.1: controleer of de standen ook echt binnenkomen en herstel
       // vanzelf als dat niet zo is. Zie de toelichting in ladder-view.js.
       startStandenWachthond();

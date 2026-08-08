@@ -10,9 +10,271 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.4.1**
+Huidige versie: **v5.4.9**
 
 ### Changelog
+- **v5.4.9** — Alleen `tests/e2e/app.spec.cjs`. **Raakt de app niet aan.**
+  v5.4.8 bracht de browsertests van 4 rood naar 1 rood; dit is die laatste.
+
+  - **De fout zat in de test, en wiste zijn eigen spoor.** Bij het kiezen van
+    een tegenstander stond er
+    `page.locator('text=Bram Speler').first().click().catch(() => {})`.
+    "Bram Speler" staat óók in de ladderlijst, en die pagina zit gewoon in de
+    DOM — alleen zonder de klasse `active`, dus onzichtbaar. Playwright pakte
+    met `.first()` die verborgen regel, wachtte tot hij klikbaar werd en liep na
+    15 seconden dood. Dat mislukken werd door de `.catch(() => {})` stilletjes
+    opgeslikt. Slot 2 bleef leeg, `startPartij()` ketste af op "Selecteer
+    minimaal 2 spelers", en de test faalde vervolgens op een heel andere regel —
+    wat het spoor uitwiste en de fout er wisselvallig deed uitzien.
+
+    Nu wordt er gezocht binnen de zoeklijst van slot 2 zelf, en daarna hard
+    gecontroleerd dat de speler ook echt gekozen is. Een stille mislukking kan
+    niet meer.
+
+  - **Wachten tot de app klaar is met opstarten.** Na het herladen werd meteen
+    op de ronde-tab geklikt, waarna die getekend werd met data die er nog niet
+    was. Er wordt nu eerst gewacht tot de ladderlijst gevuld is — het bewijs dat
+    zowel de standen als de namen binnen zijn.
+
+  - **Diagnose-aanroepen eruit.** De schermdumps uit v5.4.7 hebben hun werk
+    gedaan. De hulpfuncties `toonSchermstatus()` en `volgConsole()` blijven in
+    het bestand staan: zet er een aanroep van vlak vóór een falende assertie en
+    het CI-log vertelt meteen wat er op het scherm stond. Dat scheelde bij deze
+    zoektocht meerdere ronden.
+- **v5.4.8** — Eén regel in `js/auth.js`, en het is een echte fout in de app —
+  geen testkwestie. Dit is de oorzaak achter de vier hardnekkig rode
+  browsertests.
+
+  - **De ladderlijst heeft twee bronnen nodig:** de standen (wie staat waar) en
+    de spelers (de namen en handicaps). Daar hangen twee aparte listeners aan.
+    De standen-listener geeft het scherm een seintje om opnieuw te tekenen; de
+    spelers-listener vulde alleen stilletjes `_usersCache` en zei niets.
+
+  - **Zonder namen** geeft `getLadderSpelers()` een lege lijst terug en zet
+    `renderLadder()` "Nog geen spelers." neer. Kwamen de namen daarna alsnog
+    binnen, dan tekende niemand het scherm opnieuw en bleef die tekst staan.
+    Het commentaar in `ladder-view.js` gaat er expliciet van uit dat er "opnieuw
+    gerenderd wordt zodra de listener gefired heeft" — maar dat gold alleen voor
+    de standen, niet voor de namen.
+
+  - **Wanneer het toeslaat:** als de standen sneller binnen zijn dan de login.
+    Het seintje van de standen komt dan langs terwijl `huidigeBruiker` nog null
+    is en wordt bewust genegeerd; daarna komt het niet meer. In de emulator
+    gebeurt dat altijd — alles is lokaal en instant — en dat is precies waarom
+    de browsertests dit blootlegden. Bij een snelle verbinding met een herstelde
+    sessie kan dezelfde volgorde een speler raken. Zelfde familie als de fout
+    van v5.3.0, waar iedereen op rang 0 verscheen.
+
+  - **De wachthond uit v5.4.1 dekt dit niet af.** Die controleert of de STANDEN
+    binnen zijn, en die zijn hier gewoon binnen. Het ontbraken de namen.
+
+  - **De reparatie:** de spelers-listener tekent nu ook de ladder opnieuw, net
+    zoals de standen-listener dat al deed.
+
+  De diagnoseregels uit v5.4.7 blijven nog één run staan, zodat in het log te
+  zien is dat het klopt. Daarna gaan ze eruit.
+- **v5.4.7** — Alleen `tests/e2e/app.spec.cjs`. **Raakt de app niet aan.**
+
+  Vier browsertests blijven omvallen op `#ladder-list-mp` met "element(s) not
+  found". Die melding zegt niet waarom. `renderLadder()` in `ladder.js` kent
+  vier uitkomsten en elk wijst een andere kant op:
+
+  | Wat er op het scherm staat | Wat dat betekent |
+  |---|---|
+  | "Laden…" | `alleLadders` nog leeg, de app probeert het opnieuw |
+  | "Je bent nog niet toegevoegd aan een ladder." | `mijnLadders` leeg — `isInLadder()` zegt nee, dus de uid staat niet in `spelerIds` of `huidigeBruiker.uid` ontbreekt |
+  | "Ladderstand wordt opgehaald…" | de kaart bestaat wél, maar de standen-listener levert niets |
+  | rijen met namen | alles goed |
+
+  De test drukt nu na het inloggen af welke van de vier het is, plus alles wat
+  de app naar de console schreef. Eén run is daarmee genoeg om de oorzaak vast
+  te stellen, in plaats van opnieuw te moeten raden.
+
+  Reden dat dit niet in één keer kon: lokaal reproduceren lukt niet, de
+  ontwikkelomgeving mag Chromium en de Firebase-emulator niet downloaden.
+- **v5.4.6** — Eén regel verzet in `js/auth.js`, maar een belangrijke. Bevat
+  verder alles uit v5.4.5.
+
+  - **Wat er mis was aan v5.4.5.** De tweede poging om de banen op te halen
+    stond mét `await` vóór `startAlleStandenListeners()`. `getDocFromServer()`
+    wacht op de server, en juist bij slecht bereik op de baan — precies de
+    situatie waarin de banenlijst leeg is — kan dat lang duren. Zolang die
+    regel wachtte, startten de ladder-listeners niet en bleef de ladderstand
+    leeg. Dat is dezelfde soort fout als die we net hadden gerepareerd: één
+    trage stap die alles erna ophoudt.
+
+    Nu staat het ophalen ná het starten van de listeners en zonder `await`. De
+    banen komen binnen wanneer ze binnenkomen; niets anders wacht erop.
+
+- **v5.4.5** — De banenlijst die leeg bleef, en de wisbeveiliging. Raakt
+  `js/config.js`, `js/auth.js` en `js/partij.js`.
+
+  - **De oorzaak: de app kon "er is niets" niet onderscheiden van "ik kon er
+    niet bij".** Sinds v5.0.0 houdt de app een kopie van de database op het
+    toestel bij, zodat scores bij slecht bereik op de baan niet verloren gaan.
+    Daar zit een valkuil in: vraagt de app een document op dat niet in die kopie
+    zit terwijl de server onbereikbaar is, dan komt er géén foutmelding terug
+    maar het antwoord "dit document bestaat niet". De app geloofde dat en zette
+    de banenlijst op leeg. Omdat de lijst maar één keer werd opgehaald, bij het
+    opstarten, bleef dat zo tot de app volledig opnieuw startte — precies wat er
+    in de praktijk gebeurde, en precies waarom de versiesprong van v5.4.3 het
+    "oploste".
+
+    Firestore vertelt zelf of een antwoord van de server komt of uit de eigen
+    kopie (`snap.metadata.fromCache`). Daar keek de app nooit naar. De nieuwe
+    functie `laadBanen()` in `config.js` doet dat wel en geeft drie mogelijke
+    uitkomsten: gelukt, gelukt-maar-uit-de-eigen-kopie, of onbekend. Een lege
+    lijst uit de eigen kopie wordt niet geloofd.
+
+  - **Tweede poging na het inloggen.** `initFirestore()` draait bij een koude
+    start vóórdat Firebase de sessie heeft hersteld, en wordt na het inloggen
+    niet opnieuw uitgevoerd. Kwamen de banen daar niet betrouwbaar binnen, dan
+    worden ze nu alsnog van de server gehaald zodra bekend is wie er is
+    ingelogd.
+
+  - **Zelfherstel in het partijformulier.** Is de lijst tóch leeg op het moment
+    dat je een partij aanmaakt, dan haalt het formulier hem alsnog op en meldt
+    het wat er gebeurt. Lukt het niet, dan verschijnt "↻ Opnieuw proberen" —
+    bewust een knop en geen tekst als "ververs de pagina", want in de app op het
+    beginscherm van een telefoon is er geen adresbalk.
+
+  - **De wisbeveiliging (dit was de gevaarlijkste).** `slaAangepasteBaanOp()` en
+    `verwijderAangepasteBaan()` deden `setDoc(BANEN_DOC, { lijst:
+    aangepasteBanen })`. Dat schrijft de volledige lijst uit het geheugen van
+    dat ene toestel over het document heen. Was die lijst leeg of onvolledig,
+    dan wiste één klik op "opslaan" of "verwijderen" alle banen van alle
+    spelers, permanent, zonder waarschuwing. Beide functies halen nu eerst de
+    actuele lijst van de server, passen daar die ene baan op aan, en schrijven
+    dat terug. Lukt het ophalen niet, dan wordt er niets geschreven en krijgt de
+    gebruiker te horen dat er geen verbinding is. Liever niets opgeslagen dan
+    andermans banen gewist.
+
+  - **De vaste-banen-migratie draait alleen nog op een echt serverantwoord.**
+    Bij een leeg of onzeker antwoord concludeerde die uit de lege lijst dat alle
+    vijf vaste banen ontbraken, en overschreef het document met alleen die vijf.
+    Dat kon dus vanzelf gebeuren, zonder dat iemand ergens op klikte.
+- **v5.4.4** — Drie oorzaken achter de rode browsertests, waarvan er één een
+  echte fout in de app bleek. **Raakt de app wél aan** (`js/auth.js`,
+  `js/config.js`), maar geen enkele wijziging die een speler ziet.
+
+  - **1. Het opstarten kon in zijn geheel omvallen op één document.**
+    `initFirestore()` in `auth.js` laadde vijf documenten met `Promise.all` en
+    riep daarna `laadInitieelWachtwoord()` aan — de enige stap zonder eigen
+    foutopvang. Mislukte er iets, dan werd ALLES daarna overgeslagen: de
+    UI-stijl, het archief, de uitdagingen, de banen én de ladders. De fout werd
+    pas onderaan opgevangen met een `console.error` en verder stil weggegooid,
+    en na inloggen wordt `initFirestore()` niet opnieuw gedraaid — dus het
+    herstelde zich nooit binnen die sessie.
+
+    `ladder/config` is de meest waarschijnlijke struikelaar: dat document mag
+    volgens `firestore.rules` alleen een beheerder lezen. Voor elke gewone
+    speler gooit die stap dus een fout. De browsertest liet het letterlijk zien:
+    `Firestore init error: ladder/config ontbreekt`, gevolgd door een app zonder
+    ladder.
+
+    Nu: `Promise.allSettled`, zodat elke read op zichzelf staat, en eigen
+    foutopvang rond `laadInitieelWachtwoord()`. Het wachtwoord is alleen nodig
+    in het beheerscherm en wordt na het inloggen alsnog opgehaald.
+
+  - **1b. Datalek-risico meteen dichtgezet.** Mislukte de banen-read, dan
+    concludeerde `migratieVasteBanen()` uit de lege lijst dat alle vijf vaste
+    banen ontbraken en overschreef het banendocument met alleen die vijf — dus
+    alle zelf toegevoegde banen van iedereen weg. De migratie draait nu alleen
+    nog als de read echt gelukt is. Een mislukte read is geen bewijs dat er
+    niets is.
+
+  - **2. Verkeerde projectnaam in de testopstelling.** De emulator draait onder
+    `demo-goyer` en de testdata gaat daarheen, maar de app vroeg altijd naar
+    `goyer-golf-mp-ladder`. Inloggen lukte wel (de inlog-emulator bedient maar
+    één project en let niet op de naam), de database was leeg. Op localhost
+    gebruikt de app nu `demo-goyer`. De `demo-`naam blijft bewust staan: dat is
+    de grendel waardoor een test nooit bij de echte Firebase-diensten kan. Op
+    `sierkr.github.io` is `IS_EMULATOR` altijd onwaar, dus in productie
+    verandert er niets.
+
+  - **3. De beheertest logde niet uit.** Hij wiste `localStorage`, maar de
+    inlogsessie staat bewust in IndexedDB (`setPersistence`, zodat de PWA op een
+    telefoon ingelogd blijft). Anna bleef dus ingelogd, het inlogscherm kwam
+    nooit en de test wachtte zich dood — vandaar die 32 seconden. Nu twee
+    gescheiden browsersessies, wat meteen eerlijker is: het test echt twee
+    verschillende gebruikers.
+
+  - **Nieuwe regressietest.** `ontbrekende ladder/config sloopt ladder en banen
+    niet` verwijdert dat document, controleert dat de ladder én het banenmenu
+    gewoon gevuld zijn, en zet het daarna terug. Punt 1 kan hierdoor niet
+    ongemerkt terugkeren.
+
+  - **Nog open:** de banenlijst die leeg kan blijven doordat de app geen
+    verschil ziet tussen "er zijn geen banen" en "ik kon de server niet
+    bereiken" — bij een lege eigen kopie geeft Firestore geen fout maar
+    "bestaat niet". Plus de wisbeveiliging bij handmatig opslaan/verwijderen
+    van een baan. Beide staan gepland voor v5.4.5.
+- **v5.4.3** — Alleen testbestanden. **Raakt de app niet aan**: geen deploy
+  nodig, niets wat een speler kan merken. Twee rode CI-jobs opgelost, en in
+  beide gevallen lag de fout in de test, niet in de app.
+
+  - **Cloud Functions-job: "verliezer Anna is gezakt — kreeg 3, verwacht 2".**
+    De test verwachtte dat Anna van plek 1 naar plek 2 zou zakken. Met
+    `laagZak: 2` zakt de verliezer echter twee plekken: 1 + 2 = 3, waarna Cees
+    opschuift naar 2. De Cloud Function deed dit dus goed, en het klopt met de
+    164 groene rekentests (`tests/partij.test.cjs`, "verliezer zakt laagZak").
+    De verwachting is gecorrigeerd naar 3 en er is een tweede controle
+    bijgekomen die vastlegt dat Cees naar 2 gaat — anders zou een fout in het
+    opschuiven van de tussenliggende spelers onopgemerkt blijven.
+
+  - **Browser-job: 7 van de 8 tests vielen om op één regel.** De inlogstap
+    klikte op `button:has-text("Inloggen")` binnen `#login-scherm`. Daar staan
+    twee knoppen met dat woord erin: "Inloggen met Google" (verborgen) en
+    "Inloggen →". Playwright werkt in strict mode en weigert dan te klikken
+    ("resolved to 2 elements"), dus viel elke test die inlogt om nog vóórdat er
+    iets getest werd. Alleen de watch-PIN-test logt niet in en die kwam door —
+    dat verklaart precies "1 passed" en zeven rood. Er wordt nu geklikt op
+    `#login-scherm button.btn-primary`, dat exact één keer voorkomt.
+
+    Dezelfde soort fout zat een tweede keer in het bestand:
+    `page.locator('#page-ronde, #page-ladder')` past ook op twee elementen.
+    Daar staat nu `.first()` achter.
+
+  - **Verwachting voor de volgende run.** Dit haalt de blokkade weg; het maakt
+    de acht tests niet in één keer groen. Ze draaien nu voor het eerst écht
+    tegen de app, en de selectors zijn destijds uit de broncode afgeleid en
+    nooit in een draaiende browser gecontroleerd. Reken op nieuwe fouten en
+    werk ze per foutmelding af.
+
+  - **Nog open (niet in deze versie):** de banenlijst die leeg blijft bij het
+    aanmaken van een nieuwe partij. Analyse staat klaar: `initFirestore()` in
+    `auth.js` breekt af bij `laadInitieelWachtwoord()` — de enige stap zonder
+    eigen foutopvang — waardoor alles erna wordt overgeslagen, inclusief de
+    banen. Daarnaast schrijven `slaAangepasteBaanOp()` en
+    `verwijderAangepasteBaan()` de volledige lijst uit het geheugen over het
+    document heen, zodat één klik met een lege lijst alle banen voor alle
+    spelers kan wissen. Dat laatste is de gevaarlijkste openstaande post.
+- **v5.4.2** — Alleen `playwright.config.cjs`. **Raakt de app niet aan**: geen
+  deploy, geen wijziging die een speler kan merken. Uitsluitend nodig om de
+  browsertests op GitHub te laten starten.
+
+  - **De fout.** Playwright staat geïnstalleerd in `tests/node_modules`, maar
+    `playwright.config.cjs` staat in de hoofdmap. Node zoekt onderdelen altijd
+    vanaf de map van het bestand zelf en loopt daarbij naar bóven, nooit een
+    submap in — dus vanuit de hoofdmap werd `tests/node_modules` nooit
+    bekeken. Resultaat op GitHub: `Cannot find module '@playwright/test'`,
+    afkomstig uit regel 8 van de configuratie. Playwright stierf op zijn eigen
+    instellingenbestand, vóór de eerste test. Dat verklaarde waarom er geen
+    enkele testnaam in het log stond en de stap maar 17 seconden duurde.
+    Het seeden van de testdata was wél gelukt (het log toont de vijf
+    aangemaakte spelers).
+
+  - **De oplossing.** De configuratie vraagt niets meer op. `defineConfig()`
+    en `devices[]` zijn gemaksfuncties zonder eigen werking; een gewoon
+    `module.exports = { ... }` doet exact hetzelfde. Nul afhankelijkheden,
+    dus niets meer te vinden.
+
+  - **Tweede struikelblok meteen weggenomen.** `devices['Desktop Chrome']`
+    vraagt in nieuwere Playwright-versies om de échte Google Chrome, terwijl
+    de workflow alleen Chromium installeert. Dat was na de eerste fix direct
+    de volgende geweest. Nu staat er rechtstreeks
+    `browserName: 'chromium'` met een vast venster van 1280×900.
+
 - **v5.4.1** — De app herstelt zichzelf in plaats van om een verversing te
   vragen. Alleen app-bestanden; geen deploy nodig.
 

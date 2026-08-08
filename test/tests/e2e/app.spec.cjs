@@ -9,13 +9,74 @@
 const { test, expect } = require('@playwright/test');
 
 const WACHTWOORD = 'test1234';
+// v5.4.3: de inlogknop op EEN plek. Niet op tekst zoeken: in #login-scherm
+// staan twee knoppen met het woord Inloggen erin ('Inloggen met Google',
+// verborgen, en 'Inloggen ->'). Playwright werkt in strict mode en weigert
+// dan te klikken ('resolved to 2 elements'), waardoor elke test die inlogt
+// omvalt nog voordat er iets getest is. btn-primary komt precies een keer
+// voor in het loginscherm.
+const klikInloggen = (page) => page.click('#login-scherm button.btn-primary');
+
 const inloggen = async (page, login) => {
   await page.goto('/index.html');
   await page.waitForSelector('#login-scherm', { state: 'visible' });
   await page.fill('#login-email', login);
   await page.fill('#login-pass', WACHTWOORD);
-  await page.click('#login-scherm button:has-text("Inloggen")');
+  await klikInloggen(page);
 };
+
+// v5.4.7/v5.4.9: gereedschap om te zien wat er werkelijk op het scherm staat.
+// De aanroepen zijn eruit nu de ladder-tests groen zijn; de functies blijven
+// staan zodat ze bij een volgend raadsel meteen inzetbaar zijn — zet een
+// toonSchermstatus(page, 'label') vlak vóór de assertie die faalt.
+//
+// De ladder-tests vielen om met "element(s) not found" op #ladder-list-mp,
+// maar dat zegt niet WAAROM. renderLadder() in ladder.js kent vier uitkomsten
+// en elk daarvan wijst een andere kant op:
+//
+//   "Laden…"                              -> alleLadders nog leeg, hij probeert het
+//   "Je bent nog niet toegevoegd aan een  -> mijnLadders leeg: isInLadder() zegt nee
+//    ladder."                                (uid staat niet in spelerIds, of
+//                                             huidigeBruiker.uid ontbreekt)
+//   "Ladderstand wordt opgehaald…"        -> kaart bestaat wel, standen-listener
+//                                            levert niets
+//   rijen met namen                       -> alles goed
+//
+// Deze dump drukt af welke van de vier het is, plus alles wat de app naar de
+// console schreef. Zo is één testrun genoeg om de oorzaak vast te stellen.
+async function toonSchermstatus(page, label) {
+  const uit = await page.evaluate(() => {
+    const kaarten = document.getElementById('ladder-kaarten');
+    const lijsten = [...document.querySelectorAll('[id^="ladder-list-"]')].map(e => e.id);
+    const pagina  = document.querySelector('.page.active')?.id || '(geen)';
+    return {
+      pagina,
+      kaartenAanwezig: !!kaarten,
+      lijstElementen: lijsten,
+      tekst: (kaarten?.innerText || '(geen #ladder-kaarten)').slice(0, 400),
+    };
+  }).catch(e => ({ fout: e.message }));
+
+  console.log(`\n──── schermstatus: ${label} ────`);
+  console.log('  actieve pagina    :', uit.pagina);
+  console.log('  #ladder-kaarten   :', uit.kaartenAanwezig);
+  console.log('  gevonden lijsten  :', uit.lijstElementen?.length ? uit.lijstElementen.join(', ') : '(geen)');
+  console.log('  tekst op het scherm:');
+  console.log((uit.tekst || '').split('\n').map(l => '    | ' + l).join('\n'));
+  console.log('────────────────────────────────\n');
+}
+
+// Vangt alles op wat de app naar de console schrijft en drukt het af.
+function volgConsole(page, label) {
+  const regels = [];
+  page.on('console', m => regels.push(`[${m.type()}] ${m.text()}`));
+  page.on('pageerror', e => regels.push(`[pageerror] ${e.message}`));
+  return () => {
+    console.log(`\n──── console: ${label} (${regels.length} regels) ────`);
+    regels.slice(-40).forEach(l => console.log('    ' + l));
+    console.log('────────────────────────────────\n');
+  };
+}
 
 // Wacht tot de ladderlijst gevuld is met echte rangen.
 const ladderRijen = (page) => page.locator('#ladder-list-mp .ladder-rij, #ladder-list-mp > div');
@@ -25,6 +86,8 @@ test.describe('Inloggen en ladderstand', () => {
   test('bestaande speler ziet de echte ladderstand', async ({ page }) => {
     await inloggen(page, 'anna');
     await expect(page.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
+
+
     const lijst = page.locator('#ladder-list-mp');
     await expect(lijst).toBeVisible();
     // De stand mag niet blijven hangen op "wordt geladen".
@@ -79,7 +142,7 @@ test.describe('Inloggen en ladderstand', () => {
     await page.waitForSelector('#login-scherm', { state: 'visible' });
     await page.fill('#login-email', 'anna');
     await page.fill('#login-pass', 'fout-wachtwoord');
-    await page.click('#login-scherm button:has-text("Inloggen")');
+    await klikInloggen(page);
     await expect(page.locator('#login-fout')).not.toBeEmpty({ timeout: 15000 });
     await expect(page.locator('#login-scherm')).toBeVisible();
   });
@@ -102,21 +165,36 @@ test.describe('Partij en scores', () => {
   test('partij starten en scores invoeren blijft bewaard na herladen', async ({ page }) => {
     await inloggen(page, 'anna');
     await expect(page.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
+    // v5.4.9: wacht tot de namen er echt zijn. startPartij() weigert met
+    // "Spelersdata nog niet geladen" zolang de spelerslijst leeg is.
+    await expect(page.locator('#ladder-list-mp'))
+      .toContainText('Bram Speler', { timeout: 25000 });
 
     await page.click('#nav-partij-btn');
     await expect(page.locator('#page-partij')).toHaveClass(/active/);
 
-    // Tegenstander kiezen in het eerste vrije slot en de partij starten.
     await page.selectOption('#partij-ladder-select', 'mp').catch(() => {});
-    await page.selectOption('#baan-select', { index: 1 }).catch(() => {});
-    const slot = page.locator('#player-slots #slot-2 input, #player-slots #slot-2 select').first();
-    if (await slot.isVisible().catch(() => false)) {
-      await slot.click();
-      await page.keyboard.type('Bram');
-      await page.locator('text=Bram Speler').first().click().catch(() => {});
-    }
-    await page.locator('button:has-text("Partij starten")').first().click();
+    await page.selectOption('#baan-select', 'De Goyer');
 
+    // ── Tegenstander kiezen ──────────────────────────────────
+    // v5.4.9 — WAT HIER MIS WAS. Er stond:
+    //   await page.locator('text=Bram Speler').first().click().catch(() => {});
+    // "Bram Speler" staat óók in de ladderlijst, en die pagina zit nog gewoon in
+    // de DOM (alleen zonder de klasse 'active', dus onzichtbaar). Playwright
+    // pakte met .first() die verborgen regel, wachtte tot hij klikbaar werd, en
+    // liep na 15 seconden dood. Dat mislukken werd door .catch(() => {})
+    // stilletjes opgeslikt, waarna slot 2 leeg bleef en startPartij() afketste
+    // op "Selecteer minimaal 2 spelers". De test faalde daarna op een heel
+    // andere regel, wat het spoor volledig uitwiste.
+    //
+    // Nu: zoeken binnen de zoeklijst van slot 2 zelf, en daarna hard
+    // controleren dat de speler ook echt gekozen is. Geen stille mislukking.
+    await page.fill('#player-2', 'Bram');
+    await page.locator('#speler-lijst-2 .speler-zoek-item', { hasText: 'Bram Speler' })
+      .first().click();
+    await expect(page.locator('#slot-2')).toHaveAttribute('data-speler-id', /\S/);
+
+    await page.locator('#page-partij button:has-text("Partij starten")').first().click();
     await expect(page.locator('#page-ronde')).toHaveClass(/active/, { timeout: 20000 });
 
     // Score voor hole 1 invullen.
@@ -126,7 +204,13 @@ test.describe('Partij en scores', () => {
     await page.waitForTimeout(2000);
 
     await page.reload();
-    await expect(page.locator('#page-ronde, #page-ladder')).toBeVisible({ timeout: 20000 });
+    // v5.4.9: wacht tot de app na het herladen echt klaar is met opstarten
+    // voordat we op een tabblad klikken. Eerder werd meteen op de ronde-tab
+    // geklikt, waarna die getekend werd met data die er nog niet was — en niets
+    // tekende hem daarna opnieuw. Een gevulde ladderlijst is het bewijs dat de
+    // standen én de namen binnen zijn.
+    await expect(page.locator('#ladder-list-mp'))
+      .toContainText('Anna Speler', { timeout: 25000 });
     await page.click('#nav-ronde-btn');
     const naHerladen = page.locator('#scorecard-body input[type=number]').first();
     await expect(naHerladen).toHaveValue('4', { timeout: 20000 });
@@ -171,16 +255,34 @@ test.describe('Partij en scores', () => {
 
 test.describe('Beheer', () => {
 
-  test('coordinator ziet de beheertabbladen, speler niet', async ({ page }) => {
-    await inloggen(page, 'anna');
-    await expect(page.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
-    await expect(page.locator('#nav-admin-btn')).toBeHidden();
+  test('coordinator ziet de beheertabbladen, speler niet', async ({ browser }) => {
+    // v5.4.4: twee gescheiden browsersessies in plaats van uitloggen halverwege.
+    //
+    // WAT ER MIS WAS: de test logde in als Anna, laadde de pagina opnieuw en
+    // wiste localStorage. Maar de app bewaart de inlogsessie bewust in
+    // IndexedDB (zie setPersistence in config.js, zodat de PWA op een telefoon
+    // ingelogd blijft). localStorage wissen raakt die dus niet: Anna bleef
+    // ingelogd, het inlogscherm verscheen nooit meer en de test wachtte zich
+    // dood op een scherm dat niet meer kwam — vandaar de 32 seconden.
+    //
+    // Een verse context heeft een eigen, lege opslag. Dat is meteen eerlijker:
+    // zo test dit ook echt twee verschillende gebruikers.
+    const ctxSpeler = await browser.newContext();
+    const ctxCoord  = await browser.newContext();
+    try {
+      const speler = await ctxSpeler.newPage();
+      await inloggen(speler, 'anna');
+      await expect(speler.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
+      await expect(speler.locator('#nav-admin-btn')).toBeHidden();
 
-    await page.goto('/index.html');
-    await page.evaluate(() => window.localStorage.clear());
-    await inloggen(page, 'coord');
-    await expect(page.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
-    await expect(page.locator('#nav-toernooi-btn')).toBeVisible({ timeout: 20000 });
+      const coord = await ctxCoord.newPage();
+      await inloggen(coord, 'coord');
+      await expect(coord.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
+      await expect(coord.locator('#nav-toernooi-btn')).toBeVisible({ timeout: 20000 });
+    } finally {
+      await ctxSpeler.close();
+      await ctxCoord.close();
+    }
   });
 
   test('watch-scherm vraagt om een zescijferige PIN', async ({ page }) => {
@@ -190,3 +292,47 @@ test.describe('Beheer', () => {
     await expect(page.locator('body')).toContainText('6-cijferige');
   });
 });
+
+test.describe('Opstarten blijft overeind', () => {
+
+  // v5.4.4 — regressietest voor de fout die de browsertests zelf blootlegden.
+  //
+  // Het opstarten laadde een reeks documenten achter elkaar in één blok. Ging er
+  // één mis, dan werd alles daarna overgeslagen: de UI-stijl, het archief, de
+  // uitdagingen, DE BANEN en de ladders. `ladder/config` was daarbij de meest
+  // waarschijnlijke struikelaar, want dat document mag volgens de
+  // beveiligingsregels alleen een beheerder lezen.
+  //
+  // Deze test haalt dat document expliciet weg en controleert dat de app het
+  // gewoon uitzingt. Het document wordt daarna altijd teruggezet.
+  test('ontbrekende ladder/config sloopt ladder en banen niet', async ({ page }) => {
+    process.env.FIRESTORE_EMULATOR_HOST =
+      process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
+    const admin = require('firebase-admin');
+    if (!admin.apps.length) admin.initializeApp({ projectId: 'demo-goyer' });
+    const ref = admin.firestore().doc('ladder/config');
+    const origineel = (await ref.get()).data();
+
+    await ref.delete();
+    try {
+      await inloggen(page, 'anna');
+      await expect(page.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
+
+      // De ladder moet er staan, ook zonder ladder/config.
+      await expect(page.locator('#ladder-list-mp'))
+        .toContainText('Coen Coordinator', { timeout: 25000 });
+
+      // En de banenlijst moet gevuld zijn — dit is de klacht uit de praktijk:
+      // een leeg uitklapmenu bij het aanmaken van een nieuwe partij.
+      await page.click('#nav-partij-btn');
+      await expect(page.locator('#page-partij')).toHaveClass(/active/);
+      await expect(page.locator('#baan-select'))
+        .toContainText('De Goyer', { timeout: 20000 });
+    } finally {
+      await ref.set(origineel || { initieelWachtwoord: WACHTWOORD });
+    }
+  });
+});
+
+// Voorkomt dat de hulpfuncties als ongebruikt worden gezien.
+module.exports = { toonSchermstatus, volgConsole };

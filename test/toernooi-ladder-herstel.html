@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Toernooi → ladder herstel — Goyer Golf MP Ladder</title>
+<style>
+  :root{--green:#1f5c3a;--dark:#142e20;--mid:#5a6b60;--border:#d8ddd8;--bg:#f4f2ea;--card:#fff;--red:#b23b3b;--gold:#b58a2e;--up:#1c7a2e;}
+  *{box-sizing:border-box;}
+  body{margin:0;padding:24px 16px 60px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--dark);line-height:1.5;}
+  .wrap{max-width:920px;margin:0 auto;}
+  h1{font-size:20px;margin:0 0 4px;}
+  .sub{color:var(--mid);font-size:13px;margin:0 0 20px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px;}
+  .card h2{font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:var(--green);margin:0 0 12px;}
+  label{display:block;font-size:12px;color:var(--mid);margin-bottom:4px;text-transform:uppercase;letter-spacing:.03em;}
+  input[type="text"],input[type="password"],select{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:15px;margin-bottom:12px;font-family:inherit;background:#fff;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;}
+  .row>div{flex:1;min-width:180px;}
+  button{padding:10px 16px;border-radius:8px;border:1.5px solid var(--green);background:var(--green);color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;}
+  button.ghost{background:#fff;color:var(--green);}
+  button.danger{background:var(--red);border-color:var(--red);}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  .seg{display:inline-flex;border:1.5px solid var(--green);border-radius:8px;overflow:hidden;margin-bottom:4px;}
+  .seg button{border:none;border-radius:0;margin:0;}
+  .seg button.off{background:#fff;color:var(--green);}
+  .status{font-size:13px;padding:10px 12px;border-radius:8px;margin-top:10px;display:none;}
+  .status.info{display:block;background:#eef4ef;color:var(--green);}
+  .status.err{display:block;background:#f8ebeb;color:var(--red);}
+  .status.ok{display:block;background:#edf6ed;color:var(--up);}
+  .warn{font-size:12px;color:var(--gold);background:#fbf5e6;border-radius:8px;padding:10px 12px;margin-top:12px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px;}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--border);}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.03em;color:var(--mid);}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;}
+  .up{color:var(--up);font-weight:600;}
+  .muted{color:var(--mid);}
+  .ro-badge{display:inline-block;background:#fbf5e6;color:var(--gold);font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;letter-spacing:.04em;}
+  .hidden{display:none;}
+  code{background:#f0efe8;padding:1px 5px;border-radius:4px;font-size:12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🏅 Toernooi → ladder herstel <span class="ro-badge">SCHRIJFT — MET SNAPSHOT</span></h1>
+  <p class="sub">Past een afgesloten toernooi alsnog toe op de ladder, exact zoals <code>bevestigToernooiAfsluiten</code> het zou doen: elke deelnemer schuift omhoog met zijn toernooipunten. Slaat eerst een snapshot op (terugdraaibaar). · tool v1</p>
+
+  <div class="card">
+    <h2>1 · Omgeving</h2>
+    <div class="seg">
+      <button id="btn-prod" class="off" onclick="kiesOmgeving(false)">Productie</button>
+      <button id="btn-test" onclick="kiesOmgeving(true)">Test</button>
+    </div>
+    <p class="sub" style="margin:6px 0 0" id="omgeving-tekst">Gekozen: <strong>Test</strong></p>
+  </div>
+
+  <div class="card" id="login-card">
+    <h2>2 · Inloggen</h2>
+    <div class="row">
+      <div><label>Gebruikersnaam of e-mail</label><input type="text" id="login-email" autocomplete="username"></div>
+      <div><label>Wachtwoord</label><input type="password" id="login-pass" autocomplete="current-password"></div>
+    </div>
+    <div class="row">
+      <button onclick="doeLogin()">Inloggen</button>
+      <button class="ghost" onclick="doeGoogleLogin()">Inloggen met Google</button>
+    </div>
+    <div class="status" id="login-status"></div>
+  </div>
+
+  <div class="card hidden" id="stap-card">
+    <h2>3 · Toernooi &amp; ladder kiezen</h2>
+    <p class="sub" style="margin:0 0 10px" id="wie-tekst"></p>
+    <button class="ghost" onclick="laadToernooien()">Toernooien laden</button>
+    <div id="keuze-blok" class="hidden" style="margin-top:12px">
+      <label>Toernooi (afgerond)</label>
+      <select id="sel-toernooi" onchange="kiesToernooi()"></select>
+      <label>Doelladder</label>
+      <select id="sel-ladder"></select>
+      <button onclick="berekenPreview()">Preview berekenen</button>
+    </div>
+    <div class="status" id="stap-status"></div>
+  </div>
+
+  <div class="card hidden" id="preview-card">
+    <h2>4 · Preview</h2>
+    <div id="preview-meta" class="sub"></div>
+    <div id="preview-tabel"></div>
+    <div class="status" id="preview-status"></div>
+    <div class="warn" id="preview-warn"></div>
+    <div class="row" style="margin-top:14px">
+      <button id="btn-toepassen" class="danger" onclick="pasToe()" disabled>📸 Snapshot + toepassen op productie/test</button>
+      <button class="ghost" onclick="doeLogout()">Uitloggen</button>
+    </div>
+    <p class="sub" style="margin-top:10px">Terugdraaien kan altijd: in de app onder <strong>Beheer → Snapshots → ↩ Herstel</strong> (deze actie slaat eerst automatisch een snapshot op).</p>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, collection, getDocs, doc, getDoc, addDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+  import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
+    authDomain: "goyer-golf-mp-ladder.firebaseapp.com",
+    projectId: "goyer-golf-mp-ladder",
+    storageBucket: "goyer-golf-mp-ladder.firebasestorage.app",
+    messagingSenderId: "124116031878",
+    appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
+  };
+  const EMAIL_SUFFIX = '@MPladder.stb';
+
+  const app = initializeApp(firebaseConfig);
+  initializeAppCheck(app, { provider: new ReCaptchaV3Provider('6LfOyhAtAAAAACKwXb70iOl_Pdrez2QQ_ktGhFSj'), isTokenAutoRefreshEnabled: true });
+  const auth = getAuth(app);
+  const googleProvider = new GoogleAuthProvider();
+
+  let gebruikTest = true;
+  let toernooienCache = [];     // {id, data}
+  let laddersCache = [];        // {id, naam}
+  let huidigeBerekening = null; // resultaat van berekenPreview
+
+  function $(id){ return document.getElementById(id); }
+  function toonStatus(el, tekst, type){ const n=$(el); n.textContent=tekst; n.className='status '+type; }
+  function getDb(){ return gebruikTest ? getFirestore(app,'test') : getFirestore(app); }
+
+  window.kiesOmgeving = function(test){
+    gebruikTest = test;
+    $('btn-test').classList.toggle('off', !test);
+    $('btn-prod').classList.toggle('off', test);
+    $('omgeving-tekst').innerHTML = 'Gekozen: <strong>'+(test?'Test':'Productie')+'</strong>';
+  };
+
+  // ---- Login ----
+  window.doeLogin = async function(){
+    const invoer = $('login-email').value.trim();
+    const wachtwoord = $('login-pass').value;
+    if(!invoer || !wachtwoord){ toonStatus('login-status','Vul gebruikersnaam en wachtwoord in.','err'); return; }
+    const email = invoer.includes('@') ? invoer.toLowerCase() : (invoer.toLowerCase()+EMAIL_SUFFIX);
+    toonStatus('login-status','Bezig met inloggen…','info');
+    try { await signInWithEmailAndPassword(auth, email, wachtwoord); }
+    catch(e){ toonStatus('login-status','Inloggen mislukt: '+(e.code||e.message),'err'); }
+  };
+  window.doeGoogleLogin = async function(){
+    toonStatus('login-status','Bezig met Google-login…','info');
+    try { await signInWithPopup(auth, googleProvider); }
+    catch(e){ toonStatus('login-status','Google-login mislukt: '+(e.code||e.message),'err'); }
+  };
+  window.doeLogout = async function(){ try{ await signOut(auth); }catch(e){} };
+
+  onAuthStateChanged(auth,(user)=>{
+    if(user){
+      $('login-card').classList.add('hidden');
+      $('stap-card').classList.remove('hidden');
+      $('wie-tekst').innerHTML='Ingelogd als <strong>'+(user.email||user.uid)+'</strong>';
+    } else {
+      $('login-card').classList.remove('hidden');
+      $('stap-card').classList.add('hidden');
+      $('preview-card').classList.add('hidden');
+      $('keuze-blok').classList.add('hidden');
+    }
+  });
+
+  // ---- Toernooien + ladders laden ----
+  window.laadToernooien = async function(){
+    toonStatus('stap-status','Laden…','info');
+    const db = getDb();
+    try {
+      const [tSnap, lSnap] = await Promise.all([ getDocs(collection(db,'toernooien')), getDocs(collection(db,'ladders')) ]);
+      toernooienCache = tSnap.docs.map(d=>({id:d.id, data:d.data()}))
+        .filter(t=>t.data.status==='afgerond')
+        .sort((a,b)=>(b.data.timestamp||0)-(a.data.timestamp||0));
+      laddersCache = lSnap.docs.map(d=>({id:d.id, naam:d.data().naam||d.id}));
+      const selT=$('sel-toernooi');
+      selT.innerHTML=toernooienCache.map(t=>{
+        const dg=(t.data.dagen&&t.data.dagen[0])||{};
+        return '<option value="'+t.id+'">'+(t.data.naam||t.id)+' · '+(dg.datum||'?')+' · '+(t.data.modus||'?')+'</option>';
+      }).join('');
+      const selL=$('sel-ladder');
+      selL.innerHTML=laddersCache.map(l=>'<option value="'+l.id+'"'+(l.id==='mp'?' selected':'')+'>'+l.naam+' ('+l.id+')</option>').join('');
+      $('keuze-blok').classList.remove('hidden');
+      toonStatus('stap-status',toernooienCache.length+' afgeronde toernooien geladen. Kies er één en de doelladder.','ok');
+      if(toernooienCache.length) kiesToernooi();
+    } catch(e){ toonStatus('stap-status','Laden mislukt: '+(e.code||e.message),'err'); }
+  };
+
+  window.kiesToernooi = function(){
+    $('preview-card').classList.add('hidden');
+    $('btn-toepassen').disabled=true;
+    huidigeBerekening=null;
+  };
+
+  // ---- Punten uit archief halen (app-eigen berekende eindstand) ----
+  async function haalRanglijst(db, toernooi){
+    const archSnap = await getDoc(doc(db,'ladder','archief'));
+    if(!archSnap.exists()) return { fout:'ladder/archief niet gevonden' };
+    const toern = (archSnap.data().toernooien)||[];
+    const zelfdeNaam = toern.filter(x=>x.naam===toernooi.data.naam);
+    if(zelfdeNaam.length===0) return { fout:'Geen archief-uitslag gevonden voor "'+toernooi.data.naam+'"' };
+    // kies degene met timestamp het dichtst bij het toernooi
+    const tref = toernooi.data.timestamp||0;
+    zelfdeNaam.sort((a,b)=>Math.abs((a.timestamp||0)-tref)-Math.abs((b.timestamp||0)-tref));
+    const arch = zelfdeNaam[0];
+    return { ranglijst: arch.ranglijst||[], archTs: arch.timestamp, meerdere: zelfdeNaam.length>1 };
+  }
+
+  // ---- Preview berekenen ----
+  window.berekenPreview = async function(){
+    toonStatus('stap-status','Preview berekenen…','info');
+    $('btn-toepassen').disabled=true;
+    huidigeBerekening=null;
+    const db=getDb();
+    const tid=$('sel-toernooi').value;
+    const ladderId=$('sel-ladder').value;
+    const toernooi=toernooienCache.find(t=>t.id===tid);
+    if(!toernooi){ toonStatus('stap-status','Toernooi niet gevonden.','err'); return; }
+    try {
+      // naam -> uid via toernooi-spelers; gast-set
+      const spelers=toernooi.data.spelers||[];
+      const naam2uid={}; const gastUids=new Set();
+      spelers.forEach(s=>{ if(s.naam) naam2uid[s.naam]=s.uid; if(s.gast) gastUids.add(s.uid); });
+
+      const rl=await haalRanglijst(db, toernooi);
+      if(rl.fout){ toonStatus('stap-status',rl.fout,'err'); return; }
+
+      // live standen lezen
+      const stSnap=await getDocs(collection(db,'ladders',ladderId,'standen'));
+      if(stSnap.empty){ toonStatus('stap-status','Ladder "'+ladderId+'" heeft geen standen.','err'); return; }
+      const st={}; stSnap.docs.forEach(d=>{ st[d.id]={uid:d.id, ...d.data()}; });
+      const spelerIdsSnap=await getDoc(doc(db,'ladders',ladderId));
+      const spelerIds=new Set((spelerIdsSnap.exists()? (spelerIdsSnap.data().spelerIds||[]) : Object.keys(st)));
+      const maxRank=Object.keys(st).length;
+
+      // prevRank vastleggen
+      const preRank={};
+      Object.values(st).forEach(s=>{ preRank[s.uid]=s.rank; });
+
+      const toegepast=[]; const overgeslagen=[];
+      // in eindstand-volgorde (ranglijst is al gesorteerd door de app)
+      for(const r of rl.ranglijst){
+        const nm=r.naam; const pt=r.punten||0; const uid=naam2uid[nm];
+        if(!uid || gastUids.has(uid)){ overgeslagen.push({nm,pt,reden:'gast / niet op ladder'}); continue; }
+        if(!spelerIds.has(uid) || !st[uid]){ overgeslagen.push({nm,pt,reden:'geen ladderaccount'}); continue; }
+        if(pt===0){ overgeslagen.push({nm,pt,reden:'0 punten → geen beweging'}); continue; }
+        const sp=st[uid]; const oud=sp.rank; const nieuw=Math.max(1,Math.min(maxRank,oud-pt));
+        if(nieuw!==oud){
+          if(nieuw<oud){
+            Object.values(st).forEach(s=>{ if(s.uid!==uid && s.rank>=nieuw && s.rank<oud) s.rank++; });
+          } else {
+            Object.values(st).forEach(s=>{ if(s.uid!==uid && s.rank>oud && s.rank<=nieuw) s.rank--; });
+          }
+          sp.rank=nieuw;
+        }
+        toegepast.push({nm,uid,pt});
+      }
+      // hernummer 1..N
+      Object.values(st).sort((a,b)=>a.rank-b.rank).forEach((s,i)=>{ s.rank=i+1; });
+
+      // validiteit
+      const ranks=Object.values(st).map(s=>s.rank).sort((a,b)=>a-b);
+      const geldig = ranks.length===maxRank && ranks.every((v,i)=>v===i+1);
+
+      huidigeBerekening={ ladderId, ladderNaam:(laddersCache.find(l=>l.id===ladderId)||{}).naam||ladderId,
+        toernooiNaam:toernooi.data.naam, st, preRank, naam2uid, geldig, toegepast };
+
+      // render preview
+      let rows=toegepast.map(e=>{
+        const s=st[e.uid]; const pre=preRank[e.uid]; const delta=pre-s.rank;
+        return '<tr><td>'+e.nm+'</td><td class="num">'+(e.pt>0?'+':'')+e.pt+'</td><td class="num">'+pre+'</td><td class="num">'+s.rank+'</td><td class="num up">'+(delta>0?'+'+delta:delta)+'</td></tr>';
+      }).join('');
+      let ovr=overgeslagen.map(o=>'<tr><td class="muted">'+o.nm+'</td><td class="num muted">'+(o.pt>0?'+':'')+o.pt+'</td><td colspan="3" class="muted">'+o.reden+'</td></tr>').join('');
+      $('preview-meta').innerHTML='Toernooi <strong>'+toernooi.data.naam+'</strong> → ladder <strong>'+huidigeBerekening.ladderNaam+'</strong>'+(rl.meerdere?' · <span style="color:var(--gold)">let op: meerdere archief-uitslagen met deze naam, dichtstbijzijnde gekozen</span>':'');
+      $('preview-tabel').innerHTML='<table><thead><tr><th>Speler</th><th class="num">Pt</th><th class="num">Nu</th><th class="num">Na</th><th class="num">Δ</th></tr></thead><tbody>'+rows+ovr+'</tbody></table>';
+      $('preview-warn').innerHTML='Dit schrijft <strong>'+maxRank+'</strong> standen-documenten naar <strong>'+(gebruikTest?'TEST':'PRODUCTIE')+'</strong>. Er wordt eerst automatisch een snapshot opgeslagen.';
+      $('preview-card').classList.remove('hidden');
+      if(geldig){
+        $('btn-toepassen').disabled=false;
+        toonStatus('preview-status','Preview klaar. '+toegepast.length+' spelers bewegen. Resultaat is een geldige reeks 1..'+maxRank+'.','ok');
+      } else {
+        $('btn-toepassen').disabled=true;
+        toonStatus('preview-status','GESTOPT: resultaat is geen geldige reeks 1..'+maxRank+'. Toepassen geblokkeerd.','err');
+      }
+      toonStatus('stap-status','Preview berekend.','ok');
+    } catch(e){ toonStatus('stap-status','Preview mislukt: '+(e.code||e.message),'err'); }
+  };
+
+  // ---- Toepassen: snapshot + schrijven ----
+  window.pasToe = async function(){
+    if(!huidigeBerekening || !huidigeBerekening.geldig){ return; }
+    const b=huidigeBerekening;
+    const aantalBeweegt=b.toegepast.length;
+    if(!confirm('Toepassen op '+(gebruikTest?'TEST':'PRODUCTIE')+'?\n\nLadder: '+b.ladderNaam+'\nToernooi: '+b.toernooiNaam+'\n'+aantalBeweegt+' spelers schuiven op.\n\nEr wordt EERST een snapshot opgeslagen (terugdraaibaar via Beheer → Snapshots).')) return;
+    $('btn-toepassen').disabled=true;
+    toonStatus('preview-status','Snapshot opslaan…','info');
+    const db=getDb();
+    try {
+      // 1) snapshot van de HUIDIGE (pre-apply) stand — zelfde formaat als de app
+      const uid2naam={}; Object.keys(b.naam2uid).forEach(nm=>{ uid2naam[b.naam2uid[nm]]=nm; });
+      const spelersSnapshot=Object.values(b.st).map(s=>({
+        uid:s.uid, naam:uid2naam[s.uid]||s.uid, hcp:0,
+        rank:b.preRank[s.uid]||0, partijen:s.partijen||0, gewonnen:s.gewonnen||0
+      }));
+      await addDoc(collection(db,'snapshots'),{
+        label:'⚠️ Voor toernooi-herstel: '+b.toernooiNaam,
+        ladderId:b.ladderId, ladderNaam:b.ladderNaam,
+        timestamp:Date.now(), datum:new Date().toLocaleString('nl-NL'),
+        spelers:spelersSnapshot
+      });
+
+      // 2) nieuwe standen atomair schrijven (writeBatch)
+      toonStatus('preview-status','Standen schrijven…','info');
+      const batch=writeBatch(db);
+      Object.values(b.st).forEach(s=>{
+        batch.set(doc(db,'ladders',b.ladderId,'standen',s.uid),{
+          rank:s.rank||0, partijen:s.partijen||0, gewonnen:s.gewonnen||0,
+          prevRank:(b.preRank[s.uid]!=null? b.preRank[s.uid] : null)
+        });
+      });
+      await batch.commit();
+      toonStatus('preview-status','✓ Toegepast op '+(gebruikTest?'TEST':'PRODUCTIE')+'. Snapshot opgeslagen. Controleer de ladder; terugdraaien via Beheer → Snapshots → ↩ Herstel.','ok');
+    } catch(e){
+      toonStatus('preview-status','FOUT bij toepassen: '+(e.code||e.message)+' — controleer de ladder. Snapshot is mogelijk wél opgeslagen.','err');
+      $('btn-toepassen').disabled=false;
+    }
+  };
+</script>
+</body>
+</html>
