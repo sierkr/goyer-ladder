@@ -4,7 +4,9 @@
 //  v11.106: live/-subcollectie als bron van waarheid; scorekaart bovenaan voor spelers
 //  Datastructuur: t.dagen[dagNr-1].{datum,baan,holes,flights,scores,afgerond}
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr, functions, httpsCallable, IS_TEST } from './config.js';
+// v5.2.1: toernooi-uitslag schrijft standen en punten samen weg (server-side).
+const _verwerkToernooiStandenFn = httpsCallable(functions, 'verwerkToernooiStanden');
 import { store, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tSpelersLadderIds, _tRankingLadderIds, _flights, _liveScores } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { renderHcpBlok, alleBANEN, renderHandmatigHoles } from './partij.js';
@@ -2388,14 +2390,24 @@ async function bevestigToernooiAfsluiten() {
           // Hernummer ranks 1..N
           Object.values(standenMap).sort((a, b) => a.rank - b.rank).forEach((s, i) => { s.rank = i + 1; });
 
-          // Schrijf alle standen terug naar standen/{uid}
-          const standenWrites = Object.values(standenMap).map(sp => {
-            const payload = { rank: sp.rank || 0, partijen: sp.partijen || 0, gewonnen: sp.gewonnen || 0 };
-            if (sp.prevRank != null) payload.prevRank = sp.prevRank;
-            return setDoc(doc(db, 'ladders', ladderId, 'standen', sp.uid), payload)
-              .catch(err => console.warn('standen sync mislukt voor', sp.uid, err.code));
-          });
-          await Promise.all(standenWrites);
+          // v5.2.1: standen EN punten samen wegschrijven via de server.
+          // Voorheen werden alleen de standen bijgewerkt; punten.score bleef op
+          // de oude waarde staan. De ladderpositie klopte daarna wel (die komt
+          // uit standen), maar pasPuntenAan sorteert op punten en kon de ladder
+          // daardoor verkeerd herschikken bij een handmatige aanpassing.
+          const standenPayload = Object.values(standenMap).map(sp => ({
+            uid: sp.uid,
+            rank: sp.rank || 0,
+            partijen: sp.partijen || 0,
+            gewonnen: sp.gewonnen || 0,
+            prevRank: sp.prevRank ?? null,
+          }));
+          try {
+            await _verwerkToernooiStandenFn({ ladderId, isTest: IS_TEST, standen: standenPayload });
+          } catch (err) {
+            console.error('Toernooistanden wegschrijven mislukt:', err);
+            toast('Ladderstand bijwerken na toernooi mislukt — probeer opnieuw');
+          }
 
           await slaSnapshotOp(`🏅 Na toernooi: ${t.naam}`, ladderId);
         }

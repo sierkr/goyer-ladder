@@ -14,6 +14,9 @@ const _maakSnapshotFn        = httpsCallable(functions, 'maakLadderSnapshot');
 const _herstelSnapshotFn     = httpsCallable(functions, 'herstelLadderSnapshot');
 const _exporteerExtraFn      = httpsCallable(functions, 'exporteerBackupExtra');
 const _importeerExtraFn      = httpsCallable(functions, 'importeerBackupExtra');
+// v5.2.1 — onderhoudsfuncties die ook de afgeschermde collecties opruimen.
+const _resetSeizoenFn        = httpsCallable(functions, 'resetLadderSeizoen');
+const _verwijderLadderFn     = httpsCallable(functions, 'verwijderLadderVolledig');
 // Lokale cache van de zojuist geladen punten voor de open Spelers-modal,
 // gebruikt voor de live positie-preview terwijl je typt (geen extra reads).
 let _puntenModalScores = {}; // uid -> score
@@ -218,7 +221,16 @@ async function verwijderLadder(ladderId) {
   if (!ladder) return;
   if (ladderId === 'mp') { toast('De MP ladder kan niet verwijderd worden'); return; }
   if (!confirm(`Ladder "${ladder.naam}" verwijderen? Dit kan niet ongedaan worden.`)) return;
-  await deleteDoc(doc(db, 'ladders', ladderId));
+  // v5.2.1: via de server, zodat standen/punten/partijen/verwerkt mee worden
+  // opgeruimd. Firestore verwijdert subcollecties niet mee met het document,
+  // dus die bleven voorheen onzichtbaar achter.
+  try {
+    const res = await _verwijderLadderFn({ ladderId, isTest: IS_TEST });
+    console.info('Ladder verwijderd, opgeruimde documenten:', res?.data?.opgeruimd ?? 0);
+  } catch (e) {
+    console.warn('Volledig verwijderen mislukt, val terug op alleen het ladderdocument:', e?.message || e);
+    await deleteDoc(doc(db, 'ladders', ladderId));
+  }
   store.alleLadders = alleLadders.filter(l => l.id !== ladderId);
   if (ladderId === activeLadderId) {
     store.activeLadderId = alleLadders[0]?.id || null;
@@ -409,22 +421,43 @@ function openSnapshotsModal() {
   laadSnapshots();
 }
 
+// ============================================================
+//  slaSnapshotOp — v5.2.1: nu ook mét punten
+// ------------------------------------------------------------
+//  v5.2.0 zette alleen de HANDMATIGE snapshot om naar de server. Deze functie
+//  — die na élke bevestigde partij en na elk toernooi draait, en dus verreweg
+//  de meeste snapshots maakt — bleef de client-versie gebruiken en legde
+//  alleen `standen` vast. Herstel je zo'n snapshot, dan kloppen de posities
+//  wel maar blijft de puntenadministratie staan zoals hij was: precies de
+//  half-consistente toestand die v5.2.0 moest voorkomen.
+//
+//  Nu loopt alles via maakLadderSnapshot. Lukt dat niet (offline, functie nog
+//  niet gedeployed), dan valt hij terug op de oude client-versie — een
+//  onvolledige snapshot is nog altijd beter dan géén snapshot, en die wordt
+//  bij herstel herkend aan het ontbreken van `bevatPunten`.
+// ============================================================
 async function slaSnapshotOp(label, ladderId) {
+  if (!ladderId) ladderId = activeLadderId;
+  if (!ladderId) return;
   try {
-    if (!ladderId) ladderId = activeLadderId;
-    if (!ladderId) return;
-    // v3.0.7: retentie verlengd van 30 naar 730 dagen (2 jaar), zodat het
-    // ladderverloop per speler een volledig seizoen kan tonen uit exacte
-    // snapshots i.p.v. alleen de laatste maand.
+    await _maakSnapshotFn({ ladderId, isTest: IS_TEST, label });
+    return;
+  } catch (e) {
+    console.warn('Snapshot via server mislukt, val terug op client-versie:', e?.message || e);
+  }
+  await _slaSnapshotClientOp(label, ladderId);
+}
+
+// Terugval: legt alleen standen vast (geen punten). Zie hierboven.
+async function _slaSnapshotClientOp(label, ladderId) {
+  try {
+    // v3.0.7: retentie 730 dagen, zodat het ladderverloop een heel seizoen kan tonen.
     const retentieGrens = Date.now() - 730 * 24 * 60 * 60 * 1000;
     const oudeSnaps = await getDocs(query(SNAPSHOTS_COL, where('timestamp', '<', retentieGrens)));
     for (const d of oudeSnaps.docs) {
       try { await deleteDoc(d.ref); } catch(e) { /* stil */ }
     }
 
-    // v3.0.0-11.109: lees ALLE standen vers uit Firestore (niet uit lokale cache)
-    // zodat de snapshot altijd de actuele staat bevat, inclusief recent
-    // toegevoegde of verwijderde spelers.
     const ladder = alleLadders.find(l => l.id === ladderId);
     const standenSnap = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
     const spelersSnapshot = standenSnap.docs.map(d => {
@@ -441,12 +474,13 @@ async function slaSnapshotOp(label, ladderId) {
     });
 
     await addDoc(SNAPSHOTS_COL, {
-      label,
-      ladderId: ladderId,
+      label: label + ' (zonder punten)',
+      ladderId,
       ladderNaam: ladder?.naam || ladderId,
       timestamp: Date.now(),
       datum: new Date().toLocaleString('nl-NL'),
-      spelers: spelersSnapshot
+      spelers: spelersSnapshot,
+      bevatPunten: false,
     });
   } catch(e) { console.error('Snapshot mislukt:', e); }
 }

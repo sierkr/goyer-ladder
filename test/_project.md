@@ -10,9 +10,62 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.2.0**
+Huidige versie: **v5.2.1**
 
 ### Changelog
+- **v5.2.1** — Vijf punten uit een code-audit op v5.2.0. Vier daarvan gaan over
+  beheerhandelingen die `standen` wel bijwerkten maar niet de collecties die er
+  sinds v4.2.0 bij horen. **Nieuwe deploy van de Cloud Functions vereist**
+  (vier functies erbij, achttien in totaal). Rules ongewijzigd.
+
+  - **1. Automatische snapshots bevatten nu ook punten.** v5.2.0 zette alleen
+    de handmatige knop en het herstel om naar de server. `slaSnapshotOp` —
+    die na élke bevestigde partij en na elk toernooi draait en dus verreweg de
+    meeste snapshots maakt — bleef de client-versie gebruiken en legde alleen
+    `standen` vast. Precies de half-consistente toestand die v5.2.0 moest
+    voorkomen. Loopt nu via `maakLadderSnapshot`, met terugval op de oude
+    client-versie als de server onbereikbaar is; die terugval schrijft
+    `bevatPunten: false` en zet "(zonder punten)" in het label.
+
+  - **2. Toernooi-uitslag werkt de punten bij.** `js/toernooi.js` schreef
+    rechtstreeks nieuwe rangen naar `standen` maar raakte `punten` niet aan.
+    De ladderpositie klopte daarna wel (die komt uit `standen`), maar
+    `punten.score` liep achter — en `pasPuntenAan` sorteert daarop, dus een
+    handmatige puntenaanpassing na een toernooi kon de ladder verkeerd
+    herschikken. Nieuwe function `verwerkToernooiStanden` schrijft beide samen
+    weg. `activiteitVerschuiving` blijft daarbij ongemoeid: een toernooi is een
+    sportieve verschuiving, geen activiteitscorrectie.
+
+  - **3. Nieuw seizoen ruimt het vorige seizoen op.** `nieuwSeizoen` resette
+    alleen `standen`; `punten`, `partijen` (incl. scores), `verwerkt` en
+    `teruggedraaid` bleven staan. Het vervelendst was dat
+    `activiteitVerschuiving` de reset overleefde: de posities begonnen
+    opnieuw, maar het systeem dacht nog dat er al correcties waren toegepast,
+    waardoor de eerste periodieke run van het nieuwe seizoen met een verkeerd
+    verschil rekende. Nieuwe function `resetLadderSeizoen`.
+
+  - **4. Ladder verwijderen ruimt de subcollecties op.** `verwijderLadder`
+    wiste alleen het ladderdocument; Firestore verwijdert subcollecties niet
+    mee. Nieuwe function `verwijderLadderVolledig`, met terugval op het oude
+    gedrag als die niet bereikbaar is.
+
+  - **5. Bulk import: geen accounts zonder profiel meer.** Mislukte het
+    schrijven van `spelers/{uid}` nadat het Auth-account was aangemaakt, dan
+    bleef dat account bestaan met alleen een consoleregel "handmatig
+    verwijderen" — iemand kon dan inloggen zonder profiel. Nieuwe function
+    `verwijderWeesAccount` ruimt het op; die weigert bewust als er wél een
+    profiel bestaat. Daarnaast werd de volledige spelerslijst per speler
+    opnieuw opgehaald (vijftig imports = vijftig leesacties); dat gebeurt nu
+    één keer vooraf, met een lokale lijst die meegroeit zodat een dubbele naam
+    binnen dezelfde import ook wordt opgemerkt.
+    De pauze van twee seconden per speler is bewust ongewijzigd gelaten — die
+    voorkomt rate limiting bij Firebase Auth en dat is niet te testen zonder
+    echte accounts aan te maken.
+
+  - **Niet opgelost, bewust:** de bulk-import blijft uitgeschakeld in de
+    testomgeving (`_blokkeerInTest`), omdat hij echte Auth-accounts maakt en
+    die tussen test en productie gedeeld zijn.
+
 - **v5.2.0** — Vangnet gerepareerd. Snapshots en backup waren blijven staan op
   het datamodel van v3 en misten alles wat er sinds v4.2.0 bij is gekomen.
 

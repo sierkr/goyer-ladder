@@ -9,6 +9,9 @@ import { db, auth, firebaseConfig, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAG
   EMAIL_SUFFIX, DEFAULT_HCP,
   genereerEmail, loginNaamVan, pasUiStijlToe,
   functions, httpsCallable } from './config.js';
+// v5.2.1: ruimt een Auth-account op waarvan het profiel niet kon worden
+// aangemaakt tijdens de bulk-import (voorkomt accounts zonder profiel).
+const _verwijderWeesAccountFn = httpsCallable(functions, 'verwijderWeesAccount');
 import { store, alleLadders, activeLadderId,
   huidigeBruiker, uitdagingenData } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers,
@@ -1113,6 +1116,23 @@ async function startBulkImport() {
   let succes = 0;
   const startTijd = Date.now();
 
+  // v5.2.1: eenmalig de bestaande e-mailadressen ophalen (zie duplicaatcheck
+  // in de lus). Nieuw aangemaakte spelers worden er hieronder aan toegevoegd,
+  // zodat een dubbele naam binnen dezelfde import ook wordt opgemerkt.
+  let _bekendeEmails;
+  try {
+    const bestaandeUsers = await getUsers(true);
+    _bekendeEmails = new Set((bestaandeUsers || []).map(u => String(u.email || '').toLowerCase()));
+  } catch (e) {
+    console.error('Spelerslijst ophalen mislukt:', e);
+    toast('Kon de bestaande spelers niet ophalen — import afgebroken');
+    document.getElementById('bulk-import-start-btn').style.display = '';
+    document.getElementById('bulk-import-sluit-btn').disabled = false;
+    document.getElementById('bulk-import-sluit-btn').style.opacity = '';
+    document.getElementById('bulk-import-voortgang').style.display = 'none';
+    return;
+  }
+
   // Laad imports eenmalig buiten de loop
   let init2, deleteApp, getAuth2, createUser;
   try {
@@ -1177,9 +1197,11 @@ async function startBulkImport() {
     if (nrTd) nrTd.textContent = '\u23f3';
 
     try {
-      // Check duplicaat
-      const users = await getUsers(true); // forceFresh=true
-      if (users.find(u => u.email === email)) {
+      // Check duplicaat — v5.2.1: de lijst wordt nog EENMAAL vers opgehaald,
+      // vóór de lus, en daarna lokaal bijgehouden. Voorheen deed elke ronde
+      // een volledige verse read van het users-document; bij vijftig spelers
+      // waren dat vijftig onnodige leesacties.
+      if (_bekendeEmails.has(email.toLowerCase())) {
         markeerRij(tr, false, 'Naam al in gebruik — overgeslagen');
         mislukt.push(naam + ' (naam al in gebruik)');
         await new Promise(r => setTimeout(r, 1500));
@@ -1240,14 +1262,21 @@ async function startBulkImport() {
           toernooiNaam
         });
       } catch(fsErr) {
-        // Profiel aanmaken mislukt — probeer Auth-account te verwijderen
+        // v5.2.1: het Auth-account wordt nu daadwerkelijk opgeruimd.
+        // Voorheen bleef het staan met alleen een consoleregel "handmatig
+        // verwijderen": een account dat kon inloggen maar geen profiel had.
         console.error('Firestore profiel mislukt voor', naam, fsErr);
-        markeerRij(tr, false, 'Profiel opslaan mislukt — account verwijderd');
-        mislukt.push(naam + ' (Firestore mislukt)');
+        let opgeruimd = false;
         try {
-          // Kan alleen via Admin SDK — log voor handmatige opruiming
-          console.warn('Handmatig verwijderen in Firebase Console → Authentication:', email);
-        } catch(e) {}
+          await _verwijderWeesAccountFn({ targetUid: uid, isTest: IS_TEST });
+          opgeruimd = true;
+        } catch (delErr) {
+          console.error('Wees-account opruimen mislukt voor', email, delErr);
+        }
+        markeerRij(tr, false, opgeruimd
+          ? 'Profiel opslaan mislukt — account verwijderd'
+          : 'Profiel opslaan mislukt — verwijder ' + email + ' handmatig in Firebase Auth');
+        mislukt.push(naam + (opgeruimd ? ' (Firestore mislukt, account opgeruimd)' : ' (Firestore mislukt, account blijft staan)'));
         await new Promise(r => setTimeout(r, 1500));
         continue;
       }
@@ -1263,6 +1292,7 @@ async function startBulkImport() {
       }
 
       markeerRij(tr, true);
+      _bekendeEmails.add(email.toLowerCase());
       credentials.push(naam.padEnd(25) + ' ' + loginTxt.padEnd(25) + ' ' + pass);
       succes++;
 
