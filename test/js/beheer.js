@@ -6,6 +6,14 @@ import { store, alleLadders, activeLadderId, huidigeBruiker, _bezigMetRegistrati
 
 // v4.2.0: puntensysteem — handmatige aanpassing door de puntenbeheerder.
 const _pasPuntenAanFn = httpsCallable(functions, 'pasPuntenAan');
+// v5.2.0: snapshots en backup lopen via Cloud Functions, omdat punten/ en
+// verwerkt/ voor clients afgeschermd zijn (firestore.rules). Zonder deze
+// route zou een snapshot of backup die delen missen en een herstel dus een
+// half-consistente database opleveren.
+const _maakSnapshotFn        = httpsCallable(functions, 'maakLadderSnapshot');
+const _herstelSnapshotFn     = httpsCallable(functions, 'herstelLadderSnapshot');
+const _exporteerExtraFn      = httpsCallable(functions, 'exporteerBackupExtra');
+const _importeerExtraFn      = httpsCallable(functions, 'importeerBackupExtra');
 // Lokale cache van de zojuist geladen punten voor de open Spelers-modal,
 // gebruikt voor de live positie-preview terwijl je typt (geen extra reads).
 let _puntenModalScores = {}; // uid -> score
@@ -443,6 +451,29 @@ async function slaSnapshotOp(label, ladderId) {
   } catch(e) { console.error('Snapshot mislukt:', e); }
 }
 
+// ============================================================
+//  Handmatige snapshot — v5.2.0
+//  Tot nu toe werd er alleen automatisch een snapshot gemaakt (na een partij,
+//  na een toernooi, vóór een herstel). Er was geen manier om er zelf een te
+//  maken vlak voordat je iets ingrijpends doet.
+// ============================================================
+async function maakSnapshotNu() {
+  const ladderId = _standAanpassenLadderId || _instellingenLadderId || activeLadderId;
+  if (!ladderId) { toast('Kies eerst een ladder'); return; }
+  const ladder = alleLadders.find(l => l.id === ladderId);
+  const standaard = 'Handmatig — ' + new Date().toLocaleString('nl-NL');
+  const label = prompt(`Snapshot maken van "${ladder?.naam || ladderId}".\n\nGeef een omschrijving:`, standaard);
+  if (label === null) return;
+  try {
+    const res = await _maakSnapshotFn({ ladderId, isTest: IS_TEST, label: label.trim() || standaard });
+    toast(`Snapshot gemaakt — ${res?.data?.aantal ?? 0} spelers vastgelegd ✓`);
+    laadSnapshots();
+  } catch (e) {
+    console.error('maakSnapshotNu mislukt:', e);
+    toast(e?.message || 'Snapshot maken mislukt');
+  }
+}
+
 async function laadSnapshots() {
   const wrap = document.getElementById('snapshots-list');
   if (!wrap) return;
@@ -469,54 +500,45 @@ async function laadSnapshots() {
   }
 }
 
+// ============================================================
+//  Snapshot herstellen — v5.2.0 via Cloud Function
+//  Was client-side en zette alleen `standen` terug. De punten (score en de
+//  activiteitsboekhouding) bleven staan zoals ze waren, waardoor de posities
+//  wel klopten maar het systeem dacht dat de activiteitscorrectie al was
+//  toegepast — de eerstvolgende periodieke run rekende dan met een verkeerd
+//  verschil. De server zet nu beide terug, en maakt eerst automatisch een
+//  snapshot van de huidige staat.
+// ============================================================
 async function herstelSnapshot(snapId) {
   try {
     const snapDoc = await getDoc(doc(db, 'snapshots', snapId));
     if (!snapDoc.exists()) { toast('Snapshot niet gevonden'); return; }
     const data = snapDoc.data();
-    const ladderId   = data.ladderId;
+    const ladderId = data.ladderId;
     if (!ladderId) { toast('Snapshot heeft geen ladderId'); return; }
     const ladderNaam = data.ladderNaam || ladderId;
-
     const aantalSpelers = (data.spelers || []).length;
-    if (!confirm(`Ladderstand van "${ladderNaam}" herstellen naar:\n${data.label} (${data.datum})?\n\n${aantalSpelers} spelers worden teruggezet.\nDe huidige stand wordt eerst opgeslagen.`)) return;
+    const heeftPunten = data.bevatPunten === true;
 
-    // 1. Sla huidige stand op voordat we herstellen
-    await slaSnapshotOp('⚠️ Voor herstel op ' + new Date().toLocaleString('nl-NL'), ladderId);
+    const waarschuwing = heeftPunten
+      ? ''
+      : '\n\nLET OP: deze snapshot is gemaakt vóór v5.2.0 en bevat geen punten. ' +
+        'Alleen de posities worden hersteld; de puntenadministratie blijft staan zoals hij nu is.';
 
-    // v3.0.0-11.109: verwijder ALLE huidige standen voor deze ladder
-    // voordat de snapshot wordt teruggeschreven. Dit voorkomt rankenconflicten
-    // met spelers die ná de snapshot zijn toegevoegd.
-    const huidigeStanden = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
-    const deleteBatch = writeBatch(db);
-    huidigeStanden.docs.forEach(d => {
-      deleteBatch.delete(doc(db, 'ladders', ladderId, 'standen', d.id));
-    });
-    await deleteBatch.commit();
+    if (!confirm(
+      `Ladderstand van "${ladderNaam}" herstellen naar:\n${data.label} (${data.datum})?\n\n` +
+      `${aantalSpelers} spelers worden teruggezet.\n` +
+      `De huidige stand wordt eerst opgeslagen als snapshot.${waarschuwing}`
+    )) return;
 
-    // 3. Schrijf snapshot-standen terug
-    const writeBatch2 = writeBatch(db);
-    (data.spelers || [])
-      .filter(s => s.uid)
-      .forEach(s => {
-        writeBatch2.set(doc(db, 'ladders', ladderId, 'standen', s.uid), {
-          rank:     s.rank     ?? 0,
-          partijen: s.partijen ?? 0,
-          gewonnen: s.gewonnen ?? 0,
-          prevRank: null,
-        });
-      });
-    await writeBatch2.commit();
-
-    // 4. Hernummer rangen zodat er geen gaten of conflicten zijn
-    await normaliseerLadderRangen(ladderId);
-
+    const res = await _herstelSnapshotFn({ ladderId, isTest: IS_TEST, snapshotId: snapId });
+    const n = res?.data?.hersteld ?? aantalSpelers;
     renderLadder();
-    toast(`Ladderstand "${ladderNaam}" hersteld ✓`);
+    toast(`Ladderstand "${ladderNaam}" hersteld — ${n} spelers ✓`);
     closeModal('modal-snapshots');
   } catch(e) {
     console.error('herstelSnapshot mislukt:', e);
-    toast('Herstel mislukt: ' + e.message);
+    toast(e?.message || 'Herstel mislukt');
   }
 }
 
@@ -551,6 +573,9 @@ async function maakBackup() {
         app: 'goyer-golf-mp-ladder',
         omgeving: IS_TEST ? 'test' : 'productie',
         datum: new Date().toISOString(),
+        // v5.2.0: vanaf deze versie zitten punten, partijen, verwerkt en
+        // teruggedraaid in de backup. Oudere backups missen die.
+        formaat: 'v5.2.0',
       },
       collecties: {},
       documenten: {},
@@ -576,6 +601,25 @@ async function maakBackup() {
       if (snap.exists()) data.documenten[id] = snap.data();
     }
 
+    // v5.2.0: de afgeschermde delen erbij. punten/ en verwerkt/ zijn voor
+    // clients niet leesbaar (firestore.rules), dus die haalt een Cloud
+    // Function op met beheerdersrechten. Zonder dit blok mist de backup:
+    //  - punten          -> na herstel klopt de activiteitsboekhouding niet
+    //  - partijen+scores -> een lopende ronde is na herstel weg
+    //  - verwerkt        -> een al verwerkte partij kan nogmaals meetellen
+    if (status) status.textContent = 'Backup wordt gemaakt… (punten en partijen)';
+    try {
+      const extra = await _exporteerExtraFn({ isTest: IS_TEST });
+      data.ladderExtra = extra?.data?.ladders || {};
+    } catch (e) {
+      console.error('Extra backupdata ophalen mislukt:', e);
+      // Bewust hard stoppen: een backup die stilletjes onvolledig is, is
+      // gevaarlijker dan geen backup.
+      if (status) status.textContent = 'Backup mislukt — punten/partijen konden niet worden opgehaald.';
+      toast('Backup mislukt: ' + (e?.message || 'punten niet opgehaald'));
+      return;
+    }
+
     const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
     const naam = `goyer-ladder-backup-${IS_TEST ? 'test-' : ''}${stamp}.json`;
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -586,7 +630,8 @@ async function maakBackup() {
 
     const nL = Object.values(data.collecties.ladders || {}).length;
     const nS = Object.values(data.collecties.spelers || {}).length;
-    if (status) status.textContent = `✓ Backup gedownload (${nL} ladders, ${nS} spelers) — omgeving: ${_omgevingLabel()}`;
+    const nP = Object.values(data.ladderExtra || {}).reduce((t, l) => t + Object.keys(l.partijen || {}).length, 0);
+    if (status) status.textContent = `✓ Backup gedownload (${nL} ladders, ${nS} spelers, ${nP} lopende partijen) — omgeving: ${_omgevingLabel()}`;
   } catch (e) {
     console.error('maakBackup mislukt:', e);
     if (status) status.textContent = 'Backup mislukt — zie console.';
@@ -614,6 +659,9 @@ function kiesBackupBestand(event) {
       `Bron: ${herkomst} (${data._meta?.datum || 'onbekende datum'})\n` +
       `Doel: ${_omgevingLabel()}\n\n` +
       `Dit OVERSCHRIJFT de huidige data (${aantalLadders} ladders in de backup).\n` +
+      (data._meta?.formaat === 'v5.2.0'
+        ? 'Inclusief punten, lopende partijen en verwerkingsstempels.\n'
+        : '⚠️ Oude backup: bevat GEEN punten en GEEN lopende partijen.\n') +
       (IS_TEST ? '' : '⚠️ Je staat in PRODUCTIE — dit raakt de live database!\n') +
       `\nDoorgaan?`;
     if (!confirm(waarschuwing)) return;
@@ -649,6 +697,26 @@ async function zetBackupTerug(data) {
       geschreven++;
     }
 
+    // v5.2.0: de afgeschermde delen terugschrijven via de Cloud Function.
+    // punten/ en verwerkt/ staan in firestore.rules op `allow write: if false`,
+    // dus geen enkele client kan daar rechtstreeks in schrijven.
+    if (data.ladderExtra && Object.keys(data.ladderExtra).length) {
+      if (status) status.textContent = 'Backup wordt teruggezet… (punten en partijen)';
+      try {
+        const res = await _importeerExtraFn({ isTest: IS_TEST, ladders: data.ladderExtra });
+        geschreven += res?.data?.geschreven || 0;
+      } catch (e) {
+        console.error('Extra backupdata terugzetten mislukt:', e);
+        if (status) status.textContent = 'Let op: standen zijn teruggezet, maar punten/partijen niet — zie console.';
+        toast('Punten en partijen konden niet worden teruggezet');
+        return;
+      }
+    } else {
+      // Backup van vóór v5.2.0: die bevat geen punten. De posities staan goed,
+      // maar de puntenadministratie hoort daar dan niet meer bij.
+      toast('Let op: deze backup bevat geen punten (gemaakt vóór v5.2.0)');
+    }
+
     if (status) status.textContent = `✓ Backup teruggezet in ${_omgevingLabel()} (${geschreven} documenten). Herlaad de pagina om de nieuwe data te zien.`;
     toast('Backup teruggezet ✓');
   } catch (e) {
@@ -668,4 +736,4 @@ window.kiesBackupBestand = kiesBackupBestand;
 // Expose functions to global scope (needed because script is type=module)
 // ============================================================
 
-export { openLadderInstellingen, slaLadderInstellingenOp, openNieuweLadderModal, maakNieuweLadder, verschuifLadder, verwijderLadder, openLadderSpelersModal, slaLadderSpelersOp, puntenVeldGewijzigd, renderAdminLadders, openSnapshotsModal, slaSnapshotOp, laadSnapshots, herstelSnapshot , draaiActiviteitNu };
+export { openLadderInstellingen, slaLadderInstellingenOp, openNieuweLadderModal, maakNieuweLadder, verschuifLadder, verwijderLadder, openLadderSpelersModal, slaLadderSpelersOp, puntenVeldGewijzigd, renderAdminLadders, openSnapshotsModal, slaSnapshotOp, laadSnapshots, herstelSnapshot , draaiActiviteitNu , maakSnapshotNu };
