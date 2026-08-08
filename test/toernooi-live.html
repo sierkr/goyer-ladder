@@ -142,8 +142,15 @@ function getLiveScoresVoorDag(dag) {
   if (!dag) return {};
   const result = { ...(dag.scores || {}) };
   Object.keys(_liveScoresMap).forEach(uid => {
-    if (_liveScoresMap[uid]?.dagNr === dag.dagNr) {
-      result[uid] = _liveScoresMap[uid].scores;
+    // v5.3.0: live-documenten bewaren de scores nu per dag onder `dagen`.
+    // Het oude formaat (een enkele `scores` bij `dagNr`) blijft werken.
+    const e = _liveScoresMap[uid] || {};
+    const perDag = e.dagen?.[String(dag.dagNr)];
+    const scoresVanDag = Array.isArray(perDag)
+      ? perDag
+      : (e.dagNr === dag.dagNr ? e.scores : null);
+    if (scoresVanDag) {
+      result[uid] = scoresVanDag;
     }
   });
   return result;
