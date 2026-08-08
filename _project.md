@@ -10,9 +10,56 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.4.4**
+Huidige versie: **v5.4.5**
 
 ### Changelog
+- **v5.4.5** — De banenlijst die leeg bleef, en de wisbeveiliging. Raakt
+  `js/config.js`, `js/auth.js` en `js/partij.js`.
+
+  - **De oorzaak: de app kon "er is niets" niet onderscheiden van "ik kon er
+    niet bij".** Sinds v5.0.0 houdt de app een kopie van de database op het
+    toestel bij, zodat scores bij slecht bereik op de baan niet verloren gaan.
+    Daar zit een valkuil in: vraagt de app een document op dat niet in die kopie
+    zit terwijl de server onbereikbaar is, dan komt er géén foutmelding terug
+    maar het antwoord "dit document bestaat niet". De app geloofde dat en zette
+    de banenlijst op leeg. Omdat de lijst maar één keer werd opgehaald, bij het
+    opstarten, bleef dat zo tot de app volledig opnieuw startte — precies wat er
+    in de praktijk gebeurde, en precies waarom de versiesprong van v5.4.3 het
+    "oploste".
+
+    Firestore vertelt zelf of een antwoord van de server komt of uit de eigen
+    kopie (`snap.metadata.fromCache`). Daar keek de app nooit naar. De nieuwe
+    functie `laadBanen()` in `config.js` doet dat wel en geeft drie mogelijke
+    uitkomsten: gelukt, gelukt-maar-uit-de-eigen-kopie, of onbekend. Een lege
+    lijst uit de eigen kopie wordt niet geloofd.
+
+  - **Tweede poging na het inloggen.** `initFirestore()` draait bij een koude
+    start vóórdat Firebase de sessie heeft hersteld, en wordt na het inloggen
+    niet opnieuw uitgevoerd. Kwamen de banen daar niet betrouwbaar binnen, dan
+    worden ze nu alsnog van de server gehaald zodra bekend is wie er is
+    ingelogd.
+
+  - **Zelfherstel in het partijformulier.** Is de lijst tóch leeg op het moment
+    dat je een partij aanmaakt, dan haalt het formulier hem alsnog op en meldt
+    het wat er gebeurt. Lukt het niet, dan verschijnt "↻ Opnieuw proberen" —
+    bewust een knop en geen tekst als "ververs de pagina", want in de app op het
+    beginscherm van een telefoon is er geen adresbalk.
+
+  - **De wisbeveiliging (dit was de gevaarlijkste).** `slaAangepasteBaanOp()` en
+    `verwijderAangepasteBaan()` deden `setDoc(BANEN_DOC, { lijst:
+    aangepasteBanen })`. Dat schrijft de volledige lijst uit het geheugen van
+    dat ene toestel over het document heen. Was die lijst leeg of onvolledig,
+    dan wiste één klik op "opslaan" of "verwijderen" alle banen van alle
+    spelers, permanent, zonder waarschuwing. Beide functies halen nu eerst de
+    actuele lijst van de server, passen daar die ene baan op aan, en schrijven
+    dat terug. Lukt het ophalen niet, dan wordt er niets geschreven en krijgt de
+    gebruiker te horen dat er geen verbinding is. Liever niets opgeslagen dan
+    andermans banen gewist.
+
+  - **De vaste-banen-migratie draait alleen nog op een echt serverantwoord.**
+    Bij een leeg of onzeker antwoord concludeerde die uit de lege lijst dat alle
+    vijf vaste banen ontbraken, en overschreef het document met alleen die vijf.
+    Dat kon dus vanzelf gebeuren, zonder dat iemand ergens op klikte.
 - **v5.4.4** — Drie oorzaken achter de rode browsertests, waarvan er één een
   echte fout in de app bleek. **Raakt de app wél aan** (`js/auth.js`,
   `js/config.js`), maar geen enkele wijziging die een speler ziet.

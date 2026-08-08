@@ -5,7 +5,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
   getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc,
+  doc, collection, onSnapshot, setDoc, getDoc, getDocFromServer, updateDoc, deleteDoc, getDocs, addDoc,
   query, where, orderBy, connectFirestoreEmulator
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
@@ -274,6 +274,53 @@ export async function laadUiStijl(storeRef) {
     console.warn('laadUiStijl mislukt, val terug op club-stijl:', e);
     storeRef.uiStijl = 'club';
   }
+}
+
+// ============================================================
+//  v5.4.5 — BANEN LADEN, met onderscheid server / eigen kopie
+// ============================================================
+//  HET PROBLEEM DAT DIT OPLOST
+//
+//  Sinds v5.0.0 houdt de app een kopie van de database op het toestel bij,
+//  zodat scores bij slecht bereik op de baan niet verloren gaan. Daar zit een
+//  valkuil in: vraagt de app een document op dat niet in die kopie zit terwijl
+//  de server onbereikbaar is, dan komt er GEEN foutmelding terug maar het
+//  antwoord "dit document bestaat niet".
+//
+//  De app geloofde dat. Eén hapering bij het opstarten was genoeg om de
+//  banenlijst leeg te laten, en omdat de lijst maar één keer werd opgehaald
+//  bleef dat zo tot de app volledig opnieuw startte. Dat is precies de klacht
+//  uit de praktijk: een leeg uitklapmenu bij het aanmaken van een partij,
+//  terwijl alle banen gewoon in Firestore stonden.
+//
+//  Firestore vertelt zelf of een antwoord van de server komt of uit de eigen
+//  kopie (snap.metadata.fromCache). Daar keek de app nooit naar. Nu wel: een
+//  lege lijst uit de eigen kopie wordt niet geloofd.
+//
+//  Geeft terug: { gelukt, uitEigenKopie, lijst }
+//   - gelukt=false betekent "ik weet het niet", niet "er zijn geen banen".
+//     De aanroeper laat de bestaande lijst dan met rust en probeert later weer.
+// ============================================================
+export async function laadBanen(storeRef, { vanServer = false } = {}) {
+  let snap;
+  try {
+    snap = vanServer ? await getDocFromServer(BANEN_DOC) : await getDoc(BANEN_DOC);
+  } catch(e) {
+    console.warn('[banen] ophalen mislukt:', e.code || e.message);
+    return { gelukt: false, uitEigenKopie: false, lijst: null };
+  }
+
+  const uitEigenKopie = snap.metadata?.fromCache === true;
+  const lijst = snap.exists() ? (snap.data().lijst || []) : [];
+
+  if (lijst.length === 0 && uitEigenKopie) {
+    console.warn('[banen] lege lijst uit de eigen kopie — niet vertrouwd, ' +
+      'de server is kennelijk niet bereikbaar');
+    return { gelukt: false, uitEigenKopie: true, lijst: null };
+  }
+
+  storeRef.aangepasteBanen = lijst;
+  return { gelukt: true, uitEigenKopie, lijst };
 }
 
 /**

@@ -7,7 +7,7 @@ import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
   INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB_MIGRATIE, esc, escAttr,
   EMAIL_SUFFIX, DEFAULT_HCP, CONFIG_DOC, laadInitieelWachtwoord,
-  laadUiStijl, pasUiStijlToe,
+  laadUiStijl, pasUiStijlToe, laadBanen,
   genereerEmail, loginNaamVan, functions, httpsCallable } from './config.js';
 import { store, DEFAULT_LADDER_CONFIG,
   alleLadders, activeLadderId, alleSpelersData, huidigeBruiker,
@@ -573,15 +573,20 @@ async function initFirestore() {
     // document sleepte zo de andere vier mee. allSettled wacht op alle vijf en
     // geeft per stuk terug of het gelukt is; een mislukte read levert nu null op
     // en de rest komt gewoon binnen.
-    const uitkomsten = await Promise.allSettled([
-      getDoc(BANEN_DOC),
-      getDoc(ARCHIEF_DOC),
-      getDoc(UITDAGINGEN_DOC),
-      getDoc(TOERNOOI_DOC),
-      getDoc(doc(db, 'ladder', 'ladderVolgorde'))
+    // v5.4.5: de banen lopen niet meer mee in deze verzamel-read maar via
+    // laadBanen(), omdat daar het onderscheid server / eigen kopie wordt
+    // gemaakt. laadBanen() gooit nooit een fout, dus Promise.all is hier veilig.
+    const [banenUitkomst, uitkomsten] = await Promise.all([
+      laadBanen(store),
+      Promise.allSettled([
+        getDoc(ARCHIEF_DOC),
+        getDoc(UITDAGINGEN_DOC),
+        getDoc(TOERNOOI_DOC),
+        getDoc(doc(db, 'ladder', 'ladderVolgorde'))
+      ])
     ]);
-    const _namen = ['banen', 'archief', 'uitdagingen', 'toernooi', 'ladderVolgorde'];
-    const [baanSnap, archiefSnap, uitdSnap, toernooiSnap, volgordeSnap] =
+    const _namen = ['archief', 'uitdagingen', 'toernooi', 'ladderVolgorde'];
+    const [archiefSnap, uitdSnap, toernooiSnap, volgordeSnap] =
       uitkomsten.map((u, i) => {
         if (u.status === 'fulfilled') return u.value;
         console.warn(`[init] ladder/${_namen[i]} niet geladen:`,
@@ -622,20 +627,18 @@ async function initFirestore() {
     // migratieVasteBanen() schrijft de vijf vaste banen eenmalig naar Firestore
     // als ze er nog niet in staan, zodat de overgang naadloos verloopt.
     //
-    // v5.4.4 — BELANGRIJK: de migratie draait ALLEEN als de read gelukt is.
-    // Mislukte de read (baanSnap is dan null), dan zou migratieVasteBanen op
-    // basis van een lege lijst concluderen dat alle vijf vaste banen ontbreken
-    // en het document overschrijven met alleen die vijf — waarmee elke zelf
-    // toegevoegde baan van iedereen verdwijnt. Een mislukte read is geen bewijs
-    // dat er niets is.
-    let baanLijst = baanSnap?.exists() ? (baanSnap.data().lijst || []) : [];
-    if (baanSnap) {
-      baanLijst = await migratieVasteBanen(baanLijst);
-    } else {
-      console.warn('[init] banen niet geladen — migratie overgeslagen, ' +
-        'anders zou het banendocument overschreven worden');
+    // v5.4.4/v5.4.5 — BELANGRIJK: de migratie draait ALLEEN op een echt
+    // serverantwoord. Bij een mislukte read, of een antwoord uit de eigen kopie
+    // op het toestel, zou migratieVasteBanen uit de lege lijst concluderen dat
+    // alle vijf vaste banen ontbreken en het banendocument overschrijven met
+    // alleen die vijf — waarmee elke zelf toegevoegde baan van iedereen
+    // verdwijnt. Een leeg of onzeker antwoord is geen bewijs dat er niets is.
+    if (banenUitkomst.gelukt && !banenUitkomst.uitEigenKopie) {
+      store.aangepasteBanen = await migratieVasteBanen(banenUitkomst.lijst);
+    } else if (!banenUitkomst.gelukt) {
+      console.warn('[init] banen nog niet betrouwbaar geladen — ' +
+        'wordt na het inloggen opnieuw geprobeerd');
     }
-    store.aangepasteBanen = baanLijst;
     // v3.0.0-9c: alleSpelersData wordt niet meer uit ladder/spelers geladen.
     // Het is nu een afgeleide view van _usersCache (zie store.js) en wordt
     // gevuld zodra de spelers/ listener start na login.
@@ -875,6 +878,19 @@ async function initFirestore() {
           (err) => { console.warn('spelers/ listener error:', err.code); }
         ));
       }
+      // v5.4.5: banen alsnog ophalen als ze bij het opstarten niet betrouwbaar
+      // binnenkwamen. initFirestore() draait bij een koude start voordat
+      // Firebase de sessie heeft hersteld, en wordt na het inloggen niet
+      // opnieuw uitgevoerd — zonder deze tweede poging bleef de banenlijst leeg
+      // tot de app volledig opnieuw startte. Nadrukkelijk van de server, zodat
+      // een lege eigen kopie niet opnieuw voor een leeg antwoord zorgt.
+      if (!S.aangepasteBanen || S.aangepasteBanen.length === 0) {
+        try {
+          const r = await laadBanen(store, { vanServer: true });
+          if (r.gelukt) console.info(`[banen] alsnog geladen na inloggen: ${r.lijst.length}`);
+        } catch(e) { console.warn('[banen] tweede poging mislukt:', e.code || e.message); }
+      }
+
       // Start standen/ listeners voor alle ladders (fase 9a view-laag)
       startAlleStandenListeners();
       // v5.4.1: controleer of de standen ook echt binnenkomen en herstel

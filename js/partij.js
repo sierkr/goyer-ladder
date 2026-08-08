@@ -1,14 +1,14 @@
 // ============================================================
 //  partij.js — Partij aanmaken, banen, naam helpers
 // ============================================================
-import { db, BANEN_DOC, LADDERS_COL, DEFAULT_STATE, esc, escAttr, functions, httpsCallable } from './config.js';
+import { db, BANEN_DOC, LADDERS_COL, DEFAULT_STATE, esc, escAttr, functions, httpsCallable, laadBanen } from './config.js';
 import { store, alleLadders, activeLadderId, alleToernooien, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
 import { slaActievePartijenOp, getLadderData, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
 import { objNaarRondes } from './knockout.js';
 import { getLadderSpelers, isInLadder } from './ladder-view.js';
 // v5.0.0 (punt 4): partijen krijgen een eigen document met scores per speler.
 import { maakPartijDocument, verwijderPartijDocument } from './scores.js';
-import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocFromServer, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 //  PARTIJ SETUP
 // ============================================================
@@ -134,6 +134,63 @@ function onSpeltypeChange() {
   if (hlLabel)    hlLabel.style.borderColor    = val === 'highlow'      ? 'var(--green)' : 'var(--border)';
 }
 
+// v5.4.5: het baanmenu vullen uit de lijst in het geheugen.
+function vulBaanSelect(sel, heeftOpgeslagen) {
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Selecteer baan —</option>';
+  // v3.0.0-11.34: alle banen komen uit Firestore — één vlakke lijst, geen onderscheid
+  aangepasteBanen.forEach(b => {
+    sel.innerHTML += `<option value="${escAttr(b.naam)}">${esc(b.naam)}</option>`;
+  });
+  sel.innerHTML += `<option value="Handmatig invoeren">+ Handmatig invoeren / nieuwe baan</option>`;
+
+  // Selecteer De Goyer als default, anders eerste beschikbare baan
+  if (!heeftOpgeslagen && aangepasteBanen.length > 0) {
+    const deGoyer = aangepasteBanen.find(b => b.naam === 'De Goyer');
+    sel.value = deGoyer ? deGoyer.naam : aangepasteBanen[0].naam;
+  }
+}
+
+// v5.4.5: melding onder het baanmenu, met eventueel een knop die het opnieuw
+// probeert. Bewust een knop en niet de tekst "ververs de pagina": in de app op
+// het beginscherm van een telefoon is er geen adresbalk en geen verversknop.
+function toonBaanMelding(sel, tekst, opnieuw) {
+  let el = document.getElementById('baan-melding');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'baan-melding';
+    el.style.cssText = 'font-size:12px;margin-top:6px;color:var(--light)';
+    sel.parentNode.insertBefore(el, sel.nextSibling);
+  }
+  el.innerHTML = '';
+  if (!tekst) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.appendChild(document.createTextNode(tekst));
+  if (opnieuw) {
+    const knop = document.createElement('button');
+    knop.type = 'button';
+    knop.className = 'btn btn-sm btn-ghost';
+    knop.style.cssText = 'margin-left:8px';
+    knop.textContent = '↻ Opnieuw proberen';
+    knop.onclick = () => { knop.disabled = true; opnieuw(); };
+    el.appendChild(knop);
+  }
+}
+
+// v5.4.5: banenlijst alsnog van de server halen als hij leeg is.
+async function herstelBanen(sel, heeftOpgeslagen) {
+  toonBaanMelding(sel, 'Banen worden opgehaald…');
+  const r = await laadBanen(store, { vanServer: true });
+  if (r.gelukt && (r.lijst || []).length > 0) {
+    vulBaanSelect(sel, heeftOpgeslagen);
+    toonBaanMelding(sel, '');
+    return;
+  }
+  toonBaanMelding(sel,
+    'De banen konden niet worden opgehaald. Controleer je verbinding.',
+    () => herstelBanen(sel, heeftOpgeslagen));
+}
+
 function initPartijForm() {
   // v3.0.0-11.33: herstel eventueel opgeslagen formulierstate na versie-reload
   const heeftOpgeslagen = !!sessionStorage.getItem(PARTIJ_FORM_KEY);
@@ -163,19 +220,14 @@ function initPartijForm() {
   if (speltypeMatchplay) { speltypeMatchplay.checked = true; onSpeltypeChange(); }
 
   const sel = document.getElementById('baan-select');
-  sel.innerHTML = '<option value="">— Selecteer baan —</option>';
+  vulBaanSelect(sel, heeftOpgeslagen);
 
-  // v3.0.0-11.34: alle banen komen uit Firestore — één vlakke lijst, geen onderscheid
-  aangepasteBanen.forEach(b => {
-    sel.innerHTML += `<option value="${escAttr(b.naam)}">${esc(b.naam)}</option>`;
-  });
-  sel.innerHTML += `<option value="Handmatig invoeren">+ Handmatig invoeren / nieuwe baan</option>`;
-
-  // Selecteer De Goyer als default, anders eerste beschikbare baan
-  if (!heeftOpgeslagen && aangepasteBanen.length > 0) {
-    const deGoyer = aangepasteBanen.find(b => b.naam === 'De Goyer');
-    sel.value = deGoyer ? deGoyer.naam : aangepasteBanen[0].naam;
-  }
+  // v5.4.5: is de lijst leeg, dan is dat vrijwel nooit de waarheid — er staan
+  // altijd minstens vijf vaste banen in Firestore. Het betekent dat het ophalen
+  // bij het opstarten is misgegaan. Vroeger bleef het menu dan gewoon leeg,
+  // zonder uitleg, tot de app volledig opnieuw startte. Nu haalt hij ze alsnog
+  // op en zegt hij wat er aan de hand is.
+  if (aangepasteBanen.length === 0) herstelBanen(sel, heeftOpgeslagen);
 
   // Player slots
   store.playerSlotCount = 0;
@@ -494,10 +546,28 @@ async function slaAangepasteBaanOp(context) {
     holes,
     aangemaakt_door: huidigeBruiker.gebruikersnaam || huidigeBruiker.email || huidigeBruiker.uid || 'onbekend'
   };
-  aangepasteBanen.push(nieuweBaan);
-
   try {
-    await setDoc(BANEN_DOC, { lijst: aangepasteBanen });
+    // v5.4.5 — WAT HIER MIS WAS, EN WAAROM HET ERNSTIG WAS.
+    //
+    // Tot nu toe stond hier: setDoc(BANEN_DOC, { lijst: aangepasteBanen }).
+    // Dat schrijft de VOLLEDIGE lijst uit het geheugen van deze telefoon over
+    // het document heen. Was die lijst leeg of onvolledig — bijvoorbeeld omdat
+    // het ophalen bij het opstarten was misgegaan — dan wiste één klik op
+    // "opslaan" alle banen van alle spelers, permanent. Er was geen enkele
+    // controle die dat tegenhield.
+    //
+    // Nu halen we eerst de actuele lijst van de server (nadrukkelijk niet uit
+    // de eigen kopie op het toestel) en zetten daar alleen de nieuwe baan bij.
+    // Lukt dat ophalen niet, dan schrijven we niets. Liever niets opgeslagen
+    // dan andermans banen gewist.
+    const serverSnap  = await getDocFromServer(BANEN_DOC);
+    const serverLijst = serverSnap.exists() ? (serverSnap.data().lijst || []) : [];
+    if (serverLijst.some(b => (b.naam || '').toLowerCase() === naam.toLowerCase())) {
+      toast('Er bestaat al een baan met deze naam'); return;
+    }
+    const nieuweLijst = [...serverLijst, nieuweBaan];
+    await setDoc(BANEN_DOC, { lijst: nieuweLijst });
+    store.aangepasteBanen = nieuweLijst;
     toast(`${naam} opgeslagen`);
     if (isTDag || context === 'toernooi') {
       // Verberg de handmatig-container voor dit dag-blok
@@ -513,8 +583,11 @@ async function slaAangepasteBaanOp(context) {
     }
   } catch(e) {
     console.error('slaAangepasteBaanOp mislukt:', e);
-    aangepasteBanen.pop();
-    toast('Fout bij opslaan: ' + (e.code || e.message || 'onbekend'));
+    // v5.4.5: geen terugdraaien meer nodig — er is niets aan het geheugen
+    // toegevoegd voordat de server het bevestigde.
+    toast(e.code === 'unavailable'
+      ? 'Geen verbinding met de server — de baan is niet opgeslagen.'
+      : 'Fout bij opslaan: ' + (e.code || e.message || 'onbekend'));
   }
 }
 
@@ -585,14 +658,26 @@ async function verwijderAangepasteBaan() {
   if (!baan) return;
   if (!confirm(`"${baanNaam}" verwijderen?`)) return;
 
-  store.aangepasteBanen = aangepasteBanen.filter(b => b.naam !== baanNaam);
   try {
-    await setDoc(BANEN_DOC, { lijst: aangepasteBanen });
+    // v5.4.5: zelfde reden als bij opslaan — eerst de actuele lijst van de
+    // server, daar deze ene baan uit halen, en die terugschrijven. Nooit de
+    // lijst uit het geheugen over het document heen zetten.
+    const serverSnap  = await getDocFromServer(BANEN_DOC);
+    const serverLijst = serverSnap.exists() ? (serverSnap.data().lijst || []) : [];
+    const nieuweLijst = serverLijst.filter(b => b.naam !== baanNaam);
+    if (nieuweLijst.length === serverLijst.length) {
+      store.aangepasteBanen = serverLijst;
+      toast('Die baan staat er niet (meer) in'); initPartijForm(); return;
+    }
+    await setDoc(BANEN_DOC, { lijst: nieuweLijst });
+    store.aangepasteBanen = nieuweLijst;
     toast('Baan verwijderd');
     initPartijForm();
   } catch(e) {
     console.error('verwijderAangepasteBaan mislukt:', e);
-    toast('Fout bij verwijderen: ' + (e.code || e.message || 'onbekend'));
+    toast(e.code === 'unavailable'
+      ? 'Geen verbinding met de server — er is niets verwijderd.'
+      : 'Fout bij verwijderen: ' + (e.code || e.message || 'onbekend'));
   }
 }
 
