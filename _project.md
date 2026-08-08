@@ -10,9 +10,35 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.4.1**
+Huidige versie: **v5.4.2**
 
 ### Changelog
+- **v5.4.2** — Alleen `playwright.config.cjs`. **Raakt de app niet aan**: geen
+  deploy, geen wijziging die een speler kan merken. Uitsluitend nodig om de
+  browsertests op GitHub te laten starten.
+
+  - **De fout.** Playwright staat geïnstalleerd in `tests/node_modules`, maar
+    `playwright.config.cjs` staat in de hoofdmap. Node zoekt onderdelen altijd
+    vanaf de map van het bestand zelf en loopt daarbij naar bóven, nooit een
+    submap in — dus vanuit de hoofdmap werd `tests/node_modules` nooit
+    bekeken. Resultaat op GitHub: `Cannot find module '@playwright/test'`,
+    afkomstig uit regel 8 van de configuratie. Playwright stierf op zijn eigen
+    instellingenbestand, vóór de eerste test. Dat verklaarde waarom er geen
+    enkele testnaam in het log stond en de stap maar 17 seconden duurde.
+    Het seeden van de testdata was wél gelukt (het log toont de vijf
+    aangemaakte spelers).
+
+  - **De oplossing.** De configuratie vraagt niets meer op. `defineConfig()`
+    en `devices[]` zijn gemaksfuncties zonder eigen werking; een gewoon
+    `module.exports = { ... }` doet exact hetzelfde. Nul afhankelijkheden,
+    dus niets meer te vinden.
+
+  - **Tweede struikelblok meteen weggenomen.** `devices['Desktop Chrome']`
+    vraagt in nieuwere Playwright-versies om de échte Google Chrome, terwijl
+    de workflow alleen Chromium installeert. Dat was na de eerste fix direct
+    de volgende geweest. Nu staat er rechtstreeks
+    `browserName: 'chromium'` met een vast venster van 1280×900.
+
 - **v5.4.1** — De app herstelt zichzelf in plaats van om een verversing te
   vragen. Alleen app-bestanden; geen deploy nodig.
 

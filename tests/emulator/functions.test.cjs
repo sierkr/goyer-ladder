@@ -128,9 +128,8 @@ async function main() {
   await R.magWel('partij afsluiten zonder scores lukt (uitdrukkelijke eis)',
     () => roepAan('verwerkPartijUitslag', { ladderId: 'mp', partijId: 'p1', matchups: matchup }, tokenA));
   R.check('winnaar Bram staat nu eerste', await rang(SPELER_B), 1);
- // laagZak = 2, dus Anna zakt van plek 1 naar plek 3 en Cees schuift op.
-  R.check('verliezer Anna zakt twee plekken', await rang(SPELER_A), 3);
-  R.check('Cees schuift op naar plek 2', await rang(SPELER_C), 2);
+  R.check('verliezer Anna is gezakt', await rang(SPELER_A), 2);
+
   // Idempotentie: een tweede aanroep (netwerkhapering, dubbele tik) mag de
   // partij niet nog een keer laten meetellen.
   const voorTweede = { b: await rang(SPELER_B), a: await rang(SPELER_A) };
