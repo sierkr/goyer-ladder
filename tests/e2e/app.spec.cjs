@@ -334,5 +334,52 @@ test.describe('Opstarten blijft overeind', () => {
   });
 });
 
+
+test.describe('Zelfherstel', () => {
+
+  // v5.5.0 — de belofte van v5.4.1 beproeven.
+  //
+  // EERLIJK OVER WAT DIT WEL EN NIET TEST. De wachthond zelf zit niet aan het
+  // venster gekoppeld en is van buitenaf niet rechtstreeks aan te spreken. Wat
+  // hier getest wordt is de belofte die de speler merkt: vallen de standen weg,
+  // dan zegt de app niet "ververs de pagina" — een onuitvoerbare instructie in
+  // de app op het beginscherm van een telefoon — maar biedt hij een knop, en
+  // hij vult zichzelf weer zodra de gegevens er zijn, zónder herladen.
+  test('lege standen geven een knop, en de ladder vult zichzelf weer', async ({ page }) => {
+    process.env.FIRESTORE_EMULATOR_HOST =
+      process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
+    const admin = require('firebase-admin');
+    if (!admin.apps.length) admin.initializeApp({ projectId: 'demo-goyer' });
+    const db = admin.firestore();
+    const col = db.collection('ladders/mp/standen');
+
+    const bewaard = (await col.get()).docs.map(d => ({ id: d.id, data: d.data() }));
+    expect(bewaard.length, 'testdata moet standen bevatten').toBeGreaterThan(0);
+
+    try {
+      // 1. Standen weghalen — dit is de storing die v5.3.0 in het echt had.
+      await Promise.all(bewaard.map(d => col.doc(d.id).delete()));
+
+      await inloggen(page, 'anna');
+      await expect(page.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
+
+      // 2. De app moet het eerlijk melden én een werkende uitweg bieden.
+      const lijst = page.locator('#ladder-list-mp');
+      await expect(lijst).toContainText('wordt opgehaald', { timeout: 20000 });
+      await expect(page.locator('#ladder-list-mp button:has-text("Opnieuw proberen")'))
+        .toBeVisible({ timeout: 20000 });
+      const body = (await page.locator('body').innerText()).toLowerCase();
+      expect(body, 'de app mag nooit om een verversing vragen').not.toContain('ververs de pagina');
+
+      // 3. Gegevens terugzetten — de app moet zichzelf vullen zonder herladen.
+      await Promise.all(bewaard.map(d => col.doc(d.id).set(d.data)));
+      await expect(lijst).toContainText('Coen Coordinator', { timeout: 30000 });
+    } finally {
+      // Altijd terugzetten, ook als de test onderweg struikelt.
+      await Promise.all(bewaard.map(d => col.doc(d.id).set(d.data)));
+    }
+  });
+});
+
 // Voorkomt dat de hulpfuncties als ongebruikt worden gezien.
 module.exports = { toonSchermstatus, volgConsole };

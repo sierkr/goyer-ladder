@@ -401,7 +401,9 @@ async function vraagResetWachtwoord(uid, naam) {
   try {
     toast('Bezig met resetten...');
     const resetFn = httpsCallable(functions, 'resetSpelerWachtwoord');
-    const result = await resetFn({ targetUid: uid });
+    // v5.5.0: isTest meesturen. Zonder deze vlag zette een reset vanuit het
+    // testbeheerscherm eersteLogin:true op het ECHTE spelersdocument.
+    const result = await resetFn({ targetUid: uid, isTest: IS_TEST });
     if (result.data?.success) {
       renderAdmin();
       // Gebruik het wachtwoord dat de Cloud Function daadwerkelijk heeft ingesteld —

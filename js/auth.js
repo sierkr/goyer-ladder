@@ -6,7 +6,7 @@
 import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
   INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB_MIGRATIE, esc, escAttr,
-  EMAIL_SUFFIX, DEFAULT_HCP, CONFIG_DOC, laadInitieelWachtwoord,
+  EMAIL_SUFFIX, DEFAULT_HCP, CONFIG_DOC, IS_TEST, laadInitieelWachtwoord,
   laadUiStijl, pasUiStijlToe, laadBanen,
   genereerEmail, loginNaamVan, functions, httpsCallable } from './config.js';
 import { store, DEFAULT_LADDER_CONFIG,
@@ -212,7 +212,12 @@ async function slaEersteLoginOp() {
     // trof bij een herstelde sessie (PWA-heropening / reload), en is niet
     // afhankelijk van store.initieelWachtwoord voor reauthenticatie.
     const voltooiFn = httpsCallable(functions, 'voltooiEersteLogin');
-    await voltooiFn({ nieuwWachtwoord: pass1, hcp: hcpInt });
+    // v5.5.0: isTest meesturen, net als de zestien andere functie-aanroepen.
+    // Zonder deze vlag schreef de Cloud Function altijd naar de
+    // productiedatabase — ook vanuit /test/. Gevolg: het eerste-loginscherm
+    // bleef in test elke keer terugkomen, terwijl de echte handicap van die
+    // speler werd overschreven.
+    await voltooiFn({ nieuwWachtwoord: pass1, hcp: hcpInt, isTest: IS_TEST });
 
     // hcp-sync naar standen/{uid} in alle ladders waar speler in zit. Niet-kritisch:
     // fouten hier blokkeren het voltooien van de eerste-login niet meer (wachtwoord
