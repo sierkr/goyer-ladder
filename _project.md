@@ -10,9 +10,23 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.4.5**
+Huidige versie: **v5.4.6**
 
 ### Changelog
+- **v5.4.6** — Eén regel verzet in `js/auth.js`, maar een belangrijke. Bevat
+  verder alles uit v5.4.5.
+
+  - **Wat er mis was aan v5.4.5.** De tweede poging om de banen op te halen
+    stond mét `await` vóór `startAlleStandenListeners()`. `getDocFromServer()`
+    wacht op de server, en juist bij slecht bereik op de baan — precies de
+    situatie waarin de banenlijst leeg is — kan dat lang duren. Zolang die
+    regel wachtte, startten de ladder-listeners niet en bleef de ladderstand
+    leeg. Dat is dezelfde soort fout als die we net hadden gerepareerd: één
+    trage stap die alles erna ophoudt.
+
+    Nu staat het ophalen ná het starten van de listeners en zonder `await`. De
+    banen komen binnen wanneer ze binnenkomen; niets anders wacht erop.
+
 - **v5.4.5** — De banenlijst die leeg bleef, en de wisbeveiliging. Raakt
   `js/config.js`, `js/auth.js` en `js/partij.js`.
 

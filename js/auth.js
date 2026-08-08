@@ -878,21 +878,27 @@ async function initFirestore() {
           (err) => { console.warn('spelers/ listener error:', err.code); }
         ));
       }
+      // Start standen/ listeners voor alle ladders (fase 9a view-laag)
+      startAlleStandenListeners();
+
       // v5.4.5: banen alsnog ophalen als ze bij het opstarten niet betrouwbaar
       // binnenkwamen. initFirestore() draait bij een koude start voordat
       // Firebase de sessie heeft hersteld, en wordt na het inloggen niet
       // opnieuw uitgevoerd — zonder deze tweede poging bleef de banenlijst leeg
       // tot de app volledig opnieuw startte. Nadrukkelijk van de server, zodat
       // een lege eigen kopie niet opnieuw voor een leeg antwoord zorgt.
+      //
+      // LET OP — bewust NA startAlleStandenListeners() en bewust ZONDER await.
+      // getDocFromServer() wacht op de server. Juist bij slecht bereik op de
+      // baan — precies wanneer de banenlijst leeg is — kan dat lang duren. Zou
+      // deze regel het opstarten ophouden, dan startten de ladder-listeners pas
+      // daarna en bleef de ladderstand leeg. De banen komen binnen wanneer ze
+      // binnenkomen; niets anders wacht erop.
       if (!S.aangepasteBanen || S.aangepasteBanen.length === 0) {
-        try {
-          const r = await laadBanen(store, { vanServer: true });
-          if (r.gelukt) console.info(`[banen] alsnog geladen na inloggen: ${r.lijst.length}`);
-        } catch(e) { console.warn('[banen] tweede poging mislukt:', e.code || e.message); }
+        laadBanen(store, { vanServer: true })
+          .then(r => { if (r.gelukt) console.info(`[banen] alsnog geladen na inloggen: ${r.lijst.length}`); })
+          .catch(e => console.warn('[banen] tweede poging mislukt:', e.code || e.message));
       }
-
-      // Start standen/ listeners voor alle ladders (fase 9a view-laag)
-      startAlleStandenListeners();
       // v5.4.1: controleer of de standen ook echt binnenkomen en herstel
       // vanzelf als dat niet zo is. Zie de toelichting in ladder-view.js.
       startStandenWachthond();

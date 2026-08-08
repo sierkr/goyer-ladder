@@ -1,4 +1,4 @@
-# HANDOVER — Goyer Golf MP Ladder, v5.4.5
+# HANDOVER — Goyer Golf MP Ladder, v5.4.6
 
 > Plak dit bestand als eerste bericht in een nieuwe chat, samen met de zip.
 > Lees daarna `_project.md` voor de volledige structuur en changelog.
@@ -43,7 +43,7 @@ account — daarom is de bulk-import in test geblokkeerd.
 
 ## 3. Waar we nu staan
 
-Versie in de zip: **v5.4.5**.
+Versie in de zip: **v5.4.6**.
 
 ### Wat af en gedeployed is
 v5.0.0 t/m v5.3.1 zitten in productie. Kort samengevat: het watch-PIN-lek is
