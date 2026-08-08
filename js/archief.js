@@ -1,7 +1,9 @@
 // ============================================================
 //  archief.js
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr, functions, httpsCallable, IS_TEST } from './config.js';
+// v5.2.1: seizoensreset ruimt ook punten, partijen en verwerkt op (server-side).
+const _resetSeizoenFn = httpsCallable(functions, 'resetLadderSeizoen');
 import { store, huidigeBruiker, archiefData, uitdagingenData, alleLadders, activeLadderId } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { renderAdmin, renderProfiel } from './admin.js';
@@ -124,13 +126,23 @@ async function bevestigNieuwSeizoen() {
           actievePartijen: [],
         }, { merge: true });
 
-        // 5) Reset standen/{uid} met nieuwe ranks en 0-statistieken
-        const resetPromises = nieuweVolgorde.map((s, i) =>
-          setDoc(doc(db, 'ladders', ladderId, 'standen', s.uid), {
-            rank: i + 1, partijen: 0, gewonnen: 0,
-          })
-        );
-        await Promise.all(resetPromises);
+        // 5) v5.2.1: standen resetten EN het vorige seizoen opruimen, via de
+        // server. Voorheen werden alleen de standen gereset en bleven punten,
+        // partijen, verwerkt en teruggedraaid staan. Het vervelendst was dat
+        // `activiteitVerschuiving` de seizoensreset overleefde: de posities
+        // begonnen opnieuw, maar het systeem dacht nog dat er al
+        // activiteitscorrecties waren toegepast — de eerste periodieke run van
+        // het nieuwe seizoen rekende dan met een verkeerd verschil.
+        const volgordeUids = nieuweVolgorde.map(s => s.uid).filter(Boolean);
+        try {
+          const res = await _resetSeizoenFn({ ladderId, isTest: IS_TEST, volgorde: volgordeUids });
+          console.info('Seizoen gereset:', res?.data);
+        } catch (e) {
+          console.error('Seizoensreset via server mislukt:', e);
+          toast('Seizoen resetten mislukt voor deze ladder — zie console');
+          fouten++;
+          continue;
+        }
 
         // 6) Delete uitslagen/ docs voor deze ladder
         // Filter op ladderId veld (nieuwe docs) — legacy docs zonder ladderId worden later opgeruimd
