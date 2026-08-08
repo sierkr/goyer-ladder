@@ -25,14 +25,72 @@ const inloggen = async (page, login) => {
   await klikInloggen(page);
 };
 
+// v5.4.7: vertellen wat er werkelijk op het scherm staat.
+//
+// De ladder-tests vielen om met "element(s) not found" op #ladder-list-mp,
+// maar dat zegt niet WAAROM. renderLadder() in ladder.js kent vier uitkomsten
+// en elk daarvan wijst een andere kant op:
+//
+//   "Laden…"                              -> alleLadders nog leeg, hij probeert het
+//   "Je bent nog niet toegevoegd aan een  -> mijnLadders leeg: isInLadder() zegt nee
+//    ladder."                                (uid staat niet in spelerIds, of
+//                                             huidigeBruiker.uid ontbreekt)
+//   "Ladderstand wordt opgehaald…"        -> kaart bestaat wel, standen-listener
+//                                            levert niets
+//   rijen met namen                       -> alles goed
+//
+// Deze dump drukt af welke van de vier het is, plus alles wat de app naar de
+// console schreef. Zo is één testrun genoeg om de oorzaak vast te stellen.
+async function toonSchermstatus(page, label) {
+  const uit = await page.evaluate(() => {
+    const kaarten = document.getElementById('ladder-kaarten');
+    const lijsten = [...document.querySelectorAll('[id^="ladder-list-"]')].map(e => e.id);
+    const pagina  = document.querySelector('.page.active')?.id || '(geen)';
+    return {
+      pagina,
+      kaartenAanwezig: !!kaarten,
+      lijstElementen: lijsten,
+      tekst: (kaarten?.innerText || '(geen #ladder-kaarten)').slice(0, 400),
+    };
+  }).catch(e => ({ fout: e.message }));
+
+  console.log(`\n──── schermstatus: ${label} ────`);
+  console.log('  actieve pagina    :', uit.pagina);
+  console.log('  #ladder-kaarten   :', uit.kaartenAanwezig);
+  console.log('  gevonden lijsten  :', uit.lijstElementen?.length ? uit.lijstElementen.join(', ') : '(geen)');
+  console.log('  tekst op het scherm:');
+  console.log((uit.tekst || '').split('\n').map(l => '    | ' + l).join('\n'));
+  console.log('────────────────────────────────\n');
+}
+
+// Vangt alles op wat de app naar de console schrijft en drukt het af.
+function volgConsole(page, label) {
+  const regels = [];
+  page.on('console', m => regels.push(`[${m.type()}] ${m.text()}`));
+  page.on('pageerror', e => regels.push(`[pageerror] ${e.message}`));
+  return () => {
+    console.log(`\n──── console: ${label} (${regels.length} regels) ────`);
+    regels.slice(-40).forEach(l => console.log('    ' + l));
+    console.log('────────────────────────────────\n');
+  };
+}
+
 // Wacht tot de ladderlijst gevuld is met echte rangen.
 const ladderRijen = (page) => page.locator('#ladder-list-mp .ladder-rij, #ladder-list-mp > div');
 
 test.describe('Inloggen en ladderstand', () => {
 
   test('bestaande speler ziet de echte ladderstand', async ({ page }) => {
+    const toonConsole = volgConsole(page, 'bestaande speler');
     await inloggen(page, 'anna');
     await expect(page.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
+
+    // v5.4.7: even de tijd geven en dan afdrukken wat er staat — ook als de
+    // test hierna slaagt. Dit staat in het CI-log en kost niets.
+    await page.waitForTimeout(6000);
+    await toonSchermstatus(page, 'bestaande speler, 6s na inloggen');
+    toonConsole();
+
     const lijst = page.locator('#ladder-list-mp');
     await expect(lijst).toBeVisible();
     // De stand mag niet blijven hangen op "wordt geladen".
@@ -247,6 +305,8 @@ test.describe('Opstarten blijft overeind', () => {
       await expect(page.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
 
       // De ladder moet er staan, ook zonder ladder/config.
+      await page.waitForTimeout(6000);
+      await toonSchermstatus(page, 'zonder ladder/config, 6s na inloggen');
       await expect(page.locator('#ladder-list-mp'))
         .toContainText('Coen Coordinator', { timeout: 25000 });
 

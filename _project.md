@@ -10,9 +10,28 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.4.6**
+Huidige versie: **v5.4.7**
 
 ### Changelog
+- **v5.4.7** — Alleen `tests/e2e/app.spec.cjs`. **Raakt de app niet aan.**
+
+  Vier browsertests blijven omvallen op `#ladder-list-mp` met "element(s) not
+  found". Die melding zegt niet waarom. `renderLadder()` in `ladder.js` kent
+  vier uitkomsten en elk wijst een andere kant op:
+
+  | Wat er op het scherm staat | Wat dat betekent |
+  |---|---|
+  | "Laden…" | `alleLadders` nog leeg, de app probeert het opnieuw |
+  | "Je bent nog niet toegevoegd aan een ladder." | `mijnLadders` leeg — `isInLadder()` zegt nee, dus de uid staat niet in `spelerIds` of `huidigeBruiker.uid` ontbreekt |
+  | "Ladderstand wordt opgehaald…" | de kaart bestaat wél, maar de standen-listener levert niets |
+  | rijen met namen | alles goed |
+
+  De test drukt nu na het inloggen af welke van de vier het is, plus alles wat
+  de app naar de console schreef. Eén run is daarmee genoeg om de oorzaak vast
+  te stellen, in plaats van opnieuw te moeten raden.
+
+  Reden dat dit niet in één keer kon: lokaal reproduceren lukt niet, de
+  ontwikkelomgeving mag Chromium en de Firebase-emulator niet downloaden.
 - **v5.4.6** — Eén regel verzet in `js/auth.js`, maar een belangrijke. Bevat
   verder alles uit v5.4.5.
 
