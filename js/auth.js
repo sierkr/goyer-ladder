@@ -566,38 +566,83 @@ async function initFirestore() {
 
   try {
     // v3.0.0-11.74: laad initieel wachtwoord parallel met overige docs
+    // v5.4.4: Promise.allSettled in plaats van Promise.all.
+    //
+    // WAT ER MIS WAS: Promise.all breekt af zodra ÉÉN van de vijf reads
+    // mislukt, en levert dan geen enkel resultaat. Eén geweigerd of onbereikbaar
+    // document sleepte zo de andere vier mee. allSettled wacht op alle vijf en
+    // geeft per stuk terug of het gelukt is; een mislukte read levert nu null op
+    // en de rest komt gewoon binnen.
+    const uitkomsten = await Promise.allSettled([
+      getDoc(BANEN_DOC),
+      getDoc(ARCHIEF_DOC),
+      getDoc(UITDAGINGEN_DOC),
+      getDoc(TOERNOOI_DOC),
+      getDoc(doc(db, 'ladder', 'ladderVolgorde'))
+    ]);
+    const _namen = ['banen', 'archief', 'uitdagingen', 'toernooi', 'ladderVolgorde'];
     const [baanSnap, archiefSnap, uitdSnap, toernooiSnap, volgordeSnap] =
-      await Promise.all([
-        getDoc(BANEN_DOC),
-        getDoc(ARCHIEF_DOC),
-        getDoc(UITDAGINGEN_DOC),
-        getDoc(TOERNOOI_DOC),
-        getDoc(doc(db, 'ladder', 'ladderVolgorde'))
-      ]);
-    // Geen fallback — gooit een Error als ladder/config ontbreekt of leeg is.
-    // De fout bubbelt naar initApp() → toonLoginFout() zodat de beheerder actie kan ondernemen.
-    await laadInitieelWachtwoord(store);
+      uitkomsten.map((u, i) => {
+        if (u.status === 'fulfilled') return u.value;
+        console.warn(`[init] ladder/${_namen[i]} niet geladen:`,
+          u.reason?.code || u.reason?.message || u.reason);
+        return null;
+      });
+
+    // v5.4.4: laadInitieelWachtwoord() heeft nu eigen foutopvang.
+    //
+    // WAT ER MIS WAS: dit was de enige stap in het hele opstarten zonder eigen
+    // try/catch. Hij gooit een echte fout als ladder/config ontbreekt of, voor
+    // iedereen die geen beheerder is, niet gelezen mag worden — en dat mag
+    // volgens firestore.rules alleen een beheerder. Die fout werd pas helemaal
+    // onderaan opgevangen (catch met alleen een console.error), waardoor ALLES
+    // hierna werd overgeslagen: de UI-stijl, het archief, de uitdagingen, de
+    // banen én de ladders. De browsertest van v5.4.3 liet dat zwart op wit zien:
+    // "ladder/config ontbreekt" in de console, en daarna een app zonder ladder.
+    //
+    // Het initiële wachtwoord is alleen nodig in het beheerscherm. Ontbreekt het
+    // hier, dan wordt het na het inloggen alsnog opgehaald (zie
+    // onAuthStateChanged verderop, v3.0.4). Het mag het opstarten niet blokkeren.
+    try {
+      await laadInitieelWachtwoord(store);
+    } catch(e) {
+      console.warn('[init] initieel wachtwoord nog niet beschikbaar:',
+        e.code || e.message);
+    }
 
     // v4.1.0: globale UI-stijl laden en meteen toepassen (voor eerste render van
     // login/app-scherm). Faalt nooit hard — valt terug op 'club' bij problemen.
     await laadUiStijl(store);
     pasUiStijlToe(store.uiStijl);
 
-    store.archiefData     = archiefSnap.exists()  ? (archiefSnap.data().seizoenen  || []) : [];
-    store.uitdagingenData = uitdSnap.exists()      ? (uitdSnap.data().lijst         || []) : [];
+    // v5.4.4: ?. omdat een mislukte read nu null oplevert in plaats van te knallen.
+    store.archiefData     = archiefSnap?.exists() ? (archiefSnap.data().seizoenen || []) : [];
+    store.uitdagingenData = uitdSnap?.exists()    ? (uitdSnap.data().lijst        || []) : [];
     // v3.0.0-11.34: laad alle banen uit Firestore — geen hardcoded BANEN_DB meer.
     // migratieVasteBanen() schrijft de vijf vaste banen eenmalig naar Firestore
     // als ze er nog niet in staan, zodat de overgang naadloos verloopt.
-    let baanLijst = baanSnap.exists() ? (baanSnap.data().lijst || []) : [];
-    baanLijst = await migratieVasteBanen(baanLijst);
+    //
+    // v5.4.4 — BELANGRIJK: de migratie draait ALLEEN als de read gelukt is.
+    // Mislukte de read (baanSnap is dan null), dan zou migratieVasteBanen op
+    // basis van een lege lijst concluderen dat alle vijf vaste banen ontbreken
+    // en het document overschrijven met alleen die vijf — waarmee elke zelf
+    // toegevoegde baan van iedereen verdwijnt. Een mislukte read is geen bewijs
+    // dat er niets is.
+    let baanLijst = baanSnap?.exists() ? (baanSnap.data().lijst || []) : [];
+    if (baanSnap) {
+      baanLijst = await migratieVasteBanen(baanLijst);
+    } else {
+      console.warn('[init] banen niet geladen — migratie overgeslagen, ' +
+        'anders zou het banendocument overschreven worden');
+    }
     store.aangepasteBanen = baanLijst;
     // v3.0.0-9c: alleSpelersData wordt niet meer uit ladder/spelers geladen.
     // Het is nu een afgeleide view van _usersCache (zie store.js) en wordt
     // gevuld zodra de spelers/ listener start na login.
-    const ladderVolgorde  = volgordeSnap.exists()  ? (volgordeSnap.data().volgorde  || []) : [];
+    const ladderVolgorde  = volgordeSnap?.exists() ? (volgordeSnap.data().volgorde || []) : [];
 
     // v3.0.0-11.74: legacy migratie (eenmalig, alleen als nodig)
-    if (toernooiSnap.exists() && toernooiSnap.data().status === 'actief') {
+    if (toernooiSnap?.exists() && toernooiSnap.data().status === 'actief') {
       const migSnap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
       if (migSnap.empty) {
         const legacyData = { ...toernooiSnap.data() };
@@ -678,11 +723,17 @@ async function initFirestore() {
 
     const laddersSnap = await getDocs(LADDERS_COL);
 
-    const stateSnap = await getDoc(STATE_DOC);
+    // v5.4.4: ook deze losse read mag het laden van de ladders niet meeslepen.
+    // ladder/state is een legacy-document dat alleen nog in de migratietak
+    // hieronder wordt gebruikt; is het onbereikbaar, dan gaan we gewoon door.
+    const stateSnap = await getDoc(STATE_DOC).catch(e => {
+      console.warn('[init] ladder/state niet geladen:', e.code || e.message);
+      return null;
+    });
     const mpDoc     = laddersSnap.docs.find(d => d.id === 'mp');
 
     if (!mpDoc) {
-      const bestaandeState = stateSnap.exists()
+      const bestaandeState = stateSnap?.exists()
         ? stateSnap.data()
         : JSON.parse(JSON.stringify(DEFAULT_STATE));
       if (!bestaandeState.actievePartijen) {

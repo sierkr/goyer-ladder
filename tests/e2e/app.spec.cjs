@@ -183,16 +183,34 @@ test.describe('Partij en scores', () => {
 
 test.describe('Beheer', () => {
 
-  test('coordinator ziet de beheertabbladen, speler niet', async ({ page }) => {
-    await inloggen(page, 'anna');
-    await expect(page.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
-    await expect(page.locator('#nav-admin-btn')).toBeHidden();
+  test('coordinator ziet de beheertabbladen, speler niet', async ({ browser }) => {
+    // v5.4.4: twee gescheiden browsersessies in plaats van uitloggen halverwege.
+    //
+    // WAT ER MIS WAS: de test logde in als Anna, laadde de pagina opnieuw en
+    // wiste localStorage. Maar de app bewaart de inlogsessie bewust in
+    // IndexedDB (zie setPersistence in config.js, zodat de PWA op een telefoon
+    // ingelogd blijft). localStorage wissen raakt die dus niet: Anna bleef
+    // ingelogd, het inlogscherm verscheen nooit meer en de test wachtte zich
+    // dood op een scherm dat niet meer kwam — vandaar de 32 seconden.
+    //
+    // Een verse context heeft een eigen, lege opslag. Dat is meteen eerlijker:
+    // zo test dit ook echt twee verschillende gebruikers.
+    const ctxSpeler = await browser.newContext();
+    const ctxCoord  = await browser.newContext();
+    try {
+      const speler = await ctxSpeler.newPage();
+      await inloggen(speler, 'anna');
+      await expect(speler.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
+      await expect(speler.locator('#nav-admin-btn')).toBeHidden();
 
-    await page.goto('/index.html');
-    await page.evaluate(() => window.localStorage.clear());
-    await inloggen(page, 'coord');
-    await expect(page.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
-    await expect(page.locator('#nav-toernooi-btn')).toBeVisible({ timeout: 20000 });
+      const coord = await ctxCoord.newPage();
+      await inloggen(coord, 'coord');
+      await expect(coord.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
+      await expect(coord.locator('#nav-toernooi-btn')).toBeVisible({ timeout: 20000 });
+    } finally {
+      await ctxSpeler.close();
+      await ctxCoord.close();
+    }
   });
 
   test('watch-scherm vraagt om een zescijferige PIN', async ({ page }) => {
@@ -202,3 +220,45 @@ test.describe('Beheer', () => {
     await expect(page.locator('body')).toContainText('6-cijferige');
   });
 });
+
+test.describe('Opstarten blijft overeind', () => {
+
+  // v5.4.4 — regressietest voor de fout die de browsertests zelf blootlegden.
+  //
+  // Het opstarten laadde een reeks documenten achter elkaar in één blok. Ging er
+  // één mis, dan werd alles daarna overgeslagen: de UI-stijl, het archief, de
+  // uitdagingen, DE BANEN en de ladders. `ladder/config` was daarbij de meest
+  // waarschijnlijke struikelaar, want dat document mag volgens de
+  // beveiligingsregels alleen een beheerder lezen.
+  //
+  // Deze test haalt dat document expliciet weg en controleert dat de app het
+  // gewoon uitzingt. Het document wordt daarna altijd teruggezet.
+  test('ontbrekende ladder/config sloopt ladder en banen niet', async ({ page }) => {
+    process.env.FIRESTORE_EMULATOR_HOST =
+      process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
+    const admin = require('firebase-admin');
+    if (!admin.apps.length) admin.initializeApp({ projectId: 'demo-goyer' });
+    const ref = admin.firestore().doc('ladder/config');
+    const origineel = (await ref.get()).data();
+
+    await ref.delete();
+    try {
+      await inloggen(page, 'anna');
+      await expect(page.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
+
+      // De ladder moet er staan, ook zonder ladder/config.
+      await expect(page.locator('#ladder-list-mp'))
+        .toContainText('Coen Coordinator', { timeout: 25000 });
+
+      // En de banenlijst moet gevuld zijn — dit is de klacht uit de praktijk:
+      // een leeg uitklapmenu bij het aanmaken van een nieuwe partij.
+      await page.click('#nav-partij-btn');
+      await expect(page.locator('#page-partij')).toHaveClass(/active/);
+      await expect(page.locator('#baan-select'))
+        .toContainText('De Goyer', { timeout: 20000 });
+    } finally {
+      await ref.set(origineel || { initieelWachtwoord: WACHTWOORD });
+    }
+  });
+});
+

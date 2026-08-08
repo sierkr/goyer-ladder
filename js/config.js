@@ -19,24 +19,41 @@ import {
 import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-functions.js";
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js";
 
+// v5.4.0: draait de app lokaal (browsertests tegen de emulator)? Dan geen
+// App Check en geen emulator-verbindingen in productie. De app wordt in
+// productie en test altijd vanaf sierkr.github.io geserveerd, dus deze
+// voorwaarde is nooit waar voor een echte gebruiker.
+// v5.4.4: deze regel staat nu bovenaan, omdat de projectnaam hieronder hem
+// nodig heeft. initializeApp() krijgt zijn instellingen maar één keer mee.
+export const IS_EMULATOR =
+  typeof location !== 'undefined' &&
+  (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+
+// v5.4.4: de projectnaam in de testopstelling.
+//
+// WAT ER MIS WAS: de emulator draait onder de naam `demo-goyer` en de testdata
+// wordt daar weggeschreven, maar de app vroeg altijd naar
+// `goyer-golf-mp-ladder`. Twee verschillende laden van dezelfde kast: inloggen
+// lukte wel (de inlog-emulator bedient maar één project en let niet op de
+// naam), maar de database was leeg. Vandaar "ladder/config ontbreekt" en een
+// app zonder ladder in de browsertests.
+//
+// De `demo-`naam blijft bewust staan: die is de veiligheidsgrendel waardoor de
+// emulator nooit per ongeluk bij de échte Firebase-diensten kan. Op
+// sierkr.github.io is IS_EMULATOR altijd onwaar, dus voor de spelers verandert
+// hier niets.
+export const PROJECT_ID = IS_EMULATOR ? 'demo-goyer' : 'goyer-golf-mp-ladder';
+
 export const firebaseConfig = {
   apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
   authDomain: "goyer-golf-mp-ladder.firebaseapp.com",
-  projectId: "goyer-golf-mp-ladder",
+  projectId: PROJECT_ID,
   storageBucket: "goyer-golf-mp-ladder.firebasestorage.app",
   messagingSenderId: "124116031878",
   appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
 };
 
 export const app = initializeApp(firebaseConfig);
-
-// v5.4.0: draait de app lokaal (browsertests tegen de emulator)? Dan geen
-// App Check en geen emulator-verbindingen in productie. De app wordt in
-// productie en test altijd vanaf sierkr.github.io geserveerd, dus deze
-// voorwaarde is nooit waar voor een echte gebruiker.
-export const IS_EMULATOR =
-  typeof location !== 'undefined' &&
-  (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
 
 // v3.0.0-11.100: App Check — reCAPTCHA v3. Beschermt Firestore/Auth tegen
 // requests van buiten de echte app. Moet vóór getFirestore/getAuth gebeuren.

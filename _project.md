@@ -10,9 +10,65 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.4.3**
+Huidige versie: **v5.4.4**
 
 ### Changelog
+- **v5.4.4** — Drie oorzaken achter de rode browsertests, waarvan er één een
+  echte fout in de app bleek. **Raakt de app wél aan** (`js/auth.js`,
+  `js/config.js`), maar geen enkele wijziging die een speler ziet.
+
+  - **1. Het opstarten kon in zijn geheel omvallen op één document.**
+    `initFirestore()` in `auth.js` laadde vijf documenten met `Promise.all` en
+    riep daarna `laadInitieelWachtwoord()` aan — de enige stap zonder eigen
+    foutopvang. Mislukte er iets, dan werd ALLES daarna overgeslagen: de
+    UI-stijl, het archief, de uitdagingen, de banen én de ladders. De fout werd
+    pas onderaan opgevangen met een `console.error` en verder stil weggegooid,
+    en na inloggen wordt `initFirestore()` niet opnieuw gedraaid — dus het
+    herstelde zich nooit binnen die sessie.
+
+    `ladder/config` is de meest waarschijnlijke struikelaar: dat document mag
+    volgens `firestore.rules` alleen een beheerder lezen. Voor elke gewone
+    speler gooit die stap dus een fout. De browsertest liet het letterlijk zien:
+    `Firestore init error: ladder/config ontbreekt`, gevolgd door een app zonder
+    ladder.
+
+    Nu: `Promise.allSettled`, zodat elke read op zichzelf staat, en eigen
+    foutopvang rond `laadInitieelWachtwoord()`. Het wachtwoord is alleen nodig
+    in het beheerscherm en wordt na het inloggen alsnog opgehaald.
+
+  - **1b. Datalek-risico meteen dichtgezet.** Mislukte de banen-read, dan
+    concludeerde `migratieVasteBanen()` uit de lege lijst dat alle vijf vaste
+    banen ontbraken en overschreef het banendocument met alleen die vijf — dus
+    alle zelf toegevoegde banen van iedereen weg. De migratie draait nu alleen
+    nog als de read echt gelukt is. Een mislukte read is geen bewijs dat er
+    niets is.
+
+  - **2. Verkeerde projectnaam in de testopstelling.** De emulator draait onder
+    `demo-goyer` en de testdata gaat daarheen, maar de app vroeg altijd naar
+    `goyer-golf-mp-ladder`. Inloggen lukte wel (de inlog-emulator bedient maar
+    één project en let niet op de naam), de database was leeg. Op localhost
+    gebruikt de app nu `demo-goyer`. De `demo-`naam blijft bewust staan: dat is
+    de grendel waardoor een test nooit bij de echte Firebase-diensten kan. Op
+    `sierkr.github.io` is `IS_EMULATOR` altijd onwaar, dus in productie
+    verandert er niets.
+
+  - **3. De beheertest logde niet uit.** Hij wiste `localStorage`, maar de
+    inlogsessie staat bewust in IndexedDB (`setPersistence`, zodat de PWA op een
+    telefoon ingelogd blijft). Anna bleef dus ingelogd, het inlogscherm kwam
+    nooit en de test wachtte zich dood — vandaar die 32 seconden. Nu twee
+    gescheiden browsersessies, wat meteen eerlijker is: het test echt twee
+    verschillende gebruikers.
+
+  - **Nieuwe regressietest.** `ontbrekende ladder/config sloopt ladder en banen
+    niet` verwijdert dat document, controleert dat de ladder én het banenmenu
+    gewoon gevuld zijn, en zet het daarna terug. Punt 1 kan hierdoor niet
+    ongemerkt terugkeren.
+
+  - **Nog open:** de banenlijst die leeg kan blijven doordat de app geen
+    verschil ziet tussen "er zijn geen banen" en "ik kon de server niet
+    bereiken" — bij een lege eigen kopie geeft Firestore geen fout maar
+    "bestaat niet". Plus de wisbeveiliging bij handmatig opslaan/verwijderen
+    van een baan. Beide staan gepland voor v5.4.5.
 - **v5.4.3** — Alleen testbestanden. **Raakt de app niet aan**: geen deploy
   nodig, niets wat een speler kan merken. Twee rode CI-jobs opgelost, en in
   beide gevallen lag de fout in de test, niet in de app.
