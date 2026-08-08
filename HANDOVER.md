@@ -1,4 +1,4 @@
-# HANDOVER — Goyer Golf MP Ladder, v5.5.2
+# HANDOVER — Goyer Golf MP Ladder, v5.5.3
 
 > Plak dit bestand als eerste bericht in een nieuwe chat, samen met de zip.
 > Lees daarna `_project.md` voor de volledige structuur en changelog.
@@ -49,7 +49,7 @@ wachtwoordwijziging in test ook het echte wachtwoord.
 
 ## 3. Waar we nu staan
 
-Versie in de zip: **v5.5.2**.
+Versie in de zip: **v5.5.3**.
 
 ### De testopzet is groen
 
@@ -105,6 +105,16 @@ het scherm niet te zien. Sinds v5.5.1 toont het PIN-scherm de omgeving.
 Een code is 15 minuten geldig en werkt precies één keer. De foutteller is
 **globaal**: twintig mislukte pogingen binnen tien minuten blokkeert het voor
 iedereen.
+
+**v5.5.3 — de watch schreef nooit één score weg.** Het veldpad `holes.3` moet
+``holes.`3` `` zijn (accenttekens om een onderdeel dat met een cijfer begint),
+anders geeft Firestore 400. Elke hole is een cijfer, dus elk verzoek faalde, en
+de melding ging naar een console die op een horloge niemand ziet. Sinds v5.5.3
+staat de opslagstatus op het scherm en gaat elke score eerst naar de opslag van
+het toestel zelf. Bij het versturen wordt eerst gecontroleerd of iemand anders
+die hole intussen heeft gewijzigd — zo ja, dan wordt er niet overschreven maar
+gevraagd. **Les:** bouw je met de kale REST-API, dan doet de
+Firebase-bibliotheek een hoop stilzwijgend goed wat je zelf moet regelen.
 
 **De watch-pagina ververst zichzelf sinds v5.5.2** en toont zijn versienummer
 op het PIN-scherm. Dat was nodig omdat een horloge geen adresbalk en geen

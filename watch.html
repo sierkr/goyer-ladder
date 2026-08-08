@@ -203,6 +203,10 @@
       <button class="hole-nav-btn" id="btn-volgende" onclick="gaNaarHole(huidigHole+1)">›</button>
     </div>
     <div class="swipe-hint" id="swipe-hint"></div>
+    <!-- v5.5.3: opslagstatus. Zonder dit kon een score stilletjes verloren gaan:
+         het versturen mislukte, de melding ging naar een logboek dat op een
+         horloge niemand ziet, en op het scherm bleef je cijfer gewoon staan. -->
+    <div id="opslag-status" style="font-size:11px;margin-top:2px;min-height:14px"></div>
   </div>
 
   <!-- 2×2 score blokken -->
@@ -252,7 +256,7 @@ const OMGEVING_NAAM = IS_TEST_WATCH ? 'de testomgeving' : 'de gewone app';
 // met version.json op de server (zie zelfVerversen onderaan) en staat zichtbaar
 // op het PIN-scherm, zodat je op een horloge zonder adresbalk kunt zien wat er
 // draait.
-const WATCH_VERSIE = 'v5.5.2';
+const WATCH_VERSIE = 'v5.5.3';
 const DB_NAAM   = IS_TEST_WATCH ? 'test' : '(default)';
 const FS        = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/${DB_NAAM}/documents`;
 const AUTH_URL  = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`;
@@ -286,8 +290,81 @@ let tapStartY  = 0;
 // fire-and-forget PATCH. Daarmee kon het horloge de holes wissen die een
 // flightgenoot of de telefoon-app intussen had ingevuld. Nu schrijven we per
 // speler één veld in ladders/{id}/partijen/{partijId}/scores/{uid}.
-let vuilePunten = new Set(); // "uid|holeIdx"
-let dirty = false;           // afgeleid: vuilePunten.size > 0
+// ══════════════════════════════════════════════════════════════
+//  v5.5.3 — WACHTRIJ MET CONFLICTCONTROLE
+// ══════════════════════════════════════════════════════════════
+//  Elke ingetikte score gaat eerst in deze wachtrij én meteen naar de opslag
+//  van het toestel zelf. Pas als de server hem bevestigd heeft, gaat hij eruit.
+//  Zo kan een ronde niet verloren gaan doordat het versturen mislukt.
+//
+//  Per score bewaren we ook `gezien`: de waarde die er stond vlak vóór de
+//  wijziging. Daarmee kan bij het versturen worden vastgesteld of iemand
+//  anders er intussen aan gezeten heeft:
+//
+//    server == gewenste waarde  -> al goed, uit de rij
+//    server == gezien of leeg   -> niemand anders was hier, versturen
+//    server is iets anders      -> CONFLICT: niet overschrijven, tonen en
+//                                  de gebruiker laten kiezen
+//
+//  Die laatste regel is bewust: een oude score van dit horloge mag nooit
+//  stilletijgend een nieuwere invoer van een telefoon wegdrukken.
+let wachtrij = new Map();   // "uid|holeIdx" -> { waarde, gezien, ts }
+let conflicten = new Map(); // "uid|holeIdx" -> { waarde, server }
+let dirty = false;          // afgeleid: wachtrij.size > 0
+
+function wachtrijSleutel() {
+  return 'goyer-watch-scores-' + (partij?.partijId || 'onbekend');
+}
+function bewaarWachtrij() {
+  try {
+    const plat = Array.from(wachtrij.entries());
+    if (plat.length) localStorage.setItem(wachtrijSleutel(), JSON.stringify(plat));
+    else localStorage.removeItem(wachtrijSleutel());
+  } catch (e) { /* opslag niet beschikbaar — dan alleen in het geheugen */ }
+}
+function laadWachtrij() {
+  try {
+    const ruw = localStorage.getItem(wachtrijSleutel());
+    if (!ruw) return;
+    wachtrij = new Map(JSON.parse(ruw));
+    dirty = wachtrij.size > 0;
+  } catch (e) { /* stukke opslag negeren */ }
+}
+
+function toonOpslagStatus() {
+  const el = document.getElementById('opslag-status');
+  if (!el) return;
+  el.onclick = null;
+  el.style.cursor = '';
+  if (conflicten.size > 0) {
+    const [sleutel, c] = conflicten.entries().next().value;
+    const hole = parseInt(sleutel.split('|')[1], 10) + 1;
+    el.style.color = 'var(--geel, #e8b900)';
+    el.textContent = `\u26a0 hole ${hole}: jij ${c.waarde} \u00b7 elders ${c.server} \u2014 tik voor jouw score`;
+    el.style.cursor = 'pointer';
+    el.onclick = () => forceerConflict(sleutel);
+    return;
+  }
+  if (wachtrij.size > 0) {
+    el.style.color = 'var(--geel, #e8b900)';
+    el.textContent = `\u23f3 ${wachtrij.size} score(s) nog niet opgeslagen`;
+    return;
+  }
+  el.style.color = 'var(--licht)';
+  el.textContent = laatsteOpslagOk ? '\u2713 opgeslagen' : '';
+}
+let laatsteOpslagOk = false;
+
+// De gebruiker kiest bij een conflict voor zijn eigen score.
+async function forceerConflict(sleutel) {
+  const c = conflicten.get(sleutel);
+  if (!c) return;
+  conflicten.delete(sleutel);
+  wachtrij.set(sleutel, { waarde: c.waarde, gezien: c.server, ts: Date.now() });
+  bewaarWachtrij();
+  toonOpslagStatus();
+  await verwerkWachtrij();
+}
 
 // ══════════════════════════════════════════════════════════════
 //  FIRESTORE CONVERTERS
@@ -483,7 +560,8 @@ async function vernieuwToken() {
 function uitloggen() {
   if (pollingTimer) clearInterval(pollingTimer);
   idToken = refreshToken = uid = partij = null;
-  huidigHole = 0; actieveUid = null; dirty = false; vuilePunten.clear();
+  huidigHole = 0; actieveUid = null; dirty = false;
+  wachtrij.clear(); conflicten.clear();
   pinReset(); toonScherm('scherm-pin');
 }
 
@@ -493,6 +571,10 @@ function uitloggen() {
 async function laadPartij() {
   toonLaad(true);
   const ok = await haalPartijOp();
+  // v5.5.3: openstaande scores van een vorige sessie terughalen en alsnog
+  // versturen. Zonder dit ging een ronde alsnog verloren zodra het horloge de
+  // pagina had weggegooid.
+  if (ok) { laadWachtrij(); if (wachtrij.size) verwerkWachtrij(); }
   toonLaad(false);
   if (ok) { if (huidigHole === 0) huidigHole = eersteLegeHole(); renderHole(); startPolling(); }
   else toonGeenPartij(true);
@@ -543,11 +625,12 @@ async function haalScoresOp() {
       }
       nieuw[spelerUid] = arr;
     }
-    // Nog niet weggeschreven eigen wijzigingen niet overschrijven.
-    for (const punt of vuilePunten) {
-      const [u,h] = punt.split('|');
-      const idx = parseInt(h,10);
-      if (nieuw[u] && partij.scores?.[u]) nieuw[u][idx] = partij.scores[u][idx];
+    // v5.5.3: wat nog in de wachtrij staat is nieuwer dan wat de server nu
+    // teruggeeft — die eigen invoer niet wegpoetsen bij het verversen.
+    for (const [sleutel, item] of wachtrij.entries()) {
+      const [u, h] = sleutel.split('|');
+      const idx = parseInt(h, 10);
+      if (nieuw[u]) nieuw[u][idx] = item.waarde;
     }
     partij.scores = { ...(partij.scores||{}), ...nieuw };
   } catch(e) { console.warn('haalScoresOp mislukt:', e); }
@@ -569,32 +652,83 @@ function startPolling() {
 let opslaanTimer = null;
 
 function planOpslaan() {
+  // v5.5.3: geen wachttijd meer vóór de eerste poging. Elke tik gaat meteen de
+  // wachtrij in (en naar de opslag van het toestel), en we proberen direct te
+  // versturen. Mislukt dat, dan blijft hij veilig staan.
   if (opslaanTimer) clearTimeout(opslaanTimer);
-  opslaanTimer = setTimeout(slaScoresOp, 800);
+  opslaanTimer = setTimeout(verwerkWachtrij, 150);
 }
 
-async function slaScoresOp() {
-  if (!partij || !ladderId || vuilePunten.size === 0) return;
-  const teSchrijven = Array.from(vuilePunten);
-  vuilePunten.clear();
-  dirty = false;
+// Het veldpad voor de Firestore-API.
+//
+// v5.5.3 — HIER ZAT DE FOUT DIE ALLES VERKLAARDE. Er stond `holes.3`. Firestore
+// eist dat een onderdeel van een veldpad dat met een cijfer begint tussen
+// accenttekens staat: holes.`3`. Zonder die tekens antwoordt de server met
+// 400 Bad Request — en omdat elke hole een cijfer is, faalde ELK verzoek van
+// het horloge. Er is dus nooit één score vanaf een horloge in de database
+// beland. De telefoon-app had er geen last van: die gebruikt de
+// Firebase-bibliotheek, en die zet de accenttekens er zelf omheen.
+function holeVeldPad(holeIdx) {
+  return encodeURIComponent('holes.`' + holeIdx + '`');
+}
 
-  // Groepeer per speler zodat het één request per speler is.
-  const perSpeler = {};
-  for (const punt of teSchrijven) {
-    const [u, h] = punt.split('|');
-    (perSpeler[u] || (perSpeler[u] = [])).push(parseInt(h, 10));
+// Haalt het actuele scoredocument van één speler op (vers van de server).
+async function leesServerScores(uid2) {
+  const url = `${FS}/ladders/${ladderId}/partijen/${partij.partijId}/scores/${uid2}?key=${API_KEY}`;
+  const resp = await fetch(url, { headers: { 'Authorization': `Bearer ${idToken}` } });
+  if (resp.status === 404) return {};             // document bestaat nog niet
+  if (!resp.ok) throw new Error('status ' + resp.status);
+  const data = await resp.json();
+  return fromFsMap(data.fields || {}).holes || {};
+}
+
+async function verwerkWachtrij() {
+  if (!partij || !ladderId || !partij.partijId || wachtrij.size === 0) {
+    dirty = wachtrij.size > 0;
+    toonOpslagStatus();
+    return;
   }
 
-  for (const [u, holes] of Object.entries(perSpeler)) {
-    // updateMask per hole: alleen deze velden worden aangeraakt, de rest van
-    // het document (andere holes) blijft staan.
-    const maskParams = holes.map(h => `updateMask.fieldPaths=holes.${h}`).join('&');
-    const velden = {};
-    for (const h of holes) {
-      const waarde = partij.scores?.[u]?.[h];
-      velden[String(h)] = fsVal(waarde === undefined ? null : waarde);
+  // Groepeer per speler: één keer lezen per speler in plaats van per hole.
+  const perSpeler = new Map();
+  for (const [sleutel, item] of wachtrij.entries()) {
+    const [u] = sleutel.split('|');
+    if (!perSpeler.has(u)) perSpeler.set(u, []);
+    perSpeler.get(u).push([sleutel, item]);
+  }
+
+  for (const [u, items] of perSpeler.entries()) {
+    let serverHoles;
+    try {
+      serverHoles = await leesServerScores(u);
+    } catch (err) {
+      console.warn('Scores lezen mislukt, opnieuw proberen:', err);
+      continue; // wachtrij blijft staan
     }
+
+    const teSchrijven = [];
+    for (const [sleutel, item] of items) {
+      const h = parseInt(sleutel.split('|')[1], 10);
+      const opServer = serverHoles[String(h)];
+      const leegOpServer = (opServer === null || opServer === undefined);
+
+      if (opServer === item.waarde) {            // staat er al goed
+        wachtrij.delete(sleutel);
+      } else if (leegOpServer || opServer === item.gezien) {
+        teSchrijven.push([sleutel, h, item]);     // niemand anders was hier
+      } else {
+        // CONFLICT: iemand anders heeft deze hole intussen gewijzigd.
+        conflicten.set(sleutel, { waarde: item.waarde, server: opServer });
+        wachtrij.delete(sleutel);
+      }
+    }
+
+    if (teSchrijven.length === 0) continue;
+
+    const maskParams = teSchrijven.map(([, h]) => `updateMask.fieldPaths=${holeVeldPad(h)}`).join('&');
+    const velden = {};
+    for (const [, h, item] of teSchrijven) velden[String(h)] = fsVal(item.waarde);
+
     const url = `${FS}/ladders/${ladderId}/partijen/${partij.partijId}/scores/${u}`
               + `?${maskParams}&key=${API_KEY}`;
     try {
@@ -604,19 +738,31 @@ async function slaScoresOp() {
         body: JSON.stringify({ fields: { holes: { mapValue: { fields: velden } } } })
       });
       if (!resp.ok) throw new Error('status ' + resp.status);
+      for (const [sleutel] of teSchrijven) wachtrij.delete(sleutel);
+      laatsteOpslagOk = true;
     } catch (err) {
+      // Blijft in de wachtrij staan; volgende poging doet het opnieuw.
       console.error('Score opslaan mislukt:', err);
-      // Terugzetten zodat de volgende poging het opnieuw probeert.
-      for (const h of holes) vuilePunten.add(`${u}|${h}`);
-      dirty = true;
+      laatsteOpslagOk = false;
     }
   }
+
+  dirty = wachtrij.size > 0;
+  bewaarWachtrij();
+  toonOpslagStatus();
   startPolling();
 }
 
+// v5.5.3: alsnog proberen zodra het toestel weer wakker of online is. Op een
+// horloge wordt de pagina vaak bevroren zodra je je pols laat zakken.
+window.addEventListener('online', () => verwerkWachtrij());
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') verwerkWachtrij();
+});
+
 function gaNaarHole(idx) {
   if (!partij || idx < 0 || idx >= partij.holes.length) return;
-  if (dirty) slaScoresOp();
+  if (dirty) verwerkWachtrij();
   actieveUid = null;
   huidigHole = idx;
   renderHole();
@@ -673,6 +819,7 @@ function renderHole() {
 
   renderStand();
   renderTotaal(naamMap, spelers);
+  toonOpslagStatus(); // v5.5.3: status blijft zichtbaar bij het wisselen van hole
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -740,8 +887,20 @@ grid.addEventListener('touchend', e => {
   renderTotaal(naamMap, partij.spelers||[]);
 
   // Score gewijzigd — wordt per hole naar Firestore geschreven.
-  vuilePunten.add(`${actieveUid}|${huidigHole}`);
+  // v5.5.3: eerst veilig wegzetten, dan pas versturen. `huidig` is wat er stond
+  // vóór deze wijziging — dat is straks het bewijs of iemand anders er intussen
+  // aan gezeten heeft.
+  const sleutel = `${actieveUid}|${huidigHole}`;
+  const bestaand = wachtrij.get(sleutel);
+  wachtrij.set(sleutel, {
+    waarde: nieuw,
+    gezien: bestaand ? bestaand.gezien : (leeg ? null : huidig),
+    ts: Date.now(),
+  });
+  conflicten.delete(sleutel);
   dirty = true;
+  bewaarWachtrij();
+  toonOpslagStatus();
   planOpslaan();
 });
 

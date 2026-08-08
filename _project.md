@@ -11,9 +11,49 @@
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 | `watch.html` | bij de constanten | `const WATCH_VERSIE = 'v3.0.0-11.XX';` — v5.5.2, anders herlaadt de watch-pagina zichzelf eindeloos |
 
-Huidige versie: **v5.5.2**
+Huidige versie: **v5.5.3**
 
 ### Changelog
+- **v5.5.3** — De watch schreef nooit één score weg. Alleen `watch.html`.
+
+  - **DE FOUT.** Het horloge praat rechtstreeks met de Firestore-API en stelde
+    zelf het veldpad samen: `updateMask.fieldPaths=holes.3`. Firestore eist dat
+    een pad-onderdeel dat met een cijfer begint tussen accenttekens staat:
+    ``holes.`3` ``. Zonder die tekens antwoordt de server met **400 Bad
+    Request** — en omdat elke hole een cijfer is, faalde **elk** verzoek vanaf
+    een horloge. Er is dus nooit één watch-score in de database beland. In het
+    log van de browser bevestigd, drie keer achter elkaar.
+
+    De telefoon-app had er nooit last van: die gebruikt de
+    Firebase-bibliotheek, en die plaatst de accenttekens zelf.
+
+    Waarom dit jaren onopgemerkt bleef: de mislukking werd opgevangen en naar
+    `console.error` geschreven — een logboek dat op een horloge niemand ooit
+    ziet. Op het scherm bleef het cijfer gewoon staan.
+
+  - **Zichtbare opslagstatus.** Onder de holenavigatie staat nu of alles
+    bewaard is, hoeveel scores nog niet verstuurd zijn, of dat er een conflict
+    is. Stil verliezen kan niet meer.
+
+  - **Wachtrij met conflictcontrole (variant A, door de gebruiker gekozen).**
+    Elke tik gaat eerst naar de opslag van het toestel zelf, pas na bevestiging
+    van de server eruit. Bij het versturen wordt eerst gelezen wat er nú op de
+    server staat:
+
+    | Op de server | Wat er gebeurt |
+    |---|---|
+    | leeg, of nog de waarde die het horloge zag | versturen |
+    | al gelijk aan wat we wilden schrijven | niets doen |
+    | iets anders (iemand anders was er) | **conflict** — niet overschrijven, tonen, gebruiker kiest |
+
+    Die laatste regel is de kern van de keuze: een oude score van het horloge
+    mag nooit stilletjes een nieuwere invoer vanaf een telefoon wegdrukken. Bij
+    een conflict staat er "hole 4: jij 5 · elders 6" en zet één tik alsnog de
+    eigen score door.
+
+  - **Alsnog versturen** zodra het toestel weer online of zichtbaar is, en bij
+    het openen van een partij wordt een openstaande wachtrij van een vorige
+    sessie opgepakt.
 - **v5.5.2** — De watch-pagina ververst zichzelf. Alleen `watch.html`.
 
   - **Het probleem in het kort:** de reparatie van v5.5.1 werkte in een browser
