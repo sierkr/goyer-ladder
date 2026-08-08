@@ -734,6 +734,19 @@ async function initFirestore() {
 
   clearTimeout(loginFallback);
 
+  // ── v5.3.1: standen-listeners starten zodra de ladders bekend zijn ──
+  // WAT ER MIS WAS: startAlleStandenListeners() werd alleen aangeroepen vanuit
+  // onAuthStateChanged. Die handler kan vuren VOORDAT getDocs(LADDERS_COL)
+  // klaar is — en dan loopt `alleLadders.forEach(...)` over een lege lijst,
+  // start er geen enkele listener, en wordt dat nooit opnieuw geprobeerd.
+  // Het gevolg: de standen-cache blijft leeg, getLadderSpelers() geeft voor
+  // iedereen rang 0 terug en de ladder verschijnt alfabetisch met 0P/0W.
+  // Bij een eerste login is die race het waarschijnlijkst, omdat de
+  // profielflow de volgorde verschuift.
+  // startStandenListener() is idempotent, dus dit tweede aanroeppunt is
+  // veilig en dekt beide volgordes af.
+  startAlleStandenListeners();
+
   // ── Live listeners: alle ladders gelijkwaardig ─────────────
   // Elke ladder heeft zijn eigen onSnapshot die alleLadders[idx] bijhoudt.
   // Er is geen "primaire" of "actieve" ladder-listener meer.

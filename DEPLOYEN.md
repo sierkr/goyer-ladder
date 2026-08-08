@@ -108,6 +108,20 @@ Je hoort veertien functies te zien:
 
 ---
 
+## Tests draaien
+
+Voor je iets uploadt:
+
+```
+node tests/run.cjs
+```
+
+164 tests over puntensysteem, activiteit, partijverwerking, toernooi en
+knockout. Ze draaien op de echte code uit `js/` en `functions/`, dus een
+wijziging die iets breekt laat hier een test omvallen. Rood = niet uploaden.
+
+---
+
 ## Als de deploy vastloopt
 
 **"Couldn't find firebase-functions package"** -> `npm install` in `functions/`

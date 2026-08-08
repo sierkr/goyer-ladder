@@ -126,6 +126,17 @@ function renderToernooi() {
 // in het hoofddocument.
 // v3.0.0-11.106: Per-uid debounce timers zodat gelijktijdige score-invoer
 // voor meerdere spelers (door coordinator) niet elkaars timer overschrijft.
+// v5.3.0 — WAT ER MIS WAS: live/{uid} bevatte precies EEN dag
+// (`{ dagNr, scores }`) en werd bij elke schrijfactie volledig overschreven.
+// Zodra dag 2 begon, verdween daarmee de live-invoer van dag 1 voor die
+// speler. Was dag 1 nog niet afgesloten, dan bestonden die scores alleen nog
+// in het geheugen van het apparaat van de coordinator — en werden ze
+// definitief gewist zodra iemand een score voor dag 2 invoerde. Voor een
+// meerdaags toernooi is dat stil dataverlies.
+//
+// Nu bewaart het document de scores per dag onder `dagen`, met merge:true
+// zodat andere dagen ongemoeid blijven. `dagNr` en `scores` blijven ernaast
+// staan voor schermen die nog het oude formaat lezen.
 async function slaSpelerScoreOp(uid, dagNr, scores) {
   if (!actieveToernooiId || !uid) return;
   if (!window._tSpelerSaveTimers) window._tSpelerSaveTimers = {};
@@ -134,12 +145,28 @@ async function slaSpelerScoreOp(uid, dagNr, scores) {
     try {
       await setDoc(
         doc(db, 'toernooien', actieveToernooiId, 'live', uid),
-        { dagNr, scores, timestamp: Date.now() }
+        {
+          dagNr,
+          scores,
+          dagen: { [String(dagNr)]: scores },
+          timestamp: Date.now(),
+        },
+        { merge: true }
       );
     } catch(e) {
       console.error('Speler score opslaan mislukt:', e);
     }
   }, 800);
+}
+
+// v5.3.0: haalt de scores van een specifieke dag uit een live-document.
+// Nieuw formaat (`dagen`) heeft voorrang; valt terug op het oude formaat.
+function _liveScoresVanDag(data, dagNr) {
+  if (!data) return null;
+  const perDag = data.dagen?.[String(dagNr)];
+  if (Array.isArray(perDag)) return perDag;
+  if (data.dagNr === dagNr && Array.isArray(data.scores)) return data.scores;
+  return null;
 }
 
 // ============================================================
@@ -220,15 +247,19 @@ function herlaadToernooiListeners() {
       (liveSnap) => {
         if (!toernooiData || actieveToernooiId !== t.id) return;
         const dag = actieveDag(toernooiData);
+        // v5.3.0: _liveScores wordt ALTIJD bijgewerkt, ook als de bekeken dag
+        // is afgesloten. Voorheen stopte de handler hier volledig, waardoor
+        // _liveScores verouderde zodra iemand naar een afgesloten dag keek —
+        // en heeftGeenScores() daarop vertrouwt om "terug naar setup" te
+        // blokkeren tijdens een lopende speeldag.
+        liveSnap.docs.forEach(liveDoc => { store._liveScores[liveDoc.id] = liveDoc.data(); });
         if (!dag || dag.afgerond) return;
         let gewijzigd = false;
         liveSnap.docs.forEach(liveDoc => {
           const data = liveDoc.data();
-          const { dagNr, scores } = data;
           const uid = liveDoc.id;
-          // Sla op in _liveScores (altijd, ongeacht dagNr)
-          store._liveScores[uid] = data;
-          if (dagNr !== dag.dagNr) return; // v4.0.0: bekeken dag (fix 7.4)
+          const scores = _liveScoresVanDag(data, dag.dagNr);
+          if (scores === null) return; // deze speler heeft niets voor deze dag
           if (!dag.scores) dag.scores = {};
           const huidig = JSON.stringify(dag.scores[uid] || []);
           const nieuw  = JSON.stringify(scores || []);
@@ -1046,6 +1077,19 @@ async function voegDagToe() {
       afgerond: false
     };
 
+    // v5.3.0: waarschuwen als de vorige dag nog niet is afgesloten. De scores
+    // van een niet-afgesloten dag staan alleen in de live-subcollectie en in
+    // het geheugen van dit apparaat; ze worden pas vastgelegd bij "dag
+    // afsluiten". Doorgaan mag, maar niet zonder het te weten.
+    const vorige = (t.dagen || [])[(t.dagen || []).length - 1];
+    if (vorige && !vorige.afgerond) {
+      if (!confirm(
+        `Dag ${vorige.dagNr} is nog niet afgesloten.\n\n` +
+        `Sluit die eerst af, anders worden de scores van die dag pas vastgelegd ` +
+        `op het moment dat jij hem afsluit.\n\nToch een nieuwe dag toevoegen?`
+      )) return;
+    }
+
     if (!t.dagen) t.dagen = [];
     t.dagen.push(nieuweDag);
     t.actiefDagNr = nieuweDag.dagNr;
@@ -1127,21 +1171,18 @@ async function sluitDagAf() {
     // Haal verse data op uit Firestore (niet alleen de lokale _liveScores cache).
     try {
       const liveSnap = await getDocs(collection(db, 'toernooien', actieveToernooiId, 'live'));
+      if (!dag.scores) dag.scores = {};
       liveSnap.docs.forEach(liveDoc => {
-        const { dagNr, scores } = liveDoc.data();
-        if (dagNr !== dag.dagNr) return;
-        const uid = liveDoc.id;
-        if (scores && scores.length > 0) {
-          dag.scores[uid] = scores;
-        }
+        const scores = _liveScoresVanDag(liveDoc.data(), dag.dagNr);
+        if (scores && scores.length > 0) dag.scores[liveDoc.id] = scores;
       });
     } catch(e) {
       console.warn('Live scores ophalen bij afsluiten mislukt, val terug op lokale data:', e);
       // Gebruik _liveScores als fallback
+      if (!dag.scores) dag.scores = {};
       Object.keys(_liveScores).forEach(uid => {
-        if (_liveScores[uid]?.dagNr === dag.dagNr && _liveScores[uid]?.scores?.length > 0) {
-          dag.scores[uid] = _liveScores[uid].scores;
-        }
+        const scores = _liveScoresVanDag(_liveScores[uid], dag.dagNr);
+        if (scores && scores.length > 0) dag.scores[uid] = scores;
       });
     }
 
@@ -1343,9 +1384,13 @@ function heeftGeenScores(t) {
   // alleen dag.scores gecontroleerd, maar dat veld blijft leeg totdat een dag
   // wordt afgesloten — waardoor "terug naar aanmaakscherm" tijdens een lopende
   // speeldag beschikbaar bleef terwijl er al volop live-scores waren.
-  const liveBezet = Object.values(_liveScores || {}).some(e =>
-    (e?.scores || []).some(v => v !== null && v !== undefined)
-  );
+  // v5.3.0: ook het nieuwe per-dag formaat meenemen, anders zou een lopende
+  // speeldag onopgemerkt blijven zodra de scores alleen onder `dagen` staan.
+  const liveBezet = Object.values(_liveScores || {}).some(e => {
+    if ((e?.scores || []).some(v => v !== null && v !== undefined)) return true;
+    return Object.values(e?.dagen || {}).some(arr =>
+      (arr || []).some(v => v !== null && v !== undefined));
+  });
   if (liveBezet) return false;
   return t.dagen.every(dag => {
     if (dag.afgerond) return false;
@@ -1884,10 +1929,14 @@ function toggleTScorecard() {
 // ============================================================
 //  HCP SLAGEN
 // ============================================================
-function getTHcpSlagen(spelerA, spelerB, hole, hcpPct) {
+// v5.3.0: `aantalHoles` is een parameter geworden in plaats van een vaste 18.
+// Bij een 9-holes toernooidag rekende dit anders dan de ladder, die altijd
+// het werkelijke aantal holes gebruikt (getHcpSlagenOpHole in js/ronde.js).
+// Aanroepers geven nu dag.holes.length mee; 18 blijft de standaard, dus voor
+// 18-holes dagen verandert er niets.
+function getTHcpSlagen(spelerA, spelerB, hole, hcpPct, aantalHoles = 18) {
   const diff = Math.round(Math.abs(spelerA.hcp - spelerB.hcp) * hcpPct);
   const ontvanger = spelerA.hcp < spelerB.hcp ? spelerB : spelerA;
-  const aantalHoles = 18;
   const basisSlagen = Math.min(diff, aantalHoles);
   const extraSlagen = Math.max(0, diff - aantalHoles);
   const slagOpHole = (hole.si <= basisSlagen ? 1 : 0) + (hole.si <= extraSlagen ? 1 : 0);
@@ -1923,10 +1972,17 @@ function berekenTPuntenVoorDag(t, dag) {
         if (scoreA == null || scoreB == null) continue;
         gespeeld = true;
         const hole = dag.holes[h];
-        const diffRaw = Math.abs(sA.hcp - sB.hcp) * t.hcpPct;
-        const diff = Math.round(diffRaw);
-        const aKrijgtSlag = sA.hcp > sB.hcp && hole.si <= diff ? 1 : 0;
-        const bKrijgtSlag = sB.hcp > sA.hcp && hole.si <= diff ? 1 : 0;
+        // v5.3.0 — WAT ER MIS WAS: hier stond een eigen slagberekening
+        // (`hole.si <= diff`) die maximaal EEN slag per hole gaf. Het
+        // handicapoverzicht op het scherm gebruikt getTHcpSlagen(), die bij een
+        // verschil van meer dan 18 slagen wel een tweede slag toekent op de
+        // laagste stroke-indexen. Bij grote handicapverschillen week de
+        // uitgerekende uitslag dus af van wat de spelers voor zich zagen — en
+        // dat is precies het soort verschil dat een toernooi laat ontsporen.
+        // Nu is er nog maar een implementatie: die van getTHcpSlagen().
+        const { ontvanger, slagOpHole } = getTHcpSlagen(sA, sB, hole, t.hcpPct, dag.holes.length);
+        const aKrijgtSlag = (slagOpHole > 0 && ontvanger.uid === sA.uid) ? slagOpHole : 0;
+        const bKrijgtSlag = (slagOpHole > 0 && ontvanger.uid === sB.uid) ? slagOpHole : 0;
         const nettoA = scoreA - aKrijgtSlag;
         const nettoB = scoreB - bKrijgtSlag;
         if (nettoA < nettoB) standA++;
@@ -2042,6 +2098,7 @@ function berekenStrokeplayRanglijstVoorDag(t, dag) {
 function berekenStrokeplayTotaal(t) {
   return t.spelers.map((s, si) => {
     let bruttoTot = 0, nettoTot = 0, stablefordTot = 0, holesTot = 0;
+    const alleHoleScores = [];
     (t.dagen || []).forEach(dag => {
       const dagRes = berekenStrokeplayRanglijstVoorDag(t, dag);
       const r = dagRes[si];
@@ -2050,9 +2107,18 @@ function berekenStrokeplayTotaal(t) {
         nettoTot      += r.netto      ?? 0;
         stablefordTot += r.stableford ?? 0;
         holesTot      += r.holes;
+        alleHoleScores.push(...(r.holeScores || []));
       }
     });
-    return { s, holes: holesTot, brutto: holesTot > 0 ? bruttoTot : null, netto: holesTot > 0 ? nettoTot : null, stableford: holesTot > 0 ? stablefordTot : null, holeScores: [] };
+    // v5.3.0: holeScores van alle dagen achter elkaar, zodat countback() ook
+    // in de TOTAALstand een gelijke stand kan breken. Voorheen stond hier een
+    // lege lijst en gaf countback altijd 0 terug — een gedeelde eerste plaats
+    // in het eindklassement werd dus nooit beslist.
+    return { s, holes: holesTot,
+      brutto: holesTot > 0 ? bruttoTot : null,
+      netto: holesTot > 0 ? nettoTot : null,
+      stableford: holesTot > 0 ? stablefordTot : null,
+      holeScores: alleHoleScores };
   });
 }
 

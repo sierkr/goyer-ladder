@@ -126,6 +126,7 @@ export function isInLadder(ladderId, uid) {
  * Idempotent: veilig om meermaals op te roepen.
  */
 export function startStandenListener(ladderId) {
+  if (!ladderId) return;
   if (store._standenUnsubs[ladderId]) return; // al actief
   if (!store._standenCache[ladderId]) store._standenCache[ladderId] = {};
 
@@ -142,7 +143,16 @@ export function startStandenListener(ladderId) {
         import('./ladder.js').then(m => { if (ap === 'ladder') m.renderLadder(); });
       }
     },
-    (err) => { console.warn('standen/ listener voor', ladderId, ':', err.code); }
+    (err) => {
+      // v5.3.1: een mislukte listener liet de cache leeg achter en de ladder
+      // toonde dan stilzwijgend rang 0 voor iedereen. Nu wordt de listener
+      // opgeruimd en opnieuw geprobeerd, zodat een tijdelijke storing zich
+      // herstelt in plaats van een lege ladder achter te laten.
+      console.warn('standen/ listener voor', ladderId, ':', err.code || err);
+      try { store._standenUnsubs[ladderId]?.(); } catch(_) {}
+      delete store._standenUnsubs[ladderId];
+      setTimeout(() => startStandenListener(ladderId), 4000);
+    }
   );
 
   store._standenUnsubs[ladderId] = unsub;

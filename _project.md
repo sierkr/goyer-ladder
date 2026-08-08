@@ -10,9 +10,109 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.2.1**
+Huidige versie: **v5.3.1**
 
 ### Changelog
+- **v5.3.1** — Lege ladder bij eerste login. Alleen app-bestanden; geen deploy
+  van Cloud Functions of rules nodig. **Er is geen data verloren gegaan** — de
+  standen stonden gewoon in Firestore en waren voor andere gebruikers normaal
+  zichtbaar.
+
+  - **Wat er gebeurde.** Een speler die voor het eerst inlogde zag alle 70
+    spelers op rang 0, alfabetisch gesorteerd, met 0P · 0W · 0%.
+
+  - **De oorzaak.** `startAlleStandenListeners()` werd uitsluitend aangeroepen
+    vanuit `onAuthStateChanged`. Die handler kan vuren VOORDAT
+    `getDocs(LADDERS_COL)` in `initFirestore()` klaar is. Loopt hij dan over
+    een nog lege `alleLadders`, dan wordt er geen enkele standen-listener
+    gestart — en er was geen tweede poging. De standen-cache bleef daardoor
+    de hele sessie leeg, `getLadderSpelers()` gaf voor iedereen rang 0 terug
+    en de lijst viel terug op de volgorde van `spelerIds`.
+    Bij een eerste login is die volgorde het waarschijnlijkst omgedraaid,
+    doordat de verplichte profielflow (handicap + wachtwoord kiezen) de timing
+    verschuift. De persistente Firestore-cache uit v5.0.0 maakt het
+    IndexedDB-opstarten bovendien iets trager, wat de race waarschijnlijker
+    maakt dan voorheen.
+
+  - **De reparatie.**
+    - `startAlleStandenListeners()` wordt nu óók aangeroepen zodra de ladders
+      geladen zijn in `initFirestore()`. `startStandenListener()` is
+      idempotent, dus beide volgordes zijn nu gedekt.
+    - Een listener die met een fout stopt ruimt zichzelf op en probeert het na
+      vier seconden opnieuw, in plaats van stilzwijgend een lege cache achter
+      te laten.
+    - De ladder toont "Ladderstand wordt geladen…" zolang de standen niet
+      binnen zijn, in plaats van een lijst met rang 0 die er echt uitziet maar
+      nergens op slaat. Hetzelfde geldt voor "deel als afbeelding": die
+      weigert nu een stand te exporteren die nog niet geladen is.
+
+  - **Waarom de tests dit niet vingen:** dit zit in de opstartvolgorde van
+    listeners en de renderlaag, niet in de rekenkern. De suite dekt berekening,
+    geen browser- en Firestore-timing. Dat blijft zo tot er een testopzet met
+    een draaiende emulator komt.
+
+- **v5.3.0** — Toernooi en knockout doorgelicht met een nieuwe, permanente
+  testsuite. Vijf bevindingen in de toernooimodule, waarvan twee die een
+  toernooi daadwerkelijk kunnen laten mislukken. Knockout bleek schoon.
+  Alleen app-bestanden gewijzigd; **geen deploy van Cloud Functions of rules
+  nodig.**
+
+  - **T1. Handicapslagen weken af van wat op het scherm stond.**
+    `berekenTPuntenVoorDag()` had een eigen slagberekening (`hole.si <= diff`)
+    die maximaal EEN slag per hole gaf. Het handicapoverzicht gebruikt
+    `getTHcpSlagen()`, die bij een verschil van meer dan 18 slagen wel een
+    tweede slag toekent op de laagste stroke-indexen. Bij grote
+    handicapverschillen kwam de uitgerekende uitslag dus niet overeen met de
+    slagen die de spelers voor zich zagen. Er is nu nog één implementatie.
+    Tevens is de vaste 18 in `getTHcpSlagen()` een parameter geworden: bij een
+    9-holes dag rekende de toernooimodule anders dan de ladder, die altijd het
+    werkelijke aantal holes gebruikt.
+
+  - **T2. Scores van een niet-afgesloten dag konden verdwijnen.** `live/{uid}`
+    bevatte precies één dag (`{ dagNr, scores }`) en werd bij elke
+    schrijfactie volledig overschreven. Zodra dag 2 begon, verdween de
+    live-invoer van dag 1 voor die speler. Was dag 1 nog niet afgesloten, dan
+    bestonden die scores alleen nog in het geheugen van het apparaat van de
+    coördinator. Het document bewaart de scores nu per dag onder `dagen`, met
+    `merge: true`; het oude formaat blijft leesbaar. Ook `toernooi-live.html`
+    aangepast.
+
+  - **T3. Live-scores verouderden bij het terugkijken van een afgesloten dag.**
+    De listener stopte volledig zodra de bekeken dag was afgerond, waardoor
+    `_liveScores` niet meer werd bijgewerkt — terwijl `heeftGeenScores()`
+    daarop vertrouwt om "terug naar setup" te blokkeren tijdens een lopende
+    speeldag (de situatie die fix 7.3 moest afdekken). `_liveScores` wordt nu
+    altijd bijgewerkt.
+
+  - **T4. Nieuwe dag toevoegen waarschuwt nu.** `voegDagToe()` controleerde
+    niet of de vorige dag was afgesloten. In combinatie met T2 was dat de
+    directe route naar verloren scores. Doorgaan mag, maar met een expliciete
+    bevestiging.
+
+  - **T5. Countback werkte niet in de totaalstand.**
+    `berekenStrokeplayTotaal()` gaf `holeScores: []` terug, waardoor
+    `countback()` altijd 0 opleverde. Een gedeelde eerste plaats in het
+    eindklassement werd dus nooit beslist. De holescores van alle dagen gaan
+    nu mee.
+
+  - **Nieuwe testsuite: `tests/`, te draaien met `node tests/run.cjs`.**
+    164 tests over vijf suites: puntensysteem en matchstand (24),
+    activiteitssysteem (19), partijverwerking (22), toernooi (67) en
+    knockout (32). Het harnas (`tests/harnas.cjs`) knipt de functies
+    rechtstreeks uit `js/toernooi.js`, `js/knockout.js` en
+    `functions/index.js` — er wordt dus geen namaakversie getest maar de
+    echte code. Wordt een functie hernoemd of verwijderd, dan valt de suite
+    om met een duidelijke melding.
+    Gedekt: handicapslagen (incl. >18 en 9 holes), matchplaypunten, matrix en
+    marges, meerdaagse totalen, strokeplay brutto/netto/stableford, countback,
+    dagselectie, scorestatus, flighttijden, live-scores per dag, en voor
+    knockout de volledige bracketopbouw, byes bij oneven aantallen, het
+    bewaren en wissen van uitslagen en het opslagformaat.
+
+  - **Wat de tests niet dekken:** alles wat het scherm of Firestore raakt —
+    renderfuncties, listeners en de schrijfacties zelf. Dat vraagt een
+    draaiende browser en database.
+
 - **v5.2.1** — Vijf punten uit een code-audit op v5.2.0. Vier daarvan gaan over
   beheerhandelingen die `standen` wel bijwerkten maar niet de collecties die er
   sinds v4.2.0 bij horen. **Nieuwe deploy van de Cloud Functions vereist**
