@@ -10,9 +10,41 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.4.7**
+Huidige versie: **v5.4.8**
 
 ### Changelog
+- **v5.4.8** — Eén regel in `js/auth.js`, en het is een echte fout in de app —
+  geen testkwestie. Dit is de oorzaak achter de vier hardnekkig rode
+  browsertests.
+
+  - **De ladderlijst heeft twee bronnen nodig:** de standen (wie staat waar) en
+    de spelers (de namen en handicaps). Daar hangen twee aparte listeners aan.
+    De standen-listener geeft het scherm een seintje om opnieuw te tekenen; de
+    spelers-listener vulde alleen stilletjes `_usersCache` en zei niets.
+
+  - **Zonder namen** geeft `getLadderSpelers()` een lege lijst terug en zet
+    `renderLadder()` "Nog geen spelers." neer. Kwamen de namen daarna alsnog
+    binnen, dan tekende niemand het scherm opnieuw en bleef die tekst staan.
+    Het commentaar in `ladder-view.js` gaat er expliciet van uit dat er "opnieuw
+    gerenderd wordt zodra de listener gefired heeft" — maar dat gold alleen voor
+    de standen, niet voor de namen.
+
+  - **Wanneer het toeslaat:** als de standen sneller binnen zijn dan de login.
+    Het seintje van de standen komt dan langs terwijl `huidigeBruiker` nog null
+    is en wordt bewust genegeerd; daarna komt het niet meer. In de emulator
+    gebeurt dat altijd — alles is lokaal en instant — en dat is precies waarom
+    de browsertests dit blootlegden. Bij een snelle verbinding met een herstelde
+    sessie kan dezelfde volgorde een speler raken. Zelfde familie als de fout
+    van v5.3.0, waar iedereen op rang 0 verscheen.
+
+  - **De wachthond uit v5.4.1 dekt dit niet af.** Die controleert of de STANDEN
+    binnen zijn, en die zijn hier gewoon binnen. Het ontbraken de namen.
+
+  - **De reparatie:** de spelers-listener tekent nu ook de ladder opnieuw, net
+    zoals de standen-listener dat al deed.
+
+  De diagnoseregels uit v5.4.7 blijven nog één run staan, zodat in het log te
+  zien is dat het klopt. Daarna gaan ze eruit.
 - **v5.4.7** — Alleen `tests/e2e/app.spec.cjs`. **Raakt de app niet aan.**
 
   Vier browsertests blijven omvallen op `#ladder-list-mp` met "element(s) not

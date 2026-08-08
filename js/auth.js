@@ -874,6 +874,31 @@ async function initFirestore() {
             store._usersCache = snap.docs.map(d => spelersDocNaarUserFormaat(d.data()));
             const ap = document.querySelector('.page.active')?.id?.replace('page-', '');
             if (ap === 'admin') renderAdmin();
+            // ────────────────────────────────────────────────────────
+            // v5.4.8: OOK de ladder opnieuw tekenen zodra de namen binnen zijn.
+            //
+            // WAT ER MIS WAS. De ladderlijst heeft twee bronnen nodig: de
+            // standen (wie staat waar) en de spelers (de namen en handicaps).
+            // Daar hangen twee aparte listeners aan. De standen-listener geeft
+            // het scherm een seintje om opnieuw te tekenen; deze spelers-
+            // listener vulde alleen stilletjes _usersCache en zei niets.
+            //
+            // Zonder namen geeft getLadderSpelers() een lege lijst terug en zet
+            // renderLadder() "Nog geen spelers." neer. Kwamen de namen daarna
+            // alsnog binnen, dan tekende niemand het scherm opnieuw en bleef
+            // die tekst staan.
+            //
+            // Dat is precies de volgorde die zich voordoet als de standen
+            // sneller binnen zijn dan de login: het seintje van de standen komt
+            // dan langs terwijl huidigeBruiker nog null is en wordt bewust
+            // genegeerd, en daarna komt het niet meer. In de emulator gebeurt
+            // dat altijd (alles is lokaal en instant); bij een snelle
+            // verbinding met een herstelde sessie kan het ook een speler raken.
+            //
+            // De wachthond uit v5.4.1 dekt dit niet af: die controleert of de
+            // STANDEN binnen zijn, en die zijn hier gewoon binnen.
+            // ────────────────────────────────────────────────────────
+            if (ap === 'ladder') renderLadder();
           },
           (err) => { console.warn('spelers/ listener error:', err.code); }
         ));
