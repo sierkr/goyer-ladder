@@ -10,9 +10,62 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.3.1**
+Huidige versie: **v5.4.0**
 
 ### Changelog
+- **v5.4.0** — Volledige testopzet in vier lagen, plus twee bevindingen die
+  daarbij aan het licht kwamen. Geen deploy van Cloud Functions of rules nodig;
+  wel nieuwe bestanden die mee moeten naar GitHub.
+
+  - **Laag 1 — rekenkern (bestond al).** 164 tests, `node tests/run.cjs`,
+    twee seconden. Draait zonder enige installatie.
+
+  - **Laag 2 — Firestore-regels.** `tests/emulator/rules.test.cjs`, ruim 50
+    controles tegen de emulator. Van elke regel wordt beide kanten getoetst:
+    wie het wél mag en wie niet. Dekt onder meer dat `watchPins` voor niemand
+    leesbaar is, dat `config` alleen voor de beheerder is, dat een speler zijn
+    eigen rang niet kan wijzigen maar zijn handicap wel, en dat `punten` en
+    `verwerkt` voor geen enkele client schrijfbaar zijn.
+
+  - **Laag 3 — Cloud Functions.** `tests/emulator/functions.test.cjs`, ruim 50
+    controles tegen een echte Firestore. Onder meer: een partij afsluiten
+    zónder scores lukt (de uitdrukkelijke eis), een winnaar die de ingevulde
+    scores tegenspreekt wordt geweigerd, een tweede aanroep telt niet dubbel,
+    een tweede activiteitsrun verschuift niets meer, snapshots bevatten de
+    punten en herstellen ze ook, de backup is compleet, en een PIN werkt maar
+    één keer.
+
+  - **Laag 4 — browsertests.** `tests/e2e/app.spec.cjs` met Playwright, een
+    echte browser tegen de emulator. De eerste test is letterlijk de fout van
+    v5.3.0: een speler die voor het eerst inlogt moet de echte ladderstand
+    zien, niet iedereen op rang 0. Verder: twee spelers die tegelijk scoren
+    zonder elkaar te overschrijven, scores die een herlaad overleven, en de
+    controle dat er geen enkele JavaScript-fout in de console verschijnt.
+
+  - **GitHub Actions.** `.github/workflows/tests.yml` draait alle vier de
+    lagen bij elke push. Je ziet een groen vinkje of rood kruis bij je commit
+    en krijgt een mail als er iets stuk is. Je hoeft lokaal niets te
+    installeren.
+
+  - **Gevonden tijdens het schrijven van de tests:**
+    - `toggleScorecard()` in `js/ronde.js` verwees naar `#scorecard-wrap`, een
+      element dat nergens in index.html bestaat. De functie stond op `window`
+      en zou bij aanroep meteen een TypeError geven. Nu wijst hij naar de
+      echte scorekaart en is hij null-veilig.
+    - `js/config.js` verbindt met de emulator als de app op localhost draait,
+      en slaat App Check dan over (reCAPTCHA kan daar geen token ophalen).
+      Beide uitsluitend op `localhost`/`127.0.0.1` — in productie en test
+      wordt de app altijd vanaf sierkr.github.io geserveerd, dus die
+      voorwaarde is daar nooit waar.
+
+  - **Eerlijk over de status:** de rekentests zijn hier gedraaid en groen. De
+    lagen 2, 3 en 4 zijn geschreven maar niet uitgevoerd — de omgeving waarin
+    ze gebouwd zijn kan de emulator en de Playwright-browsers niet downloaden.
+    De eerste keer dat GitHub ze draait zullen er waarschijnlijk nog een of
+    twee correcties nodig zijn. Dat gebeurt in GitHub, niet in productie:
+    rood betekent dat er niets is geüpload en dat geen speler er iets van
+    merkt.
+
 - **v5.3.1** — Lege ladder bij eerste login. Alleen app-bestanden; geen deploy
   van Cloud Functions of rules nodig. **Er is geen data verloren gegaan** — de
   standen stonden gewoon in Firestore en waren voor andere gebruikers normaal

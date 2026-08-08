@@ -108,17 +108,49 @@ Je hoort veertien functies te zien:
 
 ---
 
-## Tests draaien
+## Tests
 
-Voor je iets uploadt:
+### Snel, lokaal, zonder installatie
 
 ```
 node tests/run.cjs
 ```
 
 164 tests over puntensysteem, activiteit, partijverwerking, toernooi en
-knockout. Ze draaien op de echte code uit `js/` en `functions/`, dus een
-wijziging die iets breekt laat hier een test omvallen. Rood = niet uploaden.
+knockout. Twee seconden. Ze draaien op de echte code uit `js/` en `functions/`,
+dus een wijziging die iets breekt laat hier een test omvallen.
+
+### Compleet, automatisch, op GitHub
+
+Bij elke push draait GitHub alle vier de lagen: de rekenkern, de
+Firestore-regels, de Cloud Functions tegen een echte emulator, en de
+browsertests. Je hoeft daar niets voor te installeren.
+
+Waar je het ziet: ga op github.com naar je repository, tabblad **Actions**.
+Bij elke commit staat een groen vinkje of een rood kruis. Bij rood krijg je
+ook een mail. Klik erop om te zien welke test omviel.
+
+**Rood = niet uploaden naar productie.**
+
+### De zware tests ook lokaal (optioneel)
+
+Alleen als je wilt. Eenmalig:
+
+```
+cd tests
+npm install
+npx playwright install chromium
+cd ..
+```
+
+Daarna:
+
+```
+npx --prefix tests firebase-tools emulators:exec --project demo-goyer --only firestore "node tests/emulator/rules.test.cjs"
+```
+
+De eerste keer downloadt Firebase de emulator; dat duurt even. Java moet
+geinstalleerd zijn.
 
 ---
 

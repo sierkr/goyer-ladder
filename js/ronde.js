@@ -338,8 +338,14 @@ function _planLegacySync(ladderId) {
   }, LEGACY_SYNC_MS));
 }
 
+// v5.4.0: dit verwees naar '#scorecard-wrap', een element dat nergens in
+// index.html bestaat. De functie stond wel op window en zou bij aanroep
+// meteen een TypeError gooien op `w.style`. Gevonden bij het schrijven van de
+// browsertests. Nu wijst hij naar de echte scorekaart en is hij null-veilig.
 function toggleScorecard() {
-  const w = document.getElementById('scorecard-wrap');
+  const w = document.getElementById('scorecard-table')?.closest('.card-collapse')
+         || document.getElementById('scorecard-table');
+  if (!w) { console.warn('toggleScorecard: scorekaart niet gevonden'); return; }
   w.style.display = w.style.display === 'none' ? '' : 'none';
 }
 
