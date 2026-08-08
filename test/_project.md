@@ -10,9 +10,68 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.0.1**
+Huidige versie: **v5.1.0**
 
 ### Changelog
+- **v5.1.0** — Activiteitssysteem losgekoppeld van de partijverwerking.
+  Aanleiding: een verliezer steeg 5 plekken op de ladder.
+
+  - **De fout.** Bij elke partij werd de activiteitscorrectie opnieuw op de
+    score toegepast, terwijl de score waaruit die werd afgeleid
+    (`standen/{uid}.rank`, de publieke positie) die correctie al bevatte. De
+    correctie stapelde daardoor op: een actieve speler steeg elke partij een
+    paar plekken extra — ook als hij verloor — en een inactieve speler zakte
+    weg bij élke partij in de ladder, ook bij partijen waar hij niet aan
+    meedeed. In een simulatie met 50 spelers steeg de verliezer 6 plekken per
+    partij, zes partijen achter elkaar, zonder te stoppen.
+    Bewijs dat het een fout was en geen ontwerp: `herbereikenActiviteitDagelijks`
+    rekende wél met de opgeslagen `basisScore`, `verwerkPartijUitslag` niet.
+    Die twee werkten elkaar dus tegen. Zat al in v4.2.0.
+
+  - **Nieuwe opzet.** `verwerkPartijUitslag` past uitsluitend de
+    win/verlies-regels toe op de huidige volgorde. Geen activiteit, in geen
+    enkele vorm. Een verliezer zakt, altijd.
+
+  - **`verwerkActiviteitPeriodiek`** (nieuw, vervangt
+    `herbereikenActiviteitDagelijks`) draait maandagochtend 04:00. Per ladder
+    instelbaar via `activiteitPeriode`: `'maand'` (standaard, eerste maandag
+    van de maand) of `'week'` (elke maandag).
+
+  - **Geen opstapeling meer.** Nieuw veld `punten/{uid}.activiteitVerschuiving`
+    houdt bij hoeveel PLEKKEN de correctie al heeft toegepast. Elke run wordt
+    het DOEL berekend volgens de ladderinstellingen en alleen het VERSCHIL
+    doorgevoerd. Daardoor blijven alle bestaande instellingen exact werken,
+    inclusief de maxima van 6 (zacht) en 14 (middel): een stilzitter zakt tot
+    zijn maximum en niet verder, en klimt bij terugkeer in één keer terug.
+    Bij `'fors'` is het doel "onderaan", uitgedrukt als het aantal plekken tot
+    de laatste plaats — zo klimt de speler bij terugkeer exact even ver terug.
+
+  - **`verwerkActiviteitNu`** (nieuw, callable): coördinator/beheerder kan de
+    verwerking meteen draaien via de knop "⏱ Activiteit nu verwerken" in de
+    ladderinstellingen, zonder tot maandag te wachten.
+
+  - **Diversiteitsbonus telt nu per maand** in plaats van sinds de
+    referentiedatum, zodat hij hetzelfde tijdvak meet als de frequentiebonus.
+    Server-side en in `bepaalActiviteitsIconen()` (`js/ladder.js`).
+
+  - **Regressie die hierbij aan het licht kwam en is verholpen:** de verliezer
+    kon op positie N+1 belanden in een ladder van N spelers (`svRank + zak`
+    werd niet begrensd). Dat viel niet op zolang er daarna toch op score werd
+    hersorteerd en hernummerd. Nu een partij alleen nog posities verschuift,
+    zou daar een spookplek ontstaan. Nieuwe positie wordt begrensd op 1..N,
+    met een botsingscontrole zodat de winnaar nooit onder de verliezer eindigt.
+
+  - **`activiteitDelta` in `punten/{uid}` vervalt** ten gunste van
+    `activiteitVerschuiving`. `pasPuntenAan` zet die op 0: een handmatige
+    aanpassing is een bewuste keuze van de beheerder, geen gevolg van
+    (in)activiteit.
+
+  - Getest: 22 controles op de partijverwerking (inclusief randgevallen als
+    een ladder van 2 spelers en een ingestelde stijging van 0) en 19 op de
+    activiteitslogica. **Deploy vereist**: `firebase deploy --only functions`
+    — de dagelijkse scheduled function verdwijnt en er komen twee functies bij.
+    De rules zijn ongewijzigd.
+
 - **v5.0.1** — Deploy-configuratie toegevoegd. De zip bevatte geen
   `firebase.json` en geen `.firebaserc`, waardoor `firebase deploy` niet wist
   wat er gedeployd moest worden. Nieuw:
@@ -310,7 +369,11 @@ ladders/{ladderId}
   .verwerkt/{partijId}        # v5.0.0 — idempotency-stempel van verwerkPartijUitslag
                               # + momentopname voor draaiPartijTerug. Server-only.
   .teruggedraaid/{partijId}   # v5.0.0 — archief van teruggedraaide uitslagen
-  .punten/{uid}                # v4.2.0 — AFGESCHERMD: score, basisScore, activiteitDelta.
+  .punten/{uid}                # v4.2.0 — AFGESCHERMD: score, basisScore.
+                              # v5.1.0: activiteitDelta vervangen door
+                              # activiteitVerschuiving (aantal PLEKKEN dat de
+                              # periodieke activiteitsverwerking al heeft
+                              # toegepast) — voorkomt opstapelen.
                               # Read alleen puntenBeheerder-account (firestore.rules). Write
                               # alleen via Cloud Functions (verwerkPartijUitslag, pasPuntenAan,
                               # herbereikenActiviteitDagelijks) — geen enkele client schrijft hier direct.

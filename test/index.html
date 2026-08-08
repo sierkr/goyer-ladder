@@ -908,6 +908,20 @@
     <!-- Activiteitssysteem -->
     <div class="section-title" style="margin-top:20px">Activiteitssysteem</div>
 
+    <p style="font-size:12px;color:var(--mid);margin:0 0 12px;line-height:1.5">
+      Sinds v5.1.0 staat dit los van de partijen. Een partij verschuift spelers
+      alleen volgens de win/verlies-regels hierboven; de activiteitscorrectie
+      wordt periodiek verwerkt en geeft spelers dan een nieuwe plek.
+    </p>
+
+    <div class="form-group">
+      <label>Wanneer wordt de activiteit verwerkt?</label>
+      <select id="cfg-activiteit-periode" style="width:auto">
+        <option value="maand">Maandelijks — eerste maandag van de maand, 04:00</option>
+        <option value="week">Wekelijks — elke maandag, 04:00</option>
+      </select>
+    </div>
+
     <div class="form-group">
       <label>Referentiedatum — "actief" telt vanaf deze dag</label>
       <input type="date" id="cfg-inactiviteit-referentiedatum" value="2026-04-01" style="width:auto">
@@ -927,8 +941,8 @@
       <div class="form-group" style="margin:10px 0 0">
         <label>Strafmodel</label>
         <select id="cfg-inactiviteit-model" style="width:auto">
-          <option value="zacht">Zacht — +1 plek per week na drempel (max 6)</option>
-          <option value="middel">Gemiddeld — +2 plekken per week (max 14)</option>
+          <option value="zacht">Zacht — geleidelijk zakken, maximaal 6 plekken</option>
+          <option value="middel">Gemiddeld — sneller zakken, maximaal 14 plekken</option>
           <option value="fors">Fors — actieve spelers altijd boven inactieve</option>
         </select>
       </div>
@@ -959,13 +973,23 @@
     </div>
     <div id="cfg-diversiteit-wrap" style="display:none;margin-top:4px;padding:10px 12px;background:var(--green-pale);border-radius:8px">
       <div class="form-group" style="margin:0">
-        <label>Bonus vanaf méér dan (unieke tegenstanders sinds referentiedatum)</label>
+        <label>Bonus vanaf méér dan (unieke tegenstanders deze maand)</label>
         <input type="number" id="cfg-diversiteit-drempel" min="1" max="40" value="6" style="text-align:center;width:80px">
       </div>
       <div class="form-group" style="margin:10px 0 0">
         <label>Bonus (plekken omhoog)</label>
         <input type="number" id="cfg-diversiteit-plekken" min="1" max="10" value="2" style="text-align:center;width:80px">
       </div>
+    </div>
+
+    <div class="form-group" style="margin-top:12px">
+      <button type="button" class="btn btn-sm btn-ghost" onclick="draaiActiviteitNu()"
+        title="Verwerk de activiteitscorrectie meteen, zonder tot maandag te wachten">
+        ⏱ Activiteit nu verwerken
+      </button>
+      <p style="font-size:11px;color:var(--light);margin:6px 0 0">
+        Handig om na een wijziging meteen het effect te zien. Sla de instellingen eerst op.
+      </p>
     </div>
 
     <div class="form-group" style="margin-top:12px">

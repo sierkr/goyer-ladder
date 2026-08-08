@@ -96,7 +96,9 @@ function bepaalActiviteitsIconen(spelers, ladder, cfg, nu = Date.now(), toernooi
       if (st.laatst == null || ts > st.laatst) st.laatst = ts;
       if (maandKey === huidigeMaand) st.maand++;
     }
-    if (ts >= refTs) {
+    // v5.1.0: diversiteit telt unieke tegenstanders DEZE MAAND (was: sinds de
+    // referentiedatum), zodat hij hetzelfde tijdvak meet als de frequentiebonus.
+    if (maandKey === huidigeMaand) {
       const mus = (Array.isArray(u.matchupUids) && u.matchupUids.length)
         ? u.matchupUids.map(m => ({ a: sleutel(m.a, null), b: sleutel(m.b, null) }))
         : (u.matchups || []).map(m => ({ a: sleutel(null, m.a), b: sleutel(null, m.b) }));
@@ -126,7 +128,8 @@ function bepaalActiviteitsIconen(spelers, ladder, cfg, nu = Date.now(), toernooi
         if (st.laatst == null || ts > st.laatst) st.laatst = ts;
         if (maandKey === huidigeMaand) st.maand++;
       }
-      if (ts >= refTs) {
+      // v5.1.0: ook hier alleen deze maand — zie hierboven.
+      if (maandKey === huidigeMaand) {
         for (const f of flights) {
           const inFlight = (f.spelers || []).map(x => sleutel(x.uid, x.naam)).filter(Boolean);
           for (const a of inFlight) for (const b of inFlight) {
