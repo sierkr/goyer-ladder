@@ -9,10 +9,34 @@
 | `sw.js` | regel 2 | `const CACHE_VERSION = 'v2XX';` |
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
+| `watch.html` | bij de constanten | `const WATCH_VERSIE = 'v3.0.0-11.XX';` — v5.5.2, anders herlaadt de watch-pagina zichzelf eindeloos |
 
-Huidige versie: **v5.5.1**
+Huidige versie: **v5.5.2**
 
 ### Changelog
+- **v5.5.2** — De watch-pagina ververst zichzelf. Alleen `watch.html`.
+
+  - **Het probleem in het kort:** de reparatie van v5.5.1 werkte in een browser
+    wel en op het horloge niet. Niet omdat er iets stuk was, maar omdat daar een
+    oude kopie van de pagina stond. De gewone app controleert al of er een
+    nieuwe versie is en herlaadt zichzelf; `watch.html` had dat nooit gekregen.
+    En juist op een horloge is er geen adresbalk en geen verversknop, dus er was
+    ook geen manier om het te zien of op te lossen.
+
+  - **Nu:** de pagina haalt `version.json` op (buiten elke cache om) en
+    vergelijkt dat met zijn eigen ingebakken nummer. Verschilt het, dan herlaadt
+    hij zichzelf één keer met een uniek adres, zodat het toestel wel móet
+    ophalen. Twee sloten tegen een herlaadlus: per sessie één poging per
+    versienummer, en bij geen verbinding gebeurt er niets — dan werkt de pagina
+    gewoon door, wat op de baan het belangrijkst is.
+
+  - **Het versienummer staat nu op het PIN-scherm**, samen met de omgeving. Je
+    kunt op een horloge zonder adresbalk dus zien wat er draait.
+
+  - **LET OP bij een volgende versie:** `WATCH_VERSIE` in `watch.html` moet
+    meeveranderen. Staat daar een oud nummer, dan denkt de pagina dat hij
+    verouderd is en herlaadt hij bij elk bezoek. Toegevoegd aan de versietabel
+    bovenin dit bestand.
 - **v5.5.1** — Meldingen die vertellen wat er aan de hand is. Raakt
   `watch.html`, `js/ronde.js` en `js/uitslagen.js`. **Geen functions-deploy
   nodig** (die van v5.5.0 staat mogelijk nog wél open).

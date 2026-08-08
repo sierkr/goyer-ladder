@@ -1,4 +1,4 @@
-# HANDOVER — Goyer Golf MP Ladder, v5.5.1
+# HANDOVER — Goyer Golf MP Ladder, v5.5.2
 
 > Plak dit bestand als eerste bericht in een nieuwe chat, samen met de zip.
 > Lees daarna `_project.md` voor de volledige structuur en changelog.
@@ -49,7 +49,7 @@ wachtwoordwijziging in test ook het echte wachtwoord.
 
 ## 3. Waar we nu staan
 
-Versie in de zip: **v5.5.1**.
+Versie in de zip: **v5.5.2**.
 
 ### De testopzet is groen
 
@@ -105,6 +105,17 @@ het scherm niet te zien. Sinds v5.5.1 toont het PIN-scherm de omgeving.
 Een code is 15 minuten geldig en werkt precies één keer. De foutteller is
 **globaal**: twintig mislukte pogingen binnen tien minuten blokkeert het voor
 iedereen.
+
+**De watch-pagina ververst zichzelf sinds v5.5.2** en toont zijn versienummer
+op het PIN-scherm. Dat was nodig omdat een horloge geen adresbalk en geen
+verversknop heeft: een reparatie kon in de browser werken en op het horloge
+tegelijk niets doen, zonder dat je kon zien dat daar een oude kopie stond.
+**Bij het bouwen moet `WATCH_VERSIE` in `watch.html` meeveranderen** met het
+versienummer — anders herlaadt de pagina zichzelf bij elk bezoek.
+
+Werkt een horloge toch niet mee: open het adres met `?v=iets` erachter, dat is
+voor het toestel een nieuwe pagina. Vervang daarna ook de opgeslagen
+snelkoppeling — een oude snelkoppeling kan naar een oud adres blijven wijzen.
 
 Logs bekijken gaat het makkelijkst via de Firebase-console → Functions →
 tabblad Logs. In de Logs Explorer van Google Cloud loggen deze functies onder

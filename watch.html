@@ -248,6 +248,11 @@ const PROJECT   = 'goyer-golf-mp-ladder';
 const IS_TEST_WATCH = location.pathname.includes('/test/');
 // v5.5.1: in gewone taal, voor op het scherm en in foutmeldingen.
 const OMGEVING_NAAM = IS_TEST_WATCH ? 'de testomgeving' : 'de gewone app';
+// v5.5.2: de versie van DEZE pagina, ingebakken bij het bouwen. Wordt vergeleken
+// met version.json op de server (zie zelfVerversen onderaan) en staat zichtbaar
+// op het PIN-scherm, zodat je op een horloge zonder adresbalk kunt zien wat er
+// draait.
+const WATCH_VERSIE = 'v5.5.2';
 const DB_NAAM   = IS_TEST_WATCH ? 'test' : '(default)';
 const FS        = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/${DB_NAAM}/documents`;
 const AUTH_URL  = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`;
@@ -883,11 +888,58 @@ document.getElementById('scherm-score').addEventListener('touchend', e => {
 //  aangevraagd bestaat niet in productie, en omgekeerd. Dat verschil was op dit
 //  scherm nergens te zien; je kreeg alleen "Ongeldige of verlopen PIN" — waar,
 //  maar niet behulpzaam. Nu staat het er gewoon.
-(function toonOmgeving() {
+function toonOmgeving(extra) {
   const el = document.getElementById('omgeving-label');
   if (!el) return;
-  el.textContent = IS_TEST_WATCH ? '⚠ testomgeving' : '';
-  if (IS_TEST_WATCH) el.style.color = 'var(--geel, #e8b900)';
+  const delen = [WATCH_VERSIE];
+  if (IS_TEST_WATCH) delen.push('⚠ testomgeving');
+  if (extra) delen.push(extra);
+  el.textContent = delen.join(' · ');
+  el.style.color = IS_TEST_WATCH ? 'var(--geel, #e8b900)' : '';
+}
+toonOmgeving();
+
+// ══════════════════════════════════════════════════════════════
+//  v5.5.2 — ZICHZELF VERVERSEN
+// ══════════════════════════════════════════════════════════════
+//  WAAROM DIT NODIG IS. De gewone app controleert al of er een nieuwe versie
+//  is en herlaadt zichzelf. Deze pagina had dat nooit gekregen. Gevolg: op een
+//  horloge bleef een oude kopie hangen en was er geen enkele manier om dat te
+//  zien of te verhelpen — geen adresbalk, geen verversknop. Een reparatie kon
+//  in de browser prima werken en op het horloge tegelijk niets doen.
+//
+//  Hoe het werkt: version.json van de server halen (nadrukkelijk buiten elke
+//  cache om) en vergelijken met het nummer hierboven. Verschilt het, dan
+//  herlaadt de pagina zichzelf één keer met een uniek adres, zodat het horloge
+//  wel móet ophalen in plaats van zijn opgeslagen kopie te tonen.
+//
+//  Twee sloten tegen een eindeloze herlaadlus: er wordt per sessie maar één
+//  poging per versienummer gedaan, en mislukt het ophalen (offline op de baan),
+//  dan gebeurt er domweg niets en werkt de pagina gewoon door.
+(async function zelfVerversen() {
+  let server = null;
+  try {
+    const resp = await fetch('./version.json', { cache: 'no-store' });
+    if (!resp.ok) return;
+    server = (await resp.json())?.version || null;
+  } catch (e) {
+    return; // geen verbinding — niets doen, de pagina werkt gewoon
+  }
+  if (!server || server === WATCH_VERSIE) return;
+
+  let alGeprobeerd = null;
+  try { alGeprobeerd = sessionStorage.getItem('watch-herlaad'); } catch (e) {}
+  if (alGeprobeerd === server) {
+    // Al een keer geprobeerd en nog steeds oud: niet blijven herladen, maar het
+    // wel eerlijk op het scherm zetten.
+    toonOmgeving(`nieuwere versie ${server} beschikbaar`);
+    return;
+  }
+  try { sessionStorage.setItem('watch-herlaad', server); } catch (e) {}
+
+  const u = new URL(location.href);
+  u.searchParams.set('v', server);
+  location.replace(u.toString());
 })();
 </script>
 </body>
