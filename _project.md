@@ -10,9 +10,40 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.4.0**
+Huidige versie: **v5.4.1**
 
 ### Changelog
+- **v5.4.1** — De app herstelt zichzelf in plaats van om een verversing te
+  vragen. Alleen app-bestanden; geen deploy nodig.
+
+  - **Wat er mis was met de melding.** v5.3.1 toonde "Ladderstand wordt
+    geladen… Blijft dit staan? Ververs de pagina." Maar de app draait bij de
+    meeste spelers als pictogram op het beginscherm van hun telefoon, en daar
+    is geen adresbalk en geen verversknop. De instructie was dus onuitvoerbaar
+    voor precies de groep die hem het vaakst te zien krijgt.
+
+  - **Wachthond op de standen.** Na het inloggen controleert de app of de
+    ladderstanden ook daadwerkelijk binnenkomen. Zo niet, dan herstart hij de
+    listeners zelf — vijf keer, met oplopende tussenpozen (3, 6, 9, 12 en 15
+    seconden) en telkens gevolgd door een hertekening. In verreweg de meeste
+    gevallen merkt de speler er niets van.
+
+  - **Werkende knop in plaats van een instructie.** Lukt het daarna nog niet,
+    dan staat er "↻ Opnieuw proberen". Die herstart de verbinding en tekent de
+    ladder opnieuw, zónder de pagina te herladen — dus ook bruikbaar in de app
+    op het beginscherm. De tekst is nu "Ladderstand wordt opgehaald… Dit gaat
+    meestal vanzelf."
+
+  - **Zelfde behandeling bij een mislukte start.** Kwam de app helemaal niet
+    door de opstartfase, dan stond er ook "ververs de pagina". Nu verschijnt
+    er een knop die het opnieuw probeert.
+
+  - **Melding na een backupherstel** vroeg eveneens om herladen; die haalt de
+    nieuwe gegevens nu vanzelf op.
+
+  - **Extra browsertest** die controleert dat de tekst "ververs de pagina"
+    nergens meer in de app voorkomt.
+
 - **v5.4.0** — Volledige testopzet in vier lagen, plus twee bevindingen die
   daarbij aan het licht kwamen. Geen deploy van Cloud Functions of rules nodig;
   wel nieuwe bestanden die mee moeten naar GitHub.

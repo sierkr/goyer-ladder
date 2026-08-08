@@ -7,7 +7,8 @@ import { getLadderConfig, getLadderData, isBeheerderRol, isCoordinatorRol, toast
 import { stuurUitdaging } from './archief.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { renderKnockoutLadderKaart } from './knockout.js';
-import { getLadderSpelers, isInLadder, ladderStandenGeladen } from './ladder-view.js';
+import { getLadderSpelers, isInLadder, ladderStandenGeladen,
+         herstartStandenListeners } from './ladder-view.js';
 
 // ============================================================
 //  ACTIVITEITSSYSTEEM — deterministisch berekend uit partijhistorie
@@ -669,8 +670,17 @@ async function renderLadder() {
     // zou de lijst alfabetisch met 0P/0W verschijnen — een stand die klopt
     // noch bestaat. Liever eerlijk melden dat hij nog laadt.
     const standenKlaar = ladderStandenGeladen(l.id);
+    // v5.4.1: geen "ververs de pagina" meer — in de app op het beginscherm van
+    // een telefoon is er geen adresbalk en geen verversknop. De app probeert
+    // het nu zelf opnieuw (zie de wachthond in ladder-view.js) en biedt
+    // daarnaast een knop die de verbinding herstelt zonder te herladen.
     const lijstHtml = !standenKlaar
-      ? '<div class="empty"><p>Ladderstand wordt geladen…</p><p style="font-size:12px;color:var(--light)">Blijft dit staan? Ververs de pagina.</p></div>'
+      ? `<div class="empty">
+           <p>Ladderstand wordt opgehaald…</p>
+           <p style="font-size:12px;color:var(--light)">Dit gaat meestal vanzelf.</p>
+           <button class="btn btn-sm btn-ghost" style="margin-top:10px"
+             onclick="herstelLadderstand(this)">↻ Opnieuw proberen</button>
+         </div>`
       : spelers.length === 0
         ? '<div class="empty"><p>Nog geen spelers.</p></div>'
         : spelers.map(s => renderLadderRij(s, l.id)).join('');
@@ -755,7 +765,29 @@ function renderLadderRij(s, ladderId) {
 
 // ============================================================
 
-export { renderLadder, toggleLadderKaart, renderLadderRij, getLadderSpelersWeergave, berekenWeergaveRangen };
+// ============================================================
+//  Ladderstand opnieuw ophalen — v5.4.1
+//  Herstart de listeners en hertekent het scherm. Werkt zonder de pagina te
+//  herladen, wat nodig is in de app op het beginscherm van een telefoon:
+//  daar is geen adresbalk en dus geen verversknop.
+// ============================================================
+async function herstelLadderstand(knop) {
+  const oudeTekst = knop ? knop.textContent : null;
+  if (knop) { knop.disabled = true; knop.textContent = '↻ Bezig…'; }
+  try {
+    herstartStandenListeners();
+    // Even wachten tot de listener zijn eerste snapshot heeft geleverd.
+    await new Promise(r => setTimeout(r, 2500));
+    renderLadder();
+  } catch (e) {
+    console.error('herstelLadderstand mislukt:', e);
+  } finally {
+    if (knop && knop.isConnected) { knop.disabled = false; knop.textContent = oudeTekst; }
+  }
+}
+window.herstelLadderstand = herstelLadderstand;
+
+export { renderLadder, toggleLadderKaart, renderLadderRij, getLadderSpelersWeergave, berekenWeergaveRangen, herstelLadderstand };
 
 // ============================================================
 //  DEEL ALS AFBEELDING — WhatsApp stijl

@@ -28,7 +28,7 @@ test.describe('Inloggen en ladderstand', () => {
     const lijst = page.locator('#ladder-list-mp');
     await expect(lijst).toBeVisible();
     // De stand mag niet blijven hangen op "wordt geladen".
-    await expect(lijst).not.toContainText('wordt geladen', { timeout: 20000 });
+    await expect(lijst).not.toContainText('wordt opgehaald', { timeout: 20000 });
     // En zeker niet iedereen op rang 0.
     await expect(lijst).toContainText('Coen Coordinator');
     const tekst = await lijst.innerText();
@@ -53,7 +53,7 @@ test.describe('Inloggen en ladderstand', () => {
 
     await expect(page.locator('#page-ladder')).toHaveClass(/active/, { timeout: 25000 });
     const lijst = page.locator('#ladder-list-mp');
-    await expect(lijst).not.toContainText('wordt geladen', { timeout: 25000 });
+    await expect(lijst).not.toContainText('wordt opgehaald', { timeout: 25000 });
     await expect(lijst).toContainText('Coen Coordinator', { timeout: 25000 });
 
     // Kern van de regressie: er moet een rang groter dan 0 staan.
@@ -62,6 +62,16 @@ test.describe('Inloggen en ladderstand', () => {
     expect(rangen.length).toBeGreaterThan(0);
     expect(Math.max(...rangen)).toBeGreaterThan(0);
     expect(rangen.every(r => r === 0)).toBe(false);
+  });
+
+  test('lege ladderstand biedt een werkende knop, geen "ververs de pagina"', async ({ page }) => {
+    // In de app op het beginscherm van een telefoon is er geen adresbalk en
+    // dus geen verversknop. De app moet het zelf kunnen oplossen.
+    await inloggen(page, 'anna');
+    await expect(page.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
+    const body = await page.locator('body').innerText();
+    expect(body.toLowerCase()).not.toContain('ververs de pagina');
+    expect(body.toLowerCase()).not.toContain('herlaad de pagina');
   });
 
   test('verkeerd wachtwoord geeft een foutmelding', async ({ page }) => {

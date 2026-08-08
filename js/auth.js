@@ -20,7 +20,8 @@ import { closeModal, renderAdmin, renderProfiel } from './admin.js';
 import { renderRonde } from './ronde.js';
 import { renderToernooi, getActiefToernooiMetModus, herlaadToernooiListeners } from './toernooi.js';
 import { renderUitslagen } from './uitslagen.js';
-import { startAlleStandenListeners, stopAlleStandenListeners } from './ladder-view.js';
+import { startAlleStandenListeners, stopAlleStandenListeners,
+         startStandenWachthond } from './ladder-view.js';
 
 import * as S from './store.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
@@ -825,6 +826,9 @@ async function initFirestore() {
       }
       // Start standen/ listeners voor alle ladders (fase 9a view-laag)
       startAlleStandenListeners();
+      // v5.4.1: controleer of de standen ook echt binnenkomen en herstel
+      // vanzelf als dat niet zo is. Zie de toelichting in ladder-view.js.
+      startStandenWachthond();
     } else {
       store.huidigeBruiker = null;
       const heeftInvite = new URLSearchParams(location.search).has('invite');
@@ -1195,7 +1199,26 @@ function initApp() {
       } else {
         console.error('initFirestore definitief mislukt na 3 pogingen');
         toonLaadOverlay(false);
-        toonLoginFout('Verbindingsfout — ververs de pagina om opnieuw te proberen');
+        // v5.4.1: geen "ververs de pagina" meer. In de app op het beginscherm
+        // van een telefoon is er geen adresbalk en geen verversknop. We bieden
+        // een knop die het opnieuw probeert; die werkt overal.
+        toonLoginFout('Geen verbinding met de server.');
+        const fout = document.getElementById('login-fout');
+        if (fout && !document.getElementById('opnieuw-verbinden-btn')) {
+          const knop = document.createElement('button');
+          knop.id = 'opnieuw-verbinden-btn';
+          knop.className = 'btn btn-sm btn-ghost';
+          knop.style.cssText = 'margin-top:10px';
+          knop.textContent = '↻ Opnieuw proberen';
+          knop.onclick = () => {
+            knop.disabled = true;
+            knop.textContent = '↻ Bezig…';
+            retries = 0;
+            toonLaadOverlay(true);
+            tryInit().finally(() => { try { knop.remove(); } catch(_) {} });
+          };
+          fout.appendChild(knop);
+        }
       }
     }
   }

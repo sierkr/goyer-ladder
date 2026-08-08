@@ -751,7 +751,7 @@ async function zetBackupTerug(data) {
       toast('Let op: deze backup bevat geen punten (gemaakt vóór v5.2.0)');
     }
 
-    if (status) status.textContent = `✓ Backup teruggezet in ${_omgevingLabel()} (${geschreven} documenten). Herlaad de pagina om de nieuwe data te zien.`;
+    if (status) status.textContent = `✓ Backup teruggezet in ${_omgevingLabel()} (${geschreven} documenten). De app haalt de nieuwe data vanzelf op.`;
     toast('Backup teruggezet ✓');
   } catch (e) {
     console.error('zetBackupTerug mislukt:', e);

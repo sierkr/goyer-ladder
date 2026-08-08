@@ -167,10 +167,81 @@ export function startAlleStandenListeners() {
   alleLadders.forEach(l => startStandenListener(l.id));
 }
 
+// ============================================================
+//  ZELFHERSTEL — v5.4.1
+// ------------------------------------------------------------
+//  De ladder kan leeg blijven als de standen-listener nooit is gestart of
+//  stilletjes is gestopt. In v5.3.1 gaf de app dan de melding "ververs de
+//  pagina" — maar in de app op het beginscherm van een telefoon is er geen
+//  adresbalk en geen verversknop. Die instructie was dus onuitvoerbaar.
+//
+//  Daarom lost de app het nu zelf op: een wachthond controleert na het
+//  inloggen of de standen daadwerkelijk binnenkomen, en probeert het anders
+//  vanzelf opnieuw. Lukt het na alle pogingen nog niet, dan staat er een knop
+//  die het handmatig opnieuw probeert — zonder de pagina te herladen.
+// ============================================================
+
+/**
+ * Start alle standen-listeners opnieuw, ook als ze al bestonden.
+ * Retourneert het aantal ladders waarvoor een listener draait.
+ */
+export function herstartStandenListeners() {
+  Object.entries(store._standenUnsubs || {}).forEach(([id, unsub]) => {
+    try { unsub(); } catch (_) {}
+    delete store._standenUnsubs[id];
+  });
+  startAlleStandenListeners();
+  return Object.keys(store._standenUnsubs || {}).length;
+}
+
+/**
+ * Zijn er ladders met leden waarvan de standen nog niet binnen zijn?
+ */
+export function standenOntbreken() {
+  return alleLadders.some(l => {
+    const ids = (l.data?.spelerIds || l.spelerIds || [])
+      .filter(id => typeof id === 'string' && id.length > 10);
+    if (ids.length === 0) return false;
+    return Object.keys(store._standenCache?.[l.id] || {}).length === 0;
+  });
+}
+
+let _wachthondTimer = null;
+
+/**
+ * Controleert na het inloggen of de standen binnenkomen en herstart de
+ * listeners als dat niet zo is. Vijf pogingen met oplopende tussenpozen
+ * (3, 6, 9, 12, 15 seconden) — daarna neemt de knop in het scherm het over.
+ */
+export function startStandenWachthond() {
+  if (_wachthondTimer) clearTimeout(_wachthondTimer);
+  let poging = 0;
+
+  const controleer = () => {
+    poging++;
+    if (!huidigeBruiker) return;               // uitgelogd — stoppen
+    if (!standenOntbreken()) return;           // alles binnen — klaar
+
+    console.warn(`[standen] nog geen standen binnen (poging ${poging}) — listeners herstarten`);
+    herstartStandenListeners();
+    import('./ladder.js').then(m => m.renderLadder()).catch(() => {});
+
+    if (poging < 5) _wachthondTimer = setTimeout(controleer, 3000 * (poging + 1));
+  };
+
+  _wachthondTimer = setTimeout(controleer, 3000);
+}
+
+export function stopStandenWachthond() {
+  if (_wachthondTimer) clearTimeout(_wachthondTimer);
+  _wachthondTimer = null;
+}
+
 /**
  * Stop alle standen listeners (bij uitloggen).
  */
 export function stopAlleStandenListeners() {
+  stopStandenWachthond();
   Object.values(store._standenUnsubs).forEach(unsub => {
     try { unsub(); } catch(e) {}
   });
