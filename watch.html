@@ -235,15 +235,20 @@
 
 const API_KEY   = 'AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens';
 const PROJECT   = 'goyer-golf-mp-ladder';
-const FS        = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`;
+// v5.1.1: de watch koos altijd de productiedatabase, ook onder /test/.
+// Daardoor kon je in de testomgeving wel inloggen (auth is gedeeld) maar zag
+// je nooit een partij — die stond in de named database 'test'. Deze vlag moet
+// dus VOOR de FS-constante staan, want die gebruikt hem.
+const IS_TEST_WATCH = location.pathname.includes('/test/');
+const DB_NAAM   = IS_TEST_WATCH ? 'test' : '(default)';
+const FS        = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/${DB_NAAM}/documents`;
 const AUTH_URL  = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`;
 const TOKEN_URL = `https://securetoken.googleapis.com/v1/token?key=${API_KEY}`;
 // v5.0.0 (punt 1): inloggen gaat via een custom token dat de Cloud Function
 // wisselWatchPin teruggeeft. Er staan geen refreshTokens meer in Firestore.
 const CUSTOM_URL = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${API_KEY}`;
 const FN_BASE    = `https://europe-west1-${PROJECT}.cloudfunctions.net`;
-// De watch draait altijd tegen productie; de testomgeving gebruikt de app zelf.
-const IS_TEST_WATCH = location.pathname.includes('/test/');
+// IS_TEST_WATCH staat hierboven, bij de FS-constante die hem nodig heeft.
 
 // ── STATE ────────────────────────────────────────────────────
 let idToken      = null;
@@ -361,6 +366,25 @@ async function controleerPin() {
 // ══════════════════════════════════════════════════════════════
 //  AUTH
 // ══════════════════════════════════════════════════════════════
+
+// Leest de uid uit een Firebase idToken. Een idToken is een JWT: drie delen
+// gescheiden door punten, waarvan het middelste deel base64url-gecodeerde JSON
+// is met daarin `user_id` (en `sub`). Puur uitlezen, geen controle — dat doet
+// Firestore zelf al bij elke aanroep. Dit is de terugval voor het geval de
+// uid niet uit wisselWatchPin komt.
+function uidUitToken(token) {
+  try {
+    const deel = String(token || '').split('.')[1];
+    if (!deel) return null;
+    const json = atob(deel.replace(/-/g, '+').replace(/_/g, '/'));
+    const payload = JSON.parse(json);
+    return payload.user_id || payload.sub || null;
+  } catch (e) {
+    console.warn('uid uit token lezen mislukt:', e);
+    return null;
+  }
+}
+
 async function inloggenMetCustomToken(customToken) {
   document.getElementById('ww-fout').textContent = '';
   document.getElementById('ww-terug').style.display = 'none';
@@ -373,7 +397,22 @@ async function inloggenMetCustomToken(customToken) {
     if (!resp.ok) throw new Error(data.error?.message || 'Token fout');
     // Vanaf hier heeft alleen dit horloge de tokens - ze gaan nooit terug
     // naar Firestore.
-    idToken = data.idToken; refreshToken = data.refreshToken; uid = data.localId;
+    idToken = data.idToken; refreshToken = data.refreshToken;
+
+    // v5.1.2 — WAT ER MIS WAS: hier stond `uid = data.localId`. Maar het
+    // antwoord van signInWithCustomToken bevat dat veld helemaal niet; het
+    // geeft alleen idToken, refreshToken en expiresIn terug (localId komt wel
+    // terug bij signInWithPassword, vandaar de verwarring). `uid` bleef dus
+    // leeg, en omdat de partij wordt gezocht met
+    // `p.spelers.some(s => s.uid === uid)` vond hij nooit iets: je was
+    // ingelogd maar zag altijd "Je hebt geen actieve partij".
+    //
+    // Nu: de uid komt uit het antwoord van wisselWatchPin (die weet precies
+    // bij welke speler de PIN hoorde). Lukt dat niet, dan lezen we hem uit
+    // het idToken zelf — zo kan dit niet nog een keer stilletjes misgaan.
+    uid = gevondenPin?.uid || uidUitToken(idToken) || null;
+    if (!uid) throw new Error('Kon niet bepalen welke speler dit is');
+
     setInterval(vernieuwToken, 55*60*1000);
     toonScherm('scherm-score');
     laadPartij();

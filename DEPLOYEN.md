@@ -26,13 +26,18 @@ project `goyer-golf-mp-ladder` valt.
 
 Ga naar de map waar je de zip hebt uitgepakt (de map met `firebase.json` erin).
 
-### 1. Dependencies (alleen de eerste keer nodig)
+### 1. Dependencies — ALTIJD doen
 
 ```
 cd functions
 npm install
 cd ..
 ```
+
+Dit is niet optioneel. De Firebase CLI laadt je `index.js` eerst op je eigen
+computer om te ontdekken welke functies erin zitten, en daarvoor moet
+`firebase-functions` lokaal geinstalleerd zijn. Ontbreekt het, dan krijg je
+"Couldn't find firebase-functions package in your source code".
 
 ### 2. De API-sleutel — VÓÓR de eerste deploy
 
@@ -97,7 +102,26 @@ Je hoort negen functies te zien:
 
 ---
 
-## Twee dingen die alleen in de Firebase console kunnen
+## Als de deploy vastloopt
+
+**"Couldn't find firebase-functions package"** -> `npm install` in `functions/`
+(stap 1 hierboven).
+
+**"Timeout after 10000"** -> de CLI krijgt je code niet binnen 10 seconden
+ingelezen. Zet de limiet hoger en probeer opnieuw:
+
+```powershell
+$env:FUNCTIONS_DISCOVERY_TIMEOUT=120
+firebase deploy --only functions
+```
+
+Blijft het misgaan, dan is de meest voorkomende oorzaak dat het project in een
+OneDrive-map staat: rechtsklik op `functions` -> "Altijd behouden op dit
+apparaat", of zet het project buiten OneDrive.
+
+---
+
+## Drie dingen die alleen in de console kunnen
 
 Deze staan bewust niet in de app, om te voorkomen dat iemand ze voor zichzelf
 kan aanzetten.

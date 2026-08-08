@@ -103,9 +103,13 @@ export const DEFAULT_LADDER_CONFIG = {
   frequentieBonusPartijen: 3,       // > dit aantal partijen deze maand geeft de bonus
   frequentieBonusPlekken: 1,        // aantal plekken bonus bij frequentie
   diversiteitsBonusAan: true,
-  diversiteitsBonusDrempel: 6,      // > dit aantal unieke tegenstanders sinds referentiedatum geeft de bonus
+  diversiteitsBonusDrempel: 6,      // v5.1.0: > dit aantal unieke tegenstanders DEZE MAAND geeft de bonus
   diversiteitsBonusPlekken: 2,      // aantal plekken bonus bij diversiteit
   icoonAan: true,
+  // v5.1.0: de activiteitscorrectie draait niet meer bij elke partij, maar
+  // periodiek op maandagochtend 04:00 (Cloud Function verwerkActiviteitPeriodiek).
+  // 'maand' = eerste maandag van de maand · 'week' = elke maandag.
+  activiteitPeriode: 'maand',
 };
 
 // ─── Aangepaste banen ───────────────────────────────────────

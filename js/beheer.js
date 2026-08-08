@@ -45,6 +45,8 @@ function openLadderInstellingen(ladderId) {
   };
 
   // Activiteitssysteem
+  // v5.1.0: periode waarop de activiteitscorrectie wordt verwerkt.
+  document.getElementById('cfg-activiteit-periode').value = cfg.activiteitPeriode ?? 'maand';
   document.getElementById('cfg-inactiviteit-referentiedatum').value = cfg.inactiviteitReferentiedatum ?? '2026-04-01';
   const inactiviteitAan = cfg.inactiviteitAan ?? true;
   document.getElementById('cfg-inactiviteit-aan').checked = inactiviteitAan;
@@ -78,6 +80,34 @@ function openLadderInstellingen(ladderId) {
   document.getElementById('modal-ladder-instellingen').classList.add('open');
 }
 
+// ============================================================
+//  Activiteit nu verwerken — v5.1.0
+//  Draait de periodieke activiteitscorrectie meteen voor deze ladder, in
+//  plaats van te wachten tot maandagochtend. Alleen coordinator/beheerder;
+//  de Cloud Function controleert dat ook zelf.
+// ============================================================
+const _verwerkActiviteitNuFn = httpsCallable(functions, 'verwerkActiviteitNu');
+
+async function draaiActiviteitNu() {
+  const ladderId = _instellingenLadderId;
+  if (!ladderId) return;
+  if (!confirm('Activiteitscorrectie nu verwerken? Spelers kunnen hierdoor van plek veranderen.')) return;
+  try {
+    const res = await _verwerkActiviteitNuFn({ ladderId, isTest: IS_TEST });
+    const verschoven = res?.data?.verschoven || [];
+    if (verschoven.length === 0) {
+      toast('Klaar — geen enkele speler verschoof');
+    } else {
+      toast(`Klaar — ${verschoven.length} speler${verschoven.length === 1 ? '' : 's'} verschoven`);
+      console.table(verschoven);
+    }
+    renderLadder();
+  } catch (e) {
+    console.error('verwerkActiviteitNu mislukt:', e);
+    toast(e?.message || 'Verwerken mislukt');
+  }
+}
+
 async function slaLadderInstellingenOp() {
 
   try {
@@ -103,6 +133,8 @@ async function slaLadderInstellingenOp() {
     diversiteitsBonusDrempel: parseInt(document.getElementById('cfg-diversiteit-drempel').value) || 6,
     diversiteitsBonusPlekken: parseInt(document.getElementById('cfg-diversiteit-plekken').value) || 2,
     icoonAan: document.getElementById('cfg-icoon-aan').checked,
+    // v5.1.0: 'maand' = eerste maandag van de maand · 'week' = elke maandag
+    activiteitPeriode: document.getElementById('cfg-activiteit-periode').value === 'week' ? 'week' : 'maand',
   };
 
   
@@ -636,4 +668,4 @@ window.kiesBackupBestand = kiesBackupBestand;
 // Expose functions to global scope (needed because script is type=module)
 // ============================================================
 
-export { openLadderInstellingen, slaLadderInstellingenOp, openNieuweLadderModal, maakNieuweLadder, verschuifLadder, verwijderLadder, openLadderSpelersModal, slaLadderSpelersOp, puntenVeldGewijzigd, renderAdminLadders, openSnapshotsModal, slaSnapshotOp, laadSnapshots, herstelSnapshot };
+export { openLadderInstellingen, slaLadderInstellingenOp, openNieuweLadderModal, maakNieuweLadder, verschuifLadder, verwijderLadder, openLadderSpelersModal, slaLadderSpelersOp, puntenVeldGewijzigd, renderAdminLadders, openSnapshotsModal, slaSnapshotOp, laadSnapshots, herstelSnapshot , draaiActiviteitNu };

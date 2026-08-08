@@ -10,9 +10,118 @@
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 
-Huidige versie: **v5.0.1**
+Huidige versie: **v5.1.2**
 
 ### Changelog
+- **v5.1.2** — Watch vond nooit een partij. Alleen `watch.html` gewijzigd;
+  geen nieuwe deploy van de Cloud Functions of rules nodig.
+
+  - **De fout.** `inloggenMetCustomToken()` deed `uid = data.localId`, maar het
+    antwoord van `accounts:signInWithCustomToken` bevat dat veld niet — dat
+    geeft alleen `idToken`, `refreshToken` en `expiresIn` terug. (`localId`
+    komt wél terug bij `signInWithPassword`, wat de verwarring verklaart: de
+    oude watch-login gebruikte een andere endpoint.) `uid` bleef dus leeg, en
+    omdat de partij wordt gezocht met `p.spelers.some(s => s.uid === uid)`
+    matchte er nooit iets. Resultaat: je was correct ingelogd, het scorescherm
+    verscheen, maar er stond altijd "Je hebt geen actieve partij" — ook in een
+    verse incognitosessie met een nieuwe PIN. Geïntroduceerd in v5.0.0 bij het
+    omzetten naar custom tokens.
+
+  - **De oplossing.** De uid komt nu uit het antwoord van `wisselWatchPin`,
+    die precies weet bij welke speler de PIN hoorde. Nieuwe hulpfunctie
+    `uidUitToken()` leest hem anders alsnog uit het idToken (JWT-payload,
+    veld `user_id` of `sub`). Lukt geen van beide, dan mislukt de login met
+    een duidelijke melding in plaats van stil door te gaan met een lege uid.
+    Getest met 7 controles op `uidUitToken()`, inclusief lege en misvormde
+    tokens.
+
+- **v5.1.1** — Drie punten, gevonden tijdens het testen van v5.1.0.
+
+  - **Watch las de verkeerde database.** `watch.html` had de productiedatabase
+    hardgecodeerd (`databases/(default)`), ook als hij onder `/test/` draaide.
+    Auth is gedeeld tussen test en productie, dus inloggen lukte wél — maar de
+    partij stond in de named database `test` en werd nooit gevonden
+    ("Je hebt geen actieve partij"). Zat al in eerdere versies; viel niet op
+    omdat de watch nooit in test was gebruikt. Nu kiest hij de database op
+    dezelfde manier als de app: `test` onder `/test/`, anders `(default)`.
+
+  - **Een mislukte watch-login kostte je je PIN.** `wisselWatchPin` schreef de
+    PIN af in de transactie en maakte pas daarna het inlogtoken. Ging dat mis,
+    dan was de PIN weg zonder dat de gebruiker iets had. Dat gebeurde ook
+    daadwerkelijk: het serviceaccount miste `iam.serviceAccounts.signBlob`.
+    Nu wordt eerst het token gemaakt en pas daarna de PIN verbruikt. Mislukt
+    het token, dan blijft de PIN gewoon geldig. De foutmelding noemt bovendien
+    expliciet de ontbrekende IAM-rol, zodat die niet meer uit de logs hoeft te
+    worden opgediept.
+    **Eenmalige handmatige stap (Google Cloud IAM):** geef
+    `<projectnummer>-compute@developer.gserviceaccount.com` de rol
+    **Service Account Token Creator**. Zonder die rol kan geen enkele
+    watch-login een token krijgen.
+
+  - **Runtime naar Node.js 22.** Node 20 is per 2026-04-30 afgeschreven en
+    wordt op 2026-10-30 uitgezet; daarna kun je niet meer deployen. Alleen
+    `functions/package.json` gewijzigd (`engines.node`). Geen codewijziging
+    nodig — `firebase-admin` 12 en `firebase-functions` 5 ondersteunen Node 22.
+
+- **v5.1.0** — Activiteitssysteem losgekoppeld van de partijverwerking.
+  Aanleiding: een verliezer steeg 5 plekken op de ladder.
+
+  - **De fout.** Bij elke partij werd de activiteitscorrectie opnieuw op de
+    score toegepast, terwijl de score waaruit die werd afgeleid
+    (`standen/{uid}.rank`, de publieke positie) die correctie al bevatte. De
+    correctie stapelde daardoor op: een actieve speler steeg elke partij een
+    paar plekken extra — ook als hij verloor — en een inactieve speler zakte
+    weg bij élke partij in de ladder, ook bij partijen waar hij niet aan
+    meedeed. In een simulatie met 50 spelers steeg de verliezer 6 plekken per
+    partij, zes partijen achter elkaar, zonder te stoppen.
+    Bewijs dat het een fout was en geen ontwerp: `herbereikenActiviteitDagelijks`
+    rekende wél met de opgeslagen `basisScore`, `verwerkPartijUitslag` niet.
+    Die twee werkten elkaar dus tegen. Zat al in v4.2.0.
+
+  - **Nieuwe opzet.** `verwerkPartijUitslag` past uitsluitend de
+    win/verlies-regels toe op de huidige volgorde. Geen activiteit, in geen
+    enkele vorm. Een verliezer zakt, altijd.
+
+  - **`verwerkActiviteitPeriodiek`** (nieuw, vervangt
+    `herbereikenActiviteitDagelijks`) draait maandagochtend 04:00. Per ladder
+    instelbaar via `activiteitPeriode`: `'maand'` (standaard, eerste maandag
+    van de maand) of `'week'` (elke maandag).
+
+  - **Geen opstapeling meer.** Nieuw veld `punten/{uid}.activiteitVerschuiving`
+    houdt bij hoeveel PLEKKEN de correctie al heeft toegepast. Elke run wordt
+    het DOEL berekend volgens de ladderinstellingen en alleen het VERSCHIL
+    doorgevoerd. Daardoor blijven alle bestaande instellingen exact werken,
+    inclusief de maxima van 6 (zacht) en 14 (middel): een stilzitter zakt tot
+    zijn maximum en niet verder, en klimt bij terugkeer in één keer terug.
+    Bij `'fors'` is het doel "onderaan", uitgedrukt als het aantal plekken tot
+    de laatste plaats — zo klimt de speler bij terugkeer exact even ver terug.
+
+  - **`verwerkActiviteitNu`** (nieuw, callable): coördinator/beheerder kan de
+    verwerking meteen draaien via de knop "⏱ Activiteit nu verwerken" in de
+    ladderinstellingen, zonder tot maandag te wachten.
+
+  - **Diversiteitsbonus telt nu per maand** in plaats van sinds de
+    referentiedatum, zodat hij hetzelfde tijdvak meet als de frequentiebonus.
+    Server-side en in `bepaalActiviteitsIconen()` (`js/ladder.js`).
+
+  - **Regressie die hierbij aan het licht kwam en is verholpen:** de verliezer
+    kon op positie N+1 belanden in een ladder van N spelers (`svRank + zak`
+    werd niet begrensd). Dat viel niet op zolang er daarna toch op score werd
+    hersorteerd en hernummerd. Nu een partij alleen nog posities verschuift,
+    zou daar een spookplek ontstaan. Nieuwe positie wordt begrensd op 1..N,
+    met een botsingscontrole zodat de winnaar nooit onder de verliezer eindigt.
+
+  - **`activiteitDelta` in `punten/{uid}` vervalt** ten gunste van
+    `activiteitVerschuiving`. `pasPuntenAan` zet die op 0: een handmatige
+    aanpassing is een bewuste keuze van de beheerder, geen gevolg van
+    (in)activiteit.
+
+  - Getest: 22 controles op de partijverwerking (inclusief randgevallen als
+    een ladder van 2 spelers en een ingestelde stijging van 0) en 19 op de
+    activiteitslogica. **Deploy vereist**: `firebase deploy --only functions`
+    — de dagelijkse scheduled function verdwijnt en er komen twee functies bij.
+    De rules zijn ongewijzigd.
+
 - **v5.0.1** — Deploy-configuratie toegevoegd. De zip bevatte geen
   `firebase.json` en geen `.firebaserc`, waardoor `firebase deploy` niet wist
   wat er gedeployd moest worden. Nieuw:
@@ -310,7 +419,11 @@ ladders/{ladderId}
   .verwerkt/{partijId}        # v5.0.0 — idempotency-stempel van verwerkPartijUitslag
                               # + momentopname voor draaiPartijTerug. Server-only.
   .teruggedraaid/{partijId}   # v5.0.0 — archief van teruggedraaide uitslagen
-  .punten/{uid}                # v4.2.0 — AFGESCHERMD: score, basisScore, activiteitDelta.
+  .punten/{uid}                # v4.2.0 — AFGESCHERMD: score, basisScore.
+                              # v5.1.0: activiteitDelta vervangen door
+                              # activiteitVerschuiving (aantal PLEKKEN dat de
+                              # periodieke activiteitsverwerking al heeft
+                              # toegepast) — voorkomt opstapelen.
                               # Read alleen puntenBeheerder-account (firestore.rules). Write
                               # alleen via Cloud Functions (verwerkPartijUitslag, pasPuntenAan,
                               # herbereikenActiviteitDagelijks) — geen enkele client schrijft hier direct.
