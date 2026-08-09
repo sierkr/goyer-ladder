@@ -1,4 +1,4 @@
-# HANDOVER — Goyer Golf MP Ladder, v5.7.0
+# HANDOVER — Goyer Golf MP Ladder, v5.7.1
 
 > Plak dit bestand als eerste bericht in een nieuwe chat, samen met de zip.
 > Lees daarna `_project.md` voor de volledige structuur en changelog.
@@ -51,7 +51,7 @@ wachtwoordwijziging in test ook het echte wachtwoord.
 
 ## 3. Waar we nu staan
 
-Versie in de zip: **v5.7.0**.
+Versie in de zip: **v5.7.1**.
 
 ### De testopzet is groen
 
@@ -225,6 +225,8 @@ Amerikaantje niet afronden.
 | `page.locator('text=Naam')` in een test | Onzichtbare pagina's staan gewoon in de DOM. Scope altijd op het element waar het om gaat. |
 | `updateMask.fieldPaths=holes.3` in de kale REST-API | Een pad-onderdeel dat met een cijfer begint moet tussen accenttekens: ``holes.`3` ``. Zonder die tekens antwoordt Firestore met 400. De Firebase-bibliotheek doet dat automatisch, dus de app had er nooit last van en de watch faalde altijd. Kostte jaren aan wisselvallig gedrag. |
 | Een listener die in een object schrijft | Herkoppel ook als het OBJECT vervangen is, niet alleen als het id verandert. Anders schrijft hij in een weggegooide kopie en blijft het scherm op oude waarden staan. Zie v5.5.4. |
+| Een lijst binnen een lijst in een Firestore-document | Wordt geweigerd; een array mag geen array als element bevatten. De foutmelding zegt niets over de oorzaak. `teams: [[a,b],[c,d]]` maakte High-Low sinds v5.0.0 onstartbaar zonder dat iemand het merkte. `zoekGenesteLijsten()` in `js/scores.js` controleert dit nu vóór het schrijven. |
+| Dezelfde informatie twee keer opslaan | De teamindeling stond in `teams` én volgde uit de spelersvolgorde. Die duplicatie was de eigenlijke oorzaak van bovenstaande fout. Teams worden nu afgeleid met `teamsVan()` in `js/ronde.js` — één plek. |
 | Een naam twee keer importeren in hetzelfde bestand | Dat is een SyntaxError: het bestand laadt niet, en alles wat ervan afhangt evenmin. De hele app start dan niet en het inlogscherm blijft verborgen. `node --check` vangt dit NIET. Controleer het apart — zie het controlelijstje in `_project.md`. Gebeurd in v5.6.0 met `pasUiStijlToe` in `js/admin.js`. |
 | Een fout wegschrijven naar `console.error` op een horloge | Daar kijkt niemand ooit. Elke mislukking die de gebruiker raakt moet op het scherm komen. Dit is dit traject drie keer de oorzaak geweest van uren zoeken. |
 | Testen op een computer met de muis | `watch.html` luistert uitsluitend naar aanrakingen. Zet in het ontwikkelaarsvenster de aanraakstand aan (Ctrl+Shift+M), anders reageert er niets en lijkt het scherm stuk. |

@@ -135,3 +135,21 @@ check('onderaan begrensd op N', _d.find(s=>s.uid==='p12').rank, 12);
 check('onbekende speler wordt overgeslagen',
   _kern.verschuifAllemaal(_ladder(), [{uid:'bestaat_niet',delta:2}]).length, 12);
 
+console.log('\n══ HIGH-LOW — TEAMS EN DOCUMENTVORM (v5.7.1) ══');
+const _teamsVan = new Function(
+  require('fs').readFileSync(require('path').join(__dirname,'..','js','ronde.js'),'utf8')
+    .match(/^function teamsVan[\s\S]*?\n\}/m)[0] + 'return teamsVan;')();
+const _vier = { speltype:'highlow', spelers:[{uid:'a'},{uid:'b'},{uid:'c'},{uid:'d'}] };
+check('slot 1+2 tegen 3+4', _teamsVan(_vier), [['a','b'],['c','d']]);
+check('drie spelers geeft geen teams', _teamsVan({speltype:'highlow',spelers:[{uid:'a'},{uid:'b'},{uid:'c'}]}), null);
+check('matchplay geeft geen teams', _teamsVan({speltype:'matchplay',spelers:_vier.spelers}), null);
+
+const _zoek = new Function(
+  require('fs').readFileSync(require('path').join(__dirname,'..','js','scores.js'),'utf8')
+    .match(/^export function zoekGenesteLijsten[\s\S]*?\n\}/m)[0].replace('export ','') + 'return zoekGenesteLijsten;')();
+check('lijst in lijst wordt gevonden', _zoek({teams:[['a','b'],['c','d']]}), ['teams[0]','teams[1]']);
+check('lijst van objecten is prima', _zoek({spelers:[{uid:'a'},{uid:'b'}], holes:[{par:4}]}), []);
+check('partij zonder teams is schoon',
+  _zoek({ partijId:'p1', spelers:[{uid:'a'}], holes:[{par:4,si:1}],
+          matchups:[{spelerA:{uid:'a'},spelerB:{uid:'b'}}], scores:{} }), []);
+

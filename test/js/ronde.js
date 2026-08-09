@@ -37,6 +37,19 @@ import { renderUitslagen } from './uitslagen.js';
 
 //  RONDE (live scorekaart)
 // ============================================================
+// ============================================================
+//  v5.7.1 — TEAMINDELING BIJ HIGH-LOW
+// ============================================================
+//  Eén plek waar bepaald wordt wie met wie speelt: slot 1+2 tegen 3+4. De
+//  indeling wordt afgeleid uit de spelersvolgorde en niet opgeslagen — zie de
+//  toelichting in js/partij.js. Verandert die regel ooit, dan verandert hij
+//  hier, en nergens anders.
+function teamsVan(p) {
+  const uids = (p?.spelers || []).map(s => s.uid);
+  if (p?.speltype !== 'highlow' || uids.length !== 4) return null;
+  return [[uids[0], uids[1]], [uids[2], uids[3]]];
+}
+
 // ─── Live scores van de eigen partij ─────────────────────────
 // v5.0.0 (punt 4): we luisteren op de scoredocumenten van de partij waar de
 // speler zelf in zit — een handvol kleine documenten in plaats van het
@@ -130,8 +143,9 @@ function renderScorecard() {
 
   // v3.0.3: team-labels voor High-Low (uid → team-index)
   const teamLabel = {};
-  if (p.speltype === 'highlow' && Array.isArray(p.teams)) {
-    p.teams.forEach((team, ti) => team.forEach(uid => { teamLabel[uid] = ti; }));
+  const _teams133 = teamsVan(p);
+  if (_teams133) {
+    _teams133.forEach((team, ti) => team.forEach(uid => { teamLabel[uid] = ti; }));
   }
 
   // HEAD
@@ -499,8 +513,9 @@ function netScoreHighlow(p, s, holeIdx) {
 
 function berekenHighlowHole(holeIdx) {
   const p = mijnPartij();
-  if (!p || p.speltype !== 'highlow' || !Array.isArray(p.teams) || p.teams.length !== 2) return null;
-  const teamNet = p.teams.map(team =>
+  const _teams502 = teamsVan(p);
+  if (!_teams502) return null;
+  const teamNet = _teams502.map(team =>
     team.map(uid => {
       const s = p.spelers.find(sp => sp.uid === uid);
       if (!s) return null;
@@ -523,7 +538,8 @@ function berekenHighlowHole(holeIdx) {
 
 function renderHighlowOverview() {
   const p = mijnPartij();
-  if (!p || !Array.isArray(p.teams)) return;
+  const _t = teamsVan(p);
+  if (!_t) return;
   const naamMap = kortNaamMap(p.spelers);
   let tA = 0, tB = 0;
   p.holes.forEach((_, hi) => {
@@ -532,7 +548,7 @@ function renderHighlowOverview() {
   });
   const totals = [tA, tB];
   const maxPunten = p.holes.length * 2;
-  const teamNamen = p.teams.map(team => team.map(uid => naamMap[uid] || '?').join(' & '));
+  const teamNamen = _t.map(team => team.map(uid => naamMap[uid] || '?').join(' & '));
   let html = '<div style="padding:12px 12px 4px">';
   [0, 1].forEach(ti => {
     const pts = totals[ti];
@@ -956,7 +972,8 @@ function openAmerikaaanjeUitslagModal() {
 // ============================================================
 function openHighlowUitslagModal() {
   const p = mijnPartij();
-  if (!p || !Array.isArray(p.teams)) return;
+  const _t2 = teamsVan(p);
+  if (!_t2) return;
   const naamMap = kortNaamMap(p.spelers);
   let tA = 0, tB = 0;
   p.holes.forEach((_, hi) => {
@@ -964,7 +981,7 @@ function openHighlowUitslagModal() {
     if (hl) { tA += hl.teamPunten[0]; tB += hl.teamPunten[1]; }
   });
   const totals = [tA, tB];
-  const teamNamen = p.teams.map(team => team.map(uid => naamMap[uid] || '?').join(' & '));
+  const teamNamen = _t2.map(team => team.map(uid => naamMap[uid] || '?').join(' & '));
   const volgorde = totals[0] >= totals[1] ? [0, 1] : [1, 0];
   const gelijk = totals[0] === totals[1];
 
@@ -1264,14 +1281,17 @@ async function bevestigUitslag() {
       if (hl) { tA += hl.teamPunten[0]; tB += hl.teamPunten[1]; }
     });
     const naamMap = kortNaamMap(p.spelers);
+    const _teams = teamsVan(p) || [[], []];
     const teamVan = {};
-    (p.teams || []).forEach((team, ti) => team.forEach(uid => { teamVan[uid] = ti; }));
-    const teams = p.spelers.map(s2 => ({ uid: s2.uid, team: teamVan[s2.uid] ?? 0 }));
+    _teams.forEach((team, ti) => team.forEach(uid => { teamVan[uid] = ti; }));
 
+    // v5.7.1: alleen WIE er won gaat naar de server. De teamindeling leidt hij
+    // zelf af uit de spelersvolgorde in het partij-document, zodat een
+    // gemanipuleerde app zichzelf niet in het winnende team kan zetten.
     await _rondSpelvormAf(p,
-      { speltype: 'highlow', teams, winnendTeam: _eindstandKeuze.winnendTeam },
+      { speltype: 'highlow', winnendTeam: _eindstandKeuze.winnendTeam },
       {
-        eindstandRegels: teams.map(x => ({ uid: x.uid, team: x.team })),
+        eindstandRegels: p.spelers.map(s2 => ({ uid: s2.uid, team: teamVan[s2.uid] ?? 0 })),
         scorekaart: {
           type: 'highlow',
           ladderId: p.ladderId,
@@ -1279,7 +1299,7 @@ async function bevestigUitslag() {
           timestamp: Date.now(),
           baan: p.baan,
           holes: p.holes,
-          teams: (p.teams || []).map((team, ti) => ({
+          teams: _teams.map((team, ti) => ({
             team: ti + 1,
             spelerIds: team,
             namen: team.map(uid => naamMap[uid] || '?'),

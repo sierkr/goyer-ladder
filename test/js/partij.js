@@ -883,10 +883,21 @@ async function startPartij() {
     spelers,
     matchups,
     speltype,   // v3.0.0-11.97
-    // v3.0.3: High-Low teams (slot 1+2 vs 3+4), anders null
-    teams: speltype === 'highlow'
-      ? [[spelers[0].uid, spelers[1].uid], [spelers[2].uid, spelers[3].uid]]
-      : null,
+    // v5.7.1: teams worden NIET meer opgeslagen.
+    //
+    // Hier stond `teams: [[a,b],[c,d]]` — een lijst met daarin twee lijsten.
+    // Firestore accepteert dat niet (een array mag geen array als element
+    // bevatten), dus het wegschrijven van het partij-document mislukte en de
+    // app meldde "controleer je verbinding of rechten". Dat wees de verkeerde
+    // kant op: het was geen verbinding en geen rechten, maar een vorm die de
+    // database weigert. High-Low kon daardoor nooit gestart worden — het viel
+    // pas op toen de spelvorm in v5.6.0 voor iedereen open ging.
+    //
+    // De teams waren bovendien dubbele informatie: ze volgen per definitie uit
+    // de spelersvolgorde (slot 1+2 tegen 3+4). Die duplicatie was de eigenlijke
+    // oorzaak. Nu worden ze overal afgeleid met teamsVan() — ook op de server,
+    // die daardoor niet meer hoeft te geloven wat de app over de teamindeling
+    // beweert.
     scores: {},
     timestamp: Date.now()
   };
@@ -920,7 +931,12 @@ async function startPartij() {
     // achterblijft die nergens meer in beeld komt.
     try { await verwijderPartijDocument(partijLadderId, nieuwePartij.partijId); } catch(_) {}
     console.error('[startPartij] opslaan partij mislukt:', e);
-    toast('Partij kon niet worden opgeslagen — controleer je verbinding of rechten');
+    // v5.7.1: de echte reden erbij. "Controleer je verbinding of rechten" was
+    // bij een geweigerde documentvorm volstrekt misleidend.
+    const reden = e?.message || e?.code || '';
+    toast(reden
+      ? 'Partij kon niet worden opgeslagen: ' + reden
+      : 'Partij kon niet worden opgeslagen — controleer je verbinding of rechten');
     return;
   }
 

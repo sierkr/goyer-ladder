@@ -11,9 +11,44 @@
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 | `watch.html` | bij de constanten | `const WATCH_VERSIE = 'v3.0.0-11.XX';` — v5.5.2, anders herlaadt de watch-pagina zichzelf eindeloos |
 
-Huidige versie: **v5.7.0**
+Huidige versie: **v5.7.1**
 
 ### Changelog
+- **v5.7.1** — High-Low kon niet gestart worden. Raakt `js/partij.js`,
+  `js/ronde.js`, `js/scores.js` en `functions/index.js`. **Vraagt dezelfde
+  Cloud Functions-deploy als v5.7.0** — nog niet uitgerold, dus dit gaat mee.
+
+  - **DE FOUT.** Bij het starten werd `teams: [[a,b],[c,d]]` weggeschreven: een
+    lijst met daarin twee lijsten. Firestore accepteert dat niet — een array mag
+    geen array als element bevatten. Het partij-document werd geweigerd en de
+    app meldde "controleer je verbinding of rechten", wat de verkeerde kant op
+    wees. Dit zat er sinds v5.0.0 in en viel pas op toen High-Low in v5.6.0 voor
+    iedereen open ging: daarvóór had niemand het ooit gestart.
+
+  - **De oorzaak was duplicatie.** De teamindeling stond in het document én
+    volgde al uit de spelersvolgorde (slot 1+2 tegen 3+4). Van die twee had er
+    één een vorm die de database weigert. Het veld is nu weg; `teamsVan()` in
+    `js/ronde.js` leidt de indeling af, en dat is de enige plek waar die regel
+    staat.
+
+  - **De server gelooft de app niet meer over de teams.** Voorheen stuurde de
+    client de teamindeling mee en werd die voor waar aangenomen — een
+    gemanipuleerde app kon zichzelf in het winnende team zetten. Nu leidt de
+    server de teams zelf af uit het partij-document en stuurt de client alleen
+    nog wie er won. Strenger dan het was, en het kwam gratis mee met het
+    weghalen van het veld.
+
+  - **De hele categorie afgedekt.** `zoekGenesteLijsten()` controleert een
+    partij vóór het schrijven en weigert met een melding die het veld bij naam
+    noemt. Dat vangt niet alleen `teams`, maar ook het volgende veld dat iemand
+    ooit toevoegt.
+
+  - **De foutmelding bij het starten** noemt nu de echte reden in plaats van
+    altijd "verbinding of rechten".
+
+  - **Zes nieuwe rekentests** (194 totaal): de teamindeling, en dat een lijst
+    binnen een lijst wordt herkend terwijl een lijst van objecten gewoon
+    doorgaat.
 - **v5.7.0** — Deel 2: Amerikaantje en High-Low tellen mee voor de ladder.
   Raakt `functions/index.js`, `js/ronde.js`, `js/uitslagen.js`, `js/app.js`,
   `js/partij.js`, `index.html`, `handleiding-partij-ronde.html` en de tests.

@@ -374,6 +374,26 @@ function verschuifAllemaal(werklijst, zetten) {
   return werklijst;
 }
 
+// v5.7.1: Firestore accepteert geen lijst binnen een lijst. Zo'n document
+// wordt geweigerd met een melding die niets zegt over de oorzaak — bij High-Low
+// leverde dat "controleer je verbinding of rechten" op terwijl er niets mis was
+// met de verbinding. Deze controle wijst het veld aan.
+function zoekGenesteLijsten(waarde, pad) {
+  pad = pad || '';
+  const uit = [];
+  if (Array.isArray(waarde)) {
+    waarde.forEach((x, i) => {
+      if (Array.isArray(x)) uit.push(pad + '[' + i + ']');
+      else uit.push(...zoekGenesteLijsten(x, pad + '[' + i + ']'));
+    });
+  } else if (waarde && typeof waarde === 'object') {
+    for (const k of Object.keys(waarde)) {
+      uit.push(...zoekGenesteLijsten(waarde[k], pad ? pad + '.' + k : k));
+    }
+  }
+  return uit;
+}
+
 // Score die bij een schone integer-positie hoort (1 = hoogste score).
 function scoreVoorPositie(positie) {
   return PUNTEN_BASE - (Math.max(1, positie) - 1) * PUNTEN_STAP;
@@ -967,9 +987,21 @@ exports.verwerkPartijUitslag = onCall(
     // ────────────────────────────────────────────────────────
     const eindstandRegels = [];
     if (eindstand) {
-      const deelnemers = eindstand.speltype === 'highlow'
-        ? (Array.isArray(eindstand.teams) ? eindstand.teams : [])
-        : (Array.isArray(eindstand.posities) ? eindstand.posities : []);
+      // v5.7.1: bij High-Low leidt de SERVER de teams af uit de spelersvolgorde
+      // in het partij-document (slot 1+2 tegen 3+4). De client stuurt alleen
+      // nog wie er won. Voorheen kwam de teamindeling van de client en werd die
+      // voor waar aangenomen — een gemanipuleerde app kon zichzelf dan in het
+      // winnende team zetten.
+      let deelnemers;
+      if (eindstand.speltype === 'highlow') {
+        const uids = (partij.spelers || []).map(sp => sp && sp.uid).filter(Boolean);
+        if (uids.length !== 4) {
+          throw new HttpsError('failed-precondition', 'High-Low vereist precies vier spelers.');
+        }
+        deelnemers = uids.map((uid, i) => ({ uid, team: i < 2 ? 0 : 1 }));
+      } else {
+        deelnemers = Array.isArray(eindstand.posities) ? eindstand.posities : [];
+      }
 
       // Gasten tellen niet mee voor de ladder; ze houden wel hun plek in de
       // uitslag, zodat de verschuiving van de anderen klopt.
