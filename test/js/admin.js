@@ -9,7 +9,7 @@ import { db, auth, firebaseConfig, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAG
   EMAIL_SUFFIX, DEFAULT_HCP,
   genereerEmail, loginNaamVan, pasUiStijlToe,
   functions, httpsCallable,
-  leesEigenWeergave, bewaarEigenWeergave, effectieveStijl, pasUiStijlToe } from './config.js';
+  leesEigenWeergave, bewaarEigenWeergave, effectieveStijl } from './config.js';
 // v5.2.1: ruimt een Auth-account op waarvan het profiel niet kon worden
 // aangemaakt tijdens de bulk-import (voorkomt accounts zonder profiel).
 const _verwijderWeesAccountFn = httpsCallable(functions, 'verwijderWeesAccount');

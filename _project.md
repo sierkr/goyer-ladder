@@ -11,9 +11,42 @@
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 | `watch.html` | bij de constanten | `const WATCH_VERSIE = 'v3.0.0-11.XX';` — v5.5.2, anders herlaadt de watch-pagina zichzelf eindeloos |
 
-Huidige versie: **v5.6.1**
+Huidige versie: **v5.6.2**
 
 ### Changelog
+- **v5.6.2** — Herstel van een fout uit v5.6.0 die de app volledig blokkeerde.
+  Alleen `js/admin.js`, één regel.
+
+  - **`pasUiStijlToe` werd twee keer geïmporteerd.** Hij stond er al voor de
+    beheerdersknop; bij het toevoegen van de weergavekeuze kwam hij er nog een
+    keer bij. Een dubbele import is een SyntaxError: `admin.js` laadt niet,
+    `app.js` hangt daarvan af, en daarmee valt de hele keten om. Het gevolg is
+    niet "een knop doet het niet" maar **de app start helemaal niet** — het
+    inlogscherm blijft verborgen en er gebeurt niets meer.
+
+    De browsertests lieten dit onmiddellijk zien: 10 van de 11 rood, allemaal
+    op `#login-scherm` dat verborgen bleef. Dat is precies waar die testopzet
+    voor bedoeld is.
+
+  - **Waarom de controles het misten.** `node --check` keurde het bestand goed;
+    die controle vangt een dubbele importbinding niet. En de import-controle die
+    ik draai keek of elke geïmporteerde naam bestaat als export — niet of een
+    naam twee keer wordt geïmporteerd.
+
+    Toegevoegd aan het vaste controlelijstje, en scherper: elk bestand wordt nu
+    ook echt als ES-module geparseerd, niet alleen als los script.
+
+### Vaste controles na elke wijziging
+
+```
+node --check <bestand>          # syntax
+node tests/run.cjs              # 164 rekentests
+```
+plus, bij wijzigingen in `js/`:
+- **geen dubbele imports** binnen één bestand (SyntaxError, `node --check` vangt het niet)
+- **elke geïmporteerde naam bestaat als export** in het bronbestand
+- **elk bestand parseert als ES-module** (`new vm.SourceTextModule(bron)`)
+- `version.json`, `watch.html` (`WATCH_VERSIE`) en `js/app.js` staan op hetzelfde nummer
 - **v5.6.1** — Het scherm "Ladderwijzigingen" vertelde een ander verhaal dan het
   rekenwerk. Alleen `js/ronde.js`. **Geen deploy.**
 
