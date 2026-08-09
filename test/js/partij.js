@@ -120,10 +120,10 @@ function onSpeltypeChange() {
   // v3.0.3: hint-tekst per speltype
   if (hint) {
     if (val === 'amerikaantje') {
-      hint.textContent = 'Exact 3 spelers · 6 punten per hole · telt nog niet mee voor de ladderstand';
+      hint.textContent = 'Exact 3 spelers · 6 punten per hole · winnaar +2 plekken, verliezer −2';
       hint.style.display = 'block';
     } else if (val === 'highlow') {
-      hint.textContent = 'Exact 4 spelers · 2 teams van 2 (slot 1+2 vs 3+4) · low/high-punt per hole · telt nog niet mee voor de ladderstand';
+      hint.textContent = 'Exact 4 spelers · 2 teams van 2 (slot 1+2 vs 3+4) · low/high-punt per hole · winnaars +1 plek, verliezers −1';
       hint.style.display = 'block';
     } else {
       hint.style.display = 'none';

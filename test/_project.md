@@ -11,9 +11,61 @@
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 | `watch.html` | bij de constanten | `const WATCH_VERSIE = 'v3.0.0-11.XX';` — v5.5.2, anders herlaadt de watch-pagina zichzelf eindeloos |
 
-Huidige versie: **v5.6.2**
+Huidige versie: **v5.7.0**
 
 ### Changelog
+- **v5.7.0** — Deel 2: Amerikaantje en High-Low tellen mee voor de ladder.
+  Raakt `functions/index.js`, `js/ronde.js`, `js/uitslagen.js`, `js/app.js`,
+  `js/partij.js`, `index.html`, `handleiding-partij-ronde.html` en de tests.
+  **Vraagt een Cloud Functions-deploy** — zie de uitrolvolgorde in
+  `HANDOVER.md`.
+
+  - **De verschuiving staat los van de ladderpositie.** Winnaar van een
+    Amerikaantje +2, verliezer −2; High-Low winnaars +1, verliezers −1. Bewust
+    anders dan matchplay: het zijn groepsspelvormen, geen duel tussen twee
+    mensen met een ranglijstverschil. De tabel staat op de SERVER; de client
+    stuurt alleen wie er eerste, tweede en derde werd, zodat een gemanipuleerde
+    app geen eigen aantallen plekken kan opgeven.
+
+  - **Geen tweede Cloud Function.** `verwerkPartijUitslag` kreeg een tweede
+    invoervorm (`eindstand` naast `matchups`). Daarmee zijn de deelnemer-
+    controle, het één keer verwerken, `prevRank`, de momentopname voor
+    terugdraaien en het hernummeren gedeeld in plaats van nagebouwd.
+
+  - **Alle verschuivers worden TEGELIJK geplaatst.** Eén voor één verwerken
+    bleek volgorde-afhankelijk: bij een gedeelde eerste plaats kregen beide
+    winnaars in de ene volgorde hun plek en in de andere volgorde niets —
+    zonder melding. Nagerekend en vastgelegd in de rekentests.
+
+  - **Aanwijsstap in beide afsluitmodals**, zoals matchplay die al had. Met een
+    ingevulde kaart staat de eindstand voorgevuld; **zonder volledig ingevulde
+    holes wordt er bewust NIETS voorgevuld.** Anders zou "alle drie gelijk" de
+    standaard zijn en leverde één tik op bevestigen drie overwinningen op
+    zonder dat er iets gespeeld was.
+
+  - **Bestaande fout hersteld: dubbel bevestigen telde dubbel.** De server was
+    al beschermd tegen dubbel verwerken, maar de client schreef daarna alsnog
+    een uitslagvermelding naar het ladderdocument — goed voor een extra
+    gespeelde partij en extra ontmoetingen in de activiteitsbonus. Geldt ook
+    voor matchplay en is daar meteen meegenomen.
+
+  - **Gasten tellen niet mee** voor de verschuiving en staan niet in de
+    ontmoetingen; anders zou dezelfde gast elke keer als nieuwe unieke
+    tegenstander de diversiteitsbonus opblazen. De verschuiving van de overige
+    spelers gaat wel gewoon door.
+
+  - **Volgorde van afronden omgedraaid:** eerst laten verwerken, pas bij succes
+    de partij opruimen. Voorheen werd de partij eerst verwijderd, en dan was
+    bij een mislukking zowel de partij als de uitslag weg.
+
+  - **Uitslagenscherm** kreeg een eigen weergave. Er stond `u.matchups.map(...)`
+    zonder controle; bij een uitslag zonder onderlinge partijen viel het hele
+    scherm om.
+
+  - **24 nieuwe rekentests** (188 totaal), waaronder alle vier de
+    Amerikaantje-uitkomsten, dat elke rij optelt tot nul, dat de uitkomst niet
+    afhangt van de verwerkingsvolgorde, de begrenzing boven- en onderaan, en
+    dat er geen gaten in de ladder ontstaan.
 - **v5.6.2** — Herstel van een fout uit v5.6.0 die de app volledig blokkeerde.
   Alleen `js/admin.js`, één regel.
 

@@ -19,6 +19,7 @@ import { renderRonde, renderScorecard, updateScore, toggleScorecard,
   openUitslagModal, bevestigUitslag, setWinnaar, skipMatchup,
   editPartijHcp, verwijderSpelerUitRonde, openToevoegenModal,
   bevestigToevoegenRonde, sluitUitslagEnGaNaarLadder, showLadderChanges,
+  zetAmerikaaanjePositie, zetHighlowWinnaar,
   annuleerEigenPartij, verwijderActievePartij , vraagWatchPin } from './ronde.js';
 import { renderUitslagen, openScorekaartDetail, bevestigBeheerUitslag , draaiUitslagTerug } from './uitslagen.js';
 import { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer,
@@ -107,6 +108,8 @@ window.openToevoegenModal = openToevoegenModal;
 window.bevestigToevoegenRonde = bevestigToevoegenRonde;
 window.sluitUitslagEnGaNaarLadder = sluitUitslagEnGaNaarLadder;
 window.showLadderChanges = showLadderChanges;
+window.zetAmerikaaanjePositie = zetAmerikaaanjePositie; // v5.7.0
+window.zetHighlowWinnaar = zetHighlowWinnaar;             // v5.7.0
 window.openAddPlayer = openAddPlayer;
 window.toggleHandmatigToevoegen = toggleHandmatigToevoegen;
 window.voegAccountToeAlsSpeler = voegAccountToeAlsSpeler;
@@ -223,7 +226,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v5.6.2';
+  const VERSION = 'v5.7.0';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -268,7 +271,7 @@ window.toggleTRankingLadder = toggleTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v5.6.2';
+  const LOKALE_VERSIE = 'v5.7.0';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 

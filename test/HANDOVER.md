@@ -1,4 +1,4 @@
-# HANDOVER — Goyer Golf MP Ladder, v5.6.2
+# HANDOVER — Goyer Golf MP Ladder, v5.7.0
 
 > Plak dit bestand als eerste bericht in een nieuwe chat, samen met de zip.
 > Lees daarna `_project.md` voor de volledige structuur en changelog.
@@ -51,7 +51,7 @@ wachtwoordwijziging in test ook het echte wachtwoord.
 
 ## 3. Waar we nu staan
 
-Versie in de zip: **v5.6.2**.
+Versie in de zip: **v5.7.0**.
 
 ### De testopzet is groen
 
@@ -171,7 +171,22 @@ het échte spelersdocument. De helper `fsVoor(isTest)` bestond al en werd door
 zestien andere functies gewoon gebruikt; deze twee waren overgeslagen.
 
 **Deze versie is pas af als de functions gedeployed zijn.** Alleen de bestanden
-op GitHub zetten is niet genoeg.
+op GitHub zetten is niet genoeg. (Voor v5.5.0 is dat bevestigd gedaan.)
+
+### v5.7.0 — uitrolvolgorde, in deze volgorde
+
+1. Cloud Functions deployen.
+2. Een gewone matchplay-partij afronden — controleren dat er niets stuk is.
+3. De app-bestanden **alleen in `/test/`** zetten en daar alle vier de
+   Amerikaantje-uitkomsten spelen, plus een High-Low en een matchplay.
+   De functies zijn gedeeld, de databases niet — dit raakt geen productiedata.
+4. Vooraf een ladder-momentopname maken (`maakLadderSnapshot`). Terugdraaien
+   werkt per partij; blijkt een verschuiving structureel verkeerd, dan wil je
+   één knop voor de hele ladder.
+5. Pas daarna naar productie.
+
+Andersom werkt niet: een nieuwe app die een oude functie aanroept, kan een
+Amerikaantje niet afronden.
 
 ---
 
@@ -181,10 +196,9 @@ op GitHub zetten is niet genoeg.
    openstaande melding. Test zo: corrigeer een hole op de watch, schakel op de
    telefoon naar een andere app en weer terug, en kijk of de correctie er staat.
    Dat weg-en-terug schakelen is de kern — zonder dat stap je over de fout heen.
-2. **Cloud Functions deployen** (v5.5.0). Nog niet bevestigd dat dit gebeurd is.
-   Controleren kan in de Firebase-console → Functions → Dashboard: staat er bij
-   `voltooiEersteLogin` geen recente datum, dan is de deploy nooit aangekomen.
-   Zie `DEPLOYEN.md`; `cd functions && npm install` is altijd nodig.
+2. **Cloud Functions deployen voor v5.7.0.** Die van v5.5.0 is bevestigd
+   gedaan. Zie `DEPLOYEN.md`; `cd functions && npm install` is altijd nodig.
+   Uitrolvolgorde staat hieronder — eerst de functies, dan pas de app.
 3. **Controleren of er productiedata is beschadigd.** Spelers die in `/test/`
    het eerste-loginscherm hebben ingevuld, hebben mogelijk een verkeerde
    handicap in de live-database. Bekend geval: Ewout.

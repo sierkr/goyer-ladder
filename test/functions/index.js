@@ -281,6 +281,99 @@ function fsVoor(isTest) {
   return getFirestore(admin.app(), isTest ? 'test' : '(default)');
 }
 
+// ============================================================
+//  v5.7.0 — VERSCHUIVINGEN BIJ AMERIKAANTJE EN HIGH-LOW
+// ============================================================
+//  Anders dan matchplay staat de verschuiving hier LOS van de ladderpositie.
+//  Wie het Amerikaantje wint stijgt twee plekken, of hij nu eerste of vijftigste
+//  stond. Dat is een bewuste keuze: het zijn groepsspelvormen, geen duel tussen
+//  twee mensen met een ranglijstverschil.
+//
+//  De client stuurt alleen de eindstand — wie eerste, tweede en derde werd.
+//  De tabel staat hier, op de server, zodat een gemanipuleerde app geen eigen
+//  aantallen plekken kan opgeven.
+// ============================================================
+
+// Posities zijn 1-gebaseerd met gedeelde plekken volgens sportgebruik:
+//   [1,2,3] alle verschillend · [1,1,3] gedeeld eerste · [1,2,2] gedeeld tweede
+//   [1,1,1] alle drie gelijk
+function verschuivingAmerikaantje(posities) {
+  const p = Array.isArray(posities) ? posities.map(Number) : [];
+  if (p.length !== 3 || p.some(x => !Number.isInteger(x))) return null;
+  const sleutel = p.slice().sort((a, b) => a - b).join(',');
+  const tabel = {
+    '1,2,3': { 1: 2, 2: 0, 3: -2 },   // eerste +2, tweede 0, derde -2
+    '1,1,3': { 1: 1, 3: -2 },         // gedeeld eerste: beiden +1, derde -2
+    '1,2,2': { 1: 2, 2: -1 },         // gedeeld tweede: eerste +2, beiden -1
+    '1,1,1': { 1: 0 },                // alle drie gelijk: niemand beweegt
+  };
+  const map = tabel[sleutel];
+  if (!map) return null;              // ongeldige eindstand -> weigeren
+  return p.map(x => map[x]);
+}
+
+// Wie op de eerste plek eindigt (ook gedeeld) boekt een winst.
+function winstAmerikaantje(posities) {
+  const p = Array.isArray(posities) ? posities.map(Number) : [];
+  return p.map(x => x === 1);
+}
+
+// teams: 0 of 1 per speler. winnend: 0, 1, of null bij gelijkspel.
+function verschuivingHighlow(teams, winnend) {
+  const t = Array.isArray(teams) ? teams.map(Number) : [];
+  if (t.length !== 4 || t.some(x => x !== 0 && x !== 1)) return null;
+  if (t.filter(x => x === 0).length !== 2) return null;
+  if (winnend !== 0 && winnend !== 1 && winnend !== null) return null;
+  if (winnend === null) return t.map(() => 0);
+  return t.map(x => (x === winnend ? 1 : -1));
+}
+
+// ------------------------------------------------------------
+//  Alle verschuivers TEGELIJK plaatsen.
+//
+//  WAAROM NIET EEN VOOR EEN. Bij een gedeelde eerste plaats krijgen twee
+//  spelers dezelfde verschuiving, en dan bestaat er geen "eerste om te
+//  verwerken". Nagerekend op een ladder waarin A tiende en B elfde staat en
+//  beiden +1 krijgen:
+//      A eerst verwerkt -> 9=A  10=B  11=p9    beiden stijgen
+//      B eerst verwerkt -> 9=p9 10=A  11=B     er gebeurt niets
+//  Dezelfde uitslag, twee verschillende ladders, puur door de volgorde waarin
+//  de code de spelers toevallig aflooopt. Twee winnaars kregen dan zonder
+//  enige melding allebei niets.
+//
+//  Nu krijgt iedereen zijn doelplek in één keer toegewezen. Botsingen worden
+//  opgelost met een vaste regel (grootste verschuiving eerst, dan wie al hoger
+//  stond) en de rest van de ladder schuift op met behoud van onderlinge
+//  volgorde. Uitkomst is daarmee onafhankelijk van de verwerkingsvolgorde.
+// ------------------------------------------------------------
+function verschuifAllemaal(werklijst, zetten) {
+  const n = werklijst.length;
+  if (!n) return werklijst;
+  const doelen = (zetten || [])
+    .map(z => {
+      const s = werklijst.find(x => x.uid === z.uid);
+      if (!s) return null;                       // geen ladderlid (meer) -> overslaan
+      return { uid: z.uid, delta: z.delta, oud: s.rank,
+               doel: Math.min(n, Math.max(1, s.rank - z.delta)) };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (b.delta - a.delta) || (a.oud - b.oud));
+
+  const bezet = new Set(); const plaats = {};
+  for (const d of doelen) {
+    let r = d.doel;
+    while (bezet.has(r) && r < n) r++;
+    while (bezet.has(r) && r > 1) r--;
+    bezet.add(r); plaats[d.uid] = r;
+  }
+  const vrij = []; for (let r = 1; r <= n; r++) if (!bezet.has(r)) vrij.push(r);
+  werklijst.filter(s => plaats[s.uid] === undefined)
+    .sort((a, b) => a.rank - b.rank)
+    .forEach((s, i) => { s.rank = vrij[i]; });
+  werklijst.forEach(s => { if (plaats[s.uid] !== undefined) s.rank = plaats[s.uid]; });
+  return werklijst;
+}
+
 // Score die bij een schone integer-positie hoort (1 = hoogste score).
 function scoreVoorPositie(positie) {
   return PUNTEN_BASE - (Math.max(1, positie) - 1) * PUNTEN_STAP;
@@ -745,6 +838,15 @@ exports.verwerkPartijUitslag = onCall(
     const ladderId  = data?.ladderId;
     const partijId  = data?.partijId;
     const matchups  = Array.isArray(data?.matchups) ? data.matchups : [];
+    // v5.7.0: tweede invoervorm. Amerikaantje/High-Low leveren geen onderlinge
+    // partijen op maar een eindstand. Bewust in DEZELFDE functie: alles
+    // eromheen — deelnemer-controle, één keer verwerken, prevRank, de
+    // momentopname voor terugdraaien, het hernummeren — is dan gedeeld en
+    // hoeft niet nagebouwd te worden.
+    //   { speltype: 'amerikaantje', posities: [{uid, positie}] }
+    //   { speltype: 'highlow', teams: [{uid, team}], winnendTeam: 0|1|null }
+    const eindstand = data?.eindstand && typeof data.eindstand === 'object'
+      ? data.eindstand : null;
     const isTest    = data?.isTest === true;
     if (!ladderId || typeof ladderId !== 'string') {
       throw new HttpsError('invalid-argument', 'ladderId ontbreekt.');
@@ -752,7 +854,7 @@ exports.verwerkPartijUitslag = onCall(
     if (!partijId || typeof partijId !== 'string') {
       throw new HttpsError('invalid-argument', 'partijId ontbreekt.');
     }
-    if (matchups.length === 0) return { success: true, changes: [] };
+    if (matchups.length === 0 && !eindstand) return { success: true, changes: [] };
 
     const fs = fsVoor(isTest);
     const ladderRef = fs.collection('ladders').doc(ladderId);
@@ -768,7 +870,9 @@ exports.verwerkPartijUitslag = onCall(
     // (d) Idempotent — al verwerkt? Geef hetzelfde antwoord terug in plaats van
     // de partij nog een keer te laten meetellen.
     if (verwerktSnap.exists) {
-      return { success: true, alVerwerkt: true, changes: verwerktSnap.data().changes || [] };
+      return { success: true, alVerwerkt: true,
+               changes: verwerktSnap.data().changes || [],
+               spelerRegels: verwerktSnap.data().spelerRegels || [] };
     }
 
     const ladderData = ladderSnap.data() || {};
@@ -858,6 +962,65 @@ exports.verwerkPartijUitslag = onCall(
     werklijst.forEach((s, i) => { s.rank = i + 1; });
     const voorRankMap = {}; werklijst.forEach(s => { voorRankMap[s.uid] = s.rank; });
 
+    // ────────────────────────────────────────────────────────
+    //  v5.7.0 — TAK 2: eindstand (Amerikaantje / High-Low)
+    // ────────────────────────────────────────────────────────
+    const eindstandRegels = [];
+    if (eindstand) {
+      const deelnemers = eindstand.speltype === 'highlow'
+        ? (Array.isArray(eindstand.teams) ? eindstand.teams : [])
+        : (Array.isArray(eindstand.posities) ? eindstand.posities : []);
+
+      // Gasten tellen niet mee voor de ladder; ze houden wel hun plek in de
+      // uitslag, zodat de verschuiving van de anderen klopt.
+      const isGast = u => typeof u === 'string' && u.startsWith('gast_');
+
+      let deltas;
+      if (eindstand.speltype === 'amerikaantje') {
+        deltas = verschuivingAmerikaantje(deelnemers.map(d => d.positie));
+      } else if (eindstand.speltype === 'highlow') {
+        const w = (eindstand.winnendTeam === 0 || eindstand.winnendTeam === 1)
+          ? eindstand.winnendTeam : null;
+        deltas = verschuivingHighlow(deelnemers.map(d => d.team), w);
+      } else {
+        throw new HttpsError('invalid-argument', 'Onbekend speltype.');
+      }
+      if (!deltas) {
+        throw new HttpsError('invalid-argument', 'Ongeldige eindstand voor dit speltype.');
+      }
+
+      // De opgegeven spelers moeten overeenkomen met het partij-document.
+      const uitPartij = new Set((partij.spelers || []).map(sp => sp.uid));
+      for (const d of deelnemers) {
+        if (!d?.uid || !uitPartij.has(d.uid)) {
+          throw new HttpsError('invalid-argument', 'Eindstand hoort niet bij deze partij.');
+        }
+      }
+
+      const zetten = [];
+      deelnemers.forEach((d, i) => {
+        if (isGast(d.uid)) return;
+        const s = werklijst.find(x => x.uid === d.uid);
+        if (!s) return;                       // geen ladderlid (meer) -> overslaan
+        s.partijen++;
+        if (eindstand.speltype === 'amerikaantje') {
+          if (winstAmerikaantje(deelnemers.map(x => x.positie))[i]) s.gewonnen++;
+        } else if (deltas[i] > 0) {
+          s.gewonnen++;
+        }
+        if (deltas[i] !== 0) zetten.push({ uid: d.uid, delta: deltas[i] });
+        eindstandRegels.push({
+          uid: d.uid,
+          naam: naamVanUid[d.uid] || d.uid,
+          positie: d.positie ?? null,
+          team: d.team ?? null,
+          delta: deltas[i],
+        });
+      });
+
+      verschuifAllemaal(werklijst, zetten);
+    }
+
     // Verwerk elke matchup — EXACT dezelfde formules als het oude systeem.
     const verwerkt = [];
     for (const mu of matchups) {
@@ -907,7 +1070,7 @@ exports.verwerkPartijUitslag = onCall(
 
       verwerkt.push({ winnaarUid, verliezerUid, spelerAUid, spelerBUid });
     }
-    if (verwerkt.length === 0) return { success: true, changes: [] };
+    if (verwerkt.length === 0 && eindstandRegels.length === 0) return { success: true, changes: [] };
 
     // ────────────────────────────────────────────────────────
     //  v5.1.0: HIER GEBEURT GEEN ACTIVITEITSBEREKENING MEER.
@@ -947,6 +1110,16 @@ exports.verwerkPartijUitslag = onCall(
       vOud: voorRankMap[m.verliezerUid], vNieuw: naRankMap[m.verliezerUid],
     }));
 
+    // v5.7.0: bij een eindstand zijn er geen winnaar/verliezer-paren. Het
+    // scherm krijgt dan één regel per speler met wat er werkelijk veranderde.
+    const spelerRegels = eindstandRegels.map(r => ({
+      naam: r.naam,
+      positie: r.positie,
+      team: r.team,
+      oud: voorRankMap[r.uid] ?? null,
+      nieuw: naRankMap[r.uid] ?? null,
+    }));
+
     const batch = fs.batch();
     scores.forEach(s => {
       const publiekeRank = naRankMap[s.uid];
@@ -975,6 +1148,7 @@ exports.verwerkPartijUitslag = onCall(
       gerapporteerdDoorNaam: naamVanUid[auth.uid] || (callerSnap.exists ? callerSnap.data().naam : '') || auth.uid,
       matchups: verwerkt,
       changes,
+      spelerRegels,
       // Momentopname vóór verwerking — voor draaiPartijTerug()
       voorStanden: Object.fromEntries(werklijst.map(s => [s.uid, {
         rank: voorRankMap[s.uid] ?? null,
@@ -991,7 +1165,7 @@ exports.verwerkPartijUitslag = onCall(
 
     await batch.commit();
 
-    return { success: true, changes };
+    return { success: true, changes, spelerRegels };
   }
 );
 
