@@ -9,10 +9,259 @@
 | `sw.js` | regel 2 | `const CACHE_VERSION = 'v2XX';` |
 | `js/app.js` | ~regel 221 | `const VERSION = 'v3.0.0-11.XX';` |
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
+| `watch.html` | bij de constanten | `const WATCH_VERSIE = 'v3.0.0-11.XX';` — v5.5.2, anders herlaadt de watch-pagina zichzelf eindeloos |
 
-Huidige versie: **v5.5.0**
+Huidige versie: **v5.6.2**
 
 ### Changelog
+- **v5.6.2** — Herstel van een fout uit v5.6.0 die de app volledig blokkeerde.
+  Alleen `js/admin.js`, één regel.
+
+  - **`pasUiStijlToe` werd twee keer geïmporteerd.** Hij stond er al voor de
+    beheerdersknop; bij het toevoegen van de weergavekeuze kwam hij er nog een
+    keer bij. Een dubbele import is een SyntaxError: `admin.js` laadt niet,
+    `app.js` hangt daarvan af, en daarmee valt de hele keten om. Het gevolg is
+    niet "een knop doet het niet" maar **de app start helemaal niet** — het
+    inlogscherm blijft verborgen en er gebeurt niets meer.
+
+    De browsertests lieten dit onmiddellijk zien: 10 van de 11 rood, allemaal
+    op `#login-scherm` dat verborgen bleef. Dat is precies waar die testopzet
+    voor bedoeld is.
+
+  - **Waarom de controles het misten.** `node --check` keurde het bestand goed;
+    die controle vangt een dubbele importbinding niet. En de import-controle die
+    ik draai keek of elke geïmporteerde naam bestaat als export — niet of een
+    naam twee keer wordt geïmporteerd.
+
+    Toegevoegd aan het vaste controlelijstje, en scherper: elk bestand wordt nu
+    ook echt als ES-module geparseerd, niet alleen als los script.
+
+### Vaste controles na elke wijziging
+
+```
+node --check <bestand>          # syntax
+node tests/run.cjs              # 164 rekentests
+```
+plus, bij wijzigingen in `js/`:
+- **geen dubbele imports** binnen één bestand (SyntaxError, `node --check` vangt het niet)
+- **elke geïmporteerde naam bestaat als export** in het bronbestand
+- **elk bestand parseert als ES-module** (`new vm.SourceTextModule(bron)`)
+- `version.json`, `watch.html` (`WATCH_VERSIE`) en `js/app.js` staan op hetzelfde nummer
+- **v5.6.1** — Het scherm "Ladderwijzigingen" vertelde een ander verhaal dan het
+  rekenwerk. Alleen `js/ronde.js`. **Geen deploy.**
+
+  - **Wat er mis was.** Er werd één blok per match getekend met de verandering
+    van winnaar en verliezer erin. Maar die getallen komen uit `voorRankMap` en
+    `naRankMap` van de Cloud Function, en dat zijn de posities vóór en ná ALLE
+    matches samen — niet het effect van die ene match.
+
+    Bij een flight van drie leverde dat dit op: Sierk verslaat Qruun én Pieter,
+    Pieter verslaat Qruun. Op het scherm stond twee keer "Sierk ↑2 (24 → 22)",
+    wat leest als vier plekken. En Pieter kreeg bij allebei zijn partijen
+    "— (35)", alsof winnen en verliezen niets deden.
+
+  - **Het rekenwerk klopte wél**, en dat is nagerekend: Sierk wint twee keer als
+    hogergeplaatste (+1 en +1), Qruun verliest twee keer (−1 en −1), Pieter
+    verliest van Sierk en wint van Qruun (−1 en +1, dus per saldo nul). Zelfde
+    eindstand als wanneer je de drie matches met de hand na elkaar uitrekent.
+
+  - **Nu:** bovenaan één regel per speler met wat er werkelijk veranderd is,
+    grootste stijger eerst, en daaronder de uitslagen zonder cijfers. Dan is
+    zichtbaar dat Pieter er één won en één verloor, en waarom hij blijft staan.
+
+  - De tussenstappen (24 → 23 → 22) worden bewust niet getoond. Ze zijn niet
+    onjuist, maar het is procesinformatie; een speler wil weten wat déze partij
+    met zijn positie deed.
+- **v5.6.0** — Deel 1 van twee: de weergave kiest de speler zelf, en de
+  spelvormen staan voor iedereen open. Raakt `index.html`, `js/config.js`,
+  `js/auth.js`, `js/admin.js`, `js/app.js` en `js/partij.js`. **Geen deploy en
+  geen databasewijziging.**
+
+  - **Weergave per speler, in het Profiel-tabblad.** Drie standen: Standaard
+    (volgt de club), Helder (was "matchcheck") en Klassiek (was "club"). De
+    toevoeging "(huidige stijl)" is weg.
+
+    Die eerste stand is er met opzet: zonder hem kon een speler die eenmaal koos
+    nooit meer terug naar de clubinstelling, en bereikte een latere wijziging
+    van de beheerder hem nooit meer.
+
+    De keuze staat in de opslag van het apparaat, niet in Firestore. Een speler
+    mag volgens de beveiligingsregels alleen zijn handicap op zijn eigen
+    document wijzigen; dit in de database zetten zou een regelwijziging plus een
+    deploy vragen voor iets wat in de praktijk toch per apparaat is.
+
+  - **De clubinstelling overschrijft een eigen keuze niet meer.** Er stond een
+    live-luisteraar op `ladder/config` die de stijl bij iedereen omzette zodra
+    de beheerder hem wijzigde. Die zou een persoonlijke keuze midden in een
+    sessie hebben teruggedraaid. Hij respecteert die keuze nu.
+
+  - **De clubstandaard is Helder geworden.** Voor iedereen die zelf niets kiest
+    — dus op dag één iedereen — verandert het uiterlijk in één keer. De
+    beheerdersknop blijft, maar zet nu de standaard voor wie niets koos; de
+    melding zei "actief voor iedereen" en dat klopte niet meer.
+
+  - **Amerikaantje en High-Low voor iedereen.** De keuze stond sinds
+    v3.0.0-11.97 alleen open voor beheerder en coördinator.
+
+  - **De hinttekst is eerlijk gemaakt:** "telt nóg niet mee voor de
+    ladderstand". Tot deel 2 er is, tellen deze partijen niet voor de ladder, en
+    dat moet een speler kunnen zien voordat hij begint.
+
+  Deel 2 — het ladder-effect, de aanwijsstap in de afsluitmodals en de
+  handleiding — is volledig gespecificeerd en volgt apart, met een
+  Cloud Functions-deploy.
+- **v5.5.5** — Alleen documentatie: `HANDOVER.md` bijgewerkt. **Raakt de app
+  niet aan.**
+
+  Het bestand liep vijf punten achter, allemaal van de laatste avond:
+
+  - het overzicht "wat er in productie draait" stopte bij v5.5.1; v5.5.2 t/m
+    v5.5.4 ontbraken, en juist v5.5.4 — de fout waar de gebruiker het langst
+    last van had — kwam er helemaal niet in voor
+  - de versieafspraak noemde `WATCH_VERSIE` in `watch.html` niet, terwijl die
+    sinds v5.5.2 mee moet veranderen
+  - de fouten-tabel miste vier lessen: het REST-veldpad met accenttekens, een
+    listener die moet herkoppelen als het object vervangen is, het wegschrijven
+    van fouten naar een console die op een horloge niemand ziet, en het testen
+    van `watch.html` met een muis in plaats van de aanraakstand
+  - "drie echte fouten" klopte niet meer — het zijn er zes
+  - de eerstvolgende acties waren verouderd; bovenaan staat nu het bevestigen
+    van v5.5.4 op de telefoon
+
+  Ook vastgelegd: de conflictregel van de watch (nooit stilletjes een nieuwere
+  invoer overschrijven) is een bewuste keuze van de gebruiker en mag niet
+  vereenvoudigd worden zonder overleg.
+- **v5.5.4** — Scores kwamen wél op elk PC-scherm en op de watch, maar niet op
+  de telefoon. Raakt `js/ronde.js` en `js/auth.js`.
+
+  - **DE FOUT.** `koppelScoreListener()` besloot of hij opnieuw moest koppelen
+    op basis van het partijId alleen. De listener schrijft binnenkomende scores
+    echter rechtstreeks in het partij-OBJECT dat hij bij het koppelen meekreeg,
+    en dat object wordt op twee plekken vervangen terwijl het partijId
+    hetzelfde blijft: in `herlaadNaResume()` en in de onSnapshot op het
+    ladderdocument. Beide zetten `actievePartijen` op de verse kopie uit het
+    ladderdocument — met de VEROUDERDE scores-array, want de echte scores staan
+    sinds v5.0.0 in de subcollectie.
+
+    Gevolg: de listener bleef hangen aan het weggegooide object en het nieuwe
+    object, dat op het scherm stond, kreeg nooit meer een score binnen.
+
+  - **Waarom uitsluitend op de telefoon.** `herlaadNaResume()` gaat af zodra de
+    app terugkomt uit de achtergrond. Op een PC-tabblad dat gewoon openstaat
+    gebeurt dat nooit; op een telefoon voortdurend. De watch heeft eigen code en
+    haalt de scores zelf op. Vandaar het beeld: alle PC-schermen synchroon, de
+    watch synchroon, alleen de telefoon niet.
+
+    Pijnlijk detail: het commentaar bij die resume-functie zegt dat hij is
+    toegevoegd zodat scores die via de watch zijn ingevuld meteen zichtbaar
+    zijn. Hij deed precies het omgekeerde.
+
+  - **De reparatie.** De listener onthoudt nu ook op welk object hij luistert en
+    koppelt opnieuw zodra dat object vervangen is. Dat dicht meteen hetzelfde
+    gat bij de live-verversing van het ladderdocument. Daarnaast haalt
+    `herlaadNaResume()` de scores vers uit de subcollectie voordat het scherm
+    wordt getekend, zodat er geen moment is waarop een verouderde score in beeld
+    staat.
+- **v5.5.3** — De watch schreef nooit één score weg. Alleen `watch.html`.
+
+  - **DE FOUT.** Het horloge praat rechtstreeks met de Firestore-API en stelde
+    zelf het veldpad samen: `updateMask.fieldPaths=holes.3`. Firestore eist dat
+    een pad-onderdeel dat met een cijfer begint tussen accenttekens staat:
+    ``holes.`3` ``. Zonder die tekens antwoordt de server met **400 Bad
+    Request** — en omdat elke hole een cijfer is, faalde **elk** verzoek vanaf
+    een horloge. Er is dus nooit één watch-score in de database beland. In het
+    log van de browser bevestigd, drie keer achter elkaar.
+
+    De telefoon-app had er nooit last van: die gebruikt de
+    Firebase-bibliotheek, en die plaatst de accenttekens zelf.
+
+    Waarom dit jaren onopgemerkt bleef: de mislukking werd opgevangen en naar
+    `console.error` geschreven — een logboek dat op een horloge niemand ooit
+    ziet. Op het scherm bleef het cijfer gewoon staan.
+
+  - **Zichtbare opslagstatus.** Onder de holenavigatie staat nu of alles
+    bewaard is, hoeveel scores nog niet verstuurd zijn, of dat er een conflict
+    is. Stil verliezen kan niet meer.
+
+  - **Wachtrij met conflictcontrole (variant A, door de gebruiker gekozen).**
+    Elke tik gaat eerst naar de opslag van het toestel zelf, pas na bevestiging
+    van de server eruit. Bij het versturen wordt eerst gelezen wat er nú op de
+    server staat:
+
+    | Op de server | Wat er gebeurt |
+    |---|---|
+    | leeg, of nog de waarde die het horloge zag | versturen |
+    | al gelijk aan wat we wilden schrijven | niets doen |
+    | iets anders (iemand anders was er) | **conflict** — niet overschrijven, tonen, gebruiker kiest |
+
+    Die laatste regel is de kern van de keuze: een oude score van het horloge
+    mag nooit stilletjes een nieuwere invoer vanaf een telefoon wegdrukken. Bij
+    een conflict staat er "hole 4: jij 5 · elders 6" en zet één tik alsnog de
+    eigen score door.
+
+  - **Alsnog versturen** zodra het toestel weer online of zichtbaar is, en bij
+    het openen van een partij wordt een openstaande wachtrij van een vorige
+    sessie opgepakt.
+- **v5.5.2** — De watch-pagina ververst zichzelf. Alleen `watch.html`.
+
+  - **Het probleem in het kort:** de reparatie van v5.5.1 werkte in een browser
+    wel en op het horloge niet. Niet omdat er iets stuk was, maar omdat daar een
+    oude kopie van de pagina stond. De gewone app controleert al of er een
+    nieuwe versie is en herlaadt zichzelf; `watch.html` had dat nooit gekregen.
+    En juist op een horloge is er geen adresbalk en geen verversknop, dus er was
+    ook geen manier om het te zien of op te lossen.
+
+  - **Nu:** de pagina haalt `version.json` op (buiten elke cache om) en
+    vergelijkt dat met zijn eigen ingebakken nummer. Verschilt het, dan herlaadt
+    hij zichzelf één keer met een uniek adres, zodat het toestel wel móet
+    ophalen. Twee sloten tegen een herlaadlus: per sessie één poging per
+    versienummer, en bij geen verbinding gebeurt er niets — dan werkt de pagina
+    gewoon door, wat op de baan het belangrijkst is.
+
+  - **Het versienummer staat nu op het PIN-scherm**, samen met de omgeving. Je
+    kunt op een horloge zonder adresbalk dus zien wat er draait.
+
+  - **LET OP bij een volgende versie:** `WATCH_VERSIE` in `watch.html` moet
+    meeveranderen. Staat daar een oud nummer, dan denkt de pagina dat hij
+    verouderd is en herlaadt hij bij elk bezoek. Toegevoegd aan de versietabel
+    bovenin dit bestand.
+- **v5.5.1** — Meldingen die vertellen wat er aan de hand is. Raakt
+  `watch.html`, `js/ronde.js` en `js/uitslagen.js`. **Geen functions-deploy
+  nodig** (die van v5.5.0 staat mogelijk nog wél open).
+
+  - **De watch verzweeg elke oorzaak.** `controleerPin()` perste iedere
+    mislukking samen tot "Ongeldige of verlopen PIN", terwijl de server een
+    precieze reden meestuurt in `body.error.message`. Onder die ene zin gingen
+    minstens vijf situaties schuil: code uit de verkeerde omgeving, verlopen
+    code, al gebruikte code, een server die nog geen inlogtokens mag maken, en
+    een adres dat niet bestaat. Dat kostte een avond zoeken in logboeken naar
+    iets wat het apparaat gewoon had kunnen zeggen. De echte reden wordt nu
+    getoond, met de HTTP-statuscode klein eronder.
+
+  - **De omgeving staat er nu bij.** Watch-codes worden per database bewaard:
+    een code die in de test-app is aangevraagd bestaat niet in productie en
+    andersom. Dat verschil was nergens zichtbaar. Het PIN-scherm toont onder
+    `/test/` nu "⚠ testomgeving", de foutmelding noemt waar de watch kijkt, en
+    de app zet bij een code uit de testomgeving "LET OP: alleen voor de
+    test-watch" in de melding.
+
+  - **De ingetikte code blijft staan** na een fout. Voorheen werd hij gewist en
+    moest je zes cijfers opnieuw intikken op een horlogescherm, terwijl de code
+    meestal prima was.
+
+  - **De app vertelt waaróm het aanvragen van een code mislukte.** "Probeer het
+    opnieuw" hielp niemand als de oorzaak was dat de server geen inlogtokens mag
+    maken — dan helpt opnieuw proberen juist niet.
+
+  - **De scorekaart meldde het verkeerde.** Er was maar één tekst: "ouder dan 30
+    dagen". Maar een uitslag die via het BEHEERSCHERM is bevestigd krijgt wel
+    een tijdstempel en géén scorekaart-document — dat wordt alleen vanuit het
+    rondescherm weggeschreven. De app zocht ernaar, vond niets, en concludeerde
+    dat hij verlopen was. Hij was niet verlopen; hij heeft nooit bestaan. Nu
+    worden drie situaties onderscheiden: echt ouder dan 30 dagen, nooit een
+    scorekaart gemaakt, en een bewaarde kaart zonder ingevulde holes (scores
+    zijn uitdrukkelijk optioneel, dus dat is een normale situatie die een
+    normale uitleg verdient in plaats van een leeg raster).
 - **v5.5.0** — Test en productie schreven op twee punten door elkaar heen. Plus
   drie openstaande punten afgehecht. **Vraagt een Cloud Functions-deploy**, niet
   alleen een GitHub-upload.
