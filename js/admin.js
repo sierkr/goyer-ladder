@@ -8,7 +8,8 @@ import { db, auth, firebaseConfig, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAG
   INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr,
   EMAIL_SUFFIX, DEFAULT_HCP,
   genereerEmail, loginNaamVan, pasUiStijlToe,
-  functions, httpsCallable } from './config.js';
+  functions, httpsCallable,
+  leesEigenWeergave, bewaarEigenWeergave, effectieveStijl, pasUiStijlToe } from './config.js';
 // v5.2.1: ruimt een Auth-account op waarvan het profiel niet kon worden
 // aangemaakt tijdens de bulk-import (voorkomt accounts zonder profiel).
 const _verwijderWeesAccountFn = httpsCallable(functions, 'verwijderWeesAccount');
@@ -561,6 +562,7 @@ async function removePlayer(uid) {
 
 function renderProfiel() {
   if (!huidigeBruiker) return;
+  renderWeergaveKeuze(); // v5.6.0
 
   // v3.0.0-9c: uid-gebaseerde speler lookup via view-laag
   const uid = huidigeBruiker.uid;
@@ -946,6 +948,25 @@ async function slaInitieelWachtwoordOp() {
 // MatchCheck-stijl). Geldt voor alle gebruikers; alleen de beheerder mag dit
 // wijzigen. Verandert uitsluitend het uiterlijk (kleuren/typografie/randen) —
 // de opbouw en werking van elk scherm blijven ongewijzigd.
+// ============================================================
+//  v5.6.0 — WEERGAVEKEUZE IN HET PROFIEL
+// ============================================================
+function renderWeergaveKeuze() {
+  const huidige = leesEigenWeergave();
+  document.querySelectorAll('#weergave-keuze .weergave-optie').forEach(btn => {
+    btn.classList.toggle('weergave-actief', btn.getAttribute('data-weergave') === huidige);
+  });
+}
+
+function kiesWeergave(waarde) {
+  bewaarEigenWeergave(waarde);
+  pasUiStijlToe(effectieveStijl(store.uiStijl));
+  renderWeergaveKeuze();
+  toast(waarde === 'standaard'
+    ? 'Weergave volgt weer de clubinstelling'
+    : `Weergave: ${waarde === 'matchcheck' ? 'Helder' : 'Klassiek'} (alleen op dit apparaat)`);
+}
+
 function renderUiStijlKaart() {
   const huidige = store.uiStijl || 'club';
   document.querySelectorAll('#uistijl-keuze .uistijl-optie').forEach(btn => {
@@ -961,7 +982,11 @@ async function kiesUiStijl(waarde) {
     store.uiStijl = waarde;
     pasUiStijlToe(waarde);
     renderUiStijlKaart();
-    toast(waarde === 'matchcheck' ? 'MatchCheck-stijl actief voor iedereen ✓' : 'Standaardstijl actief voor iedereen ✓');
+    // v5.6.0: niet langer dwingend voor iedereen — wie in zijn profiel zelf een
+    // weergave koos, houdt die.
+    toast(waarde === 'matchcheck'
+      ? 'Helder is nu de clubstandaard ✓'
+      : 'Klassiek is nu de clubstandaard ✓');
   } catch(e) {
     console.error('kiesUiStijl mislukt:', e);
     toast('Opslaan mislukt: ' + (e.message || e.code));
@@ -1439,7 +1464,7 @@ export {
   renderAdmin, renderAdminSpelersEnAccounts,
   openAddPlayer, toggleHandmatigToevoegen, voegAccountToeAlsSpeler,
   saveNewPlayer, openEditPlayer, saveEditPlayer, removePlayer,
-  renderProfiel, slaProfielHcpOp,
+  renderProfiel, slaProfielHcpOp, kiesWeergave, renderWeergaveKeuze,
   sorteerUsers, renderAdminUsers, openEditUser, saveEditUser,
   openAddUser, saveNewUser, removeUser,
   verschuifRank, resetData, closeModal,

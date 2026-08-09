@@ -483,8 +483,11 @@ function doelVerschuivingVoorSpeler(sleutel, stat, cfg, terugvalNaam = null, pos
 
 // v3.0.0-11.63: wachtwoord wordt geladen uit Firestore (ladder/config).
 // Geen fallback — gooit een HttpsError als het document of veld ontbreekt.
-async function getInitieelWachtwoord() {
-  const snap = await admin.firestore().doc('ladder/config').get();
+// v5.5.0: leest uit de database die bij de omgeving hoort. Stond op
+// admin.firestore(), en dat is altijd (default) — dus productie, ook als de
+// aanroep uit /test/ kwam.
+async function getInitieelWachtwoord(isTest) {
+  const snap = await fsVoor(isTest).doc('ladder/config').get();
   if (!snap.exists) {
     throw new HttpsError('failed-precondition', 'ladder/config ontbreekt in Firestore — stel initieelWachtwoord in via het beheerscherm');
   }
@@ -518,28 +521,38 @@ exports.resetSpelerWachtwoord = onCall(
       throw new HttpsError('invalid-argument', 'targetUid ontbreekt of ongeldig.');
     }
 
+    // v5.5.0 — WAT HIER MIS WAS. Deze functie las en schreef via
+    // admin.firestore(), en dat is altijd de (default)-database. Een reset
+    // vanuit het testbeheerscherm zette dus eersteLogin:true op het ECHTE
+    // spelersdocument, waarna die speler bij zijn volgende bezoek aan de
+    // gewone app ongevraagd het verplichte profielscherm kreeg. Testen
+    // beschadigde zo productiedata. De helper fsVoor() bestond al en werd door
+    // zestien andere functies gewoon gebruikt; hier was hij overgeslagen.
+    const isTest = data?.isTest === true;
+    const fs = fsVoor(isTest);
+
     // Stap 3: aanroeper is beheerder?
-    const caller = await admin.firestore().doc(`spelers/${auth.uid}`).get();
+    const caller = await fs.doc(`spelers/${auth.uid}`).get();
     if (!caller.exists || caller.data().rol !== 'beheerder') {
       throw new HttpsError('permission-denied', 'Alleen een beheerder mag wachtwoorden resetten.');
     }
 
     // Stap 4: target-account bestaat?
-    const target = await admin.firestore().doc(`spelers/${targetUid}`).get();
+    const target = await fs.doc(`spelers/${targetUid}`).get();
     if (!target.exists) {
       throw new HttpsError('not-found', 'Speler niet gevonden in database.');
     }
 
     // Stap 5: wachtwoord ophalen — gooit HttpsError('failed-precondition') als config ontbreekt.
     // Staat buiten de inner try/catch zodat die specifieke fout ongehinderd omhoog bubbelt.
-    const initieelWachtwoord = await getInitieelWachtwoord();
+    const initieelWachtwoord = await getInitieelWachtwoord(isTest);
 
     try {
       // Stap 6: Auth wachtwoord overschrijven
       await admin.auth().updateUser(targetUid, { password: initieelWachtwoord });
 
       // Stap 7: eersteLogin:true zodat speler verplicht profielflow krijgt
-      await admin.firestore().doc(`spelers/${targetUid}`).update({
+      await fs.doc(`spelers/${targetUid}`).update({
         eersteLogin: true
       });
 
@@ -584,8 +597,16 @@ exports.voltooiEersteLogin = onCall(
       throw new HttpsError('invalid-argument', 'Ongeldige handicap.');
     }
 
+    // v5.5.0 — WAT HIER MIS WAS. Ook deze functie schreef via
+    // admin.firestore() en dus altijd naar productie. Een speler die in /test/
+    // het eerste-loginscherm invulde, kreeg eersteLogin:false én zijn nieuwe
+    // handicap weggeschreven naar de ECHTE database. De testdatabase bleef op
+    // eersteLogin:true staan, dus het scherm kwam elke keer terug — precies
+    // het gedrag dat in de testomgeving werd gezien en in productie niet.
+    const isTest = data?.isTest === true;
+
     // Stap 3: profiel bestaat en is daadwerkelijk een eerste-login?
-    const spelerRef  = admin.firestore().doc(`spelers/${auth.uid}`);
+    const spelerRef  = fsVoor(isTest).doc(`spelers/${auth.uid}`);
     const spelerSnap = await spelerRef.get();
     if (!spelerSnap.exists) {
       throw new HttpsError('not-found', 'Speler niet gevonden in database.');

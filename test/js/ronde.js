@@ -1320,20 +1320,71 @@ function _deltaBadge(oud, nieuw) {
 }
 
 function showLadderChanges(changes) {
-  let html = '';
-  changes.forEach(c => {
-    html += `
-      <div style="margin-bottom:12px;padding:12px;background:var(--green-pale);border-radius:10px">
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-          <span style="font-weight:600">🏆 ${c.winnaar}</span>
-          ${_deltaBadge(c.wOud, c.wNieuw)}
-        </div>
-        <div style="display:flex;justify-content:space-between">
-          <span style="color:var(--mid)">${c.verliezer}</span>
-          ${_deltaBadge(c.vOud, c.vNieuw)}
-        </div>
-      </div>`;
+  // ────────────────────────────────────────────────────────────
+  // v5.6.1 — WAT ER MIS WAS AAN DIT SCHERM.
+  //
+  // Er werd één blok per match getekend, met daarin de verandering van de
+  // winnaar en de verliezer. Maar die getallen komen uit `voorRankMap` en
+  // `naRankMap` van de Cloud Function, en dat zijn de posities VOOR en NA alle
+  // matches samen — niet het effect van die ene match.
+  //
+  // Bij een flight van drie leverde dat dit op: Sierk verslaat Qruun én Pieter,
+  // Pieter verslaat Qruun. Op het scherm stond twee keer "Sierk ↑2 (24 → 22)",
+  // wat leest als vier plekken. En Pieter kreeg "— (35)" bij allebei zijn
+  // partijen, alsof winnen en verliezen niets deden. Het rekenwerk klopte
+  // steeds; de weergave vertelde een ander verhaal.
+  //
+  // Nu: bovenaan één regel per speler met wat er werkelijk veranderd is, en
+  // daaronder de uitslagen zonder cijfers. Dan zie je dat Pieter er één won en
+  // één verloor, en waarom hij per saldo blijft staan.
+  //
+  // De tussenstappen (24 → 23 → 22) tonen we bewust niet. Ze zijn niet onjuist,
+  // maar het is procesinformatie; een speler wil weten wat deze partij met zijn
+  // positie deed.
+  // ────────────────────────────────────────────────────────────
+  const lijst = Array.isArray(changes) ? changes : [];
+
+  // Elke speler één keer, in de volgorde waarin hij voorkomt.
+  const perSpeler = new Map();
+  const onthoud = (naam, oud, nieuw) => {
+    if (!naam || perSpeler.has(naam)) return;
+    perSpeler.set(naam, { naam, oud, nieuw });
+  };
+  lijst.forEach(c => {
+    onthoud(c.winnaar,   c.wOud, c.wNieuw);
+    onthoud(c.verliezer, c.vOud, c.vNieuw);
   });
+
+  // Grootste stijger eerst, dan de rest op nieuwe positie.
+  const spelers = [...perSpeler.values()].sort((a, b) => {
+    const da = (a.oud ?? 0) - (a.nieuw ?? 0);
+    const db = (b.oud ?? 0) - (b.nieuw ?? 0);
+    return db - da || (a.nieuw ?? 0) - (b.nieuw ?? 0);
+  });
+
+  let html = '';
+  if (spelers.length) {
+    html += '<div style="margin-bottom:14px;padding:12px;background:var(--green-pale);border-radius:10px">';
+    spelers.forEach((s2, i) => {
+      html += `
+        <div style="display:flex;justify-content:space-between;align-items:center${i ? ';margin-top:6px' : ''}">
+          <span style="font-weight:600">${esc(s2.naam)}</span>
+          ${_deltaBadge(s2.oud, s2.nieuw)}
+        </div>`;
+    });
+    html += '</div>';
+  }
+
+  if (lijst.length) {
+    html += '<div style="font-size:12px;color:var(--light);margin-bottom:4px">Uitslagen</div>';
+    lijst.forEach(c => {
+      html += `
+        <div style="font-size:13px;padding:6px 0;border-top:1px solid var(--border)">
+          🏆 <strong>${esc(c.winnaar)}</strong> won van ${esc(c.verliezer)}
+        </div>`;
+    });
+  }
+
   document.getElementById('ladder-changes').innerHTML = html;
   document.getElementById('modal-ladder-result').classList.add('open');
 }

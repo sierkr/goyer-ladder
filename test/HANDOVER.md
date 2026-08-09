@@ -1,4 +1,4 @@
-# HANDOVER — Goyer Golf MP Ladder, v5.5.5
+# HANDOVER — Goyer Golf MP Ladder, v5.6.1
 
 > Plak dit bestand als eerste bericht in een nieuwe chat, samen met de zip.
 > Lees daarna `_project.md` voor de volledige structuur en changelog.
@@ -51,7 +51,7 @@ wachtwoordwijziging in test ook het echte wachtwoord.
 
 ## 3. Waar we nu staan
 
-Versie in de zip: **v5.5.5**.
+Versie in de zip: **v5.6.1**.
 
 ### De testopzet is groen
 

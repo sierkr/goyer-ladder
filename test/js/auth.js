@@ -7,7 +7,7 @@ import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
   INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB_MIGRATIE, esc, escAttr,
   EMAIL_SUFFIX, DEFAULT_HCP, CONFIG_DOC, IS_TEST, laadInitieelWachtwoord,
-  laadUiStijl, pasUiStijlToe, laadBanen,
+  laadUiStijl, pasUiStijlToe, laadBanen, effectieveStijl,
   genereerEmail, loginNaamVan, functions, httpsCallable } from './config.js';
 import { store, DEFAULT_LADDER_CONFIG,
   alleLadders, activeLadderId, alleSpelersData, huidigeBruiker,
@@ -624,7 +624,8 @@ async function initFirestore() {
     // v4.1.0: globale UI-stijl laden en meteen toepassen (voor eerste render van
     // login/app-scherm). Faalt nooit hard — valt terug op 'club' bij problemen.
     await laadUiStijl(store);
-    pasUiStijlToe(store.uiStijl);
+    // v5.6.0: de eigen keuze van dit apparaat gaat voor op die van de club.
+    pasUiStijlToe(effectieveStijl(store.uiStijl));
 
     // v5.4.4: ?. omdat een mislukte read nu null oplevert in plaats van te knallen.
     store.archiefData     = archiefSnap?.exists() ? (archiefSnap.data().seizoenen || []) : [];
@@ -671,10 +672,13 @@ async function initFirestore() {
   // deze gebruiker de app al open heeft staan (geen herlaad nodig).
   _vasteListeners.push(onSnapshot(CONFIG_DOC, (snap) => {
     if (!snap.exists()) return;
-    const nieuweStijl = (snap.data().uiStijl === 'matchcheck') ? 'matchcheck' : 'club';
+    // v5.6.0: de clubinstelling mag een eigen keuze niet overrulen. Zonder deze
+    // omweg sprong het scherm van een speler terug zodra de beheerder de
+    // standaard wijzigde — hij had dan wel gekozen, maar merkte er niets van.
+    const nieuweStijl = (snap.data().uiStijl === 'club') ? 'club' : 'matchcheck';
     if (nieuweStijl !== store.uiStijl) {
       store.uiStijl = nieuweStijl;
-      pasUiStijlToe(nieuweStijl);
+      pasUiStijlToe(effectieveStijl(nieuweStijl));
     }
   }));
 

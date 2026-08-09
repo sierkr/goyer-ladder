@@ -120,10 +120,10 @@ function onSpeltypeChange() {
   // v3.0.3: hint-tekst per speltype
   if (hint) {
     if (val === 'amerikaantje') {
-      hint.textContent = 'Exact 3 spelers · 6 punten per hole · telt niet mee voor ladderstand';
+      hint.textContent = 'Exact 3 spelers · 6 punten per hole · telt nog niet mee voor de ladderstand';
       hint.style.display = 'block';
     } else if (val === 'highlow') {
-      hint.textContent = 'Exact 4 spelers · 2 teams van 2 (slot 1+2 vs 3+4) · low/high-punt per hole · telt niet mee voor ladderstand';
+      hint.textContent = 'Exact 4 spelers · 2 teams van 2 (slot 1+2 vs 3+4) · low/high-punt per hole · telt nog niet mee voor de ladderstand';
       hint.style.display = 'block';
     } else {
       hint.style.display = 'none';
@@ -212,9 +212,11 @@ function initPartijForm() {
   document.getElementById('partij-ladder-wrap').style.display = mijnLadders.length <= 1 ? 'none' : 'block';
   ladderSel.onchange = () => herlaadPartijSpelers();
 
-  // v3.0.0-11.97: speltype selector alleen voor beheerder/coordinator
+  // v5.6.0: speltype-keuze voor iedereen. Stond sinds v3.0.0-11.97 alleen open
+  // voor beheerder en coordinator; Amerikaantje en High-Low zijn gewone
+  // spelvormen die elke speler moet kunnen kiezen.
   const speltypeWrap = document.getElementById('speltype-wrap');
-  if (speltypeWrap) speltypeWrap.style.display = isCoordinatorRol() ? 'block' : 'none';
+  if (speltypeWrap) speltypeWrap.style.display = 'block';
   // Reset speltype naar matchplay bij (her)laden formulier
   const speltypeMatchplay = document.getElementById('speltype-matchplay');
   if (speltypeMatchplay) { speltypeMatchplay.checked = true; onSpeltypeChange(); }

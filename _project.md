@@ -11,9 +11,72 @@
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 | `watch.html` | bij de constanten | `const WATCH_VERSIE = 'v3.0.0-11.XX';` — v5.5.2, anders herlaadt de watch-pagina zichzelf eindeloos |
 
-Huidige versie: **v5.5.5**
+Huidige versie: **v5.6.1**
 
 ### Changelog
+- **v5.6.1** — Het scherm "Ladderwijzigingen" vertelde een ander verhaal dan het
+  rekenwerk. Alleen `js/ronde.js`. **Geen deploy.**
+
+  - **Wat er mis was.** Er werd één blok per match getekend met de verandering
+    van winnaar en verliezer erin. Maar die getallen komen uit `voorRankMap` en
+    `naRankMap` van de Cloud Function, en dat zijn de posities vóór en ná ALLE
+    matches samen — niet het effect van die ene match.
+
+    Bij een flight van drie leverde dat dit op: Sierk verslaat Qruun én Pieter,
+    Pieter verslaat Qruun. Op het scherm stond twee keer "Sierk ↑2 (24 → 22)",
+    wat leest als vier plekken. En Pieter kreeg bij allebei zijn partijen
+    "— (35)", alsof winnen en verliezen niets deden.
+
+  - **Het rekenwerk klopte wél**, en dat is nagerekend: Sierk wint twee keer als
+    hogergeplaatste (+1 en +1), Qruun verliest twee keer (−1 en −1), Pieter
+    verliest van Sierk en wint van Qruun (−1 en +1, dus per saldo nul). Zelfde
+    eindstand als wanneer je de drie matches met de hand na elkaar uitrekent.
+
+  - **Nu:** bovenaan één regel per speler met wat er werkelijk veranderd is,
+    grootste stijger eerst, en daaronder de uitslagen zonder cijfers. Dan is
+    zichtbaar dat Pieter er één won en één verloor, en waarom hij blijft staan.
+
+  - De tussenstappen (24 → 23 → 22) worden bewust niet getoond. Ze zijn niet
+    onjuist, maar het is procesinformatie; een speler wil weten wat déze partij
+    met zijn positie deed.
+- **v5.6.0** — Deel 1 van twee: de weergave kiest de speler zelf, en de
+  spelvormen staan voor iedereen open. Raakt `index.html`, `js/config.js`,
+  `js/auth.js`, `js/admin.js`, `js/app.js` en `js/partij.js`. **Geen deploy en
+  geen databasewijziging.**
+
+  - **Weergave per speler, in het Profiel-tabblad.** Drie standen: Standaard
+    (volgt de club), Helder (was "matchcheck") en Klassiek (was "club"). De
+    toevoeging "(huidige stijl)" is weg.
+
+    Die eerste stand is er met opzet: zonder hem kon een speler die eenmaal koos
+    nooit meer terug naar de clubinstelling, en bereikte een latere wijziging
+    van de beheerder hem nooit meer.
+
+    De keuze staat in de opslag van het apparaat, niet in Firestore. Een speler
+    mag volgens de beveiligingsregels alleen zijn handicap op zijn eigen
+    document wijzigen; dit in de database zetten zou een regelwijziging plus een
+    deploy vragen voor iets wat in de praktijk toch per apparaat is.
+
+  - **De clubinstelling overschrijft een eigen keuze niet meer.** Er stond een
+    live-luisteraar op `ladder/config` die de stijl bij iedereen omzette zodra
+    de beheerder hem wijzigde. Die zou een persoonlijke keuze midden in een
+    sessie hebben teruggedraaid. Hij respecteert die keuze nu.
+
+  - **De clubstandaard is Helder geworden.** Voor iedereen die zelf niets kiest
+    — dus op dag één iedereen — verandert het uiterlijk in één keer. De
+    beheerdersknop blijft, maar zet nu de standaard voor wie niets koos; de
+    melding zei "actief voor iedereen" en dat klopte niet meer.
+
+  - **Amerikaantje en High-Low voor iedereen.** De keuze stond sinds
+    v3.0.0-11.97 alleen open voor beheerder en coördinator.
+
+  - **De hinttekst is eerlijk gemaakt:** "telt nóg niet mee voor de
+    ladderstand". Tot deel 2 er is, tellen deze partijen niet voor de ladder, en
+    dat moet een speler kunnen zien voordat hij begint.
+
+  Deel 2 — het ladder-effect, de aanwijsstap in de afsluitmodals en de
+  handleiding — is volledig gespecificeerd en volgt apart, met een
+  Cloud Functions-deploy.
 - **v5.5.5** — Alleen documentatie: `HANDOVER.md` bijgewerkt. **Raakt de app
   niet aan.**
 

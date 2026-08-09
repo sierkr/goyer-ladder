@@ -574,6 +574,10 @@
      blijven ONGEWIJZIGD — er wordt hier bewust niets herschreven, alleen
      overschreven met CSS. Actief zodra <html data-theme="matchcheck">.
      ============================================================ */
+  /* v5.6.0: gekozen weergave-optie in het profiel */
+  .weergave-optie { background: var(--card-bg); border: 1.5px solid var(--border); color: var(--dark); }
+  .weergave-actief { border-color: var(--green); color: var(--green); font-weight: 600; }
+
   html[data-theme="matchcheck"] {
     --green: #1a7a4a;
     --green-light: #23935c;
@@ -1376,7 +1380,7 @@
               <span style="color:var(--dark)">High-Low <span style="font-size:11px;color:var(--light)">(2 teams van 2)</span></span>
             </label>
           </div>
-          <p id="speltype-hint" style="display:none;font-size:11px;color:var(--light);margin-top:6px">Exact 3 spelers · 6 punten per hole · telt niet mee voor ladderstand</p>
+          <p id="speltype-hint" style="display:none;font-size:11px;color:var(--light);margin-top:6px">Exact 3 spelers · 6 punten per hole · telt nog niet mee voor de ladderstand</p>
         </div>
       </div>
       <div class="divider"></div>
@@ -1513,6 +1517,24 @@
           <input type="number" id="profiel-hcp-input" min="-10" max="54" step="1" placeholder="bijv. 12" style="width:100px;flex:none">
           <button class="btn btn-primary btn-sm" onclick="slaProfielHcpOp()">Opslaan</button>
         </div>
+      </div>
+      <div class="divider"></div>
+      <!-- v5.6.0: weergave per speler. Drie standen, want zonder de eerste kon
+           een speler die eenmaal koos nooit meer terug naar de clubinstelling
+           en bereikte een latere wijziging van de beheerder hem nooit meer. -->
+      <div class="form-group">
+        <label>Weergave</label>
+        <div id="weergave-keuze" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn btn-sm weergave-optie" data-weergave="standaard"
+            onclick="kiesWeergave('standaard')">Standaard</button>
+          <button type="button" class="btn btn-sm weergave-optie" data-weergave="matchcheck"
+            onclick="kiesWeergave('matchcheck')">Helder</button>
+          <button type="button" class="btn btn-sm weergave-optie" data-weergave="club"
+            onclick="kiesWeergave('club')">Klassiek</button>
+        </div>
+        <p style="font-size:11px;color:var(--light);margin-top:6px">
+          Geldt alleen op dit apparaat. &quot;Standaard&quot; volgt de instelling van de club.
+        </p>
       </div>
       <div class="divider"></div>
       <button class="btn btn-ghost btn-block" onclick="openWachtwoordWijzigen()" style="margin-bottom:10px">🔑 Wachtwoord wijzigen</button>

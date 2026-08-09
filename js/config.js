@@ -269,10 +269,12 @@ export async function laadUiStijl(storeRef) {
   try {
     const snap = await getDoc(CONFIG_DOC);
     const waarde = snap.exists() ? snap.data().uiStijl : null;
-    storeRef.uiStijl = (waarde === 'matchcheck') ? 'matchcheck' : 'club';
+    // v5.6.0: de standaard voor de club is nu Helder (matchcheck). Alleen een
+    // uitdrukkelijke 'club' in ladder/config levert nog de klassieke stijl.
+    storeRef.uiStijl = (waarde === 'club') ? 'club' : 'matchcheck';
   } catch(e) {
-    console.warn('laadUiStijl mislukt, val terug op club-stijl:', e);
-    storeRef.uiStijl = 'club';
+    console.warn('laadUiStijl mislukt, val terug op de standaardstijl:', e);
+    storeRef.uiStijl = 'matchcheck';
   }
 }
 
@@ -321,6 +323,56 @@ export async function laadBanen(storeRef, { vanServer = false } = {}) {
 
   storeRef.aangepasteBanen = lijst;
   return { gelukt: true, uitEigenKopie, lijst };
+}
+
+// ============================================================
+//  v5.6.0 — WEERGAVE PER SPELER
+// ============================================================
+//  De stijl was tot nu toe één instelling voor de hele club, door de beheerder
+//  gezet. Nu kiest elke speler zelf, op zijn eigen apparaat.
+//
+//  Bewust in de opslag van het toestel en niet in Firestore: een speler mag
+//  volgens de beveiligingsregels alleen zijn handicap op zijn eigen document
+//  wijzigen. Dit in de database zetten zou een regelwijziging plus een deploy
+//  vragen voor iets wat in de praktijk toch per apparaat is — je kiest op je
+//  telefoon iets anders dan op een groot scherm.
+//
+//  Drie standen:
+//    'standaard'  -> volg wat de beheerder voor de club heeft ingesteld
+//    'matchcheck' -> Helder
+//    'club'       -> Klassiek
+//
+//  Die eerste stand is er met opzet. Zonder hem kon een speler die eenmaal had
+//  gekozen nooit meer terug, en bereikte een latere wijziging van de club hem
+//  nooit meer.
+// ============================================================
+const WEERGAVE_SLEUTEL = 'goyer-weergave';
+
+export function leesEigenWeergave() {
+  try {
+    const w = localStorage.getItem(WEERGAVE_SLEUTEL);
+    return (w === 'matchcheck' || w === 'club') ? w : 'standaard';
+  } catch (e) { return 'standaard'; }
+}
+
+export function bewaarEigenWeergave(waarde) {
+  try {
+    if (waarde === 'matchcheck' || waarde === 'club') {
+      localStorage.setItem(WEERGAVE_SLEUTEL, waarde);
+    } else {
+      localStorage.removeItem(WEERGAVE_SLEUTEL);
+    }
+  } catch (e) { /* opslag niet beschikbaar — dan geldt deze sessie de clubstijl */ }
+}
+
+/**
+ * De stijl die nu getoond moet worden: de eigen keuze als die er is, anders
+ * die van de club.
+ */
+export function effectieveStijl(clubStijl) {
+  const eigen = leesEigenWeergave();
+  if (eigen !== 'standaard') return eigen;
+  return (clubStijl === 'club') ? 'club' : 'matchcheck';
 }
 
 /**
