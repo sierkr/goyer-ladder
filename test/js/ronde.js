@@ -890,18 +890,39 @@ function zetAmerikaaanjePositie(uid, positie) {
   renderAmerikaaanjeKeuze();
 }
 
+// v5.7.2: staat de eindstand al vast uit de scorekaart, dan zijn de knoppen
+// alleen ruis — je bevestigt dan, je vult niets in. Ze zitten daarom verstopt
+// achter "Eindstand aanpassen". Zonder scorekaart staan ze meteen open, want
+// dan MOET er iemand aanwijzen.
+let _keuzeOpen = false;
+
+function toonEindstandKeuze() {
+  _keuzeOpen = true;
+  renderAmerikaaanjeKeuze();
+  renderHighlowKeuze();
+}
+
 function renderAmerikaaanjeKeuze() {
   const p = mijnPartij();
   if (!p) return;
+  const el0 = document.getElementById('amerikaantje-keuze');
+  if (!el0) return;
   const naamMap = kortNaamMap(p.spelers);
   const keuze = _eindstandKeuze || {};
+  if (!_keuzeOpen && _amerikaaantjeStandGeldig()) {
+    el0.innerHTML = `
+      <p style="font-size:12px;color:var(--light);margin:0 0 4px">
+        Eindstand volgens de scorekaart. Winnaar +2 · tweede 0 · derde −2.</p>
+      <button type="button" class="aanpas-link" onclick="toonEindstandKeuze()">Eindstand aanpassen</button>`;
+    return;
+  }
   let html = '<div style="font-size:12px;color:var(--light);margin-bottom:8px">Eindstand — tik de plek aan. Gedeelde plekken mogen.</div>';
   p.spelers.forEach(s => {
     html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f0ede4">
       <span style="font-weight:600">${esc(naamMap[s.uid])}</span>
       <span style="display:flex;gap:6px">
-        ${[1,2,3].map(n => `<button type="button" class="btn btn-sm"
-            style="min-width:36px;${keuze[s.uid]===n ? 'border-color:var(--green);color:var(--green);font-weight:700' : ''}"
+        ${[1,2,3].map(n => `<button type="button" class="btn btn-sm keuze-knop${keuze[s.uid]===n ? ' keuze-actief' : ''}"
+            style="min-width:36px"
             onclick="zetAmerikaaanjePositie('${escAttr(s.uid)}',${n})">${n}e</button>`).join('')}
       </span>
     </div>`;
@@ -910,8 +931,7 @@ function renderAmerikaaanjeKeuze() {
   html += `<p style="font-size:12px;margin-top:10px;color:${geldig ? 'var(--light)' : 'var(--red)'}">
     ${geldig ? 'Winnaar +2 · tweede 0 · derde −2. Gedeelde plekken hebben eigen waarden — zie Help.'
              : 'Kies een geldige eindstand: 1-2-3, of een gedeelde plek (1-1-3, 1-2-2, 1-1-1).'}</p>`;
-  const el = document.getElementById('amerikaantje-keuze');
-  if (el) el.innerHTML = html;
+  el0.innerHTML = html;
 }
 
 function _amerikaaantjeStandGeldig() {
@@ -962,6 +982,7 @@ function openAmerikaaanjeUitslagModal() {
 
   document.getElementById('modal-matches').innerHTML = html;
   document.getElementById('modal-uitslag').classList.add('open');
+  _keuzeOpen = !metScores;   // v5.7.2: zonder kaart meteen open
   renderAmerikaaanjeKeuze();
   p._isAmerikaaantje = true;
 }
@@ -1007,6 +1028,7 @@ function openHighlowUitslagModal() {
 
   document.getElementById('modal-matches').innerHTML = html;
   document.getElementById('modal-uitslag').classList.add('open');
+  _keuzeOpen = !metScores;   // v5.7.2: zonder kaart meteen open
   renderHighlowKeuze();
 }
 
@@ -1018,14 +1040,38 @@ function zetHighlowWinnaar(waarde) {
 function renderHighlowKeuze() {
   const el = document.getElementById('highlow-keuze');
   if (!el) return;
+  const p = mijnPartij();
+  const teams = teamsVan(p);
+  if (!teams) { el.innerHTML = ''; return; }
+
   const gekozen = _eindstandKeuze ? _eindstandKeuze.winnendTeam : undefined;
-  const knop = (waarde, tekst) => `<button type="button" class="btn btn-sm"
-      style="${gekozen === waarde ? 'border-color:var(--green);color:var(--green);font-weight:700' : ''}"
+  const gekend = gekozen === 0 || gekozen === 1 || gekozen === null;
+
+  // v5.7.2: de teams bij naam, in dezelfde volgorde als de standenlijst
+  // erboven. Stond daar "Team 2" bovenaan en op de knoppen "Team 1" eerst,
+  // dan moest je zelf omrekenen wie ook alweer welk team was.
+  const naamMap = kortNaamMap(p.spelers);
+  const teamNaam = ti => teams[ti].map(uid => naamMap[uid] || '?').join(' & ');
+
+  if (!_keuzeOpen && gekend) {
+    const tekst = gekozen === null
+      ? 'Gelijkspel volgens de scorekaart. Er verandert niets aan de ladder.'
+      : `${esc(teamNaam(gekozen))} wint volgens de scorekaart. Winnaars +1 plek, verliezers −1.`;
+    el.innerHTML = `
+      <p style="font-size:12px;color:var(--light);margin:0 0 4px">${tekst}</p>
+      <button type="button" class="aanpas-link" onclick="toonEindstandKeuze()">Uitslag aanpassen</button>`;
+    return;
+  }
+
+  const knop = (waarde, tekst) => `<button type="button" class="btn btn-sm keuze-knop${gekozen === waarde ? ' keuze-actief' : ''}"
       onclick="zetHighlowWinnaar(${waarde === null ? 'null' : waarde})">${tekst}</button>`;
+  // Winnend team eerst, net als in de lijst erboven.
+  const eerst = (gekozen === 0 || gekozen === 1) ? gekozen : 0;
+  const tweede = eerst === 0 ? 1 : 0;
   el.innerHTML = `
-    <div style="font-size:12px;color:var(--light);margin-bottom:8px">Uitslag</div>
+    <div style="font-size:12px;color:var(--light);margin-bottom:8px">Wie won?</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      ${knop(0, 'Team 1 wint')}${knop(1, 'Team 2 wint')}${knop(null, 'Gelijkspel')}
+      ${knop(eerst, esc(teamNaam(eerst)))}${knop(tweede, esc(teamNaam(tweede)))}${knop(null, 'Gelijkspel')}
     </div>
     <p style="font-size:12px;color:var(--light);margin-top:10px">
       Winnaars +1 plek, verliezers −1. Bij gelijkspel verandert er niets.</p>`;
@@ -1811,5 +1857,5 @@ async function vraagWatchPin() {
   }
 }
 
-export { zetAmerikaaanjePositie, zetHighlowWinnaar, renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij, verwijderPartijMetRetry, wachtOpScoreOpslag, vraagWatchPin, synchroniseerPartijDoc };
+export { zetAmerikaaanjePositie, zetHighlowWinnaar, toonEindstandKeuze, renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij, verwijderPartijMetRetry, wachtOpScoreOpslag, vraagWatchPin, synchroniseerPartijDoc };
 // v3.0.2

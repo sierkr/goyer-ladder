@@ -11,9 +11,30 @@
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 | `watch.html` | bij de constanten | `const WATCH_VERSIE = 'v3.0.0-11.XX';` — v5.5.2, anders herlaadt de watch-pagina zichzelf eindeloos |
 
-Huidige versie: **v5.7.1**
+Huidige versie: **v5.7.2**
 
 ### Changelog
+- **v5.7.2** — De afsluitschermen van Amerikaantje en High-Low. Alleen
+  `index.html`, `js/ronde.js` en `js/app.js`. **Geen deploy.**
+
+  - **De gekozen knop was nauwelijks te zien.** Groene rand met groene letters
+    op een licht knopje. De gebruiker zag daardoor niet dat de eindstand al
+    voorgevuld stond en dacht dat hij hem zelf moest invullen. Nu gevuld groen
+    met witte tekst.
+
+  - **Met een ingevulde scorekaart zijn de knoppen weg.** Er staat dan
+    "Eindstand volgens de scorekaart" en een klein "Eindstand aanpassen" voor
+    wie het er niet mee eens is. Afsluiten is één klik. Zonder ingevulde holes
+    staan ze meteen open, want dan MOET iemand aanwijzen.
+
+  - **De tekst klopt met de situatie.** Er stond altijd "tik de plek aan", een
+    opdracht, ook als er niets te tikken viel.
+
+  - **High-Low: teams bij naam op de knoppen**, in dezelfde volgorde als de
+    standenlijst erboven. Stond daar "Team 2" bovenaan en op de knoppen "Team 1"
+    eerst, dan moest je zelf omrekenen wie welk team was. De namen komen uit
+    dezelfde verkorting als de scorekaart, dus bij twee spelers met dezelfde
+    voornaam wordt dat "Erwin G & Jörgen".
 - **v5.7.1** — High-Low kon niet gestart worden. Raakt `js/partij.js`,
   `js/ronde.js`, `js/scores.js` en `functions/index.js`. **Vraagt dezelfde
   Cloud Functions-deploy als v5.7.0** — nog niet uitgerold, dus dit gaat mee.
