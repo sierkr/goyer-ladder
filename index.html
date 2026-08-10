@@ -574,6 +574,16 @@
      blijven ONGEWIJZIGD — er wordt hier bewust niets herschreven, alleen
      overschreven met CSS. Actief zodra <html data-theme="matchcheck">.
      ============================================================ */
+  /* v5.7.2: gekozen knop in de afsluitmodals. Een groene rand met groene
+     letters was op een licht knopje nauwelijks te zien — spelers merkten niet
+     dat de eindstand al goed stond en dachten dat ze hem moesten invullen. */
+  .keuze-knop { background: var(--card-bg); border: 1.5px solid var(--border); color: var(--dark); }
+  .keuze-actief { background: var(--green) !important; border-color: var(--green) !important;
+                  color: #fff !important; font-weight: 700; }
+  .aanpas-link { background: none; border: none; color: var(--green); cursor: pointer;
+                 font-size: 12px; text-decoration: underline; padding: 4px 0;
+                 font-family: 'DM Sans', sans-serif; }
+
   /* v5.6.0: gekozen weergave-optie in het profiel */
   .weergave-optie { background: var(--card-bg); border: 1.5px solid var(--border); color: var(--dark); }
   .weergave-actief { border-color: var(--green); color: var(--green); font-weight: 600; }
@@ -1380,7 +1390,7 @@
               <span style="color:var(--dark)">High-Low <span style="font-size:11px;color:var(--light)">(2 teams van 2)</span></span>
             </label>
           </div>
-          <p id="speltype-hint" style="display:none;font-size:11px;color:var(--light);margin-top:6px">Exact 3 spelers · 6 punten per hole · telt nog niet mee voor de ladderstand</p>
+          <p id="speltype-hint" style="display:none;font-size:11px;color:var(--light);margin-top:6px">Exact 3 spelers · 6 punten per hole · winnaar +2 plekken, verliezer −2</p>
         </div>
       </div>
       <div class="divider"></div>

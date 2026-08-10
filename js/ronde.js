@@ -37,6 +37,19 @@ import { renderUitslagen } from './uitslagen.js';
 
 //  RONDE (live scorekaart)
 // ============================================================
+// ============================================================
+//  v5.7.1 — TEAMINDELING BIJ HIGH-LOW
+// ============================================================
+//  Eén plek waar bepaald wordt wie met wie speelt: slot 1+2 tegen 3+4. De
+//  indeling wordt afgeleid uit de spelersvolgorde en niet opgeslagen — zie de
+//  toelichting in js/partij.js. Verandert die regel ooit, dan verandert hij
+//  hier, en nergens anders.
+function teamsVan(p) {
+  const uids = (p?.spelers || []).map(s => s.uid);
+  if (p?.speltype !== 'highlow' || uids.length !== 4) return null;
+  return [[uids[0], uids[1]], [uids[2], uids[3]]];
+}
+
 // ─── Live scores van de eigen partij ─────────────────────────
 // v5.0.0 (punt 4): we luisteren op de scoredocumenten van de partij waar de
 // speler zelf in zit — een handvol kleine documenten in plaats van het
@@ -130,8 +143,9 @@ function renderScorecard() {
 
   // v3.0.3: team-labels voor High-Low (uid → team-index)
   const teamLabel = {};
-  if (p.speltype === 'highlow' && Array.isArray(p.teams)) {
-    p.teams.forEach((team, ti) => team.forEach(uid => { teamLabel[uid] = ti; }));
+  const _teams133 = teamsVan(p);
+  if (_teams133) {
+    _teams133.forEach((team, ti) => team.forEach(uid => { teamLabel[uid] = ti; }));
   }
 
   // HEAD
@@ -499,8 +513,9 @@ function netScoreHighlow(p, s, holeIdx) {
 
 function berekenHighlowHole(holeIdx) {
   const p = mijnPartij();
-  if (!p || p.speltype !== 'highlow' || !Array.isArray(p.teams) || p.teams.length !== 2) return null;
-  const teamNet = p.teams.map(team =>
+  const _teams502 = teamsVan(p);
+  if (!_teams502) return null;
+  const teamNet = _teams502.map(team =>
     team.map(uid => {
       const s = p.spelers.find(sp => sp.uid === uid);
       if (!s) return null;
@@ -523,7 +538,8 @@ function berekenHighlowHole(holeIdx) {
 
 function renderHighlowOverview() {
   const p = mijnPartij();
-  if (!p || !Array.isArray(p.teams)) return;
+  const _t = teamsVan(p);
+  if (!_t) return;
   const naamMap = kortNaamMap(p.spelers);
   let tA = 0, tB = 0;
   p.holes.forEach((_, hi) => {
@@ -532,7 +548,7 @@ function renderHighlowOverview() {
   });
   const totals = [tA, tB];
   const maxPunten = p.holes.length * 2;
-  const teamNamen = p.teams.map(team => team.map(uid => naamMap[uid] || '?').join(' & '));
+  const teamNamen = _t.map(team => team.map(uid => naamMap[uid] || '?').join(' & '));
   let html = '<div style="padding:12px 12px 4px">';
   [0, 1].forEach(ti => {
     const pts = totals[ti];
@@ -836,6 +852,97 @@ async function verwijderSpelerUitRonde(spelerId) {
 //  AMERIKAANTJE — uitslag (v3.0.0-11.97)
 //  Geen ranking-effect. Toon eindstand en sla archief op.
 // ============================================================
+// v5.7.0: de eindstand die bevestigd gaat worden. Wordt voorgevuld uit de
+// punten als er volledig ingevulde holes zijn, en anders bewust LEEG gelaten —
+// zonder scorekaart moet iemand de uitslag aanwijzen. Zou hij "alle drie
+// gelijk" voorinvullen, dan levert één tik op bevestigen drie overwinningen op
+// zonder dat er iets gespeeld is.
+let _eindstandKeuze = null;
+
+function _volledigeHoles(p) {
+  if (!p || !Array.isArray(p.holes)) return 0;
+  const uids = (p.spelers || []).map(s => s.uid);
+  let n = 0;
+  p.holes.forEach((_, hi) => {
+    const vol = uids.every(u => {
+      const a = p.scores?.[u];
+      return Array.isArray(a) && a[hi] !== null && a[hi] !== undefined && a[hi] !== '';
+    });
+    if (vol) n++;
+  });
+  return n;
+}
+
+// Punten -> posities met gedeelde plekken volgens sportgebruik (1,1,3 / 1,2,2).
+function _positiesUitPunten(uids, punten) {
+  const gesorteerd = [...uids].sort((a, b) => punten[b] - punten[a]);
+  const pos = {};
+  gesorteerd.forEach((u, i) => {
+    const gelijkAanVorige = i > 0 && punten[u] === punten[gesorteerd[i - 1]];
+    pos[u] = gelijkAanVorige ? pos[gesorteerd[i - 1]] : i + 1;
+  });
+  return pos;
+}
+
+function zetAmerikaaanjePositie(uid, positie) {
+  if (!_eindstandKeuze) _eindstandKeuze = {};
+  _eindstandKeuze[uid] = positie;
+  renderAmerikaaanjeKeuze();
+}
+
+// v5.7.2: staat de eindstand al vast uit de scorekaart, dan zijn de knoppen
+// alleen ruis — je bevestigt dan, je vult niets in. Ze zitten daarom verstopt
+// achter "Eindstand aanpassen". Zonder scorekaart staan ze meteen open, want
+// dan MOET er iemand aanwijzen.
+let _keuzeOpen = false;
+
+function toonEindstandKeuze() {
+  _keuzeOpen = true;
+  renderAmerikaaanjeKeuze();
+  renderHighlowKeuze();
+}
+
+function renderAmerikaaanjeKeuze() {
+  const p = mijnPartij();
+  if (!p) return;
+  const el0 = document.getElementById('amerikaantje-keuze');
+  if (!el0) return;
+  const naamMap = kortNaamMap(p.spelers);
+  const keuze = _eindstandKeuze || {};
+  if (!_keuzeOpen && _amerikaaantjeStandGeldig()) {
+    el0.innerHTML = `
+      <p style="font-size:12px;color:var(--light);margin:0 0 4px">
+        Eindstand volgens de scorekaart. Winnaar +2 · tweede 0 · derde −2.</p>
+      <button type="button" class="aanpas-link" onclick="toonEindstandKeuze()">Eindstand aanpassen</button>`;
+    return;
+  }
+  let html = '<div style="font-size:12px;color:var(--light);margin-bottom:8px">Eindstand — tik de plek aan. Gedeelde plekken mogen.</div>';
+  p.spelers.forEach(s => {
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f0ede4">
+      <span style="font-weight:600">${esc(naamMap[s.uid])}</span>
+      <span style="display:flex;gap:6px">
+        ${[1,2,3].map(n => `<button type="button" class="btn btn-sm keuze-knop${keuze[s.uid]===n ? ' keuze-actief' : ''}"
+            style="min-width:36px"
+            onclick="zetAmerikaaanjePositie('${escAttr(s.uid)}',${n})">${n}e</button>`).join('')}
+      </span>
+    </div>`;
+  });
+  const geldig = _amerikaaantjeStandGeldig();
+  html += `<p style="font-size:12px;margin-top:10px;color:${geldig ? 'var(--light)' : 'var(--red)'}">
+    ${geldig ? 'Winnaar +2 · tweede 0 · derde −2. Gedeelde plekken hebben eigen waarden — zie Help.'
+             : 'Kies een geldige eindstand: 1-2-3, of een gedeelde plek (1-1-3, 1-2-2, 1-1-1).'}</p>`;
+  el0.innerHTML = html;
+}
+
+function _amerikaaantjeStandGeldig() {
+  const p = mijnPartij();
+  if (!p || !_eindstandKeuze) return false;
+  const rij = p.spelers.map(s => _eindstandKeuze[s.uid]);
+  if (rij.some(x => !x)) return false;
+  const sleutel = rij.slice().sort((a, b) => a - b).join(',');
+  return ['1,2,3', '1,1,3', '1,2,2', '1,1,1'].includes(sleutel);
+}
+
 function openAmerikaaanjeUitslagModal() {
   const p = mijnPartij();
   if (!p) return;
@@ -850,21 +957,33 @@ function openAmerikaaanjeUitslagModal() {
     p.spelers.forEach((s, si) => { totaalPunten[s.uid] += pt[si]; });
   });
 
+  const metScores = _volledigeHoles(p) > 0;
+  _eindstandKeuze = metScores
+    ? _positiesUitPunten(p.spelers.map(s => s.uid), totaalPunten)
+    : null;
+
   const gesorteerd = [...p.spelers].sort((a, b) => totaalPunten[b.uid] - totaalPunten[a.uid]);
 
   let html = '<div style="margin-bottom:16px">';
-  gesorteerd.forEach((s, pos) => {
-    const medal = pos === 0 ? '🥇' : pos === 1 ? '🥈' : '🥉';
+  gesorteerd.forEach((s) => {
+    const pos = _eindstandKeuze ? _eindstandKeuze[s.uid] : null;
+    const medal = pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : '·';
     html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f0ede4">
-      <span style="font-weight:${pos===0?'700':'400'}">${medal} ${esc(naamMap[s.uid])}</span>
+      <span style="font-weight:${pos===1?'700':'400'}">${medal} ${esc(naamMap[s.uid])}</span>
       <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:18px">${totaalPunten[s.uid]} <span style="font-size:12px;font-weight:400;color:var(--light)">pt</span></span>
     </div>`;
   });
-  html += '</div><p style="font-size:12px;color:var(--light)">Amerikaantje telt niet mee voor de ladderstand.</p>';
+  html += '</div>';
+  if (!metScores) {
+    html += `<p style="font-size:12px;color:var(--red);margin-bottom:8px">
+      Geen volledig ingevulde holes — wijs de eindstand zelf aan.</p>`;
+  }
+  html += '<div id="amerikaantje-keuze"></div>';
 
   document.getElementById('modal-matches').innerHTML = html;
   document.getElementById('modal-uitslag').classList.add('open');
-  // Markeer als amerikaantje zodat bevestigUitslag juist handelt
+  _keuzeOpen = !metScores;   // v5.7.2: zonder kaart meteen open
+  renderAmerikaaanjeKeuze();
   p._isAmerikaaantje = true;
 }
 
@@ -874,7 +993,8 @@ function openAmerikaaanjeUitslagModal() {
 // ============================================================
 function openHighlowUitslagModal() {
   const p = mijnPartij();
-  if (!p || !Array.isArray(p.teams)) return;
+  const _t2 = teamsVan(p);
+  if (!_t2) return;
   const naamMap = kortNaamMap(p.spelers);
   let tA = 0, tB = 0;
   p.holes.forEach((_, hi) => {
@@ -882,7 +1002,7 @@ function openHighlowUitslagModal() {
     if (hl) { tA += hl.teamPunten[0]; tB += hl.teamPunten[1]; }
   });
   const totals = [tA, tB];
-  const teamNamen = p.teams.map(team => team.map(uid => naamMap[uid] || '?').join(' & '));
+  const teamNamen = _t2.map(team => team.map(uid => naamMap[uid] || '?').join(' & '));
   const volgorde = totals[0] >= totals[1] ? [0, 1] : [1, 0];
   const gelijk = totals[0] === totals[1];
 
@@ -895,10 +1015,66 @@ function openHighlowUitslagModal() {
       <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:18px">${totals[ti]} <span style="font-size:12px;font-weight:400;color:var(--light)">pt</span></span>
     </div>`;
   });
-  html += '</div><p style="font-size:12px;color:var(--light)">High-Low telt niet mee voor de ladderstand.</p>';
+  html += '</div>';
+  // v5.7.0: aanwijsstap, net als bij matchplay. Met een ingevulde kaart staat
+  // het winnende team al goed; zonder kaart moet je het zelf aanwijzen.
+  const metScores = _volledigeHoles(p) > 0;
+  _eindstandKeuze = metScores ? { winnendTeam: gelijk ? null : volgorde[0] } : null;
+  if (!metScores) {
+    html += `<p style="font-size:12px;color:var(--red);margin-bottom:8px">
+      Geen volledig ingevulde holes — wijs zelf aan wie er won.</p>`;
+  }
+  html += '<div id="highlow-keuze"></div>';
 
   document.getElementById('modal-matches').innerHTML = html;
   document.getElementById('modal-uitslag').classList.add('open');
+  _keuzeOpen = !metScores;   // v5.7.2: zonder kaart meteen open
+  renderHighlowKeuze();
+}
+
+function zetHighlowWinnaar(waarde) {
+  _eindstandKeuze = { winnendTeam: waarde };
+  renderHighlowKeuze();
+}
+
+function renderHighlowKeuze() {
+  const el = document.getElementById('highlow-keuze');
+  if (!el) return;
+  const p = mijnPartij();
+  const teams = teamsVan(p);
+  if (!teams) { el.innerHTML = ''; return; }
+
+  const gekozen = _eindstandKeuze ? _eindstandKeuze.winnendTeam : undefined;
+  const gekend = gekozen === 0 || gekozen === 1 || gekozen === null;
+
+  // v5.7.2: de teams bij naam, in dezelfde volgorde als de standenlijst
+  // erboven. Stond daar "Team 2" bovenaan en op de knoppen "Team 1" eerst,
+  // dan moest je zelf omrekenen wie ook alweer welk team was.
+  const naamMap = kortNaamMap(p.spelers);
+  const teamNaam = ti => teams[ti].map(uid => naamMap[uid] || '?').join(' & ');
+
+  if (!_keuzeOpen && gekend) {
+    const tekst = gekozen === null
+      ? 'Gelijkspel volgens de scorekaart. Er verandert niets aan de ladder.'
+      : `${esc(teamNaam(gekozen))} wint volgens de scorekaart. Winnaars +1 plek, verliezers −1.`;
+    el.innerHTML = `
+      <p style="font-size:12px;color:var(--light);margin:0 0 4px">${tekst}</p>
+      <button type="button" class="aanpas-link" onclick="toonEindstandKeuze()">Uitslag aanpassen</button>`;
+    return;
+  }
+
+  const knop = (waarde, tekst) => `<button type="button" class="btn btn-sm keuze-knop${gekozen === waarde ? ' keuze-actief' : ''}"
+      onclick="zetHighlowWinnaar(${waarde === null ? 'null' : waarde})">${tekst}</button>`;
+  // Winnend team eerst, net als in de lijst erboven.
+  const eerst = (gekozen === 0 || gekozen === 1) ? gekozen : 0;
+  const tweede = eerst === 0 ? 1 : 0;
+  el.innerHTML = `
+    <div style="font-size:12px;color:var(--light);margin-bottom:8px">Wie won?</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${knop(eerst, esc(teamNaam(eerst)))}${knop(tweede, esc(teamNaam(tweede)))}${knop(null, 'Gelijkspel')}
+    </div>
+    <p style="font-size:12px;color:var(--light);margin-top:10px">
+      Winnaars +1 plek, verliezers −1. Bij gelijkspel verandert er niets.</p>`;
 }
 
 function openUitslagModal() {
@@ -1003,99 +1179,187 @@ function skipMatchup(idx) {
   }
 }
 
+// ============================================================
+//  v5.7.0 — AFRONDEN VAN AMERIKAANTJE EN HIGH-LOW
+// ============================================================
+//  Volgorde is hier wezenlijk: EERST de ladder laten verwerken, pas daarna de
+//  partij opruimen. Tot v5.6.x werd de partij eerst verwijderd; ging het
+//  verwerken dan mis, dan was zowel de partij als de uitslag weg.
+// ============================================================
+async function _rondSpelvormAf(p, eindstand, archief, meldingKlaar) {
+  let spelerRegels = [];
+  try {
+    const res = await _verwerkPartijUitslagFn({
+      ladderId: p.ladderId,
+      partijId: p.partijId,
+      isTest: IS_TEST,
+      eindstand,
+    });
+    spelerRegels = res?.data?.spelerRegels || [];
+
+    // v5.7.0: alleen een uitslag wegschrijven als de server hem ECHT verwerkt
+    // heeft. Bevestigen twee spelers uit dezelfde flight, dan meldt de server
+    // "al verwerkt" en bleef de ladder terecht ongemoeid — maar de client
+    // schreef daarna alsnog een uitslagvermelding weg, en die telde mee als
+    // extra gespeelde partij en extra ontmoetingen voor de activiteitsbonus.
+    if (!res?.data?.alVerwerkt) {
+      _schrijfSpelvormUitslag(p, archief);
+    }
+  } catch (e) {
+    console.error('verwerkPartijUitslag (spelvorm) mislukt:', e);
+    toast(e?.message && e.code !== 'internal'
+      ? e.message
+      : 'Ladderstand bijwerken mislukt — de partij blijft staan. Probeer opnieuw.');
+    return false;
+  }
+
+  // Scorekaart bewaren (30 dagen) — niet kritisch voor de ladder.
+  try { await addDoc(UITSLAGEN_COL, archief.scorekaart); }
+  catch (e) { console.error('Scorekaart bewaren mislukt:', e); }
+
+  // Pas nu opruimen.
+  const lIdx = alleLadders.findIndex(l => l.id === p.ladderId);
+  if (lIdx >= 0) {
+    alleLadders[lIdx].actievePartijen = (alleLadders[lIdx].actievePartijen || [])
+      .filter(ap => ap.partijId !== p.partijId);
+  }
+  _verwijderdePartijIds.add(p.partijId);
+  await verwijderPartijMetRetry(p.ladderId, p.partijId);
+
+  closeModal('modal-uitslag');
+  renderRonde();
+  if (spelerRegels.length) {
+    showLadderChanges([], spelerRegels);
+  } else {
+    document.querySelectorAll('.page').forEach(pg => pg.classList.remove('active'));
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-ladder').classList.add('active');
+    document.querySelector('nav button').classList.add('active');
+    renderLadder();
+  }
+  toast(meldingKlaar);
+  return true;
+}
+
+// De samenvatting in het ladderdocument. Hier vandaan haalt het
+// activiteitssysteem "gespeelde partij" (spelerUids) en "ontmoetingen"
+// (matchupUids). Gasten blijven eruit: die zouden anders als telkens nieuwe
+// unieke tegenstander tellen en de diversiteitsbonus opblazen.
+function _schrijfSpelvormUitslag(p, archief) {
+  const echteUids = (p.spelers || []).map(s => s.uid)
+    .filter(u => u && !String(u).startsWith('gast_'));
+  const paren = [];
+  for (let i = 0; i < echteUids.length; i++)
+    for (let j = i + 1; j < echteUids.length; j++)
+      paren.push({ a: echteUids[i], b: echteUids[j] });
+
+  const uitslag = {
+    datum: new Date().toLocaleDateString('nl-NL'),
+    scoreTs: Date.now(),
+    baan: p.baan,
+    ladderId: p.ladderId,   // nodig om vanaf het uitslagenscherm terug te draaien
+    partijId: p.partijId,
+    speltype: p.speltype,
+    spelers: (p.spelers || []).map(s => s.naam),
+    spelerUids: echteUids,
+    matchups: [],           // geen verzonnen partijtjes op het uitslagenscherm
+    matchupUids: paren,     // wel de ontmoetingen voor de diversiteitsbonus
+    eindstand: archief.eindstandRegels || [],
+  };
+  const idx = alleLadders.findIndex(l => l.id === p.ladderId);
+  if (idx >= 0) {
+    if (!alleLadders[idx].data) alleLadders[idx].data = {};
+    if (!alleLadders[idx].data.uitslagen) alleLadders[idx].data.uitslagen = [];
+    alleLadders[idx].data.uitslagen.unshift(uitslag);
+    slaUitslagenOp(p.ladderId).catch(e => console.error('uitslag bewaren mislukt:', e));
+  }
+}
+
 async function bevestigUitslag() {
+  let _alVerwerkt = false;
   console.log('[bevestig] bevestigUitslag gestart');
   const p = mijnPartij();
   if (!p) { console.warn('[bevestig] geen mijnPartij — abort'); return; }
 
-  // v3.0.0-11.97: Amerikaantje — geen ranking, wel archief opslaan
+  // v5.7.0: Amerikaantje telt nu mee voor de ladder.
   if (p.speltype === 'amerikaantje') {
-    closeModal('modal-uitslag');
-    // Sla scorekaart op als archief
-    try {
-      const totaalPunten = {};
-      p.spelers.forEach(s => { totaalPunten[s.uid] = 0; });
-      p.holes.forEach((_, hi) => {
-        const pt = berekenAmerikaaanjeHole(hi);
-        if (!pt) return;
-        p.spelers.forEach((s, si) => { totaalPunten[s.uid] += pt[si]; });
-      });
-      await addDoc(UITSLAGEN_COL, {
-        type: 'amerikaantje',
-        ladderId: p.ladderId,
-        datum: new Date().toISOString(),
-        timestamp: Date.now(),
-        baan: p.baan,
-        holes: p.holes,
-        spelers: p.spelers.map(s => ({ naam: s.naam, hcp: s.partijHcp, punten: totaalPunten[s.uid] })),
-        spelerIds: p.spelers.map(s => s.uid),
-        scores: p.scores,
-      });
-    } catch(e) { console.error('Amerikaantje archief opslaan mislukt:', e); }
-    // Verwijder partij
-    const lIdx = alleLadders.findIndex(l => l.id === p.ladderId);
-    if (lIdx >= 0) {
-      alleLadders[lIdx].actievePartijen = (alleLadders[lIdx].actievePartijen || [])
-        .filter(ap => ap.partijId !== p.partijId);
+    if (!_amerikaaantjeStandGeldig()) {
+      toast('Wijs eerst de eindstand aan (1-2-3, of een gedeelde plek)');
+      return;
     }
-    _verwijderdePartijIds.add(p.partijId);
-    await verwijderPartijMetRetry(p.ladderId, p.partijId);
-    renderRonde();
-    document.querySelectorAll('.page').forEach(pg => pg.classList.remove('active'));
-    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-    document.getElementById('page-ladder').classList.add('active');
-    document.querySelector('nav button').classList.add('active');
-    renderLadder();
-    toast('Amerikaantje afgerond! 🏌️');
+    const totaalPunten = {};
+    p.spelers.forEach(s2 => { totaalPunten[s2.uid] = 0; });
+    p.holes.forEach((_, hi) => {
+      const pt = berekenAmerikaaanjeHole(hi);
+      if (!pt) return;
+      p.spelers.forEach((s2, si) => { totaalPunten[s2.uid] += pt[si]; });
+    });
+    const posities = p.spelers.map(s2 => ({ uid: s2.uid, positie: _eindstandKeuze[s2.uid] }));
+    await _rondSpelvormAf(p,
+      { speltype: 'amerikaantje', posities },
+      {
+        eindstandRegels: posities.map(x => ({ uid: x.uid, positie: x.positie })),
+        scorekaart: {
+          type: 'amerikaantje',
+          ladderId: p.ladderId,
+          datum: new Date().toISOString(),
+          timestamp: Date.now(),
+          baan: p.baan,
+          holes: p.holes,
+          spelers: p.spelers.map(s2 => ({ naam: s2.naam, hcp: s2.partijHcp, punten: totaalPunten[s2.uid] })),
+          spelerIds: p.spelers.map(s2 => s2.uid),
+          scores: p.scores,
+        },
+      },
+      'Amerikaantje afgerond! 🏌️');
     return;
   }
 
-  // v3.0.3: High-Low — geen ranking, wel archief opslaan
+  // v5.7.0: High-Low telt nu mee voor de ladder.
   if (p.speltype === 'highlow') {
-    closeModal('modal-uitslag');
-    try {
-      let tA = 0, tB = 0;
-      p.holes.forEach((_, hi) => {
-        const hl = berekenHighlowHole(hi);
-        if (hl) { tA += hl.teamPunten[0]; tB += hl.teamPunten[1]; }
-      });
-      const naamMap = kortNaamMap(p.spelers);
-      const teamTotalen = [tA, tB];
-      await addDoc(UITSLAGEN_COL, {
-        type: 'highlow',
-        ladderId: p.ladderId,
-        datum: new Date().toISOString(),
-        timestamp: Date.now(),
-        baan: p.baan,
-        holes: p.holes,
-        teams: (p.teams || []).map((team, ti) => ({
-          team: ti + 1,
-          spelerIds: team,
-          namen: team.map(uid => naamMap[uid] || '?'),
-          punten: teamTotalen[ti],
-        })),
-        spelers: p.spelers.map(s => ({ naam: s.naam, hcp: s.partijHcp })),
-        spelerIds: p.spelers.map(s => s.uid),
-        scores: p.scores,
-      });
-    } catch(e) { console.error('High-Low archief opslaan mislukt:', e); }
-    // Verwijder partij
-    const lIdx = alleLadders.findIndex(l => l.id === p.ladderId);
-    if (lIdx >= 0) {
-      alleLadders[lIdx].actievePartijen = (alleLadders[lIdx].actievePartijen || [])
-        .filter(ap => ap.partijId !== p.partijId);
+    if (!_eindstandKeuze || _eindstandKeuze.winnendTeam === undefined) {
+      toast('Wijs eerst aan wie er won, of kies gelijkspel');
+      return;
     }
-    _verwijderdePartijIds.add(p.partijId);
-    await verwijderPartijMetRetry(p.ladderId, p.partijId);
-    renderRonde();
-    document.querySelectorAll('.page').forEach(pg => pg.classList.remove('active'));
-    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-    document.getElementById('page-ladder').classList.add('active');
-    document.querySelector('nav button').classList.add('active');
-    renderLadder();
-    toast('High-Low afgerond! 🏌️');
+    let tA = 0, tB = 0;
+    p.holes.forEach((_, hi) => {
+      const hl = berekenHighlowHole(hi);
+      if (hl) { tA += hl.teamPunten[0]; tB += hl.teamPunten[1]; }
+    });
+    const naamMap = kortNaamMap(p.spelers);
+    const _teams = teamsVan(p) || [[], []];
+    const teamVan = {};
+    _teams.forEach((team, ti) => team.forEach(uid => { teamVan[uid] = ti; }));
+
+    // v5.7.1: alleen WIE er won gaat naar de server. De teamindeling leidt hij
+    // zelf af uit de spelersvolgorde in het partij-document, zodat een
+    // gemanipuleerde app zichzelf niet in het winnende team kan zetten.
+    await _rondSpelvormAf(p,
+      { speltype: 'highlow', winnendTeam: _eindstandKeuze.winnendTeam },
+      {
+        eindstandRegels: p.spelers.map(s2 => ({ uid: s2.uid, team: teamVan[s2.uid] ?? 0 })),
+        scorekaart: {
+          type: 'highlow',
+          ladderId: p.ladderId,
+          datum: new Date().toISOString(),
+          timestamp: Date.now(),
+          baan: p.baan,
+          holes: p.holes,
+          teams: _teams.map((team, ti) => ({
+            team: ti + 1,
+            spelerIds: team,
+            namen: team.map(uid => naamMap[uid] || '?'),
+            punten: [tA, tB][ti],
+          })),
+          spelers: p.spelers.map(s2 => ({ naam: s2.naam, hcp: s2.partijHcp })),
+          spelerIds: p.spelers.map(s2 => s2.uid),
+          scores: p.scores,
+        },
+      },
+      'High-Low afgerond! 🏌️');
     return;
   }
+
 
   // p.ladderId is de bron van waarheid — geen ladder-wissel nodig
 
@@ -1154,7 +1418,14 @@ async function bevestigUitslag() {
       });
       changes = resultaat?.data?.changes || [];
       if (resultaat?.data?.alVerwerkt) {
+        // v5.7.0 — BESTAANDE FOUT, hier gerepareerd. De ladder was al
+        // beschermd tegen dubbel verwerken, maar de client schreef daarna
+        // alsnog een uitslagvermelding naar het ladderdocument. Die telt mee
+        // als extra gespeelde partij en extra ontmoetingen, dus twee spelers
+        // uit dezelfde flight die allebei bevestigden bliezen de frequentie-
+        // en diversiteitsbonus op.
         console.info('[bevestig] partij was al verwerkt — geen dubbeltelling');
+        _alVerwerkt = true;
       }
     } catch(e) {
       console.error('verwerkPartijUitslag mislukt:', e);
@@ -1205,7 +1476,7 @@ async function bevestigUitslag() {
 
   // Sla uitslag op in alleLadders[idx] en naar Firestore
   const ladderIdx = alleLadders.findIndex(l => l.id === p.ladderId);
-  if (ladderIdx >= 0) {
+  if (ladderIdx >= 0 && !_alVerwerkt) {
     if (!alleLadders[ladderIdx].data) alleLadders[ladderIdx].data = {};
     if (!alleLadders[ladderIdx].data.uitslagen) alleLadders[ladderIdx].data.uitslagen = [];
     alleLadders[ladderIdx].data.uitslagen.unshift(uitslag);
@@ -1319,7 +1590,7 @@ function _deltaBadge(oud, nieuw) {
   return `<span style="color:var(--mid)">— (${oud})</span>`;
 }
 
-function showLadderChanges(changes) {
+function showLadderChanges(changes, spelerRegels) {
   // ────────────────────────────────────────────────────────────
   // v5.6.1 — WAT ER MIS WAS AAN DIT SCHERM.
   //
@@ -1343,6 +1614,29 @@ function showLadderChanges(changes) {
   // positie deed.
   // ────────────────────────────────────────────────────────────
   const lijst = Array.isArray(changes) ? changes : [];
+
+  // v5.7.0: bij Amerikaantje en High-Low zijn er geen winnaar/verliezer-paren.
+  // De server levert dan één regel per speler; die tonen we rechtstreeks.
+  if (Array.isArray(spelerRegels) && spelerRegels.length) {
+    const gesorteerd = [...spelerRegels].sort((a, b) => {
+      const da = (a.oud ?? 0) - (a.nieuw ?? 0);
+      const db = (b.oud ?? 0) - (b.nieuw ?? 0);
+      return db - da || (a.nieuw ?? 0) - (b.nieuw ?? 0);
+    });
+    let h = '<div style="margin-bottom:14px;padding:12px;background:var(--green-pale);border-radius:10px">';
+    gesorteerd.forEach((r, i) => {
+      const label = r.positie ? `${r.positie}e` : (r.team != null ? `Team ${r.team + 1}` : '');
+      h += `
+        <div style="display:flex;justify-content:space-between;align-items:center${i ? ';margin-top:6px' : ''}">
+          <span style="font-weight:600">${esc(r.naam)}${label ? ` <span style="font-weight:400;color:var(--light);font-size:12px">${label}</span>` : ''}</span>
+          ${_deltaBadge(r.oud, r.nieuw)}
+        </div>`;
+    });
+    h += '</div>';
+    document.getElementById('ladder-changes').innerHTML = h;
+    document.getElementById('modal-ladder-result').classList.add('open');
+    return;
+  }
 
   // Elke speler één keer, in de volgorde waarin hij voorkomt.
   const perSpeler = new Map();
@@ -1563,5 +1857,5 @@ async function vraagWatchPin() {
   }
 }
 
-export { renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij, verwijderPartijMetRetry, wachtOpScoreOpslag, vraagWatchPin, synchroniseerPartijDoc };
+export { zetAmerikaaanjePositie, zetHighlowWinnaar, toonEindstandKeuze, renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, openToevoegenModal, bevestigToevoegenRonde, editPartijHcp, verwijderSpelerUitRonde, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij, verwijderPartijMetRetry, wachtOpScoreOpslag, vraagWatchPin, synchroniseerPartijDoc };
 // v3.0.2

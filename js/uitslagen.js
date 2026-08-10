@@ -30,6 +30,41 @@ async function verwijderOudeUitslagen() {
   } catch(e) { console.error('Opschonen mislukt:', e); }
 }
 
+// v5.7.0: de regels onder een uitslag.
+//
+// WAT HIER MIS KON GAAN. Er stond `u.matchups.map(...)` zonder controle.
+// Amerikaantje en High-Low leveren geen onderlinge partijen op, dus die lijst
+// is daar leeg — en ontbreekt het veld helemaal (oudere vermeldingen), dan is
+// het geen leeg blokje maar een echte fout, waarmee het hele uitslagenscherm
+// omvalt.
+function _uitslagRegels(u) {
+  const regel = (links, rechts) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:4px">
+      <span>${links}</span>${rechts}
+    </div>`;
+
+  if (u.speltype === 'amerikaantje' || u.speltype === 'highlow') {
+    const naam = i => esc((u.spelers || [])[i] || '?');
+    const stand = Array.isArray(u.eindstand) ? u.eindstand : [];
+    if (!stand.length) {
+      return regel(`<span style="color:var(--light)">${u.speltype === 'highlow' ? 'High-Low' : 'Amerikaantje'}</span>`, '');
+    }
+    if (u.speltype === 'highlow') {
+      const teams = [[], []];
+      stand.forEach((r, i) => { teams[r.team === 1 ? 1 : 0].push(naam(i)); });
+      return regel('High-Low',
+        `<span style="font-size:12px;color:var(--mid)">${teams[0].join(' + ')} vs ${teams[1].join(' + ')}</span>`);
+    }
+    const opPositie = [...stand.keys()].sort((a, b) => stand[a].positie - stand[b].positie);
+    const tekst = opPositie.map(i => `${stand[i].positie}. ${naam(i)}`).join(' · ');
+    return regel('Amerikaantje', `<span style="font-size:12px;color:var(--mid)">${tekst}</span>`);
+  }
+
+  return (Array.isArray(u.matchups) ? u.matchups : []).map(m =>
+    regel(`${esc(m.a)} vs ${esc(m.b)}`, `<span class="badge badge-green">⛳ ${esc(m.winnaar)}</span>`)
+  ).join('');
+}
+
 async function openScorekaartDetail(uitslag) {
   // Zoek scorekaart in Firestore op basis van timestamp
   try {
@@ -183,11 +218,7 @@ function renderUitslagen() {
         <span style="font-size:12px;color:var(--light)">${esc(u.datum)}</span>
       </div>
       <div style="font-size:12px;color:var(--mid);margin-bottom:8px">${u.spelers.map(n => esc(n)).join(' · ')}</div>
-      ${u.matchups.map(m => `
-        <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-bottom:4px">
-          <span>${esc(m.a)} vs ${esc(m.b)}</span>
-          <span class="badge badge-green">⛳ ${esc(m.winnaar)}</span>
-        </div>`).join('')}
+      ${_uitslagRegels(u)}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
         ${heeftScorekaart && !ouderDan30Dagen ? `<button class="btn btn-sm btn-ghost" onclick="openScorekaartDetail(${JSON.stringify(u).replace(/"/g,'&quot;')})">📋 Scorekaart</button>` : ''}
         ${isBeheerder && u.partijId ? `<button class="btn btn-sm btn-ghost" style="color:var(--red);border-color:#f5c6cb" onclick="draaiUitslagTerug('${escAttr(u.ladderId || '')}','${escAttr(u.partijId)}')" title="Zet de ladderstand terug naar vóór deze partij">↩ Terugdraaien</button>` : ''}

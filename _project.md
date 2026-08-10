@@ -11,9 +11,117 @@
 | `js/app.js` | ~regel 262 | `const LOKALE_VERSIE = 'v3.0.0-11.XX';` |
 | `watch.html` | bij de constanten | `const WATCH_VERSIE = 'v3.0.0-11.XX';` — v5.5.2, anders herlaadt de watch-pagina zichzelf eindeloos |
 
-Huidige versie: **v5.6.2**
+Huidige versie: **v5.7.2**
 
 ### Changelog
+- **v5.7.2** — De afsluitschermen van Amerikaantje en High-Low. Alleen
+  `index.html`, `js/ronde.js` en `js/app.js`. **Geen deploy.**
+
+  - **De gekozen knop was nauwelijks te zien.** Groene rand met groene letters
+    op een licht knopje. De gebruiker zag daardoor niet dat de eindstand al
+    voorgevuld stond en dacht dat hij hem zelf moest invullen. Nu gevuld groen
+    met witte tekst.
+
+  - **Met een ingevulde scorekaart zijn de knoppen weg.** Er staat dan
+    "Eindstand volgens de scorekaart" en een klein "Eindstand aanpassen" voor
+    wie het er niet mee eens is. Afsluiten is één klik. Zonder ingevulde holes
+    staan ze meteen open, want dan MOET iemand aanwijzen.
+
+  - **De tekst klopt met de situatie.** Er stond altijd "tik de plek aan", een
+    opdracht, ook als er niets te tikken viel.
+
+  - **High-Low: teams bij naam op de knoppen**, in dezelfde volgorde als de
+    standenlijst erboven. Stond daar "Team 2" bovenaan en op de knoppen "Team 1"
+    eerst, dan moest je zelf omrekenen wie welk team was. De namen komen uit
+    dezelfde verkorting als de scorekaart, dus bij twee spelers met dezelfde
+    voornaam wordt dat "Erwin G & Jörgen".
+- **v5.7.1** — High-Low kon niet gestart worden. Raakt `js/partij.js`,
+  `js/ronde.js`, `js/scores.js` en `functions/index.js`. **Vraagt dezelfde
+  Cloud Functions-deploy als v5.7.0** — nog niet uitgerold, dus dit gaat mee.
+
+  - **DE FOUT.** Bij het starten werd `teams: [[a,b],[c,d]]` weggeschreven: een
+    lijst met daarin twee lijsten. Firestore accepteert dat niet — een array mag
+    geen array als element bevatten. Het partij-document werd geweigerd en de
+    app meldde "controleer je verbinding of rechten", wat de verkeerde kant op
+    wees. Dit zat er sinds v5.0.0 in en viel pas op toen High-Low in v5.6.0 voor
+    iedereen open ging: daarvóór had niemand het ooit gestart.
+
+  - **De oorzaak was duplicatie.** De teamindeling stond in het document én
+    volgde al uit de spelersvolgorde (slot 1+2 tegen 3+4). Van die twee had er
+    één een vorm die de database weigert. Het veld is nu weg; `teamsVan()` in
+    `js/ronde.js` leidt de indeling af, en dat is de enige plek waar die regel
+    staat.
+
+  - **De server gelooft de app niet meer over de teams.** Voorheen stuurde de
+    client de teamindeling mee en werd die voor waar aangenomen — een
+    gemanipuleerde app kon zichzelf in het winnende team zetten. Nu leidt de
+    server de teams zelf af uit het partij-document en stuurt de client alleen
+    nog wie er won. Strenger dan het was, en het kwam gratis mee met het
+    weghalen van het veld.
+
+  - **De hele categorie afgedekt.** `zoekGenesteLijsten()` controleert een
+    partij vóór het schrijven en weigert met een melding die het veld bij naam
+    noemt. Dat vangt niet alleen `teams`, maar ook het volgende veld dat iemand
+    ooit toevoegt.
+
+  - **De foutmelding bij het starten** noemt nu de echte reden in plaats van
+    altijd "verbinding of rechten".
+
+  - **Zes nieuwe rekentests** (194 totaal): de teamindeling, en dat een lijst
+    binnen een lijst wordt herkend terwijl een lijst van objecten gewoon
+    doorgaat.
+- **v5.7.0** — Deel 2: Amerikaantje en High-Low tellen mee voor de ladder.
+  Raakt `functions/index.js`, `js/ronde.js`, `js/uitslagen.js`, `js/app.js`,
+  `js/partij.js`, `index.html`, `handleiding-partij-ronde.html` en de tests.
+  **Vraagt een Cloud Functions-deploy** — zie de uitrolvolgorde in
+  `HANDOVER.md`.
+
+  - **De verschuiving staat los van de ladderpositie.** Winnaar van een
+    Amerikaantje +2, verliezer −2; High-Low winnaars +1, verliezers −1. Bewust
+    anders dan matchplay: het zijn groepsspelvormen, geen duel tussen twee
+    mensen met een ranglijstverschil. De tabel staat op de SERVER; de client
+    stuurt alleen wie er eerste, tweede en derde werd, zodat een gemanipuleerde
+    app geen eigen aantallen plekken kan opgeven.
+
+  - **Geen tweede Cloud Function.** `verwerkPartijUitslag` kreeg een tweede
+    invoervorm (`eindstand` naast `matchups`). Daarmee zijn de deelnemer-
+    controle, het één keer verwerken, `prevRank`, de momentopname voor
+    terugdraaien en het hernummeren gedeeld in plaats van nagebouwd.
+
+  - **Alle verschuivers worden TEGELIJK geplaatst.** Eén voor één verwerken
+    bleek volgorde-afhankelijk: bij een gedeelde eerste plaats kregen beide
+    winnaars in de ene volgorde hun plek en in de andere volgorde niets —
+    zonder melding. Nagerekend en vastgelegd in de rekentests.
+
+  - **Aanwijsstap in beide afsluitmodals**, zoals matchplay die al had. Met een
+    ingevulde kaart staat de eindstand voorgevuld; **zonder volledig ingevulde
+    holes wordt er bewust NIETS voorgevuld.** Anders zou "alle drie gelijk" de
+    standaard zijn en leverde één tik op bevestigen drie overwinningen op
+    zonder dat er iets gespeeld was.
+
+  - **Bestaande fout hersteld: dubbel bevestigen telde dubbel.** De server was
+    al beschermd tegen dubbel verwerken, maar de client schreef daarna alsnog
+    een uitslagvermelding naar het ladderdocument — goed voor een extra
+    gespeelde partij en extra ontmoetingen in de activiteitsbonus. Geldt ook
+    voor matchplay en is daar meteen meegenomen.
+
+  - **Gasten tellen niet mee** voor de verschuiving en staan niet in de
+    ontmoetingen; anders zou dezelfde gast elke keer als nieuwe unieke
+    tegenstander de diversiteitsbonus opblazen. De verschuiving van de overige
+    spelers gaat wel gewoon door.
+
+  - **Volgorde van afronden omgedraaid:** eerst laten verwerken, pas bij succes
+    de partij opruimen. Voorheen werd de partij eerst verwijderd, en dan was
+    bij een mislukking zowel de partij als de uitslag weg.
+
+  - **Uitslagenscherm** kreeg een eigen weergave. Er stond `u.matchups.map(...)`
+    zonder controle; bij een uitslag zonder onderlinge partijen viel het hele
+    scherm om.
+
+  - **24 nieuwe rekentests** (188 totaal), waaronder alle vier de
+    Amerikaantje-uitkomsten, dat elke rij optelt tot nul, dat de uitkomst niet
+    afhangt van de verwerkingsvolgorde, de begrenzing boven- en onderaan, en
+    dat er geen gaten in de ladder ontstaan.
 - **v5.6.2** — Herstel van een fout uit v5.6.0 die de app volledig blokkeerde.
   Alleen `js/admin.js`, één regel.
 

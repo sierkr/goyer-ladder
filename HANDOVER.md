@@ -1,4 +1,4 @@
-# HANDOVER — Goyer Golf MP Ladder, v5.6.2
+# HANDOVER — Goyer Golf MP Ladder, v5.7.3
 
 > Plak dit bestand als eerste bericht in een nieuwe chat, samen met de zip.
 > Lees daarna `_project.md` voor de volledige structuur en changelog.
@@ -51,7 +51,25 @@ wachtwoordwijziging in test ook het echte wachtwoord.
 
 ## 3. Waar we nu staan
 
-Versie in de zip: **v5.6.2**.
+Versie in de zip: **v5.7.3**.
+
+### Nieuw in v5.7.3 — scorekaartfoto wordt vooraf verkleind
+
+De scanfunctie weigerde afbeeldingen boven ~3 MB. Een schermafdruk (PNG) haalt
+die grens moeiteloos, waardoor scannen faalde met "Afbeelding te groot".
+
+`js/partij.js` verkleint de foto nu in de browser voordat hij wordt verstuurd:
+langste zijde maximaal 1600 px, opgeslagen als JPEG, kwaliteit stapsgewijs
+omlaag (0.85 → 0.4) tot het onder de limiet past. Lukt verkleinen niet — denk
+aan een HEIC-bestand dat de browser niet kan tekenen — dan gaat het origineel
+alsnog mee, met een duidelijke foutmelding als ook dat te groot is.
+
+Waarom dit geen kwaliteitsverlies is: Claude schaalt afbeeldingen boven 1568 px
+zelf terug. Alles daarboven werd dus toch weggegooid, maar kostte wel upload en
+tokens. Bijvangst: een scan is nu ongeveer 40% goedkoper en merkbaar sneller.
+
+Tegelijk verplaatst: het leegmaken van de file-input staat nu in een `finally`,
+zodat dezelfde foto na een mislukte poging opnieuw gekozen kan worden.
 
 ### De testopzet is groen
 
@@ -171,7 +189,22 @@ het échte spelersdocument. De helper `fsVoor(isTest)` bestond al en werd door
 zestien andere functies gewoon gebruikt; deze twee waren overgeslagen.
 
 **Deze versie is pas af als de functions gedeployed zijn.** Alleen de bestanden
-op GitHub zetten is niet genoeg.
+op GitHub zetten is niet genoeg. (Voor v5.5.0 is dat bevestigd gedaan.)
+
+### v5.7.0 — uitrolvolgorde, in deze volgorde
+
+1. Cloud Functions deployen.
+2. Een gewone matchplay-partij afronden — controleren dat er niets stuk is.
+3. De app-bestanden **alleen in `/test/`** zetten en daar alle vier de
+   Amerikaantje-uitkomsten spelen, plus een High-Low en een matchplay.
+   De functies zijn gedeeld, de databases niet — dit raakt geen productiedata.
+4. Vooraf een ladder-momentopname maken (`maakLadderSnapshot`). Terugdraaien
+   werkt per partij; blijkt een verschuiving structureel verkeerd, dan wil je
+   één knop voor de hele ladder.
+5. Pas daarna naar productie.
+
+Andersom werkt niet: een nieuwe app die een oude functie aanroept, kan een
+Amerikaantje niet afronden.
 
 ---
 
@@ -181,10 +214,9 @@ op GitHub zetten is niet genoeg.
    openstaande melding. Test zo: corrigeer een hole op de watch, schakel op de
    telefoon naar een andere app en weer terug, en kijk of de correctie er staat.
    Dat weg-en-terug schakelen is de kern — zonder dat stap je over de fout heen.
-2. **Cloud Functions deployen** (v5.5.0). Nog niet bevestigd dat dit gebeurd is.
-   Controleren kan in de Firebase-console → Functions → Dashboard: staat er bij
-   `voltooiEersteLogin` geen recente datum, dan is de deploy nooit aangekomen.
-   Zie `DEPLOYEN.md`; `cd functions && npm install` is altijd nodig.
+2. **Cloud Functions deployen voor v5.7.0.** Die van v5.5.0 is bevestigd
+   gedaan. Zie `DEPLOYEN.md`; `cd functions && npm install` is altijd nodig.
+   Uitrolvolgorde staat hieronder — eerst de functies, dan pas de app.
 3. **Controleren of er productiedata is beschadigd.** Spelers die in `/test/`
    het eerste-loginscherm hebben ingevuld, hebben mogelijk een verkeerde
    handicap in de live-database. Bekend geval: Ewout.
@@ -211,6 +243,8 @@ op GitHub zetten is niet genoeg.
 | `page.locator('text=Naam')` in een test | Onzichtbare pagina's staan gewoon in de DOM. Scope altijd op het element waar het om gaat. |
 | `updateMask.fieldPaths=holes.3` in de kale REST-API | Een pad-onderdeel dat met een cijfer begint moet tussen accenttekens: ``holes.`3` ``. Zonder die tekens antwoordt Firestore met 400. De Firebase-bibliotheek doet dat automatisch, dus de app had er nooit last van en de watch faalde altijd. Kostte jaren aan wisselvallig gedrag. |
 | Een listener die in een object schrijft | Herkoppel ook als het OBJECT vervangen is, niet alleen als het id verandert. Anders schrijft hij in een weggegooide kopie en blijft het scherm op oude waarden staan. Zie v5.5.4. |
+| Een lijst binnen een lijst in een Firestore-document | Wordt geweigerd; een array mag geen array als element bevatten. De foutmelding zegt niets over de oorzaak. `teams: [[a,b],[c,d]]` maakte High-Low sinds v5.0.0 onstartbaar zonder dat iemand het merkte. `zoekGenesteLijsten()` in `js/scores.js` controleert dit nu vóór het schrijven. |
+| Dezelfde informatie twee keer opslaan | De teamindeling stond in `teams` én volgde uit de spelersvolgorde. Die duplicatie was de eigenlijke oorzaak van bovenstaande fout. Teams worden nu afgeleid met `teamsVan()` in `js/ronde.js` — één plek. |
 | Een naam twee keer importeren in hetzelfde bestand | Dat is een SyntaxError: het bestand laadt niet, en alles wat ervan afhangt evenmin. De hele app start dan niet en het inlogscherm blijft verborgen. `node --check` vangt dit NIET. Controleer het apart — zie het controlelijstje in `_project.md`. Gebeurd in v5.6.0 met `pasUiStijlToe` in `js/admin.js`. |
 | Een fout wegschrijven naar `console.error` op een horloge | Daar kijkt niemand ooit. Elke mislukking die de gebruiker raakt moet op het scherm komen. Dit is dit traject drie keer de oorzaak geweest van uren zoeken. |
 | Testen op een computer met de muis | `watch.html` luistert uitsluitend naar aanrakingen. Zet in het ontwikkelaarsvenster de aanraakstand aan (Ctrl+Shift+M), anders reageert er niets en lijkt het scherm stuk. |

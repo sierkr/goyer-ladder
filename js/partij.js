@@ -120,10 +120,10 @@ function onSpeltypeChange() {
   // v3.0.3: hint-tekst per speltype
   if (hint) {
     if (val === 'amerikaantje') {
-      hint.textContent = 'Exact 3 spelers · 6 punten per hole · telt nog niet mee voor de ladderstand';
+      hint.textContent = 'Exact 3 spelers · 6 punten per hole · winnaar +2 plekken, verliezer −2';
       hint.style.display = 'block';
     } else if (val === 'highlow') {
-      hint.textContent = 'Exact 4 spelers · 2 teams van 2 (slot 1+2 vs 3+4) · low/high-punt per hole · telt nog niet mee voor de ladderstand';
+      hint.textContent = 'Exact 4 spelers · 2 teams van 2 (slot 1+2 vs 3+4) · low/high-punt per hole · winnaars +1 plek, verliezers −1';
       hint.style.display = 'block';
     } else {
       hint.style.display = 'none';
@@ -593,26 +593,85 @@ async function slaAangepasteBaanOp(context) {
   }
 }
 
+// ── v5.7.3: foto verkleinen vóór verzending ─────────────────
+// Een schermafdruk (PNG) of moderne telefoonfoto is al snel 5-10 MB.
+// De Cloud Function weigert alles boven ~3 MB, en Claude verkleint
+// afbeeldingen boven 1568 px tóch zelf. Groot versturen heeft dus geen
+// enkel nut: het kost alleen tijd, data en geld.
+const SCAN_MAX_ZIJDE  = 1600;                // langste zijde in pixels
+const SCAN_MAX_BASE64 = 3.5 * 1024 * 1024;   // marge onder de 4 MB-grens van de functie
+
+// Geeft base64 (zonder 'data:'-voorvoegsel) terug, of null als het
+// zelfs op de laagste kwaliteit niet onder de limiet komt.
+async function verkleinScorekaartFoto(file) {
+  const bitmap = await createImageBitmap(file);
+
+  // Nooit vergroten: schaal is maximaal 1.
+  const schaal  = Math.min(1, SCAN_MAX_ZIJDE / Math.max(bitmap.width, bitmap.height));
+  const breedte = Math.max(1, Math.round(bitmap.width  * schaal));
+  const hoogte  = Math.max(1, Math.round(bitmap.height * schaal));
+
+  const canvas = document.createElement('canvas');
+  canvas.width  = breedte;
+  canvas.height = hoogte;
+
+  const ctx = canvas.getContext('2d');
+  // Witte ondergrond: JPEG kent geen transparantie. Zonder deze stap
+  // worden doorzichtige delen van een PNG-schermafdruk zwart.
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, breedte, hoogte);
+  ctx.drawImage(bitmap, 0, 0, breedte, hoogte);
+  if (bitmap.close) bitmap.close();
+
+  // Kwaliteit stapsgewijs omlaag tot het past.
+  for (const kwaliteit of [0.85, 0.7, 0.55, 0.4]) {
+    const base64 = canvas.toDataURL('image/jpeg', kwaliteit).split(',')[1];
+    if (base64.length <= SCAN_MAX_BASE64) return base64;
+  }
+  return null;
+}
+
 // v3.0.0-11.108: scorekaart-foto scannen via Cloud Function + Claude Vision
 async function scanScorekaartFoto(fileInput) {
   const file = fileInput?.files?.[0];
   if (!file) return;
 
   const statusEl = document.getElementById('scan-status');
-  if (statusEl) statusEl.textContent = '⏳ Foto wordt geanalyseerd...';
+  if (statusEl) statusEl.textContent = '⏳ Foto wordt verkleind...';
 
   try {
-    // Lees bestand als base64
-    const base64 = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result.split(',')[1]); // strip data:...;base64,
-      reader.onerror = () => reject(new Error('Foto lezen mislukt'));
-      reader.readAsDataURL(file);
-    });
+    let base64    = null;
+    let mediaType = 'image/jpeg';
+
+    // Eerst verkleinen. Mislukt dat (bijvoorbeeld een HEIC-bestand dat de
+    // browser niet kan tekenen), dan proberen we het origineel.
+    try {
+      base64 = await verkleinScorekaartFoto(file);
+    } catch (verkleinFout) {
+      console.warn('Verkleinen mislukt, origineel wordt geprobeerd:', verkleinFout);
+    }
+
+    if (!base64) {
+      base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]); // strip data:...;base64,
+        reader.onerror = () => reject(new Error('Foto lezen mislukt'));
+        reader.readAsDataURL(file);
+      });
+      mediaType = file.type || 'image/jpeg';
+
+      if (base64.length > 4 * 1024 * 1024) {
+        if (statusEl) statusEl.textContent =
+          '❌ Foto te groot en verkleinen lukte niet. Maak een gewone foto (JPEG) in plaats van een schermafdruk.';
+        return;
+      }
+    }
+
+    if (statusEl) statusEl.textContent = '⏳ Foto wordt geanalyseerd...';
 
     // Roep Cloud Function aan
     const scanFn = httpsCallable(functions, 'scanScorekaart');
-    const result = await scanFn({ imageBase64: base64, mediaType: file.type || 'image/jpeg' });
+    const result = await scanFn({ imageBase64: base64, mediaType });
     const holes = result.data?.holes;
 
     if (!holes || !Array.isArray(holes) || holes.length === 0) {
@@ -648,10 +707,11 @@ async function scanScorekaartFoto(fileInput) {
       : e.code === 'functions/failed-precondition' ? 'API key niet ingesteld (neem contact op met beheerder)'
       : e.message || 'Scan mislukt';
     if (statusEl) statusEl.textContent = `❌ ${msg}`;
+  } finally {
+    // Reset file input zodat dezelfde foto opnieuw geselecteerd kan worden.
+    // In 'finally', want de returns hierboven sloegen deze regel over.
+    fileInput.value = '';
   }
-
-  // Reset file input zodat dezelfde foto opnieuw geselecteerd kan worden
-  fileInput.value = '';
 }
 
 async function verwijderAangepasteBaan() {
@@ -883,10 +943,21 @@ async function startPartij() {
     spelers,
     matchups,
     speltype,   // v3.0.0-11.97
-    // v3.0.3: High-Low teams (slot 1+2 vs 3+4), anders null
-    teams: speltype === 'highlow'
-      ? [[spelers[0].uid, spelers[1].uid], [spelers[2].uid, spelers[3].uid]]
-      : null,
+    // v5.7.1: teams worden NIET meer opgeslagen.
+    //
+    // Hier stond `teams: [[a,b],[c,d]]` — een lijst met daarin twee lijsten.
+    // Firestore accepteert dat niet (een array mag geen array als element
+    // bevatten), dus het wegschrijven van het partij-document mislukte en de
+    // app meldde "controleer je verbinding of rechten". Dat wees de verkeerde
+    // kant op: het was geen verbinding en geen rechten, maar een vorm die de
+    // database weigert. High-Low kon daardoor nooit gestart worden — het viel
+    // pas op toen de spelvorm in v5.6.0 voor iedereen open ging.
+    //
+    // De teams waren bovendien dubbele informatie: ze volgen per definitie uit
+    // de spelersvolgorde (slot 1+2 tegen 3+4). Die duplicatie was de eigenlijke
+    // oorzaak. Nu worden ze overal afgeleid met teamsVan() — ook op de server,
+    // die daardoor niet meer hoeft te geloven wat de app over de teamindeling
+    // beweert.
     scores: {},
     timestamp: Date.now()
   };
@@ -920,7 +991,12 @@ async function startPartij() {
     // achterblijft die nergens meer in beeld komt.
     try { await verwijderPartijDocument(partijLadderId, nieuwePartij.partijId); } catch(_) {}
     console.error('[startPartij] opslaan partij mislukt:', e);
-    toast('Partij kon niet worden opgeslagen — controleer je verbinding of rechten');
+    // v5.7.1: de echte reden erbij. "Controleer je verbinding of rechten" was
+    // bij een geweigerde documentvorm volstrekt misleidend.
+    const reden = e?.message || e?.code || '';
+    toast(reden
+      ? 'Partij kon niet worden opgeslagen: ' + reden
+      : 'Partij kon niet worden opgeslagen — controleer je verbinding of rechten');
     return;
   }
 

@@ -79,7 +79,31 @@ export function arrayNaarHolesMap(arr) {
  * Gasten krijgen ook een document — die tellen niet mee voor de ladder,
  * maar hun scores horen wel op de kaart.
  */
+// v5.7.1: Firestore accepteert geen lijst binnen een lijst. Gebeurde dat toch,
+// dan mislukte het schrijven met een melding die de verkeerde kant op wees —
+// bij High-Low las je "controleer je verbinding of rechten" terwijl er niets
+// mis was met de verbinding. Deze controle noemt het veld bij naam.
+export function zoekGenesteLijsten(waarde, pad = '') {
+  const uit = [];
+  if (Array.isArray(waarde)) {
+    waarde.forEach((x, i) => {
+      if (Array.isArray(x)) uit.push(`${pad}[${i}]`);
+      else uit.push(...zoekGenesteLijsten(x, `${pad}[${i}]`));
+    });
+  } else if (waarde && typeof waarde === 'object') {
+    for (const k of Object.keys(waarde)) {
+      uit.push(...zoekGenesteLijsten(waarde[k], pad ? `${pad}.${k}` : k));
+    }
+  }
+  return uit;
+}
+
 export async function maakPartijDocument(ladderId, partij) {
+  const genest = zoekGenesteLijsten(partij);
+  if (genest.length) {
+    throw new Error('Partij bevat een lijst binnen een lijst (' + genest.join(', ')
+      + '). Firestore accepteert dat niet.');
+  }
   const batch = writeBatch(db);
 
   // Metadata zonder de scores — die horen vanaf nu in de subcollectie.
