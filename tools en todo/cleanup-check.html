@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<title>Firestore Cleanup Check</title>
+<style>
+  body { font-family: monospace; padding: 20px; background: #f5f5f0; }
+  h2 { color: #1a3d2a; }
+  .ok { color: green; }
+  .warn { color: orange; }
+  .err { color: red; }
+  .section { background: white; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  pre { white-space: pre-wrap; font-size: 13px; }
+</style>
+</head>
+<body>
+<h2>🔍 Firestore Cleanup Check</h2>
+<div id="output"><em>Laden...</em></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, collection, getDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC6V0NOSgAtX_bDWezca-_F7gb3RANSens",
+  authDomain: "goyer-golf-mp-ladder.firebaseapp.com",
+  projectId: "goyer-golf-mp-ladder",
+  storageBucket: "goyer-golf-mp-ladder.firebasestorage.app",
+  messagingSenderId: "124116031878",
+  appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+const out = document.getElementById('output');
+const log = (msg, cls='') => {
+  out.innerHTML += `<div class="${cls}">${msg}</div>`;
+};
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    out.innerHTML = '<div class="err">❌ Je moet ingelogd zijn. Open de app eerst en kom dan terug naar deze pagina.</div>';
+    return;
+  }
+
+  out.innerHTML = `<div class="ok">✅ Ingelogd als ${user.email}</div><br>`;
+
+  // 1. Haal actieve users op
+  const usersSnap = await getDoc(doc(db, 'ladder', 'users'));
+  const users = usersSnap.exists() ? (usersSnap.data().lijst || []) : [];
+  const userEmails = new Set(users.map(u => u.email?.toLowerCase()).filter(Boolean));
+  const userNames = new Set(users.map(u => u.gebruikersnaam?.toLowerCase()).filter(Boolean));
+
+  log(`<div class="section"><h3>📋 Actieve users (${users.length})</h3>`);
+  users.forEach(u => log(`&nbsp;&nbsp;✓ ${u.gebruikersnaam} (${u.email}) — ${u.rol}`));
+  log('</div>');
+
+  // 2. Check master spelerslijst
+  const spelersSnap = await getDoc(doc(db, 'ladder', 'spelers'));
+  const spelers = spelersSnap.exists() ? (spelersSnap.data().lijst || []) : [];
+  log(`<div class="section"><h3>👥 Master spelerslijst (${spelers.length} spelers)</h3>`);
+  spelers.forEach(s => log(`&nbsp;&nbsp;id:${s.id} — ${s.naam} hcp:${s.hcp}`));
+  log('</div>');
+
+  // 3. Check ladders
+  const laddersSnap = await getDocs(collection(db, 'ladders'));
+  log(`<div class="section"><h3>🏆 Ladders (${laddersSnap.docs.length})</h3>`);
+  laddersSnap.docs.forEach(d => {
+    const data = d.data();
+    const spelersInLadder = data.spelers || [];
+    log(`<strong>${data.naam || d.id}</strong> — ${spelersInLadder.length} spelers, ${(data.actievePartijen||[]).length} actieve partijen`);
+    spelersInLadder.forEach(s => log(`&nbsp;&nbsp;id:${s.id} — ${s.naam} rank:${s.rank}`));
+    // Check actieve partijen
+    (data.actievePartijen || []).forEach(p => {
+      const spelerNamen = (p.spelers || []).map(s => s.naam).join(', ');
+      log(`&nbsp;&nbsp;⚡ Actieve partij: ${spelerNamen}`, 'warn');
+    });
+  });
+  log('</div>');
+
+  // 4. Check toernooien
+  const toernooienSnap = await getDocs(collection(db, 'toernooien'));
+  log(`<div class="section"><h3>🏅 Toernooien (${toernooienSnap.docs.length})</h3>`);
+  toernooienSnap.docs.forEach(d => {
+    const data = d.data();
+    log(`${data.naam || d.id} — status: ${data.status} — ${(data.spelers||[]).length} spelers`);
+    (data.spelers || []).forEach(s => log(`&nbsp;&nbsp;${s.naam}`));
+  });
+  log('</div>');
+
+  // 5. Check uitslagen collectie
+  const uitslagenSnap = await getDocs(collection(db, 'uitslagen'));
+  log(`<div class="section"><h3>📊 Uitslagen collectie (${uitslagenSnap.docs.length} documenten)</h3>`);
+  if (uitslagenSnap.docs.length > 0) {
+    log(`&nbsp;&nbsp;<span class="warn">⚠️ ${uitslagenSnap.docs.length} scorekaarten aanwezig — mogelijk van testpartijen</span>`);
+    uitslagenSnap.docs.slice(0,5).forEach(d => {
+      const data = d.data();
+      const datum = data.datum ? new Date(data.datum).toLocaleDateString('nl-NL') : '?';
+      const namen = (data.spelers||[]).map(s=>s.naam).join(', ');
+      log(`&nbsp;&nbsp;${datum} — ${namen}`);
+    });
+    if (uitslagenSnap.docs.length > 5) log(`&nbsp;&nbsp;... en ${uitslagenSnap.docs.length-5} meer`);
+  } else {
+    log('&nbsp;&nbsp;<span class="ok">✅ Geen uitslagen</span>');
+  }
+  log('</div>');
+
+  // 6. Snapshots
+  const snapshotsSnap = await getDocs(collection(db, 'snapshots'));
+  log(`<div class="section"><h3>📸 Snapshots (${snapshotsSnap.docs.length})</h3>`);
+  if (snapshotsSnap.docs.length > 0) {
+    log(`&nbsp;&nbsp;<span class="warn">⚠️ ${snapshotsSnap.docs.length} snapshots aanwezig</span>`);
+  } else {
+    log('&nbsp;&nbsp;<span class="ok">✅ Geen snapshots</span>');
+  }
+  log('</div>');
+
+  log('<div class="ok"><strong>✅ Check klaar!</strong></div>');
+});
+</script>
+</body>
+</html>

@@ -7,7 +7,10 @@ import { slaActievePartijenOp, getLadderData, isBeheerderRol, isCoordinatorRol, 
 import { objNaarRondes } from './knockout.js';
 import { getLadderSpelers, isInLadder } from './ladder-view.js';
 // v5.0.0 (punt 4): partijen krijgen een eigen document met scores per speler.
-import { maakPartijDocument, verwijderPartijDocument } from './scores.js';
+import { maakPartijDocument, verwijderPartijDocument, voegSpelerToeAanPartij, verwijderSpelerUitPartijDoc } from './scores.js';
+// v5.8.0: alle handicaprekenwerk staat op een plek.
+import { HCP_STANDAARD, hcpInstellingen, hcpOmschrijving, koppelSlagen, spelerSlagen,
+         slagHoleLijst, partijHcpVan } from './hcp.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, getDocFromServer, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 //  PARTIJ SETUP
@@ -40,7 +43,14 @@ function slaPartijFormulierOp() {
       });
     }
 
-    const state = { ladderId, baanNaam, startHole, aantalH, slots, speltype: document.querySelector('input[name="speltype"]:checked')?.value || 'matchplay' };
+    const state = {
+      ladderId, baanNaam, startHole, aantalH, slots,
+      speltype: document.querySelector('input[name="speltype"]:checked')?.value || 'matchplay',
+      // v5.8.0: de handicapkeuzes horen net zo goed bij het formulier
+      hcpPctVeld:   document.getElementById('hcp-pct')?.value || '75',
+      hcpVerdeling: document.querySelector('input[name="hcp-verdeling"]:checked')?.value || 'volledig',
+      hcpPlaatsing: document.querySelector('input[name="hcp-plaatsing"]:checked')?.value || 'laag',
+    };
     sessionStorage.setItem(PARTIJ_FORM_KEY, JSON.stringify(state));
   } catch(e) {
     console.warn('[partij] slaPartijFormulierOp mislukt:', e);
@@ -75,8 +85,14 @@ function herstelPartijFormulier() {
     // Speltype
     if (state.speltype) {
       const radio = document.querySelector(`input[name="speltype"][value="${state.speltype}"]`);
-      if (radio) { radio.checked = true; onSpeltypeChange(); }
+      if (radio) { radio.checked = true; }
     }
+    // v5.8.0: handicapkeuzes terugzetten
+    const pctEl = document.getElementById('hcp-pct');
+    if (pctEl && state.hcpPctVeld) pctEl.value = state.hcpPctVeld;
+    zetRadio('hcp-verdeling', state.hcpVerdeling || 'volledig');
+    zetRadio('hcp-plaatsing', state.hcpPlaatsing || 'laag');
+    onSpeltypeChange();
 
     // Spelerslots herstellen — wacht tot spelerslijst beschikbaar is
     const probeerSlots = (pogingen) => {
@@ -111,8 +127,71 @@ function alleBANEN() {
   return result;
 }
 
+// ============================================================
+//  v5.8.0 — HANDICAPINSTELLINGEN IN HET FORMULIER
+// ============================================================
+function zetRadio(naam, waarde) {
+  const radio = document.querySelector(`input[name="${naam}"][value="${waarde}"]`);
+  if (radio) radio.checked = true;
+}
+
+// Leest de drie handicapkeuzes uit het formulier.
+function leesHcpInstellingen() {
+  const pctVeld = parseFloat(document.getElementById('hcp-pct')?.value);
+  const pct = Number.isFinite(pctVeld)
+    ? Math.min(100, Math.max(0, pctVeld)) / 100
+    : HCP_STANDAARD.hcpPct;
+  return {
+    hcpPct: Math.round(pct * 1000) / 1000,
+    hcpVerdeling: document.querySelector('input[name="hcp-verdeling"]:checked')?.value === 'relatief' ? 'relatief' : 'volledig',
+    hcpPlaatsing: document.querySelector('input[name="hcp-plaatsing"]:checked')?.value === 'vanaf' ? 'vanaf' : 'laag',
+  };
+}
+
+// Zet de drie keuzes in het formulier vanuit een partij(-achtig) object.
+function vulHcpInstellingen(bron) {
+  const i = hcpInstellingen(bron);
+  const pctEl = document.getElementById('hcp-pct');
+  if (pctEl) pctEl.value = Math.round(i.pct * 100);
+  zetRadio('hcp-verdeling', i.verdeling);
+  zetRadio('hcp-plaatsing', i.plaatsing);
+}
+
+// Groene rand om de gekozen optie, net als bij het speltype.
+function onHcpOptieChange() {
+  const verdeling = document.querySelector('input[name="hcp-verdeling"]:checked')?.value || 'volledig';
+  const plaatsing = document.querySelector('input[name="hcp-plaatsing"]:checked')?.value || 'laag';
+
+  // v5.8.2: het percentage in de toelichting meelaten lopen met wat er
+  // ingevuld staat. "Volledig" las alsof het percentage dan niet meetelde,
+  // terwijl het in beide gevallen wordt toegepast — het verschil zit alleen
+  // in de handicap waarover gerekend wordt.
+  const pct = Math.round(leesHcpInstellingen().hcpPct * 100);
+  const volledigUitleg = document.getElementById('hcp-verdeling-volledig-uitleg');
+  const relatiefUitleg = document.getElementById('hcp-verdeling-relatief-uitleg');
+  if (volledigUitleg) volledigUitleg.textContent = `— ieder zijn eigen handicap × ${pct}%`;
+  if (relatiefUitleg) relatiefUitleg.textContent = `— laagste krijgt niets, de rest het verschil × ${pct}%`;
+
+  const zet = (id, actief) => {
+    const el = document.getElementById(id);
+    if (el) el.style.borderColor = actief ? 'var(--green)' : 'var(--border)';
+  };
+  zet('hcp-verdeling-volledig-label', verdeling === 'volledig');
+  zet('hcp-verdeling-relatief-label', verdeling === 'relatief');
+  zet('hcp-plaatsing-laag-label',  plaatsing === 'laag');
+  zet('hcp-plaatsing-vanaf-label', plaatsing === 'vanaf');
+}
+
 function onSpeltypeChange() {
   const val = document.querySelector('input[name="speltype"]:checked')?.value || 'matchplay';
+  // v5.8.0: "volledig of relatief" heeft alleen betekenis bij Amerikaantje en
+  // High-Low. Bij matchplay wordt altijd het onderlinge verschil verrekend,
+  // dus daar zou de keuze alleen maar verwarren.
+  const verdelingWrap = document.getElementById('hcp-verdeling-wrap');
+  if (verdelingWrap) {
+    verdelingWrap.style.display = (val === 'amerikaantje' || val === 'highlow') ? 'block' : 'none';
+  }
+  onHcpOptieChange();
   const hint = document.getElementById('speltype-hint');
   const matchLabel = document.getElementById('speltype-matchplay-label');
   const amerLabel  = document.getElementById('speltype-amerikaantje-label');
@@ -192,6 +271,11 @@ async function herstelBanen(sel, heeftOpgeslagen) {
 }
 
 function initPartijForm() {
+  // v5.8.0: staat er een lopende partij open om aangepast te worden, dan vult
+  // dit formulier zich met die partij in plaats van leeg te beginnen.
+  if (_bewerkPartijId) { vulFormulierMetLopendePartij(); return; }
+  zetFormulierModus(false);
+
   // v3.0.0-11.33: herstel eventueel opgeslagen formulierstate na versie-reload
   const heeftOpgeslagen = !!sessionStorage.getItem(PARTIJ_FORM_KEY);
 
@@ -219,7 +303,10 @@ function initPartijForm() {
   if (speltypeWrap) speltypeWrap.style.display = 'block';
   // Reset speltype naar matchplay bij (her)laden formulier
   const speltypeMatchplay = document.getElementById('speltype-matchplay');
-  if (speltypeMatchplay) { speltypeMatchplay.checked = true; onSpeltypeChange(); }
+  if (speltypeMatchplay) { speltypeMatchplay.checked = true; }
+  // v5.8.0: handicapkeuzes terug naar de standaard (75% · volledig · laagste SI)
+  if (!heeftOpgeslagen) vulHcpInstellingen(null);
+  onSpeltypeChange();
 
   const sel = document.getElementById('baan-select');
   vulBaanSelect(sel, heeftOpgeslagen);
@@ -762,7 +849,339 @@ function mijnPartij() {
   return null;
 }
 
+// ============================================================
+//  v5.8.0 — EEN LOPENDE PARTIJ AANPASSEN
+// ============================================================
+//  Tot v5.7.3 kon je tijdens de ronde van alles wijzigen via losse knopjes op
+//  de scorekaart: een handicap aantikken, een speler met een kruisje eruit
+//  gooien, een potloodje bij de matchup, een aparte modal om iemand toe te
+//  voegen. Vier plekken, vier keer dezelfde rekenregel opnieuw opgeschreven —
+//  en daardoor vier plekken waar hij uit de pas kon lopen.
+//
+//  Nu is er een knop op het rondescherm die dit formulier opent met de
+//  lopende partij erin. Alles is aanpasbaar; de scores blijven staan. De
+//  partij houdt zijn eigen partijId, zodat de PIN van de volgpagina blijft
+//  werken en meekijkers de ronde niet kwijtraken.
+// ============================================================
+let _bewerkPartijId = null;
+let _bewerkLadderId = null;
+
+function zoekBewerkPartij() {
+  if (!_bewerkPartijId) return null;
+  for (const l of alleLadders) {
+    const gevonden = (l.actievePartijen || []).find(p => p.partijId === _bewerkPartijId);
+    if (gevonden) return gevonden;
+  }
+  return null;
+}
+
+// Staat er ook maar een score op de kaart? Dan liggen baan en starthole vast:
+// de scores worden bewaard als "hole 1 van de ronde, hole 2 van de ronde", dus
+// een andere starthole zou de hele kaart een plek opschuiven.
+function heeftScores(p) {
+  const s = p?.scores || {};
+  return Object.values(s).some(arr =>
+    Array.isArray(arr) && arr.some(v => v !== null && v !== undefined && v !== ''));
+}
+
+function zetFormulierModus(bewerken) {
+  const titel = document.getElementById('partij-card-titel');
+  const startBtn = document.getElementById('partij-start-btn');
+  const annuleerBtn = document.getElementById('partij-annuleer-btn');
+  if (titel) titel.textContent = bewerken ? 'Partij aanpassen' : 'Nieuwe Partij';
+  if (startBtn) startBtn.textContent = bewerken ? 'Wijzigingen opslaan' : 'Partij starten →';
+  if (annuleerBtn) annuleerBtn.style.display = bewerken ? 'block' : 'none';
+  if (!bewerken) {
+    const baanSel = document.getElementById('baan-select');
+    const shEl = document.getElementById('start-hole');
+    if (baanSel) baanSel.disabled = false;
+    if (shEl) shEl.disabled = false;
+    const hint = document.getElementById('partij-vergrendeld-hint');
+    if (hint) hint.style.display = 'none';
+  }
+}
+
+// Vanaf het rondescherm: open dit formulier met de lopende partij erin.
+function bewerkPartijInstellingen() {
+  const p = mijnPartij();
+  if (!p) { toast('Geen actieve partij'); return; }
+  _bewerkPartijId = p.partijId;
+  _bewerkLadderId = p.ladderId;
+  const btn = document.getElementById('nav-partij-btn');
+  if (btn) btn.click(); else initPartijForm();
+}
+
+function annuleerPartijBewerken() {
+  _bewerkPartijId = null;
+  _bewerkLadderId = null;
+  zetFormulierModus(false);
+  const btn = document.getElementById('nav-ronde-btn');
+  if (btn) btn.click();
+}
+
+function vulFormulierMetLopendePartij() {
+  const p = zoekBewerkPartij();
+  if (!p) {
+    // Partij is inmiddels afgesloten of verwijderd — val terug op een leeg
+    // formulier in plaats van een half gevuld scherm te tonen.
+    _bewerkPartijId = null;
+    _bewerkLadderId = null;
+    initPartijForm();
+    return;
+  }
+  zetFormulierModus(true);
+  const vergrendeld = heeftScores(p);
+
+  // Ladder ligt vast bij een lopende partij.
+  const ladderSel = document.getElementById('partij-ladder-select');
+  if (ladderSel) {
+    const ladder = alleLadders.find(l => l.id === p.ladderId);
+    ladderSel.innerHTML = `<option value="${escAttr(p.ladderId)}">${esc(ladder?.naam || p.ladderId)}</option>`;
+    ladderSel.value = p.ladderId;
+    ladderSel.onchange = null;
+  }
+  const ladderWrap = document.getElementById('partij-ladder-wrap');
+  if (ladderWrap) ladderWrap.style.display = 'none';
+
+  // Baan: het menu vullen en de baan van de partij kiezen. Staat hij er niet
+  // tussen (bijvoorbeeld een handmatig ingevoerde baan), dan wordt hij als
+  // extra keuze toegevoegd zodat het menu niet leeg blijft.
+  const sel = document.getElementById('baan-select');
+  vulBaanSelect(sel, true);
+  if (sel && p.baan && !Array.from(sel.options).some(o => o.value === p.baan)) {
+    const opt = document.createElement('option');
+    opt.value = p.baan; opt.textContent = p.baan;
+    sel.appendChild(opt);
+  }
+  if (sel) { sel.value = p.baan || ''; onBaanSelect(); sel.disabled = vergrendeld; }
+
+  const shEl = document.getElementById('start-hole');
+  const ahEl = document.getElementById('aantal-holes');
+  if (shEl) { shEl.value = p.startHole || 1; shEl.disabled = vergrendeld; }
+  if (ahEl) ahEl.value = (p.holes || []).length || 18;
+  const hint = document.getElementById('partij-vergrendeld-hint');
+  if (hint) hint.style.display = vergrendeld ? 'block' : 'none';
+
+  // Speltype en handicapkeuzes
+  zetRadio('speltype', p.speltype || 'matchplay');
+  vulHcpInstellingen(p);
+  const speltypeWrap = document.getElementById('speltype-wrap');
+  if (speltypeWrap) speltypeWrap.style.display = 'block';
+  onSpeltypeChange();
+
+  // Spelers in de slots, in dezelfde volgorde als de partij — bij High-Low
+  // bepaalt die volgorde de teams (slot 1+2 tegen 3+4).
+  store.playerSlotCount = 0;
+  document.getElementById('player-slots').innerHTML = '';
+  const addBtn = document.getElementById('add-player-btn');
+  const gastBtn = document.getElementById('add-guest-btn');
+  if (addBtn) addBtn.style.display = '';
+  if (gastBtn) gastBtn.style.display = '';
+  const lijst = (p.spelers || []).slice(0, 4);
+  const aantalSlots = Math.max(2, lijst.length);
+  for (let i = 0; i < aantalSlots; i++) addPlayerSlot();
+  lijst.forEach((s, i) => selecteerPartijSpeler(i + 1, s.uid, s.naam, partijHcpVan(s)));
+}
+
+// ─── Gedeelde bouwstenen voor starten en aanpassen ──────────
+// Leest de spelerslots. `extraBekend` vangt spelers op die wel in de partij
+// zitten maar niet (meer) in de ladderlijst staan, zoals gastspelers.
+function leesSpelersUitFormulier(partijLadderSpelers, extraBekend = []) {
+  const spelers = [];
+  const nietHerkend = [];
+  for (let i = 1; i <= 4; i++) {
+    const slot  = document.getElementById('slot-' + i);
+    const hcpEl = document.getElementById('hcp-' + i);
+    if (!slot) continue;
+    const spelerId = slot.dataset.spelerId;
+    if (!spelerId) continue;
+
+    const isGast = String(spelerId).startsWith('gast_');
+    const speler = partijLadderSpelers.find(s => s.uid === spelerId)
+      || extraBekend.find(s => s.uid === spelerId)
+      || (isGast
+          ? { uid: spelerId, naam: document.getElementById('player-' + i)?.value || 'Gast', hcp: parseFloat(hcpEl?.value) || 0, gast: true }
+          : null);
+
+    if (!speler) {
+      nietHerkend.push(document.getElementById('player-' + i)?.value || `slot ${i}`);
+      continue;
+    }
+
+    const ingevuld = Math.round(parseFloat(hcpEl?.value));
+    const hcp = isNaN(ingevuld) ? (speler.partijHcp ?? speler.hcp ?? 0) : ingevuld;
+    // Alleen de voor een partij benodigde velden — geen ranking-velden die
+    // undefined kunnen zijn (prevRank etc.) en Firestore laten crashen.
+    spelers.push({
+      uid:  speler.uid,
+      naam: speler.naam ?? '',
+      hcp:  hcp,
+      partijHcp: hcp,
+      ...(speler.gast ? { gast: true } : {}),
+    });
+  }
+  return { spelers, nietHerkend };
+}
+
+// Bouwt de onderlinge matchups. Amerikaantje en High-Low kennen ze niet.
+function bouwMatchups(spelers, speltype, pct) {
+  const matchups = [];
+  if (speltype === 'amerikaantje' || speltype === 'highlow') return matchups;
+  for (let i = 0; i < spelers.length; i++) {
+    for (let j = i + 1; j < spelers.length; j++) {
+      const a = spelers[i], b = spelers[j];
+      const { slagen, ontvangerUid } = koppelSlagen(a, b, pct);
+      matchups.push({
+        id: `${a.uid}-${b.uid}`,
+        spelerA: a, spelerB: b,
+        hcpOntvanger: ontvangerUid,
+        hcpSlagen: slagen,
+      });
+    }
+  }
+  return matchups;
+}
+
+// Controleert de spelersaantallen die bij het speltype horen.
+function speltypeKlopt(speltype, aantal) {
+  if (speltype === 'amerikaantje' && aantal !== 3) { toast('Selecteer 3 spelers voor Amerikaantje'); return false; }
+  if (speltype === 'highlow' && aantal !== 4) { toast('Selecteer 4 spelers voor High-Low'); return false; }
+  return true;
+}
+
+// ─── Wijzigingen op een lopende partij opslaan ──────────────
+async function slaPartijInstellingenOp() {
+  const p = zoekBewerkPartij();
+  if (!p) { toast('Partij niet meer gevonden'); annuleerPartijBewerken(); return; }
+
+  const vergrendeld = heeftScores(p);
+  const partijLadderSpelers = getLadderSpelers(p.ladderId);
+  const { spelers, nietHerkend } = leesSpelersUitFormulier(partijLadderSpelers, p.spelers || []);
+  if (nietHerkend.length > 0) { toast(`Speler niet herkend, kies opnieuw: ${nietHerkend.join(', ')}`); return; }
+  if (spelers.length < 2) { toast('Selecteer minimaal 2 spelers'); return; }
+
+  const speltype = document.querySelector('input[name="speltype"]:checked')?.value || 'matchplay';
+  if (!speltypeKlopt(speltype, spelers.length)) return;
+
+  const inst = leesHcpInstellingen();
+
+  // ── Holes bepalen ────────────────────────────────────────
+  const oudeHoles = Array.isArray(p.holes) ? p.holes : [];
+  const gevraagd = Math.max(1, Math.min(18, parseInt(document.getElementById('aantal-holes')?.value) || oudeHoles.length || 18));
+  let nieuweHoles = oudeHoles;
+  let startHole = p.startHole || 1;
+
+  if (!vergrendeld) {
+    // Nog geen enkele score: baan en starthole mogen gewoon opnieuw gekozen
+    // worden, precies zoals bij een nieuwe partij.
+    const baanNaam = document.getElementById('baan-select')?.value || p.baan;
+    const banen = alleBANEN();
+    let basis = [];
+    if (baanNaam === 'Handmatig invoeren') {
+      for (let i = 1; i <= 18; i++) {
+        basis.push({ par: parseInt(document.getElementById('mpar-'+i)?.value || 4), si: parseInt(document.getElementById('msi-'+i)?.value || i) });
+      }
+    } else if (banen[baanNaam]?.holes) {
+      basis = banen[baanNaam].holes;
+    }
+    if (basis.length === 0) { toast('Selecteer eerst een baan'); return; }
+    const startH = Math.max(0, Math.min(17, (parseInt(document.getElementById('start-hole')?.value) || 1) - 1));
+    startHole = startH + 1;
+    nieuweHoles = Array.from({ length: gevraagd }, (_, i) => basis[(startH + i) % basis.length]);
+    p.baan = baanNaam;
+  } else if (gevraagd < oudeHoles.length) {
+    // Ronde inkorten: de holes die wegvallen verdwijnen inclusief hun scores.
+    const kwijt = oudeHoles.length - gevraagd;
+    if (!confirm(`De ronde wordt ${kwijt} hole${kwijt !== 1 ? 's' : ''} korter. Ingevulde scores op die holes gaan verloren. Doorgaan?`)) return;
+    nieuweHoles = oudeHoles.slice(0, gevraagd);
+  } else if (gevraagd > oudeHoles.length) {
+    // Ronde verlengen: dat kan alleen als de baan nog opgezocht kan worden.
+    const basis = alleBANEN()[p.baan]?.holes;
+    if (!Array.isArray(basis) || basis.length === 0) {
+      toast('Deze baan kan niet meer worden opgezocht — de ronde kan niet langer worden gemaakt');
+      return;
+    }
+    const startH = Math.max(0, (p.startHole || 1) - 1);
+    nieuweHoles = Array.from({ length: gevraagd }, (_, i) => basis[(startH + i) % basis.length]);
+  }
+
+  // ── Wie komt erbij, wie gaat eruit ───────────────────────
+  const oudeUids = (p.spelers || []).map(s => s.uid);
+  const nieuweUids = spelers.map(s => s.uid);
+  const verwijderd = oudeUids.filter(u => !nieuweUids.includes(u));
+  const toegevoegd = nieuweUids.filter(u => !oudeUids.includes(u));
+
+  if (verwijderd.length > 0) {
+    const namen = verwijderd.map(u => (p.spelers.find(s => s.uid === u)?.naam || u).split(' ')[0]);
+    const heeftIngevuld = verwijderd.some(u => (p.scores?.[u] || []).some(v => v !== null && v !== undefined && v !== ''));
+    const vraag = heeftIngevuld
+      ? `${namen.join(', ')} verlaat de partij. De al ingevulde scores van ${namen.length > 1 ? 'die spelers' : 'die speler'} gaan verloren. Doorgaan?`
+      : `${namen.join(', ')} verwijderen uit de partij?`;
+    if (!confirm(vraag)) return;
+  }
+
+  // ── Scores meenemen ──────────────────────────────────────
+  const lengte = nieuweHoles.length;
+  const nieuweScores = {};
+  spelers.forEach(s => {
+    const oud = Array.isArray(p.scores?.[s.uid]) ? p.scores[s.uid] : [];
+    nieuweScores[s.uid] = Array.from({ length: lengte }, (_, i) => (oud[i] === undefined ? null : oud[i]));
+  });
+
+  // ── Partij bijwerken ─────────────────────────────────────
+  const vorigeStaat = JSON.stringify({ spelers: p.spelers, matchups: p.matchups, holes: p.holes, speltype: p.speltype, scores: p.scores });
+  p.spelers = spelers;
+  p.holes = nieuweHoles;
+  p.startHole = startHole;
+  p.speltype = speltype;
+  p.scores = nieuweScores;
+  p.hcpPct = inst.hcpPct;
+  p.hcpVerdeling = inst.hcpVerdeling;
+  p.hcpPlaatsing = inst.hcpPlaatsing;
+  p.matchups = bouwMatchups(spelers, speltype, inst.hcpPct);
+
+  try {
+    // Scoredocumenten van vertrekkers opruimen, nieuwkomers een lege kaart.
+    for (const uid of verwijderd) {
+      await verwijderSpelerUitPartijDoc(p.ladderId, p.partijId, uid);
+    }
+    for (const uid of toegevoegd) {
+      const s = spelers.find(x => x.uid === uid);
+      await voegSpelerToeAanPartij(p.ladderId, p.partijId, s, lengte);
+    }
+    // De server controleert de uitslag tegen de matchups in het
+    // partij-document, dus dat moet mee.
+    await maakPartijDocument(p.ladderId, p);
+    await slaActievePartijenOp(p.ladderId);
+  } catch (e) {
+    console.error('[slaPartijInstellingenOp] opslaan mislukt:', e);
+    // Draai de lokale wijziging terug, anders staat het scherm iets anders te
+    // tonen dan er in de database staat.
+    try {
+      const terug = JSON.parse(vorigeStaat);
+      p.spelers = terug.spelers; p.matchups = terug.matchups;
+      p.holes = terug.holes; p.speltype = terug.speltype; p.scores = terug.scores;
+    } catch (_) {}
+    toast('Wijzigingen konden niet worden opgeslagen: ' + (e?.message || e?.code || 'onbekende fout'));
+    return;
+  }
+
+  _bewerkPartijId = null;
+  _bewerkLadderId = null;
+  zetFormulierModus(false);
+  toast('Partij bijgewerkt ✓');
+  const btn = document.getElementById('nav-ronde-btn');
+  if (btn) btn.click();
+}
+
 async function startPartij() {
+  // v5.8.0: dezelfde knop slaat wijzigingen op als er een lopende partij
+  // wordt aangepast.
+  if (_bewerkPartijId) {
+    try { await slaPartijInstellingenOp(); }
+    catch (e) { console.error('slaPartijInstellingenOp mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+    return;
+  }
 
   try {
   // ── Validatie 1: baan geselecteerd? ───────────────────────
@@ -789,40 +1208,9 @@ async function startPartij() {
   }
 
   // ── Collect players ───────────────────────────────────────
-  const spelers = [];
-  const nietHerkend = [];
-  for (let i = 1; i <= 4; i++) {
-    const slot  = document.getElementById('slot-' + i);
-    const hcpEl = document.getElementById('hcp-' + i);
-    if (!slot) continue;
-    const spelerId = slot.dataset.spelerId;
-    if (!spelerId) continue;
-
-    const isGast = String(spelerId).startsWith('gast_');
-    const speler = partijLadderSpelers.find(s => s.uid === spelerId)
-      || (isGast
-          ? { uid: spelerId, naam: document.getElementById('player-' + i)?.value || 'Gast', hcp: parseFloat(hcpEl?.value) || 0, gast: true }
-          : null);
-
-    // ── Validatie 5: speler in slot maar niet teruggevonden ──
-    if (!speler) {
-      const invoerNaam = document.getElementById('player-' + i)?.value || `slot ${i}`;
-      nietHerkend.push(invoerNaam);
-      continue;
-    }
-
-    const partijHcp = Math.round(parseFloat(hcpEl?.value));
-    const hcp = isNaN(partijHcp) ? (speler.hcp ?? 0) : partijHcp;
-    // Sla alleen de voor een partij benodigde velden op — geen ranking-velden
-    // die undefined kunnen zijn (prevRank etc.) en Firestore laten crashen
-    spelers.push({
-      uid:      speler.uid,
-      naam:     speler.naam    ?? '',
-      hcp:      hcp,
-      partijHcp: hcp,
-      ...(speler.gast ? { gast: true } : {}),
-    });
-  }
+  // v5.8.0: het uitlezen van de slots is gedeeld met het aanpassen van een
+  // lopende partij, zodat beide wegen dezelfde spelers opleveren.
+  const { spelers, nietHerkend } = leesSpelersUitFormulier(partijLadderSpelers);
 
   if (nietHerkend.length > 0) {
     toast(`Speler niet herkend, kies opnieuw: ${nietHerkend.join(', ')}`);
@@ -832,15 +1220,12 @@ async function startPartij() {
   // ── Validatie 4: minimaal 2 spelers geselecteerd? ─────────
   if (spelers.length < 2) { toast('Selecteer minimaal 2 spelers'); return; }
 
-  // v3.0.0-11.97: Amerikaantje vereist exact 3 spelers
+  // v3.0.0-11.97: Amerikaantje vereist exact 3 spelers, High-Low exact 4
   const speltype = document.querySelector('input[name="speltype"]:checked')?.value || 'matchplay';
-  if (speltype === 'amerikaantje' && spelers.length !== 3) {
-    toast('Selecteer 3 spelers voor Amerikaantje'); return;
-  }
-  // v3.0.3: High-Low vereist exact 4 spelers (2 teams van 2)
-  if (speltype === 'highlow' && spelers.length !== 4) {
-    toast('Selecteer 4 spelers voor High-Low'); return;
-  }
+  if (!speltypeKlopt(speltype, spelers.length)) return;
+
+  // v5.8.0: handicappercentage, verdeling en plaatsing van de slagen
+  const hcpInst = leesHcpInstellingen();
 
   // v3.0.0-11.24: zit een van deze spelers al in een actieve partij?
   // Check ALLE ladders, niet alleen de actieve. String-vergelijking voor id-types.
@@ -913,22 +1298,7 @@ async function startPartij() {
   const activeHoles = Array.from({ length: aantalHoles }, (_, i) => holes[(startH + i) % holes.length]);
 
   // Generate matchups — niet voor Amerikaantje of High-Low
-  const matchups = [];
-  if (speltype !== 'amerikaantje' && speltype !== 'highlow') {
-    for (let i = 0; i < spelers.length; i++) {
-      for (let j = i + 1; j < spelers.length; j++) {
-        const a = spelers[i], b = spelers[j];
-        const hcpDiff = Math.round(Math.abs(a.partijHcp - b.partijHcp) * 0.75);
-        const hoger = a.partijHcp > b.partijHcp ? a : b;
-        matchups.push({
-          id: `${a.uid}-${b.uid}`,
-          spelerA: a, spelerB: b,
-          hcpOntvanger: hoger.uid,
-          hcpSlagen: hcpDiff
-        });
-      }
-    }
-  }
+  const matchups = bouwMatchups(spelers, speltype, hcpInst.hcpPct);
 
   const nieuwePartij = {
     // v5.0.0: partijId wordt vanaf nu een documentnaam in
@@ -943,6 +1313,12 @@ async function startPartij() {
     spelers,
     matchups,
     speltype,   // v3.0.0-11.97
+    // v5.8.0: de handicapafspraak hoort bij de partij, niet bij de app. Zo
+    // blijft een lopende ronde rekenen zoals hij begonnen is, ook als iemand
+    // anders later andere standaarden kiest.
+    hcpPct:       hcpInst.hcpPct,
+    hcpVerdeling: hcpInst.hcpVerdeling,
+    hcpPlaatsing: hcpInst.hcpPlaatsing,
     // v5.7.1: teams worden NIET meer opgeslagen.
     //
     // Hier stond `teams: [[a,b],[c,d]]` — een lijst met daarin twee lijsten.
@@ -1061,43 +1437,85 @@ function kortNaamMap(spelers) {
   return map;
 }
 
-function renderHcpBlok(spelers, holes, hcpPct, containerId) {
+// ============================================================
+//  HANDICAPBLOK (v5.8.0 herschreven)
+// ============================================================
+//  WAT ER MIS WAS: dit blok toonde altijd koppels met 75% van het onderlinge
+//  verschil, ook bij Amerikaantje en High-Low. Die spelvormen kennen helemaal
+//  geen koppels en rekenen met slagen per speler. Op het scherm stonden dus
+//  slagen die de app zelf nergens gebruikte.
+//
+//  Nu volgt het blok de spelvorm en de instellingen van de partij, en toont
+//  het bovenaan waarmee gerekend wordt.
+//
+//  `bron` is de partij (of een toernooidag) met de instellingen erin;
+//  `spelers` bevat objecten met .hcp of .partijHcp.
+// ============================================================
+function _slagRegel(lijst) {
+  if (lijst.length === 0) return '';
+  const nrs = lijst.map(h => h.slagen > 1 ? `${h.nr} (2×)` : String(h.nr));
+  return `<div style="font-size:11px;color:var(--light);margin-top:2px">holes ${nrs.join(', ')}</div>`;
+}
+
+function renderHcpBlok(spelers, holes, bron, containerId, speltype) {
   const el = document.getElementById(containerId);
   if (!el) return;
-  const naamMap = kortNaamMap(spelers);
-  const pct = hcpPct != null ? hcpPct : 0.75;
+  const lijst = Array.isArray(spelers) ? spelers : [];
+  const holeLijst = Array.isArray(holes) ? holes : [];
+  const inst = hcpInstellingen(bron);
+  const naamMap = kortNaamMap(lijst);
+  const vorm = speltype || bron?.speltype || 'matchplay';
+
+  const kop = `<div style="padding:8px 0 10px;border-bottom:1px solid var(--border);font-size:11px;color:var(--mid);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.5px">
+    ${esc(hcpOmschrijving(bron, vorm))}
+  </div>`;
 
   let html = '';
-  // Alle unieke koppels
-  for (let i = 0; i < spelers.length; i++) {
-    for (let j = i + 1; j < spelers.length; j++) {
-      const a = spelers[i], b = spelers[j];
-      const verschil = Math.round(Math.abs(a.hcp - b.hcp) * pct);
-      const mindereHcp = a.hcp > b.hcp ? a : b;
-      const meerdereHcp = a.hcp > b.hcp ? b : a;
 
-      // Holes waarop mindereHcp slagen krijgt — ook bij meer dan 18 slagen
-      const aantalHoles = holes.length;
-      const slagHoles = holes
-        .map((h, idx) => {
-          const slagen = (h.si <= Math.min(verschil, aantalHoles) ? 1 : 0) +
-                         (h.si <= Math.max(0, verschil - aantalHoles) ? 1 : 0);
-          return { nr: idx + 1, si: h.si, slagen };
-        })
-        .filter(h => h.slagen > 0)
-        .sort((a, b) => a.nr - b.nr);
-
-      html += `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
-        <div style="display:flex;justify-content:space-between;align-items:baseline">
-          <span style="font-weight:600;font-size:14px">${esc(naamMap[a.uid])} vs ${esc(naamMap[b.uid])}</span>
-          <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace">${verschil === 0 ? 'Gelijke handicap' : `${esc(naamMap[mindereHcp.uid])} krijgt ${verschil} slag${verschil !== 1 ? 'en' : ''}`}</span>
+  if (vorm === 'amerikaantje' || vorm === 'highlow') {
+    // Per speler, want er zijn geen onderlinge partijen.
+    const slagenMap = spelerSlagen(lijst, inst);
+    // Bij High-Low volgen de teams uit de spelersvolgorde: slot 1+2 tegen 3+4.
+    const teamVan = uid => {
+      if (vorm !== 'highlow' || lijst.length !== 4) return null;
+      const i = lijst.findIndex(s => s.uid === uid);
+      return i < 0 ? null : (i < 2 ? 1 : 2);
+    };
+    html = lijst.map(s => {
+      const n = slagenMap[s.uid] ?? 0;
+      const team = teamVan(s.uid);
+      const badge = team
+        ? `<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:6px;margin-right:5px;background:var(--border);color:var(--dark)">T${team}</span>`
+        : '';
+      return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+          <span style="font-weight:600;font-size:14px">${badge}${esc(naamMap[s.uid])} <span style="font-weight:400;font-size:12px;color:var(--light)">hcp ${Math.round(partijHcpVan(s))}</span></span>
+          <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace;white-space:nowrap">${n} slag${n !== 1 ? 'en' : ''}</span>
         </div>
+        ${_slagRegel(slagHoleLijst(n, holeLijst, inst.plaatsing))}
+      </div>`;
+    }).join('');
+    el.innerHTML = kop + (html || '<p style="font-size:13px;color:var(--light)">Geen spelers</p>');
+    return;
+  }
+
+  // Matchplay: per koppel het onderlinge verschil.
+  for (let i = 0; i < lijst.length; i++) {
+    for (let j = i + 1; j < lijst.length; j++) {
+      const a = lijst[i], b = lijst[j];
+      const { slagen, ontvangerUid } = koppelSlagen(a, b, inst.pct);
+      html += `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+          <span style="font-weight:600;font-size:14px">${esc(naamMap[a.uid])} vs ${esc(naamMap[b.uid])}</span>
+          <span style="font-size:12px;color:var(--mid);font-family:'DM Mono',monospace;white-space:nowrap">${slagen === 0 ? 'Gelijke handicap' : `${esc(naamMap[ontvangerUid])} +${slagen} slag${slagen !== 1 ? 'en' : ''}`}</span>
+        </div>
+        ${slagen > 0 ? _slagRegel(slagHoleLijst(slagen, holeLijst, inst.plaatsing)) : ''}
       </div>`;
     }
   }
-  el.innerHTML = html || '<p style="font-size:13px;color:var(--light)">Geen koppels</p>';
+  el.innerHTML = kop + (html || '<p style="font-size:13px;color:var(--light)">Geen koppels</p>');
 }
 
 // ============================================================
 
-export { addPlayerSlot, alleBANEN, filterPartijSpelers, getPartijLadderSpelers, herlaadPartijSpelers, initPartijForm, kortNaam, kortNaamMap, mijnPartij, onBaanSelect, onSpeltypeChange, refreshPlayerSlotOptions, removeSlot, renderHandmatigHoles, renderHcpBlok, scanScorekaartFoto, selecteerPartijSpeler, selecteerPartijSpelerEl, slaAangepasteBaanOp, slaPartijFormulierOp, sluitSpelerLijst, startPartij, verwijderAangepasteBaan, voegGastSpelerToeAanPartij, vulKnockoutTegenstander, zoekPartijSpeler };
+export { addPlayerSlot, alleBANEN, annuleerPartijBewerken, bewerkPartijInstellingen, filterPartijSpelers, getPartijLadderSpelers, herlaadPartijSpelers, initPartijForm, kortNaam, kortNaamMap, mijnPartij, onBaanSelect, onHcpOptieChange, onSpeltypeChange, refreshPlayerSlotOptions, removeSlot, renderHandmatigHoles, renderHcpBlok, scanScorekaartFoto, selecteerPartijSpeler, selecteerPartijSpelerEl, slaAangepasteBaanOp, slaPartijFormulierOp, sluitSpelerLijst, startPartij, verwijderAangepasteBaan, voegGastSpelerToeAanPartij, vulKnockoutTegenstander, zoekPartijSpeler };

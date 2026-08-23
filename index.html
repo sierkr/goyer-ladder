@@ -1333,7 +1333,7 @@
 <div id="page-partij" class="page">
   <div class="card">
     <div class="card-header">
-      <h2>Nieuwe Partij</h2>
+      <h2 id="partij-card-titel">Nieuwe Partij</h2>
     </div>
     <div class="card-body">
       <div class="form-group" id="partij-ladder-wrap">
@@ -1364,7 +1364,13 @@
           <label>Aantal holes</label>
           <input type="number" id="aantal-holes" min="1" max="18" value="18" style="width:100%">
         </div>
+        <!-- v5.8.0: HCP % is geen vaste 75 meer maar een keuze per partij -->
+        <div class="form-group" style="flex:1">
+          <label>HCP %</label>
+          <input type="number" id="hcp-pct" min="0" max="100" step="5" value="75" style="width:100%" oninput="onHcpOptieChange()">
+        </div>
       </div>
+      <p id="partij-vergrendeld-hint" style="display:none;font-size:11px;color:var(--light);margin:-4px 0 8px">Baan en starthole liggen vast zolang er scores op de kaart staan.</p>
       <div class="divider"></div>
       <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px;">Spelers (2–4)</label><p style="font-size:11px;color:var(--light);margin-bottom:8px">Voer de playing handicap in over 18 holes</p>
       <div id="player-slots"></div>
@@ -1393,8 +1399,42 @@
           <p id="speltype-hint" style="display:none;font-size:11px;color:var(--light);margin-top:6px">Exact 3 spelers · 6 punten per hole · winnaar +2 plekken, verliezer −2</p>
         </div>
       </div>
+
+      <!-- v5.8.0: hoe de handicapslagen verdeeld worden -->
+      <div id="hcp-opties-wrap">
+        <div class="divider"></div>
+        <div class="form-group" id="hcp-verdeling-wrap" style="display:none">
+          <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Verdeling van de slagen</label>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="hcp-verdeling-volledig-label">
+              <input type="radio" name="hcp-verdeling" id="hcp-verdeling-volledig" value="volledig" checked onchange="onHcpOptieChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Eigen handicap <span style="font-size:11px;color:var(--light)" id="hcp-verdeling-volledig-uitleg">— ieder zijn eigen handicap × 75%</span></span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="hcp-verdeling-relatief-label">
+              <input type="radio" name="hcp-verdeling" id="hcp-verdeling-relatief" value="relatief" onchange="onHcpOptieChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Onderling verschil <span style="font-size:11px;color:var(--light)" id="hcp-verdeling-relatief-uitleg">— laagste krijgt niets, de rest het verschil × 75%</span></span>
+            </label>
+          </div>
+        </div>
+        <div class="form-group" id="hcp-plaatsing-wrap">
+          <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Op welke holes</label>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="hcp-plaatsing-laag-label">
+              <input type="radio" name="hcp-plaatsing" id="hcp-plaatsing-laag" value="laag" checked onchange="onHcpOptieChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Laagste SI <span style="font-size:11px;color:var(--light)">— bij 4 slagen: SI 1 t/m 4</span></span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="hcp-plaatsing-vanaf-label">
+              <input type="radio" name="hcp-plaatsing" id="hcp-plaatsing-vanaf" value="vanaf" onchange="onHcpOptieChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Vanaf de volgende SI <span style="font-size:11px;color:var(--light)">— bij 4 slagen: SI 5 t/m 8</span></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
       <div class="divider"></div>
-      <button class="btn btn-primary btn-block" onclick="startPartij()">Partij starten →</button>
+      <button class="btn btn-primary btn-block" id="partij-start-btn" onclick="startPartij()">Partij starten →</button>
+      <!-- v5.8.0: alleen zichtbaar als een lopende partij aangepast wordt -->
+      <button class="btn btn-ghost btn-block" id="partij-annuleer-btn" style="display:none;margin-top:8px" onclick="annuleerPartijBewerken()">Annuleren</button>
     </div>
   </div>
 </div>
@@ -1411,6 +1451,12 @@
         <h2 id="ronde-baan-naam">—</h2>
         <span class="badge badge-gold" id="ronde-holes-badge">18 holes</span>
         <span class="badge badge-gold" id="ronde-watch-pin" style="display:none;cursor:pointer" title="Tik om een PIN voor je horloge te maken (6 cijfers, 15 minuten geldig, eenmalig)">⌚ Koppel horloge</span>
+      </div>
+      <!-- v5.8.0: alles wijzigen gaat via het partijformulier, niet meer via
+           losse knopjes verspreid over de scorekaart. De ingevulde scores
+           blijven daarbij staan. -->
+      <div class="card-body" style="padding-top:10px">
+        <button class="btn btn-ghost btn-block btn-sm" onclick="bewerkPartijInstellingen()">⚙ Partij-instellingen aanpassen</button>
       </div>
     </div>
 
@@ -1433,9 +1479,6 @@
     <div class="card">
       <div class="card-header inklapbaar" onclick="toggleAdminKaart(this)">
         <h2>Scorekaart</h2>
-        <div style="display:flex;gap:6px" onclick="event.stopPropagation()">
-          <button class="btn btn-sm btn-primary" onclick="openToevoegenModal()">+ Speler</button>
-        </div>
       </div>
       <div class="card-collapse">
         <div style="overflow-x:auto">
@@ -1455,27 +1498,10 @@
   </div>
 </div>
 
-<!-- Speler toevoegen tijdens ronde modal -->
-<div class="modal-overlay" id="modal-toevoegen-ronde">
-  <div class="modal">
-    <h3>Speler toevoegen</h3>
-    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">Kies een speler die vanaf nu meedoet. Nieuwe matchups worden aangemaakt tegen alle huidige spelers.</p>
-    <div class="form-group">
-      <label>Speler</label>
-      <select id="toevoegen-speler-select">
-        <option value="">— Kies speler —</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label>Handicap</label>
-      <input type="number" id="toevoegen-speler-hcp" step="1" min="-10" max="54" placeholder="hcp">
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-toevoegen-ronde')">Annuleren</button>
-      <button class="btn btn-primary" style="flex:2" onclick="bevestigToevoegenRonde()">Toevoegen</button>
-    </div>
-  </div>
-</div>
+<!-- v5.8.0: de losse modal "Speler toevoegen tijdens ronde" is vervallen.
+     Spelers toevoegen, verwijderen en handicaps wijzigen gebeurt voortaan via
+     "Partij-instellingen aanpassen" op het rondescherm, zodat er nog maar een
+     plek is waar dit soort wijzigingen wordt gemaakt. -->
 
 <!-- ==================== UITSLAGEN ==================== -->
 <div id="page-uitslagen" class="page">

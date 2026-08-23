@@ -1916,7 +1916,12 @@ function editToernooiHcp(spelerId) {
     if (mijnFlight) hcpSpelers = (mijnFlight.spelerIds || []).map(sid =>
       t.spelers.find(s => s.uid === sid)).filter(Boolean);
   }
-  renderHcpBlok(hcpSpelers, dag?.holes || [], t.hcpPct ?? 0.75, 'toernooi-hcp-blok');
+  // v5.8.0: renderHcpBlok krijgt nu de instellingen als object mee in plaats
+  // van alleen een percentage. Toernooien spelen altijd matchplay met de
+  // slagen op de laagste stroke-indexen, dus dat staat hier vast.
+  renderHcpBlok(hcpSpelers, dag?.holes || [],
+    { hcpPct: t.hcpPct ?? 0.75, hcpVerdeling: 'volledig', hcpPlaatsing: 'laag' },
+    'toernooi-hcp-blok', 'matchplay');
   toast(`Handicap ${speler.naam.split(' ')[0]} bijgewerkt ✓`);
 }
 
