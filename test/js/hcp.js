@@ -62,39 +62,49 @@ export function hcpOmschrijving(p, speltype) {
 
 // ─── Kern: waar vallen de slagen? ───────────────────────────
 //  Geeft een lijst terug even lang als `holes`, met per hole het aantal
-//  slagen. De volgorde wordt bepaald door de stroke index van de holes die
-//  daadwerkelijk gespeeld worden — niet door de SI-nummers zelf.
+//  slagen.
 //
-//  v5.8.0 — WAT ER MIS WAS BIJ MINDER DAN 18 HOLES.
-//  De oude regel was `hole.si <= aantalSlagen`. Bij een volle ronde klopt
-//  dat, want dan liggen de SI's 1 t/m 18 allemaal op de kaart. Speelde je
-//  negen holes met bijvoorbeeld de even SI's (2,4,6...18), dan kreeg iemand
-//  met vier slagen er maar twee — de holes met SI 1 en 3 lagen immers niet
-//  op zijn kaart. Vier afgesproken slagen werden er stilletjes twee. Nu
-//  worden de gespeelde holes op SI gesorteerd en krijgen de n zwaarste een
-//  slag, zodat n slagen ook echt n slagen zijn.
+//  De slagen worden toegekend aan STROKE-INDEXNUMMERS, niet aan "de zwaarste
+//  gespeelde holes". Dat is wezenlijk: de stroke index hoort bij de volledige
+//  kaart. Wie vier slagen krijgt, krijgt ze op SI 1 t/m 4 — en speel je maar
+//  negen holes, dan liggen niet al die stroke-indexen op je kaart en vang je
+//  er dus maar een deel van op. Bij een halve ronde krijg je ongeveer de helft
+//  van de slagen, en zo hoort het ook.
+//
+//  De keuze 'vanaf' verschuift het venster: bij vier slagen niet SI 1 t/m 4
+//  maar SI 5 t/m 8. Passen de slagen niet meer binnen de kaart, dan loopt het
+//  venster door bij SI 1 — dezelfde doorloop die 'laag' al kende bij meer
+//  slagen dan holes.
 export function slagenPerHole(totaalSlagen, holes, plaatsing = 'laag') {
-  const H = Array.isArray(holes) ? holes.length : 0;
+  const lijst = Array.isArray(holes) ? holes : [];
+  const H = lijst.length;
   const uit = new Array(H).fill(0);
   const n = Math.max(0, Math.round(Number(totaalSlagen) || 0));
   if (H === 0 || n === 0) return uit;
 
-  // Holes op zwaarte: laagste stroke index eerst. Bij een gelijke of
-  // ontbrekende SI beslist de speelvolgorde, zodat de uitkomst altijd
-  // dezelfde is — ook op de server.
-  const opZwaarte = holes
-    .map((h, i) => ({ i, si: Number(h?.si) > 0 ? Number(h.si) : (i + 1) }))
-    .sort((a, b) => a.si - b.si || a.i - b.i);
+  if (plaatsing === 'vanaf') {
+    // Venster van n stroke-indexen dat begint bij SI n+1: bij vier slagen dus
+    // SI 5 t/m 8. Loopt het venster voorbij de kaart, dan gaat het verder bij
+    // SI 1 — dezelfde doorloop die 'laag' kent bij meer slagen dan holes.
+    const perSi = new Array(H + 1).fill(0);
+    for (let k = 0; k < n; k++) perSi[((n + k) % H) + 1]++;
+    for (let i = 0; i < H; i++) {
+      const si = Number(lijst[i]?.si);
+      if (Number.isFinite(si) && si >= 1 && si <= H) uit[i] = perSi[si];
+    }
+    return uit;
+  }
 
-  if (plaatsing === 'vanaf' && n < H) {
-    // Sla de n zwaarste holes over en begin daarna. Bij 4 slagen dus de
-    // 5e t/m 8e hole op zwaarte. Passen ze niet allemaal achter elkaar,
-    // dan loopt hij door bij de zwaarste hole.
-    for (let k = 0; k < n; k++) uit[opZwaarte[(n + k) % H].i]++;
-  } else {
-    // Zwaarste holes eerst. Meer slagen dan holes: iedere hole krijgt er
-    // een, en de zwaarste holes krijgen er nog een.
-    for (let k = 0; k < n; k++) uit[opZwaarte[k % H].i]++;
+  // 'laag' — letterlijk de formule zoals de app hem altijd al gebruikt:
+  // een slag op SI 1 t/m n, en bij meer slagen dan holes een tweede slag op
+  // de zwaarste stroke-indexen. Hier mag niets aan veranderen, anders pakt
+  // een lopende partij ineens anders uit dan hij begonnen is.
+  const eerste = Math.min(n, H);
+  const tweede = Math.max(0, n - H);
+  for (let i = 0; i < H; i++) {
+    const si = Number(lijst[i]?.si);
+    if (!Number.isFinite(si)) continue;
+    uit[i] = (si <= eerste ? 1 : 0) + (si <= tweede ? 1 : 0);
   }
   return uit;
 }

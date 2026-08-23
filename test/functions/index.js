@@ -821,23 +821,32 @@ async function _leesPartijScores(ladderRef, partijId, partij) {
 //  LET OP: deze functie MOET gelijk blijven aan die in js/hcp.js. Wijkt hij
 //  af, dan weigert de server een winnaar die de app wel als winnaar toont.
 //  Sinds v5.8.0 kan een partij afspreken dat de slagen niet op de laagste
-//  stroke-indexen vallen maar daar net achter (hcpPlaatsing = 'vanaf'), en
-//  worden de gespeelde holes op SI gesorteerd in plaats van vergeleken met
-//  `si <= aantalSlagen` — dat laatste gaf bij minder dan 18 holes te weinig
-//  slagen.
+//  stroke-indexen vallen maar daar net achter (hcpPlaatsing = 'vanaf').
+//  De slagen horen bij stroke-indexnummers, niet bij "de zwaarste gespeelde
+//  holes": speel je negen holes, dan liggen niet alle stroke-indexen op de
+//  kaart en vang je maar een deel van de slagen op.
 // ────────────────────────────────────────────────────────────
 function _slagenPerHole(totaalSlagen, holes, plaatsing) {
-  const H = Array.isArray(holes) ? holes.length : 0;
+  const lijst = Array.isArray(holes) ? holes : [];
+  const H = lijst.length;
   const uit = new Array(H).fill(0);
   const n = Math.max(0, Math.round(Number(totaalSlagen) || 0));
   if (H === 0 || n === 0) return uit;
-  const opZwaarte = holes
-    .map((h, i) => ({ i, si: Number(h && h.si) > 0 ? Number(h.si) : (i + 1) }))
-    .sort((a, b) => a.si - b.si || a.i - b.i);
-  if (plaatsing === 'vanaf' && n < H) {
-    for (let k = 0; k < n; k++) uit[opZwaarte[(n + k) % H].i]++;
-  } else {
-    for (let k = 0; k < n; k++) uit[opZwaarte[k % H].i]++;
+  if (plaatsing === 'vanaf') {
+    const perSi = new Array(H + 1).fill(0);
+    for (let k = 0; k < n; k++) perSi[((n + k) % H) + 1]++;
+    for (let i = 0; i < H; i++) {
+      const si = Number(lijst[i] && lijst[i].si);
+      if (Number.isFinite(si) && si >= 1 && si <= H) uit[i] = perSi[si];
+    }
+    return uit;
+  }
+  const eerste = Math.min(n, H);
+  const tweede = Math.max(0, n - H);
+  for (let i = 0; i < H; i++) {
+    const si = Number(lijst[i] && lijst[i].si);
+    if (!Number.isFinite(si)) continue;
+    uit[i] = (si <= eerste ? 1 : 0) + (si <= tweede ? 1 : 0);
   }
   return uit;
 }
