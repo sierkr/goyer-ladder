@@ -134,7 +134,7 @@ export async function maakPartijDocument(ladderId, partij) {
 
 /**
  * Voegt een scoredocument toe voor een speler die later bij een lopende
- * partij komt (openToevoegenModal / bevestigToevoegenRonde).
+ * partij komt (v5.8.0: via 'Partij-instellingen aanpassen').
  */
 export async function voegSpelerToeAanPartij(ladderId, partijId, speler, aantalHoles) {
   if (!speler?.uid) return;

@@ -256,7 +256,7 @@ const OMGEVING_NAAM = IS_TEST_WATCH ? 'de testomgeving' : 'de gewone app';
 // met version.json op de server (zie zelfVerversen onderaan) en staat zichtbaar
 // op het PIN-scherm, zodat je op een horloge zonder adresbalk kunt zien wat er
 // draait.
-const WATCH_VERSIE = 'v5.7.2';
+const WATCH_VERSIE = 'v5.7.3';
 const DB_NAAM   = IS_TEST_WATCH ? 'test' : '(default)';
 const FS        = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/${DB_NAAM}/documents`;
 const AUTH_URL  = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`;
@@ -931,16 +931,36 @@ function renderTotaal(naamMap, spelers) {
 // ══════════════════════════════════════════════════════════════
 //  ONDERLINGE STAND
 // ══════════════════════════════════════════════════════════════
+// v5.8.0 — kopie van slagenPerHole() uit js/hcp.js. Deze pagina draait
+// zelfstandig (geen modules), dus de regel staat hier apart. Hij MOET gelijk
+// blijven aan js/hcp.js en aan _slagenPerHole() in functions/index.js.
+function slagenPerHole(totaalSlagen, holes, plaatsing) {
+  const H = Array.isArray(holes) ? holes.length : 0;
+  const uit = new Array(H).fill(0);
+  const n = Math.max(0, Math.round(Number(totaalSlagen) || 0));
+  if (H === 0 || n === 0) return uit;
+  const opZwaarte = holes
+    .map((h, i) => ({ i, si: Number(h && h.si) > 0 ? Number(h.si) : (i + 1) }))
+    .sort((a, b) => a.si - b.si || a.i - b.i);
+  if (plaatsing === 'vanaf' && n < H) {
+    for (let k = 0; k < n; k++) uit[opZwaarte[(n + k) % H].i]++;
+  } else {
+    for (let k = 0; k < n; k++) uit[opZwaarte[k % H].i]++;
+  }
+  return uit;
+}
+
 function berekenMatchStand(matchup) {
   if (!partij?.holes || !partij?.scores) return { standA:0, gespeeld:0, resterend:0, status:'lopend' };
   let standA = 0, gespeeld = 0, beslissingsStand = null, beslissingsGespeeld = null;
+  const plaatsing = partij.hcpPlaatsing === 'vanaf' ? 'vanaf' : 'laag';
+  const slagenLijst = slagenPerHole(matchup.hcpSlagen, partij.holes, plaatsing);
   for (let i = 0; i < partij.holes.length; i++) {
     const sA = partij.scores[matchup.spelerA.uid]?.[i];
     const sB = partij.scores[matchup.spelerB.uid]?.[i];
     if (sA === null || sA === undefined || sB === null || sB === undefined) continue;
     gespeeld++;
-    const hole = partij.holes[i], diff = matchup.hcpSlagen, aantalH = partij.holes.length;
-    const slag = (hole.si <= Math.min(diff,aantalH)?1:0) + (hole.si <= Math.max(0,diff-aantalH)?1:0);
+    const slag = slagenLijst[i] || 0;
     const slagA = matchup.hcpOntvanger === matchup.spelerA.uid ? slag : 0;
     const slagB = matchup.hcpOntvanger === matchup.spelerB.uid ? slag : 0;
     if (sA-slagA < sB-slagB) standA++; else if (sB-slagB < sA-slagA) standA--;

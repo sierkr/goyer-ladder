@@ -1,4 +1,4 @@
-# HANDOVER — Goyer Golf MP Ladder, v5.7.2
+# HANDOVER — Goyer Golf MP Ladder, v5.7.3
 
 > Plak dit bestand als eerste bericht in een nieuwe chat, samen met de zip.
 > Lees daarna `_project.md` voor de volledige structuur en changelog.
@@ -51,7 +51,25 @@ wachtwoordwijziging in test ook het echte wachtwoord.
 
 ## 3. Waar we nu staan
 
-Versie in de zip: **v5.7.2**.
+Versie in de zip: **v5.7.3**.
+
+### Nieuw in v5.7.3 — scorekaartfoto wordt vooraf verkleind
+
+De scanfunctie weigerde afbeeldingen boven ~3 MB. Een schermafdruk (PNG) haalt
+die grens moeiteloos, waardoor scannen faalde met "Afbeelding te groot".
+
+`js/partij.js` verkleint de foto nu in de browser voordat hij wordt verstuurd:
+langste zijde maximaal 1600 px, opgeslagen als JPEG, kwaliteit stapsgewijs
+omlaag (0.85 → 0.4) tot het onder de limiet past. Lukt verkleinen niet — denk
+aan een HEIC-bestand dat de browser niet kan tekenen — dan gaat het origineel
+alsnog mee, met een duidelijke foutmelding als ook dat te groot is.
+
+Waarom dit geen kwaliteitsverlies is: Claude schaalt afbeeldingen boven 1568 px
+zelf terug. Alles daarboven werd dus toch weggegooid, maar kostte wel upload en
+tokens. Bijvangst: een scan is nu ongeveer 40% goedkoper en merkbaar sneller.
+
+Tegelijk verplaatst: het leegmaken van de file-input staat nu in een `finally`,
+zodat dezelfde foto na een mislukte poging opnieuw gekozen kan worden.
 
 ### De testopzet is groen
 

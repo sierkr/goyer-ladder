@@ -14,11 +14,11 @@ import { renderLadder, toggleLadderKaart } from './ladder.js';
 import { initPartijForm, addPlayerSlot, voegGastSpelerToeAanPartij, removeSlot, onBaanSelect, onSpeltypeChange,
   startPartij, zoekPartijSpeler, selecteerPartijSpelerEl,
   sluitSpelerLijst, slaAangepasteBaanOp, verwijderAangepasteBaan,
-  refreshPlayerSlotOptions, slaPartijFormulierOp, scanScorekaartFoto } from './partij.js';
+  refreshPlayerSlotOptions, slaPartijFormulierOp, scanScorekaartFoto,
+  onHcpOptieChange, bewerkPartijInstellingen, annuleerPartijBewerken } from './partij.js';
 import { renderRonde, renderScorecard, updateScore, toggleScorecard,
   openUitslagModal, bevestigUitslag, setWinnaar, skipMatchup,
-  editPartijHcp, verwijderSpelerUitRonde, openToevoegenModal,
-  bevestigToevoegenRonde, sluitUitslagEnGaNaarLadder, showLadderChanges,
+  editPartijHcp, sluitUitslagEnGaNaarLadder, showLadderChanges,
   zetAmerikaaanjePositie, zetHighlowWinnaar, toonEindstandKeuze,
   annuleerEigenPartij, verwijderActievePartij , vraagWatchPin } from './ronde.js';
 import { renderUitslagen, openScorekaartDetail, bevestigBeheerUitslag , draaiUitslagTerug } from './uitslagen.js';
@@ -88,6 +88,10 @@ window.voegGastSpelerToeAanPartij = voegGastSpelerToeAanPartij;
 window.removeSlot = removeSlot;
 window.onBaanSelect = onBaanSelect;
 window.onSpeltypeChange = onSpeltypeChange;
+// v5.8.0: handicapkeuzes en het aanpassen van een lopende partij
+window.onHcpOptieChange = onHcpOptieChange;
+window.bewerkPartijInstellingen = bewerkPartijInstellingen;
+window.annuleerPartijBewerken = annuleerPartijBewerken;
 window.startPartij = startPartij;
 window.zoekPartijSpeler = zoekPartijSpeler;
 window.selecteerPartijSpelerEl = selecteerPartijSpelerEl;
@@ -103,9 +107,6 @@ window.bevestigUitslag = bevestigUitslag;
 window.setWinnaar = setWinnaar;
 window.skipMatchup = skipMatchup;
 window.editPartijHcp = editPartijHcp;
-window.verwijderSpelerUitRonde = verwijderSpelerUitRonde;
-window.openToevoegenModal = openToevoegenModal;
-window.bevestigToevoegenRonde = bevestigToevoegenRonde;
 window.sluitUitslagEnGaNaarLadder = sluitUitslagEnGaNaarLadder;
 window.showLadderChanges = showLadderChanges;
 window.zetAmerikaaanjePositie = zetAmerikaaanjePositie; // v5.7.0
@@ -227,7 +228,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v5.7.2';
+  const VERSION = 'v5.8.0';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -272,7 +273,7 @@ window.toggleTRankingLadder = toggleTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v5.7.2';
+  const LOKALE_VERSIE = 'v5.8.0';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 

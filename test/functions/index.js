@@ -816,28 +816,56 @@ async function _leesPartijScores(ladderRef, partijId, partij) {
   return uit;
 }
 
+// ────────────────────────────────────────────────────────────
+//  v5.8.0 — Node-port van slagenPerHole() uit js/hcp.js.
+//  LET OP: deze functie MOET gelijk blijven aan die in js/hcp.js. Wijkt hij
+//  af, dan weigert de server een winnaar die de app wel als winnaar toont.
+//  Sinds v5.8.0 kan een partij afspreken dat de slagen niet op de laagste
+//  stroke-indexen vallen maar daar net achter (hcpPlaatsing = 'vanaf'), en
+//  worden de gespeelde holes op SI gesorteerd in plaats van vergeleken met
+//  `si <= aantalSlagen` — dat laatste gaf bij minder dan 18 holes te weinig
+//  slagen.
+// ────────────────────────────────────────────────────────────
+function _slagenPerHole(totaalSlagen, holes, plaatsing) {
+  const H = Array.isArray(holes) ? holes.length : 0;
+  const uit = new Array(H).fill(0);
+  const n = Math.max(0, Math.round(Number(totaalSlagen) || 0));
+  if (H === 0 || n === 0) return uit;
+  const opZwaarte = holes
+    .map((h, i) => ({ i, si: Number(h && h.si) > 0 ? Number(h.si) : (i + 1) }))
+    .sort((a, b) => a.si - b.si || a.i - b.i);
+  if (plaatsing === 'vanaf' && n < H) {
+    for (let k = 0; k < n; k++) uit[opZwaarte[(n + k) % H].i]++;
+  } else {
+    for (let k = 0; k < n; k++) uit[opZwaarte[k % H].i]++;
+  }
+  return uit;
+}
+
+function _hcpPlaatsingVan(partij) {
+  return partij && partij.hcpPlaatsing === 'vanaf' ? 'vanaf' : 'laag';
+}
+
 // Node-port van getHcpSlagenOpHole() uit js/ronde.js — identieke formule.
-function _hcpSlagenOpHole(matchup, holes, holeIdx) {
-  const hole = holes[holeIdx];
-  if (!hole) return 0;
-  const aantalHoles = holes.length;
-  const diff = matchup.hcpSlagen || 0;
-  return (hole.si <= Math.min(diff, aantalHoles) ? 1 : 0) +
-         (hole.si <= Math.max(0, diff - aantalHoles) ? 1 : 0);
+function _hcpSlagenOpHole(matchup, holes, holeIdx, plaatsing) {
+  if (!holes[holeIdx]) return 0;
+  return _slagenPerHole(matchup.hcpSlagen || 0, holes, plaatsing)[holeIdx] || 0;
 }
 
 // Node-port van berekenMatchStand() uit js/ronde.js — identieke formule,
 // inclusief het "bevriezen" van de stand zodra de match beslist is.
 // Retourneert { standA, gespeeld }: standA > 0 = speler A staat voor.
-function _berekenStand(matchup, holes, scoresA, scoresB) {
+function _berekenStand(matchup, holes, scoresA, scoresB, plaatsing) {
   let standA = 0, gespeeld = 0, beslissingsStand = null;
   const aUid = matchup.spelerA?.uid, bUid = matchup.spelerB?.uid;
+  // Eenmalig uitrekenen: de verdeling is voor alle holes dezelfde.
+  const slagenLijst = _slagenPerHole(matchup.hcpSlagen || 0, holes, plaatsing);
   for (let i = 0; i < holes.length; i++) {
     const sA = scoresA?.[i], sB = scoresB?.[i];
     if (sA === null || sA === undefined || sB === null || sB === undefined) continue;
     gespeeld++;
-    const slagA = matchup.hcpOntvanger === aUid ? _hcpSlagenOpHole(matchup, holes, i) : 0;
-    const slagB = matchup.hcpOntvanger === bUid ? _hcpSlagenOpHole(matchup, holes, i) : 0;
+    const slagA = matchup.hcpOntvanger === aUid ? (slagenLijst[i] || 0) : 0;
+    const slagB = matchup.hcpOntvanger === bUid ? (slagenLijst[i] || 0) : 0;
     const nettoA = sA - slagA, nettoB = sB - slagB;
     if (nettoA < nettoB) standA++;
     else if (nettoB < nettoA) standA--;
@@ -943,7 +971,9 @@ exports.verwerkPartijUitslag = onCall(
       // Geen scores of gelijkspel -> de keuze van de speler telt, zoals bedoeld.
       const { standA, gespeeld } = _berekenStand(
         bron, holes,
-        partijScores[bron.spelerA?.uid], partijScores[bron.spelerB?.uid]
+        partijScores[bron.spelerA?.uid], partijScores[bron.spelerB?.uid],
+        // v5.8.0: de partij bepaalt zelf waar de slagen vallen.
+        _hcpPlaatsingVan(partij)
       );
       if (gespeeld > 0 && standA !== 0) {
         const uitScores = standA > 0 ? bron.spelerA?.uid : bron.spelerB?.uid;
