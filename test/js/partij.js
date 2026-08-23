@@ -161,6 +161,17 @@ function vulHcpInstellingen(bron) {
 function onHcpOptieChange() {
   const verdeling = document.querySelector('input[name="hcp-verdeling"]:checked')?.value || 'volledig';
   const plaatsing = document.querySelector('input[name="hcp-plaatsing"]:checked')?.value || 'laag';
+
+  // v5.8.2: het percentage in de toelichting meelaten lopen met wat er
+  // ingevuld staat. "Volledig" las alsof het percentage dan niet meetelde,
+  // terwijl het in beide gevallen wordt toegepast — het verschil zit alleen
+  // in de handicap waarover gerekend wordt.
+  const pct = Math.round(leesHcpInstellingen().hcpPct * 100);
+  const volledigUitleg = document.getElementById('hcp-verdeling-volledig-uitleg');
+  const relatiefUitleg = document.getElementById('hcp-verdeling-relatief-uitleg');
+  if (volledigUitleg) volledigUitleg.textContent = `— ieder zijn eigen handicap × ${pct}%`;
+  if (relatiefUitleg) relatiefUitleg.textContent = `— laagste krijgt niets, de rest het verschil × ${pct}%`;
+
   const zet = (id, actief) => {
     const el = document.getElementById(id);
     if (el) el.style.borderColor = actief ? 'var(--green)' : 'var(--border)';

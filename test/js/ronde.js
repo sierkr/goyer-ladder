@@ -493,7 +493,10 @@ function berekenAmerikaaanjeHole(holeIdx) {
 //  hoogste net-bal per team (high). Team met de lagere low krijgt
 //  het low-punt; team met de lagere high krijgt het high-punt.
 //  Gelijk = push (geen punt). Netto-slagen identiek aan Amerikaantje
-//  (SI-allocatie op partijHcp). Geen ladder-effect.
+//  (SI-allocatie op partijHcp).
+//  v5.8.3: hier stond "Geen ladder-effect". Dat klopte tot v5.6.x, maar sinds
+//  v5.7.0 telt High-Low wel degelijk mee: het winnende team stijgt een plek,
+//  het verliezende zakt er een. Zie verschuivingHighlow() in functions/index.js.
 // ============================================================
 function netScoreHighlow(p, s, holeIdx) {
   const scoreArr = Array.isArray(p.scores?.[s.uid]) ? p.scores[s.uid] : [];
@@ -737,7 +740,10 @@ async function synchroniseerPartijDoc(p) {
 // ============================================================
 // ============================================================
 //  AMERIKAANTJE — uitslag (v3.0.0-11.97)
-//  Geen ranking-effect. Toon eindstand en sla archief op.
+//  Toon eindstand, werk de ladder bij en sla het archief op.
+//  v5.8.3: hier stond "Geen ranking-effect". Achterhaald sinds v5.7.0 —
+//  de eerste stijgt twee plekken, de derde zakt er twee, en de rest van de
+//  ladder schuift mee. Zie verschuivingAmerikaantje() in functions/index.js.
 // ============================================================
 // v5.7.0: de eindstand die bevestigd gaat worden. Wordt voorgevuld uit de
 // punten als er volledig ingevulde holes zijn, en anders bewust LEEG gelaten —
@@ -876,7 +882,9 @@ function openAmerikaaanjeUitslagModal() {
 
 // ============================================================
 //  HIGH-LOW — uitslag (v3.0.3)
-//  Geen ranking-effect. Toon team-eindstand en sla archief op.
+//  Toon team-eindstand, werk de ladder bij en sla het archief op.
+//  v5.8.3: hier stond "Geen ranking-effect". Achterhaald sinds v5.7.0 —
+//  winnaars +1 plek, verliezers -1, gelijkspel laat iedereen staan.
 // ============================================================
 function openHighlowUitslagModal() {
   const p = mijnPartij();

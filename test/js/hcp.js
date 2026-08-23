@@ -21,9 +21,13 @@
 // ─── Instellingen van een partij ────────────────────────────
 //  hcpPct        0..1   deel van de handicap dat verrekend wordt (0.75 = 75%)
 //  hcpVerdeling  'volledig' | 'relatief'
-//                volledig  = iedereen krijgt zijn eigen handicap x percentage
-//                relatief  = de laagste handicap krijgt 0, de rest het
-//                            verschil met hem x percentage
+//                Bepaalt WAAROVER gerekend wordt. Het percentage gaat er in
+//                beide gevallen overheen — dat is geen verschil tussen de twee.
+//                volledig  = eigen handicap x percentage
+//                            (in het scherm: "Eigen handicap")
+//                relatief  = verschil met de laagste handicap x percentage,
+//                            zodat de laagste er nul krijgt
+//                            (in het scherm: "Onderling verschil")
 //                (alleen van belang bij Amerikaantje en High-Low; matchplay
 //                 is per definitie relatief)
 //  hcpPlaatsing  'laag' | 'vanaf'
@@ -54,7 +58,9 @@ export function hcpOmschrijving(p, speltype) {
   // Bij matchplay zegt "volledig/relatief" niets: daar is het altijd het
   // onderlinge verschil. Alleen tonen waar het betekenis heeft.
   if (speltype === 'amerikaantje' || speltype === 'highlow') {
-    delen.push(i.verdeling === 'relatief' ? 'relatief' : 'volledig');
+    // v5.8.2: "volledig" las alsof het percentage er dan niet overheen ging.
+    // Nu benoemt de tekst waarover gerekend wordt, niet hoe veel.
+    delen.push(i.verdeling === 'relatief' ? 'onderling verschil' : 'eigen hcp');
   }
   delen.push(i.plaatsing === 'vanaf' ? 'slagen vanaf SI' : 'laagste SI');
   return delen.join(' · ');

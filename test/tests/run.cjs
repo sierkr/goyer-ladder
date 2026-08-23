@@ -4,6 +4,7 @@
 // ============================================================
 const suites = [
   ['Puntensysteem & matchstand', './punten.test.cjs'],
+  ['Handicapverrekening',        './hcp.test.cjs'],
   ['Activiteitssysteem',         './activiteit.test.cjs'],
   ['Partijverwerking (ladder)',  './partij.test.cjs'],
   ['Toernooi',                   './toernooi.test.cjs'],
