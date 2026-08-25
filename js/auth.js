@@ -104,7 +104,7 @@ function updateSiteTitel() {
   // zodat andere ladder-spelers de normale titelbalk zien.
   if (huidigeBruiker.toernooiSpeler && huidigeBruiker.toernooiNaam) {
     if (h1First) h1First.style.display = 'none';
-    h1Second.textContent = `🏌️ ${huidigeBruiker.toernooiNaam}`;
+    h1Second.textContent = huidigeBruiker.toernooiNaam;
     h1Second.style.paddingLeft = '0';
     return;
   }
@@ -117,7 +117,7 @@ function updateSiteTitel() {
       (actiefToernooi.spelers || []).some(s => s.uid === huidigeBruiker.uid);
     if (isDeelnemer) {
       if (h1First) h1First.style.display = 'none';
-      h1Second.textContent = '🏌️ ' + actiefToernooi.naam;
+      h1Second.textContent = actiefToernooi.naam;
       h1Second.style.paddingLeft = '0';
       return;
     }
@@ -134,8 +134,8 @@ function updateSiteTitel() {
   const alleenHeerendag = mijnLadders.length === 1 &&
     mijnLadders[0].naam.toLowerCase().includes('heerendag');
   h1Second.textContent = alleenHeerendag
-    ? ` ${mijnLadders[0].naam} Ladder`
-    : ' MP Ladder';
+    ? `${mijnLadders[0].naam} Ladder`
+    : 'Matchplay Ladder';
 }
 
 // ============================================================
