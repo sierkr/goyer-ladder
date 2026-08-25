@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Live Toernooi · Goyer Golf</title>
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
   :root {
@@ -20,6 +22,8 @@
     justify-content: space-between; position: sticky; top: 0; z-index: 10;
   }
   header h1 { font-size: 17px; font-weight: 700; }
+  header .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  header .brand-logo { width: 34px; height: 34px; flex-shrink: 0; display: block; }
   header .meta { font-size: 12px; opacity: 0.7; margin-top: 2px; }
   .refresh-btn {
     background: rgba(255,255,255,0.15); border: none; color: white;
@@ -69,9 +73,12 @@
 <body>
 
 <header>
-  <div>
-    <h1 id="toernooi-naam">⛳ Live Toernooi</h1>
-    <div class="meta" id="toernooi-meta"></div>
+  <div class="brand">
+    <img src="logo.png" alt="Goyer MP Ladder" class="brand-logo">
+    <div>
+      <h1 id="toernooi-naam">Live Toernooi</h1>
+      <div class="meta" id="toernooi-meta"></div>
+    </div>
   </div>
   <button class="refresh-btn" onclick="laadData()">🟢 Live</button>
 </header>
@@ -182,7 +189,7 @@ async function laadToernooi() {
       return;
     }
 
-    document.getElementById('toernooi-naam').textContent = '⛳ ' + toernooiData.naam;
+    document.getElementById('toernooi-naam').textContent = toernooiData.naam;
 
     // v3.0.0-11.37: meerdaagse structuur — toon actieve dag info
     const actDag = (toernooiData.dagen || [])[( toernooiData.actiefDagNr || 1) - 1] || null;

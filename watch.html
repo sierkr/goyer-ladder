@@ -6,7 +6,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Watch Score">
-  <title>⛳ Watch Score</title>
+  <title>Watch Score · Goyer MP Ladder</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <style>
     :root {
       --groen:      #52d68a;
@@ -39,7 +41,7 @@
     #scherm-score.actief { display:flex; }
 
     /* ── KAART (PIN scherm) ───────────────────────────── */
-    .logo { font-size:40px; margin-bottom:4px; }
+    .logo { width:72px; height:72px; margin-bottom:4px; display:block; }
     .app-titel { font-size:22px; font-weight:700; color:var(--groen); letter-spacing:-0.5px; }
     .app-sub { font-size:13px; color:var(--licht); }
     .kaart { background:var(--kaart); border-radius:var(--radius); padding:20px; width:100%; max-width:340px; border:0.5px solid var(--rand); }
@@ -144,7 +146,7 @@
 
 <!-- ══ SCHERM 1: PIN ════════════════════════════════════ -->
 <div id="scherm-pin" class="scherm actief">
-  <div class="logo">⛳</div>
+  <img src="logo.png" alt="Goyer MP Ladder" class="logo">
   <div class="app-titel">Watch Score</div>
   <div class="app-sub">Voer je 6-cijferige PIN in</div>
   <!-- v5.5.1: laat zien welke omgeving deze pagina bevraagt. De codes worden
