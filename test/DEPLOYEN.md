@@ -1,5 +1,43 @@
 # Deployen — Goyer Golf MP Ladder
 
+## Met één commando (de gewone weg, vanaf v5.8.8)
+
+Vanuit de map met de zips (`~/OneDrive/Apps/goyer-ladder`):
+
+```
+bash uitrollen.sh test
+```
+
+en als het daar goed is:
+
+```
+bash uitrollen.sh live
+```
+
+Het script pakt de nieuwste `goyer-ladder-v*.zip`, controleert of het
+versienummer op alle vier de plekken gelijk staat, draait de tests, zet de
+bestanden in je werkkopie van de repo (`~/goyer-ladder-repo`), pusht naar
+GitHub Pages, deployt de Firestore-regels en de Cloud Functions alleen als
+daar echt iets in wijzigde, en meet daarna na welke versie de site serveert.
+Bij `live` moet je eerst het versienummer overtypen.
+
+Eenmalig nodig: een ssh-sleutel bij GitHub, `git clone` van de repo naar
+`~/goyer-ladder-repo` (bewust buiten OneDrive) en één keer `firebase login`.
+Ontbreekt er iets, dan zegt het script precies welk ene commando je moet
+geven.
+
+Twee dingen die het script bewust **niet** doet:
+
+- Het verwijdert nooit iets uit de repo. Wil je een bestand online weghalen,
+  doe dat zelf op github.com.
+- Het deployt Cloud Functions alleen bij `live`. Functies zijn gedeeld tussen
+  test en live — er is maar één Firebase-project — dus een functiewijziging
+  raakt sowieso allebei de omgevingen.
+
+---
+
+## Met de hand (terugval, en als achtergrond)
+
 Wat waar draait:
 
 - **De app zelf** (index.html, js/, watch.html) staat op GitHub Pages

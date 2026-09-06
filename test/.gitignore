@@ -1,0 +1,21 @@
+# Afhankelijkheden — nooit meecommitten
+node_modules/
+functions/node_modules/
+tests/node_modules/
+
+# Testresultaten
+playwright-report/
+test-results/
+.playwright/
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+
+# Diversen
+.DS_Store
+*.local
+secret.txt
