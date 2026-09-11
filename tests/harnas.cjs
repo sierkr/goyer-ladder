@@ -120,6 +120,27 @@ function laadHcpKern() {
   return { app, server, watch };
 }
 
+// ============================================================
+//  v5.8.9 — DE MATCHPLAY-SCORE ('4&3')
+// ------------------------------------------------------------
+//  berekenMatchStand() bevriest de stand op het moment dat een partij beslist
+//  is, matchScoreTekst() zet dat om in tekst. Alle schermen (rondescherm, live
+//  scorebord, beheerscherm) gebruiken sinds v5.8.9 deze twee. Ze worden hier
+//  ECHT uit js/ronde.js geknipt; wijzigt iemand ze, dan wijzigen de tests mee.
+//  De handicapfuncties komen uit js/hcp.js, dus het is dezelfde verdeling van
+//  slagen als in de app.
+// ============================================================
+function laadScoreKern() {
+  const hcp = laadHcpKern().app;
+  const bron = `
+    const mijnPartij = () => null;
+    ${knip('js/ronde.js', ['getHcpSlagenOpHole', 'berekenMatchStand',
+                           'matchScoreTekst', 'matchWinnaarUitScores'])}
+    return { berekenMatchStand, matchScoreTekst, matchWinnaarUitScores };
+  `;
+  return new Function('slagenOpHole', 'hcpInstellingen', bron)(hcp.slagenOpHole, hcp.hcpInstellingen);
+}
+
 // ─── Kleine assertie-helper ──────────────────────────────────
 function maakChecker() {
   const staat = { ok: 0, fout: 0, bevindingen: [] };
@@ -131,4 +152,4 @@ function maakChecker() {
   return { staat, check };
 }
 
-module.exports = { laadToernooiKern, laadLadderKern, laadHcpKern, maakChecker };
+module.exports = { laadToernooiKern, laadLadderKern, laadHcpKern, laadScoreKern, maakChecker };

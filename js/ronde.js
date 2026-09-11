@@ -395,14 +395,18 @@ function toggleScorecard() {
   w.style.display = w.style.display === 'none' ? '' : 'none';
 }
 
-function getHcpSlagenOpHole(matchup, holeIdx) {
-  const p = mijnPartij();
+// v5.8.9: `partij` is optioneel. Zonder dat argument blijft dit precies doen
+// wat het altijd deed — rekenen aan je eigen lopende partij. Mét dat argument
+// kunnen het live scorebord en het beheerscherm dezelfde berekening gebruiken
+// voor een partij van iemand anders, in plaats van elk hun eigen kopie.
+function getHcpSlagenOpHole(matchup, holeIdx, partij) {
+  const p = partij || mijnPartij();
   if (!p || !Array.isArray(p.holes)) return 0;
   return slagenOpHole(matchup.hcpSlagen, p.holes, holeIdx, hcpInstellingen(p).plaatsing);
 }
 
-function berekenMatchStand(matchup) {
-  const p = mijnPartij();
+function berekenMatchStand(matchup, partij) {
+  const p = partij || mijnPartij();
   if (!p || !p.holes || !p.scores) return { standA: 0, gespeeld: 0, resterend: 0, resultatenPerHole: [], status: 'lopend', beslissingsGespeeld: null };
   let standA = 0;
   let gespeeld = 0;
@@ -411,12 +415,12 @@ function berekenMatchStand(matchup) {
   let beslissingsGespeeld = null;
 
   for (let i = 0; i < p.holes.length; i++) {
-    const sA = p.scores[matchup.spelerA.uid][i];
-    const sB = p.scores[matchup.spelerB.uid][i];
+    const sA = p.scores?.[matchup.spelerA.uid]?.[i] ?? null;
+    const sB = p.scores?.[matchup.spelerB.uid]?.[i] ?? null;
     if (sA === null || sB === null) { resultatenPerHole.push(null); continue; }
     gespeeld++;
-    const slagA = matchup.hcpOntvanger === matchup.spelerA.uid ? getHcpSlagenOpHole(matchup, i) : 0;
-    const slagB = matchup.hcpOntvanger === matchup.spelerB.uid ? getHcpSlagenOpHole(matchup, i) : 0;
+    const slagA = matchup.hcpOntvanger === matchup.spelerA.uid ? getHcpSlagenOpHole(matchup, i, p) : 0;
+    const slagB = matchup.hcpOntvanger === matchup.spelerB.uid ? getHcpSlagenOpHole(matchup, i, p) : 0;
     const nettoA = sA - slagA;
     const nettoB = sB - slagB;
     if (nettoA < nettoB) { standA++; resultatenPerHole.push('A'); }
@@ -440,6 +444,37 @@ function berekenMatchStand(matchup) {
   const resterendOpBeslissing = beslist ? (p.holes.length - beslissingsGespeeld) : resterend;
 
   return { standA: effectieveStand, gespeeld, resterend: resterendOpBeslissing, resultatenPerHole, status: klaar && !beslist ? 'klaar' : beslist ? 'beslist' : 'lopend', beslissingsGespeeld };
+}
+
+// ============================================================
+//  DE SCORE WAARMEE IEMAND WINT  (v5.8.9)
+// ============================================================
+//  Geeft 'Rich 4&3'-notatie terug, of null als er geen score te melden is.
+//  Null is hier een volwaardig antwoord: bij een gelijkspel waarbij de winnaar
+//  met de hand is aangewezen, of bij een partij die niet is uitgespeeld, ís er
+//  geen matchplay-score. Dan liever niets tonen dan een verzonnen getal.
+//
+//  WAT HIER MIS GING (t/m v5.8.8, zichtbaar op het live scorebord)
+//  Wie beslist is op hole 15 met 4 voor en 3 te gaan, wint 4&3 — ook als het
+//  gezelschap daarna gezellig doortelt tot hole 18. Het live scorebord rekende
+//  pas aan het eind en maakte er '7&0' van. berekenMatchStand() bevriest de
+//  stand op het moment van beslissen; deze functie zet dat om in tekst, zodat
+//  alle schermen hetzelfde zeggen.
+//
+//  '&0' bestaat niet in golftaal. Wie op de laatste hole beslist, wint '2 up'.
+function matchScoreTekst(stand) {
+  if (!stand) return null;
+  const { standA, resterend, status, gespeeld } = stand;
+  if (!gespeeld || standA === 0) return null;      // geen scores, of gelijk
+  if (status === 'lopend') return null;            // nog niet uit, geen einduitslag
+  const up = Math.abs(standA);
+  return resterend > 0 ? `${up}&${resterend}` : `${up} up`;
+}
+
+// Wie de scores als winnaar aanwijzen: 'A', 'B', of null bij gelijk/geen scores.
+function matchWinnaarUitScores(stand) {
+  if (!stand || !stand.gespeeld || stand.standA === 0) return null;
+  return stand.standA > 0 ? 'A' : 'B';
 }
 
 // ============================================================
@@ -618,12 +653,8 @@ function renderMatchOverview() {
 
     let scoreText, scoreLeadA, scoreLeadB;
     if (status === 'beslist' || status === 'klaar') {
-      const up = Math.abs(standA);
-      if (status === 'beslist') {
-        scoreText = `${up}&${resterend}`;
-      } else {
-        scoreText = standA === 0 ? 'TIED' : `${up}&0`;
-      }
+      // v5.8.9: één bron voor de scoretekst — zie matchScoreTekst().
+      scoreText = matchScoreTekst({ standA, resterend, status, gespeeld: 1 }) || 'TIED';
       scoreLeadA = standA > 0;
       scoreLeadB = standA < 0;
     } else if (standA === 0) {
@@ -982,7 +1013,8 @@ function openUitslagModal() {
   const naamMap = kortNaamMap(p.spelers);
   let html = '';
   p.matchups.forEach((m, idx) => {
-    const { standA, gespeeld } = berekenMatchStand(m);
+    const stand = berekenMatchStand(m);
+    const { standA, gespeeld } = stand;
     const nA = naamMap[m.spelerA.uid];
     const nB = naamMap[m.spelerB.uid];
     let winnaar = standA > 0 ? 'A' : standA < 0 ? 'B' : null;
@@ -1006,8 +1038,9 @@ function openUitslagModal() {
         </div>`;
     } else {
       const winnaarNaam = standA > 0 ? m.spelerA.naam : m.spelerB.naam;
-      const marge = Math.abs(standA);
-      html += `<span class="badge badge-green">✓ ${esc(winnaarNaam)} wint (${gespeeld} holes, ${marge} up)</span>`;
+      // v5.8.9: de score waarmee hij wint, niet de eindmarge na doortellen.
+      const score = matchScoreTekst(stand);
+      html += `<span class="badge badge-green">✓ ${esc(winnaarNaam)} wint${score ? ' ' + esc(score) : ''} <span style="font-weight:400">(${gespeeld} holes)</span></span>`;
     }
     html += `</div>`;
   });
@@ -1168,6 +1201,18 @@ function _schrijfSpelvormUitslag(p, archief) {
     alleLadders[idx].data.uitslagen.unshift(uitslag);
     slaUitslagenOp(p.ladderId).catch(e => console.error('uitslag bewaren mislukt:', e));
   }
+}
+
+// v5.8.9: de scoretekst van één matchup, maar alleen als de scorekaart
+// dezelfde winnaar aanwijst als die is bevestigd. Wijkt dat af (iemand heeft
+// de winnaar met de hand omgezet), dan geeft dit null en wordt er geen score
+// bewaard — een uitslag met een score die de andere kant op wijst is erger
+// dan een uitslag zonder score.
+function _scoreVanMatchup(matchup, kant) {
+  if (kant !== 'A' && kant !== 'B') return null;
+  const stand = berekenMatchStand(matchup);
+  if (matchWinnaarUitScores(stand) !== kant) return null;
+  return matchScoreTekst(stand);
 }
 
 async function bevestigUitslag() {
@@ -1353,9 +1398,15 @@ async function bevestigUitslag() {
       .filter((m, i) => !p._modalSkipped?.[i])
       .map((m, i) => {
         const origIdx = p.matchups.indexOf(m);
+        const kant = p._modalWinnaars[origIdx];
         return {
           a: m.spelerA.naam, b: m.spelerB.naam,
-          winnaar: p._modalWinnaars[origIdx] === 'A' ? m.spelerA.naam : m.spelerB.naam
+          winnaar: kant === 'A' ? m.spelerA.naam : m.spelerB.naam,
+          // v5.8.9: de score waarmee hij wint ('4&3'), zodat het uitslagenscherm
+          // hem later nog kan tonen. Alleen als de scorekaart dezelfde winnaar
+          // aanwijst als er is bevestigd — anders liever geen score dan een
+          // getal dat niet bij de naam ernaast hoort.
+          ...(_scoreVanMatchup(m, kant) ? { score: _scoreVanMatchup(m, kant) } : {})
         };
       }),
     matchupUids: p.matchups
@@ -1393,7 +1444,8 @@ async function bevestigUitslag() {
       matchups: p.matchups.map((m, i) => ({
         a: m.spelerA.naam, b: m.spelerB.naam,
         hcpSlagen: m.hcpSlagen, hcpOntvanger: m.hcpOntvanger,
-        winnaar: p._modalWinnaars[i] === 'A' ? m.spelerA.naam : m.spelerB.naam
+        winnaar: p._modalWinnaars[i] === 'A' ? m.spelerA.naam : m.spelerB.naam,
+        ...(_scoreVanMatchup(m, p._modalWinnaars[i]) ? { score: _scoreVanMatchup(m, p._modalWinnaars[i]) } : {})
       }))
     });
   } catch(e) { console.error('Scorekaart opslaan mislukt:', e); }
@@ -1732,5 +1784,5 @@ async function vraagWatchPin() {
   }
 }
 
-export { zetAmerikaaanjePositie, zetHighlowWinnaar, toonEindstandKeuze, renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, editPartijHcp, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij, verwijderPartijMetRetry, wachtOpScoreOpslag, vraagWatchPin, synchroniseerPartijDoc };
+export { matchScoreTekst, matchWinnaarUitScores, zetAmerikaaanjePositie, zetHighlowWinnaar, toonEindstandKeuze, renderRonde, renderScorecard, updateScore, toggleScorecard, getHcpSlagenOpHole, berekenMatchStand, renderMatchOverview, editPartijHcp, openUitslagModal, setWinnaar, skipMatchup, bevestigUitslag, sluitUitslagEnGaNaarLadder, showLadderChanges, annuleerEigenPartij, verwijderActievePartij, verwijderPartijMetRetry, wachtOpScoreOpslag, vraagWatchPin, synchroniseerPartijDoc };
 // v3.0.2
