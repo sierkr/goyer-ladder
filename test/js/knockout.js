@@ -464,8 +464,12 @@ async function verwerkKnockoutUitslag(partij) {
       const beslist = beslissingsStand !== null;
       const effectieveStand = beslist ? beslissingsStand : standA;
       const resterendEff = beslist ? (holes.length - beslissingsGespeeld) : resterend;
-      if (beslist) resultaat = `${Math.abs(effectieveStand)}&${resterendEff}`;
-      else if (klaar) resultaat = effectieveStand === 0 ? 'gelijkspel' : `${Math.abs(effectieveStand)}&0`;
+      // v5.8.9: '&0' bestaat niet in golftaal — wie op de laatste hole beslist,
+      // wint '2 up'. Zelfde notatie als in de rest van de app.
+      if (beslist) resultaat = resterendEff > 0
+        ? `${Math.abs(effectieveStand)}&${resterendEff}`
+        : `${Math.abs(effectieveStand)} up`;
+      else if (klaar) resultaat = effectieveStand === 0 ? 'gelijkspel' : `${Math.abs(effectieveStand)} up`;
     } catch(e) { console.error('Resultaat berekening mislukt:', e); }
 
     await slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar, resultaat);

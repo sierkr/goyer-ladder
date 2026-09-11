@@ -7,10 +7,10 @@ import { store, alleLadders, activeLadderId, _beheerPartijId, _beheerWinnaars } 
 // v4.2.0: zelfde Cloud Function als in ronde.js — zie de toelichting daar.
 const _verwerkPartijUitslagFnBeheer = httpsCallable(functions, 'verwerkPartijUitslag');
 import { slaActievePartijenOp, slaUitslagenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
-import { mijnPartij } from './partij.js';
+import { mijnPartij, kortNaam } from './partij.js';
 import { getLadderSpelers, ladderStandenGeladen } from './ladder-view.js';
 import { renderLadder } from './ladder.js';
-import { renderRonde, showLadderChanges, verwijderPartijMetRetry, wachtOpScoreOpslag } from './ronde.js';
+import { renderRonde, showLadderChanges, verwijderPartijMetRetry, wachtOpScoreOpslag, berekenMatchStand, matchScoreTekst, matchWinnaarUitScores } from './ronde.js';
 import { slaSnapshotOp } from './beheer.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { closeModal } from './admin.js';
@@ -60,8 +60,24 @@ function _uitslagRegels(u) {
     return regel('Amerikaantje', `<span style="font-size:12px;color:var(--mid)">${tekst}</span>`);
   }
 
+  // v5.8.9: in de pill staat de VOORNAAM plus de score waarmee hij won, bijv.
+  // '⛳ Richard 4&3'. Twee Eriks in dezelfde flight worden 'Erik P' en
+  // 'Erik H' — kortNaam() doet dat al voor de rest van de app, dus die wordt
+  // hier hergebruikt in plaats van nagebouwd.
+  //
+  // De score staat er alleen als hij bewaard is. Uitslagen van vóór v5.8.9
+  // hebben er geen (en die is ook niet te reconstrueren: scorekaarten worden
+  // 30 dagen bewaard), en bij een handmatig aangewezen winnaar zonder scores
+  // bestaat er geen matchplay-score. Dan alleen de naam.
+  const groep = (u.spelers || []).map((naam, i) => ({ uid: 'p' + i, naam: String(naam || '') }));
+  const kort = volleNaam => {
+    const s = groep.find(g => g.naam === volleNaam);
+    return s ? kortNaam(s, groep) : String(volleNaam || '');
+  };
+
   return (Array.isArray(u.matchups) ? u.matchups : []).map(m =>
-    regel(`${esc(m.a)} vs ${esc(m.b)}`, `<span class="badge badge-green">⛳ ${esc(m.winnaar)}</span>`)
+    regel(`${esc(m.a)} vs ${esc(m.b)}`,
+      `<span class="badge badge-green">⛳ ${esc(kort(m.winnaar))}${m.score ? ' ' + esc(m.score) : ''}</span>`)
   ).join('');
 }
 
@@ -143,13 +159,18 @@ function toonScorekaartModal(data) {
   totalen.forEach(t => { html += `<td style="text-align:center;padding:5px;font-family:\'DM Mono\',monospace">${t || '—'}</td>`; });
   html += '</tr></table></div>';
 
-  // Matchups
+  // Matchups — v5.8.9: zelfde pill als in het uitslagenscherm.
+  const groep = spelers.map((s, i) => ({ uid: 'p' + i, naam: String(s.naam || '') }));
+  const kortIn = volleNaam => {
+    const g = groep.find(x => x.naam === volleNaam);
+    return g ? kortNaam(g, groep) : String(volleNaam || '');
+  };
   if (data.matchups?.length) {
     html += `<div style="margin-top:16px"><p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:8px">Matchplay uitslag</p>`;
     data.matchups.forEach(m => {
       html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
         <span>${esc(m.a)} vs ${esc(m.b)}</span>
-        <span class="badge badge-green">⛳ ${esc(m.winnaar)}</span>
+        <span class="badge badge-green">⛳ ${esc(kortIn(m.winnaar))}${m.score ? ' ' + esc(m.score) : ''}</span>
       </div>`;
     });
     html += '</div>';
@@ -261,18 +282,16 @@ function openBeheerPartij(partijId) {
   p.matchups.forEach((m, idx) => {
     const nA = m.spelerA.naam;
     const nB = m.spelerB.naam;
-    // Bereken stand op basis van ingevulde scores
-    let standA = 0;
-    p.holes.forEach((hole, i) => {
-      const sA = p.scores[m.spelerA.uid]?.[i];
-      const sB = p.scores[m.spelerB.uid]?.[i];
-      if (sA == null || sB == null) return;
-      const slagA = m.hcpOntvanger === m.spelerA.uid && hole.si <= m.hcpSlagen ? 1 : 0;
-      const slagB = m.hcpOntvanger === m.spelerB.uid && hole.si <= m.hcpSlagen ? 1 : 0;
-      if ((sA - slagA) < (sB - slagB)) standA++;
-      else if ((sA - slagA) > (sB - slagB)) standA--;
-    });
-    const voorlopig = standA > 0 ? `${nA} leidt (${standA} UP)` : standA < 0 ? `${nB} leidt (${Math.abs(standA)} UP)` : 'Gelijk';
+    // v5.8.9: ook hier stond een eigen, simpelere kopie van de standberekening
+    // (één slag per hole, ongeacht de instellingen van de partij). Nu dezelfde
+    // functie als de rest van de app.
+    const stand = berekenMatchStand(m, p);
+    const standA = stand.standA;
+    const score = matchScoreTekst(stand);
+    const leider = standA > 0 ? nA : nB;
+    const voorlopig = standA === 0
+      ? (stand.gespeeld === 0 ? 'Nog geen scores' : 'Gelijk')
+      : score ? `${leider} wint ${score}` : `${leider} leidt (${Math.abs(standA)} UP)`;
 
     html += `<div style="padding:12px 0;border-bottom:1px solid var(--border)">
       <div style="font-weight:600;margin-bottom:4px">${esc(m.spelerA.naam)} vs ${esc(m.spelerB.naam)}</div>
@@ -371,10 +390,19 @@ async function bevestigBeheerUitslag() {
     matchups: p.matchups
       .map((m, i) => ({ m, kant: _beheerWinnaars[i] }))
       .filter(x => x.kant !== 'SKIP')
-      .map(({ m, kant }) => ({
-        a: m.spelerA.naam, b: m.spelerB.naam,
-        winnaar: kant === 'A' ? m.spelerA.naam : m.spelerB.naam
-      })),
+      .map(({ m, kant }) => {
+        // v5.8.9: ook een uitslag die de coordinator bevestigt krijgt de score
+        // mee — de scorekaart is meestal gewoon ingevuld, alleen heeft niemand
+        // de partij afgesloten. Wijst de scorekaart een ANDERE winnaar aan dan
+        // hier is aangeklikt, dan gaat er geen score mee.
+        const stand = berekenMatchStand(m, p);
+        const score = matchWinnaarUitScores(stand) === kant ? matchScoreTekst(stand) : null;
+        return {
+          a: m.spelerA.naam, b: m.spelerB.naam,
+          winnaar: kant === 'A' ? m.spelerA.naam : m.spelerB.naam,
+          ...(score ? { score } : {})
+        };
+      }),
     matchupUids: p.matchups
       .map((m, i) => ({ m, kant: _beheerWinnaars[i] }))
       .filter(x => x.kant !== 'SKIP')
@@ -504,38 +532,26 @@ function renderLiveScoreBord() {
   p.matchups.forEach(m => {
     const nA = m.spelerA.naam;
     const nB = m.spelerB.naam;
-    // Bereken stand
-    let standA = 0, gespeeld = 0;
-    p.holes.forEach((hole, i) => {
-      const sA = p.scores[m.spelerA.uid]?.[i];
-      const sB = p.scores[m.spelerB.uid]?.[i];
-      if (sA == null || sB == null) return;
-      gespeeld++;
-      const aantalHoles = p.holes.length;
-      const diff = m.hcpSlagen;
-      const slagA = m.hcpOntvanger === m.spelerA.uid
-        ? ((hole.si <= Math.min(diff, aantalHoles) ? 1 : 0) + (hole.si <= Math.max(0, diff - aantalHoles) ? 1 : 0)) : 0;
-      const slagB = m.hcpOntvanger === m.spelerB.uid
-        ? ((hole.si <= Math.min(diff, aantalHoles) ? 1 : 0) + (hole.si <= Math.max(0, diff - aantalHoles) ? 1 : 0)) : 0;
-      if ((sA - slagA) < (sB - slagB)) standA++;
-      else if ((sA - slagA) > (sB - slagB)) standA--;
-    });
-    const resterend = p.holes.length - gespeeld;
-    const beslist = Math.abs(standA) > resterend;
-    let scoreText, kleur;
-    if (gespeeld === 0) { scoreText = 'nog niet begonnen'; kleur = 'var(--light)'; }
-    else if (standA === 0) { scoreText = 'TIED'; kleur = 'var(--mid)'; }
-    else if (beslist) {
-      scoreText = `${standA > 0 ? nA : nB} wint ${Math.abs(standA)}&${resterend}`;
+    // v5.8.9: dit scherm had een eigen kopie van de standberekening. Die
+    // vergat wanneer de partij beslist was en rekende pas aan het eind, dus
+    // wie op hole 15 met 4&3 had gewonnen en daarna doortelde tot 18 stond
+    // hier als '7&0' — een score die in golftaal niet bestaat. Bovendien
+    // verdeelde die kopie de handicapslagen op zijn eigen manier, buiten de
+    // instellingen van de partij om. Nu rekent dit scherm met exact dezelfde
+    // functie als het rondescherm.
+    const stand = berekenMatchStand(m, p);
+    const { standA, gespeeld } = stand;
+    const score = matchScoreTekst(stand);
+    let scoreTextEsc, kleur;
+    if (gespeeld === 0) { scoreTextEsc = 'nog niet begonnen'; kleur = 'var(--light)'; }
+    else if (standA === 0) { scoreTextEsc = 'TIED'; kleur = 'var(--mid)'; }
+    else if (score) {
+      scoreTextEsc = `${esc(standA > 0 ? nA : nB)} wint ${esc(score)}`;
       kleur = 'var(--green)';
     } else {
-      scoreText = standA > 0 ? `${nA} ${standA} UP` : `${nB} ${Math.abs(standA)} UP`;
+      scoreTextEsc = standA > 0 ? `${esc(nA)} ${standA} UP` : `${esc(nB)} ${Math.abs(standA)} UP`;
       kleur = 'var(--green)';
     }
-    const scoreTextEsc = gespeeld === 0 ? esc(scoreText)
-                        : standA === 0 ? esc(scoreText)
-                        : beslist ? `${esc(standA > 0 ? nA : nB)} wint ${Math.abs(standA)}&${resterend}`
-                        : (standA > 0 ? `${esc(nA)} ${standA} UP` : `${esc(nB)} ${Math.abs(standA)} UP`);
     const hcpTekst = m.hcpSlagen > 0
       ? `<span style="font-size:11px;color:var(--light)">${esc(m.hcpOntvanger === m.spelerA.uid ? nA : nB)} +${m.hcpSlagen}</span>`
       : '';

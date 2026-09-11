@@ -992,8 +992,11 @@ function renderStand() {
     const {standA,resterend,status} = berekenMatchStand(m);
     const nA = naamMap[m.spelerA.uid]||'?', nB = naamMap[m.spelerB.uid]||'?';
     let badge, leidt;
-    if (status==='beslist') { badge=standA>0?Math.abs(standA)+'&'+resterend+' UP':Math.abs(standA)+'&'+resterend+' DOWN'; leidt=true; }
-    else if (status==='klaar') { badge=standA===0?'TIED':standA>0?Math.abs(standA)+'&0 UP':Math.abs(standA)+'&0 DOWN'; leidt=standA!==0; }
+    // v5.8.9: '&0' bestaat niet in golftaal. Beslist op de laatste hole is
+    // gewoon '2 UP'; het bevriezen van de stand deed dit scherm al goed.
+    const marge = status==='beslist' && resterend>0 ? Math.abs(standA)+'&'+resterend : String(Math.abs(standA));
+    if (status==='beslist') { badge=marge+(standA>0?' UP':' DOWN'); leidt=true; }
+    else if (status==='klaar') { badge=standA===0?'TIED':Math.abs(standA)+(standA>0?' UP':' DOWN'); leidt=standA!==0; }
     else if (standA===0) { badge='TIED'; leidt=false; }
     else { badge=standA>0?Math.abs(standA)+' UP':Math.abs(standA)+' DOWN'; leidt=true; }
     const sub = status==='lopend'?resterend+' te gaan':status==='beslist'?'Beslist':'Klaar';

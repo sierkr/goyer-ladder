@@ -467,20 +467,30 @@ function renderRanglijst() {
         const sA = spelers[i], sB = spelers[j];
         const scoresA = rlScores?.[sA.uid] || rlScores?.[String(sA.uid)] || [];
         const scoresB = rlScores?.[sB.uid] || rlScores?.[String(sB.uid)] || [];
-        let standA = 0, gespeeld = 0;
+        // v5.8.9: de stand wordt BEVROREN op het moment dat de partij beslist
+        // is. Wie op hole 15 met 4 voor en 3 te gaan heeft gewonnen, wint 4&3 —
+        // ook als het gezelschap daarna doortelt tot hole 18. Voorheen rekende
+        // dit scherm pas aan het eind en stond er dan '7&0', een score die in
+        // golftaal niet bestaat. Zelfde regel als in js/ronde.js.
+        let standA = 0, gespeeld = 0, beslissingsStand = null, beslissingsGespeeld = null;
         rlHoles.forEach((hole, hi) => {
           const vA = scoresA[hi], vB = scoresB[hi];
           if (vA == null || vB == null) return;
           gespeeld++;
           if (Number(vA) < Number(vB)) standA++;
           else if (Number(vB) < Number(vA)) standA--;
+          if (beslissingsStand === null && Math.abs(standA) > rlHoles.length - gespeeld) {
+            beslissingsStand = standA; beslissingsGespeeld = gespeeld;
+          }
         });
-        const resterend = rlHoles.length - gespeeld;
+        const beslist = beslissingsStand !== null;
+        const effStand = beslist ? beslissingsStand : standA;
+        const resterend = rlHoles.length - (beslist ? beslissingsGespeeld : gespeeld);
         let status = '';
         if (gespeeld === 0) status = 'Niet begonnen';
-        else if (standA === 0) status = 'TIED';
-        else if (Math.abs(standA) > resterend) status = `${standA > 0 ? sA.naam : sB.naam} wint ${Math.abs(standA)}&${resterend}`;
-        else status = `${standA > 0 ? sA.naam.split(' ')[0] : sB.naam.split(' ')[0]} ${Math.abs(standA)} UP`;
+        else if (effStand === 0) status = 'TIED';
+        else if (beslist) status = `${effStand > 0 ? sA.naam : sB.naam} wint ${Math.abs(effStand)}${resterend > 0 ? '&' + resterend : ' up'}`;
+        else status = `${effStand > 0 ? sA.naam.split(' ')[0] : sB.naam.split(' ')[0]} ${Math.abs(effStand)} UP`;
 
         html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border)">
           <span style="font-size:13px">${sA.naam} vs ${sB.naam}</span>
