@@ -346,6 +346,86 @@ test.describe('Toernooi — de hele route', () => {
     }
   });
 
+  // ============================================================
+  //  v5.11.3 — DE FLIGHTINDELING OVERLEEFT EEN HERLAAD
+  // ============================================================
+  //  Het aanmaakformulier werd al als concept bewaard (naam, dagen, baan,
+  //  spelers), maar de flightindeling niet — juist het stuk dat de meeste
+  //  moeite kost. Na een herlaad begon je weer bij één flight met iedereen
+  //  erin. Sierk: "een niet gestart toernooi moest ik steeds opnieuw indelen."
+  // ============================================================
+  test('CONCEPT: de flightindeling staat er na een herlaad nog', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Concept', 1);
+    for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler', 'Nina Nieuw']) {
+      await kiesSpeler(page, n);
+    }
+    await naarFlightIndeling(page);
+    await page.click('button:has-text("+ Flight toevoegen")');
+    await page.click('button:has-text("Gelijk verdelen")');
+    await page.fill('#flight-lijst input[type="text"]', 'Ochtendflight');
+    await page.locator('#flight-lijst input[type="text"]').first().dispatchEvent('input');
+
+    // Zoals het staat vóór het herladen: twee flights, en wie waar zit.
+    const indelingVan = (p) => p.evaluate(() =>
+      [...document.querySelectorAll('#flight-lijst .flight-blok, #flight-lijst > div')]
+        .map(el => el.innerText.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' || '));
+    const voor = await indelingVan(page);
+    expect(voor, 'er staan twee flights').toContain('Flight 2');
+
+    // Terug uit het venster en de pagina echt herladen.
+    await page.click('#modal-flight-indeling button:has-text("Terug")');
+    await page.waitForTimeout(1200);            // de concept-opslag wacht 500 ms
+    await page.reload();
+    await page.waitForSelector('#login-scherm', { state: 'hidden', timeout: 20000 });
+    await naarToernooi(page);
+
+    // Het formulier is hersteld…
+    await expect(page.locator('#t-naam')).toHaveValue('Concept', { timeout: 15000 });
+    // …en het aanmaakscherm staat open, zodat je ZIET dat het hersteld is.
+    await expect(page.locator('#toernooi-setup-wrap .card-header.inklapbaar').first())
+      .not.toHaveClass(/ingeklapt/, { timeout: 10000 });
+    // …en de indeling ook.
+    await naarFlightIndeling(page);
+    const na = await indelingVan(page);
+    expect(na, 'de tweede flight is er nog').toContain('Flight 2');
+    expect(na, 'de hernoemde flight is er nog').toContain('Ochtendflight');
+    for (const naam of ['Anna', 'Bram', 'Cees', 'Nina']) {
+      expect(na, `${naam} staat nog ingedeeld`).toContain(naam);
+    }
+  });
+
+  // ============================================================
+  //  v5.11.3 — DE INLOGNAAM IN "SPELERS BEHEREN"
+  // ============================================================
+  //  Dit scherm toonde alleen de inlog van een GAST. Bij een clublid bleef de
+  //  regel leeg, terwijl zijn inlognaam gewoon in zijn account staat.
+  // ============================================================
+  test('SPELERS BEHEREN: de inlognaam van een clublid staat erbij', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Inlognaam', 1);
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Inlognaam', { timeout: 15000 });
+
+    await page.click('#toernooi-detail button:has-text("Spelers")');
+    const lijst = page.locator('#toernooi-speler-verwijder-lijst');
+    await expect(lijst).toBeVisible({ timeout: 10000 });
+    await expect(lijst, 'de inlognaam van Anna staat erbij').toContainText('anna');
+    await expect(lijst, 'en die van Bram ook').toContainText('bram');
+    // Geen lege regel meer voor wie er geen heeft.
+    await expect(lijst).not.toContainText('undefined');
+  });
+
   test('AFSLUITEN: alle scores, uitslag, dag afsluiten en weer heropenen', async ({ page }) => {
     test.setTimeout(180000);
     jaOpAlles(page);

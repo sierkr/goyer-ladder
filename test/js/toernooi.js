@@ -4,7 +4,7 @@
 //  v11.106: live/-subcollectie als bron van waarheid; scorekaart bovenaan voor spelers
 //  Datastructuur: t.dagen[dagNr-1].{datum,baan,holes,flights,scores,afgerond}
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr, functions, httpsCallable, IS_TEST, IS_EMULATOR, EMAIL_SUFFIX, firebaseConfig } from './config.js';
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr, functions, httpsCallable, IS_TEST, IS_EMULATOR, EMAIL_SUFFIX, firebaseConfig, loginNaamVan } from './config.js';
 // v5.2.1: toernooi-uitslag schrijft standen en punten samen weg (server-side).
 const _verwerkToernooiStandenFn = httpsCallable(functions, 'verwerkToernooiStanden');
 // v5.10.0: verwijdert een Auth-account waarvan het profiel al weg is. Bestond
@@ -637,6 +637,15 @@ function slaToernooiConceptOp() {
         spelers:        store._tGeselecteerdeSpelers || [],
         spelersLadders: [...(_tSpelersLadderIds || [])],
         rankingLadders: [...(_tRankingLadderIds || [])],
+        // v5.11.3: ⚠ de flightindeling hoorde hier vanaf het begin in te staan.
+        // Alles van het aanmaakformulier werd bewaard behalve dít, en juist dit
+        // kost de meeste moeite: bij een herlaad begon je weer bij één flight
+        // met iedereen erin. Sierk: "een niet gestart toernooi moest ik steeds
+        // opnieuw indelen."
+        flights: (_flights || []).map(f => ({
+          id: f.id, naam: f.naam, starthole: f.starthole, starttijd: f.starttijd,
+          spelers: (f.spelers || []).map(sp => ({ ...sp })),
+        })),
         timestamp: Date.now()
       };
       localStorage.setItem(TOERNOOI_CONCEPT_KEY, JSON.stringify(concept));
@@ -647,6 +656,9 @@ function slaToernooiConceptOp() {
 function wisToernooiConcept() {
   try { localStorage.removeItem(TOERNOOI_CONCEPT_KEY); } catch(e) { /* ok */ }
   window._tConceptDagen = null;
+  // v5.11.3: de flightindeling hoort bij dit concept. Blijft hij staan, dan erf
+  // je hem bij het volgende toernooi — met spelers die daar niet meedoen.
+  store._flights = [];
 }
 
 // Herstelt state + simpele velden; dag-blok-waarden worden na renderDagBlokken
@@ -673,10 +685,23 @@ function herstelToernooiConcept() {
     store._tGeselecteerdeSpelers = c.spelers || [];
     store._tSpelersLadderIds = new Set(c.spelersLadders || []);
     store._tRankingLadderIds = new Set(c.rankingLadders || []);
+    store._flights = (c.flights || []).map(f => ({
+      id: f.id, naam: f.naam, starthole: f.starthole, starttijd: f.starttijd,
+      spelers: (f.spelers || []).map(sp => ({ ...sp })),
+    }));
     window._tConceptDagen = c.dagen || null;
 
     const isBetekenisvol = (c.naam || '').trim() !== '' || (c.spelers || []).length > 0;
-    if (isBetekenisvol) toast('Concept-toernooi hersteld 📝');
+    if (isBetekenisvol) {
+      toast('Concept-toernooi hersteld 📝');
+      // v5.11.3: en klap het aanmaakscherm dan ook open. Een hersteld concept
+      // achter een dichtgeklapte kop is niet hersteld voor wie ernaar kijkt —
+      // je ziet "Nieuw Toernooi" en begint gewoon opnieuw.
+      const kop = document.querySelector('#toernooi-setup-wrap .card-header.inklapbaar');
+      const vak = kop?.nextElementSibling;
+      kop?.classList.remove('ingeklapt');
+      if (vak?.classList.contains('card-collapse')) vak.classList.remove('ingeklapt');
+    }
     return true;
   } catch(e) { console.warn('Concept herstellen mislukt:', e); return false; }
 }
@@ -1047,9 +1072,19 @@ function _verwerkLegeFlights() {
   return true;
 }
 
+// v5.11.3: één plek die de indeling in het concept bewaart. Het flightvenster
+// van een LOPEND toernooi (de dag-modus) hoort hier niet bij: die indeling
+// staat al in het toernooi zelf, en zou het concept van een volgend toernooi
+// vervuilen.
+function bewaarFlightsInConcept() {
+  if (window._flightDagModus) return;
+  slaToernooiConceptOp();
+}
+
 function renderFlightLijst() {
   const container = document.getElementById('flight-lijst');
   if (!container) return;
+  bewaarFlightsInConcept();
 
   const ingedeeld = new Set(_flights.flatMap(f => f.spelers.map(s => s.uid)));
   const leeg = _legeFlights();
@@ -1121,8 +1156,8 @@ function voegFlightToe() {
   renderFlightLijst();
 }
 
-function wijzigFlightStarttijd(fi, val) { if (_flights[fi]) _flights[fi].starttijd = val; }
-function wijzigFlightStarthole(fi, val) { if (_flights[fi]) _flights[fi].starthole = parseInt(val) || 1; }
+function wijzigFlightStarttijd(fi, val) { if (_flights[fi]) _flights[fi].starttijd = val; bewaarFlightsInConcept(); }
+function wijzigFlightStarthole(fi, val) { if (_flights[fi]) _flights[fi].starthole = parseInt(val) || 1; bewaarFlightsInConcept(); }
 
 function verwijderFlight(fi) {
   if (_flights.length <= 1) return;
@@ -1132,8 +1167,8 @@ function verwijderFlight(fi) {
   renderFlightLijst();
 }
 
-function wijzigFlightNaam(fi, naam) { if (_flights[fi]) _flights[fi].naam = naam; }
-function wijzigFlightHcp(fi, si, val) { if (_flights[fi]?.spelers[si]) _flights[fi].spelers[si].hcp = parseFloat(val) || 0; }
+function wijzigFlightNaam(fi, naam) { if (_flights[fi]) _flights[fi].naam = naam; bewaarFlightsInConcept(); }
+function wijzigFlightHcp(fi, si, val) { if (_flights[fi]?.spelers[si]) _flights[fi].spelers[si].hcp = parseFloat(val) || 0; bewaarFlightsInConcept(); }
 
 function verplaatsSpelerFlight(vanFi, si, naarFi) {
   naarFi = parseInt(naarFi);
@@ -1967,7 +2002,7 @@ function openToernooiSpelersBeheer() {
   const verwijderLijst = document.getElementById('toernooi-speler-verwijder-lijst');
   verwijderLijst.innerHTML = t.spelers.map(s => `
     <div style="display:flex;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
-      <span style="flex:1;font-size:14px">${esc(s.naam)}${s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}${s.login ? `<br><span style="font-size:11px;color:var(--light);font-family:'DM Mono',monospace">⌨ ${esc(s.login)}</span>` : ''}</span>
+      <span style="flex:1;font-size:14px">${esc(s.naam)}${s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}<br>${inlogRegel(s)}</span>
       <button class="btn btn-sm" style="background:var(--alert-bg);color:var(--alert-text);border:none;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:12px"
         onclick="verwijderToernooiSpelerNieuw('${escAttr(s.uid)}')">✕</button>
     </div>
@@ -1986,6 +2021,28 @@ function openToernooiSpelersBeheer() {
   _toernooiSpelerToevoegen = null;
 
   document.getElementById('modal-toernooi-spelers').classList.add('open');
+}
+
+// v5.11.3: de inlognaam in "Spelers beheren".
+//
+// ⚠ WAT ER MIS WAS. Dit scherm toonde `s.login`, en dat veld wordt alleen
+// gevuld voor een GAST die bij het starten een eigen inlog kreeg. Bij een
+// clublid stond er dus niets, terwijl zijn inlognaam gewoon bekend is — hij
+// staat in zijn eigen account (`spelers/{uid}.email`), niet in het toernooi.
+//
+// ⚠ En op de TESTOMGEVING krijgen gasten helemaal geen inlog: dat is sinds
+// v5.10.0 bewust geblokkeerd, want het inloggen is gedeeld met de echte app.
+// Dan is een lege regel misleidend — je gaat zoeken naar een fout die er niet
+// is. Daarom zegt het scherm nu wat er aan de hand is.
+function inlogRegel(speler) {
+  const stijl = "font-size:11px;color:var(--light);font-family:'DM Mono',monospace";
+  const eigen = speler.login
+    || loginNaamVan(alleSpelersData.find(x => x.uid === speler.uid)?.email || '');
+  if (eigen) return `<span style="${stijl}">⌨ ${esc(eigen)}</span>`;
+  if (speler.gast && IS_TEST) {
+    return `<span style="${stijl}">geen inlog — gastlogins staan uit in test</span>`;
+  }
+  return `<span style="${stijl}">geen eigen inlog</span>`;
 }
 
 function zoekToernooiSpelerModal(zoek) {
