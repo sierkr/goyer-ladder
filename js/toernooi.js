@@ -1522,6 +1522,19 @@ function _vervangSpelerUid(toernooi, oudeUid, nieuweUid) {
   (toernooi.dagen || []).forEach(dag => {
     (dag.flights || []).forEach(f => {
       f.spelerIds = (f.spelerIds || []).map(sid => sid === oudeUid ? nieuweUid : sid);
+      // v5.11.5: ⚠ de markerindeling stond hier niet in. Die is in v5.11.0
+      // bijgekomen en werd dus niet meegenomen: in een gestart toernooi stonden
+      // de markers nog met de TIJDELIJKE gast-sleutels erin. Het viel niet op
+      // omdat markerVan() een marker die niet meer in de flight zit negeert en
+      // terugvalt op de kring — maar een marker die de coordinator met de hand
+      // omzet ging daarmee bij de eerstvolgende keer verloren.
+      if (f.markers) {
+        const nieuw = {};
+        Object.entries(f.markers).forEach(([speler, marker]) => {
+          nieuw[speler === oudeUid ? nieuweUid : speler] = marker === oudeUid ? nieuweUid : marker;
+        });
+        f.markers = nieuw;
+      }
     });
     if (dag.scores && Object.prototype.hasOwnProperty.call(dag.scores, oudeUid)) {
       dag.scores[nieuweUid] = dag.scores[oudeUid];
@@ -4053,7 +4066,11 @@ async function toonGastlogins() {
 
     const geheim = await _leesGastWachtwoord(actieveToernooiId);
     const ww = geheim?.wachtwoord || '(wachtwoord niet gevonden)';
-    const regels = gasten.map(g => `${g.naam}  —  inlog: ${g.naam}  ·  wachtwoord: ${ww}`);
+    // v5.11.5: één inlognaam, en overal dezelfde — op het scherm én in de
+    // lijst die je doorstuurt. Zonder toernooicode: die hoort in de database,
+    // niet op papier.
+    const inlogVan = (g) => zonderToernooiCode(g.login, t.gastCode) || g.naam;
+    const regels = gasten.map(g => `${g.naam}  —  inlog: ${inlogVan(g)}  ·  wachtwoord: ${ww}`);
     const tekst = `Inloggen op ${window.location.origin}${window.location.pathname}\n\n`
       + regels.join('\n')
       + `\n\nTip: de gast tikt zijn eigen voor- en achternaam in, plus dit wachtwoord.`;
@@ -4068,9 +4085,9 @@ async function toonGastlogins() {
         <div style="font-family:'DM Mono',monospace;font-size:16px">${esc(ww)}</div>
       </div>
       ${gasten.map(g => `
-        <div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
-          <span>${esc(g.naam)}</span>
-          <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--light)">${esc(g.login)}</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <span style="font-size:15px;color:var(--dark)">${esc(g.naam)}</span>
+          <span style="font-family:'DM Mono',monospace;font-size:15px;color:var(--dark)">${esc(inlogVan(g))}</span>
         </div>`).join('')}
       <button class="btn btn-primary btn-block" style="margin-top:12px"
         onclick="kopieerGastlogins()">📋 Lijst kopiëren</button>`;
