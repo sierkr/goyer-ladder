@@ -1268,11 +1268,17 @@ function isBeheerderRol() {
   return huidigeBruiker?.rol === 'beheerder';
 }
 
-function toast(msg) {
+// v5.9.0: `ms` is optioneel en verandert niets aan de bestaande aanroepen.
+// Een foutmelding die de echte oorzaak noemt is langer dan "Opgeslagen ✓" en
+// moet lang genoeg blijven staan om aan de telefoon voorgelezen te worden.
+let _toastTimer = null;
+function toast(msg, ms) {
   const t = document.getElementById('toast');
+  if (!t) return;
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2500);
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove('show'), ms || 2500);
 }
 
 function registreerNotificatieToken() {}

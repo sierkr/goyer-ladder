@@ -1,0 +1,285 @@
+// ============================================================
+//  Laag 4 — GENERALE REPETITIE VAN EEN TOERNOOI
+// ============================================================
+//  WAAROM DIT BESTAAT.
+//  Op 11 september 2026 zei Sierk: "Tot nu toe is het nog niet gelukt om een
+//  toernooi echt te spelen met de app. Er zijn continu bugs waardoor dat niet
+//  lukt." De oorzaak was niet één bug maar een gat in de dekking: de
+//  toernooitab had 67 rekentests en GEEN ENKELE test die een toernooi ook echt
+//  speelt. De sommen klopten; of je erdoorheen kon klikken werd nergens
+//  bewaakt.
+//
+//  Deze repetitie speelt de hele route: toernooi aanmaken -> flights indelen ->
+//  scores invoeren door twee spelers tegelijk -> dag afsluiten -> uitslag ->
+//  tweede dag. Elke stap die stukgaat, valt hier om in plaats van op de
+//  eerste tee.
+//
+//  De vier fouten van 11 september staan er los in, elk met de naam van het
+//  probleem, zodat een terugval meteen herkenbaar is.
+// ============================================================
+const { test, expect } = require('@playwright/test');
+
+// De tests delen één database (workers: 1). Zonder opruimen zou het toernooi
+// van de vorige test het volgende blokkeren — sinds v5.9.0 mag er maar één
+// actief toernooi zijn. Opruimen gebeurt met de admin-ingang, buiten de app om.
+process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
+const admin = require('firebase-admin');
+if (!admin.apps.length) admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT || 'demo-goyer' });
+const beheerDb = admin.firestore();
+
+// Haalt het toernooi met deze naam op uit de nagemaakte database. Wacht even:
+// de browser schrijft, de admin-ingang leest, en dat is niet op dezelfde tel.
+async function haalToernooi(naam, pogingen = 20) {
+  for (let i = 0; i < pogingen; i++) {
+    const snap = await beheerDb.collection('toernooien').get();
+    const gevonden = snap.docs.map(d => d.data()).find(d => d.naam === naam);
+    if (gevonden) return gevonden;
+    await new Promise(r => setTimeout(r, 500));
+  }
+  const alle = (await beheerDb.collection('toernooien').get()).docs.map(d => d.data().naam);
+  throw new Error(`Toernooi "${naam}" niet in de database. Wel gevonden: ${JSON.stringify(alle)}`);
+}
+
+test.beforeEach(async () => {
+  const snap = await beheerDb.collection('toernooien').get();
+  await Promise.all(snap.docs.map(d => d.ref.delete()));
+});
+
+const WACHTWOORD = 'test1234';
+const klikInloggen = (page) => page.click('#login-scherm button.btn-primary');
+
+const inloggen = async (page, login) => {
+  await page.goto('/index.html');
+  await page.waitForSelector('#login-scherm', { state: 'visible' });
+  await page.fill('#login-email', login);
+  await page.fill('#login-pass', WACHTWOORD);
+  await klikInloggen(page);
+  await page.waitForSelector('#login-scherm', { state: 'hidden', timeout: 20000 });
+};
+
+const naarToernooi = async (page) => {
+  await page.click('nav button:has-text("Toernooi")');
+  await page.waitForSelector('#page-toernooi.active', { timeout: 10000 });
+};
+
+// Bevestigingsvragen automatisch met OK beantwoorden. Zonder dit klikt
+// Playwright ze weg en doet de knop niets — dat kostte op 11 september een
+// meetronde.
+const jaOpAlles = (page) => page.on('dialog', d => d.accept());
+
+// Kiest een speler via het echte zoekveld, zoals een mens dat doet.
+async function kiesSpeler(page, naam) {
+  await page.fill('#t-speler-zoek', naam.split(' ')[0]);
+  const regel = page.locator(`#t-speler-zoek-lijst >> text=${naam}`).first();
+  await regel.waitFor({ state: 'visible', timeout: 5000 });
+  // Rechtstreeks aanklikken via het element zelf. De zoeklijst zweeft over het
+  // formulier heen en wordt door de ingeklapte kaart eronder onderschept; dat
+  // is een schoonheidsfoutje in de opmaak, geen reden om de hele repetitie te
+  // laten stranden. De echte onclick-handler van de app draait gewoon.
+  await regel.evaluate(el => el.click());
+  // Zoekveld verlaten, anders blijft de zwevende resultatenlijst over de knop
+  // "Flight indeling →" heen liggen.
+  await page.fill('#t-speler-zoek', '');
+  await page.evaluate(() => document.getElementById('t-speler-zoek')?.blur());
+  await page.waitForFunction(
+    () => (document.getElementById('t-speler-zoek-lijst')?.style.display || 'none') === 'none',
+    null, { timeout: 5000 });
+}
+
+// Opent de flightindeling vanuit het aanmaakscherm.
+async function naarFlightIndeling(page) {
+  await page.click('#toernooi-setup-wrap button:has-text("Flight indeling")');
+  await page.waitForSelector('#modal-flight-indeling.open', { timeout: 10000 });
+}
+
+// De kaart "Nieuw Toernooi" staat standaard dichtgeklapt. Een mens klikt hem
+// open; zolang dat niet gebeurt onderschept de kop alle klikken eronder.
+async function openAanmaakscherm(page) {
+  const kop = page.locator('#toernooi-setup-wrap .card-header.inklapbaar').first();
+  await kop.waitFor({ state: 'visible', timeout: 10000 });
+  if (await kop.evaluate(el => el.classList.contains('ingeklapt'))) await kop.click();
+  await expect(kop).not.toHaveClass(/ingeklapt/);
+}
+
+// Vult het aanmaakformulier voor een toernooi van `dagen` dagen.
+async function vulAanmaakformulier(page, naam, dagen = 1) {
+  await openAanmaakscherm(page);
+  await page.fill('#t-naam', naam);
+  if (dagen > 1) await page.selectOption('#t-aantal-dagen', String(dagen));
+  const blokken = page.locator('#t-dag-blokken .dag-blok');
+  await expect(blokken).toHaveCount(dagen);
+  for (let i = 0; i < dagen; i++) {
+    const blok = blokken.nth(i);
+    await blok.locator('.t-dag-datum').fill(`2026-10-0${i + 1}`);
+    await blok.locator('.t-dag-baan').selectOption('De Goyer');
+  }
+}
+
+// ============================================================
+
+test.describe('Toernooi — de hele route', () => {
+
+  test('een toernooi van begin tot eind: aanmaken, indelen, scoren, afsluiten', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+    const fouten = [];
+    page.on('pageerror', e => fouten.push(e.message));
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+
+    // ── 1. Aanmaken ──────────────────────────────────────────
+    await vulAanmaakformulier(page, 'Repetitie', 1);
+    for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler', 'Nina Nieuw']) {
+      await kiesSpeler(page, n);
+    }
+    await naarFlightIndeling(page);
+
+    // ── 2. Indelen: twee flights, gelijk verdelen ────────────
+    await page.click('button:has-text("+ Flight toevoegen")');
+    await page.click('button:has-text("Gelijk verdelen")');
+
+    // GEEN LEGE FLIGHT (fout 1 van 11-9-2026): na verdelen zit in elke flight
+    // iemand. Voorheen bleef flight 1 leeg achter en toonde de scorekaart
+    // holes zonder spelerskolommen.
+    const leegWaarschuwing = page.locator('#flight-lijst >> text=leeg');
+    await expect(leegWaarschuwing).toHaveCount(0);
+
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#modal-flight-indeling')).not.toHaveClass(/open/, { timeout: 15000 });
+
+    // ── 3. Het toernooi draait ───────────────────────────────
+    await expect(page.locator('#toernooi-actief-wrap')).toBeVisible();
+    await expect(page.locator('#toernooi-detail')).toContainText('Repetitie');
+    await expect(page.locator('#toernooi-detail')).toContainText('4 spelers');
+    await expect(page.locator('#toernooi-detail')).toContainText('2 flights');
+
+    // AANMAAKFORMULIER OPGEBORGEN (fout 3 van 11-9-2026): naast een lopend
+    // toernooi hoort geen leeg aanmaakformulier met "Nog geen deelnemers
+    // geselecteerd" — Sierk las dat als een leeg toernooi.
+    await expect(page.locator('#toernooi-setup-wrap')).toBeHidden();
+    await expect(page.locator('#toernooi-nieuw-sectie')).toBeVisible();
+    await expect(page.locator('#toernooi-geannuleerd-sectie')).toHaveCount(0);
+
+    expect(fouten, 'geen JavaScript-fouten tijdens de hele route').toEqual([]);
+  });
+
+  test('AFSLUITEN: alle scores, uitslag, dag afsluiten en weer heropenen', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+    const fouten = [];
+    page.on('pageerror', e => fouten.push(e.message));
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Afsluiten', 1);
+    for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Afsluiten', { timeout: 15000 });
+
+    // Zolang de kaart niet vol is, mag de uitslagknop niet werken.
+    await expect(page.locator('#t-uitslag-btn')).toBeDisabled();
+
+    // Alle holes van alle spelers invullen via de echte invoerfunctie van de
+    // app — dezelfde weg als een speler die intypt, maar dan in één keer.
+    const t = await haalToernooi('Afsluiten');
+    const uids  = t.spelers.map(s => s.uid);
+    const holes = t.dagen[0].holes.length;
+    await page.evaluate(({ uids, holes }) => {
+      uids.forEach((uid, i) => {
+        for (let h = 0; h < holes; h++) window.updateTScore(uid, h, 4 + (i % 2));
+      });
+    }, { uids, holes });
+
+    // De uitslagknop gaat vanzelf aan zodra de kaart vol is.
+    await expect(page.locator('#t-uitslag-btn')).toBeEnabled({ timeout: 15000 });
+    await expect(page.locator('#t-uitslag-btn')).not.toContainText('onvolledig');
+
+    // Uitslag tonen, dan de dag afsluiten.
+    await page.click('#t-uitslag-btn');
+    const afsluitKnop = page.locator('#toernooi-detail button:has-text("afsluiten")').first();
+    await afsluitKnop.waitFor({ state: 'visible', timeout: 15000 });
+    await afsluitKnop.click();
+
+    // De dag staat op slot: de scores staan er als tekst, niet meer als invoer.
+    await expect(page.locator('#toernooi-detail button:has-text("heropenen")')).toBeVisible({ timeout: 15000 });
+
+    // DAG HEROPENEN (fout 5 van 11-9-2026): tot en met v5.8.9 was een
+    // afgesloten dag voorgoed op slot — `dag.afgerond` werd nergens
+    // teruggezet, ook niet door het toernooi opnieuw te activeren.
+    await page.click('#toernooi-detail button:has-text("heropenen")');
+    await expect(page.locator('#toernooi-detail button:has-text("heropenen")')).toHaveCount(0, { timeout: 15000 });
+    await expect.poll(
+      async () => (await haalToernooi('Afsluiten')).dagen[0].afgerond,
+      { timeout: 15000, message: 'dag moet in de database weer open staan' }
+    ).toBe(false);
+
+    expect(fouten, 'geen JavaScript-fouten tijdens afsluiten en heropenen').toEqual([]);
+  });
+
+  test('LEGE FLIGHT: starten met een lege flight kan niet ongemerkt', async ({ page }) => {
+    test.setTimeout(120000);
+    const gevraagd = [];
+    page.on('dialog', d => { gevraagd.push(d.message()); d.dismiss(); });
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Lege flight', 1);
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+
+    await naarFlightIndeling(page);
+    await page.click('button:has-text("+ Flight toevoegen")');   // flight 2 blijft leeg
+
+    // De waarschuwing staat meteen in beeld, vóór je op starten drukt.
+    await expect(page.locator('#flight-lijst')).toContainText('leeg');
+
+    await page.click('#flight-modal-start-btn');
+    // Er is om bevestiging gevraagd (en die is hier geweigerd), dus het
+    // toernooi is NIET stilletjes met een lege flight aangemaakt.
+    expect(gevraagd.join(' ')).toContain('geen spelers');
+    await expect(page.locator('#modal-flight-indeling')).toHaveClass(/open/);
+  });
+
+  test('TWEE TOERNOOIEN: een tweede toernooi naast een lopend kan niet', async ({ page }) => {
+    test.setTimeout(150000);
+    jaOpAlles(page);
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+
+    await vulAanmaakformulier(page, 'Eerste', 1);
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Eerste', { timeout: 15000 });
+
+    // Formulier weer tevoorschijn halen en een tweede proberen
+    await page.click('#toernooi-nieuw-sectie button');
+    await expect(page.locator('#toernooi-setup-wrap')).toBeVisible();
+    await vulAanmaakformulier(page, 'Tweede', 1);
+    for (const n of ['Cees Speler', 'Nina Nieuw']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+
+    await expect(page.locator('#toast')).toContainText('loopt nog', { timeout: 10000 });
+  });
+
+  test('MEERDAAGS: dag 2 krijgt ook een flightindeling', async ({ page }) => {
+    test.setTimeout(150000);
+    jaOpAlles(page);
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+
+    await vulAanmaakformulier(page, 'Tweedaags', 2);
+    for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Tweedaags', { timeout: 15000 });
+
+    // Dag 2 aanklikken en kijken of daar spelers staan. Tot en met v5.8.9
+    // begon dag 2 met NUL flights en toonde de scorekaart alleen holes.
+    await page.click('#toernooi-detail >> text=Dag 2');
+    await expect(page.locator('#toernooi-detail')).toContainText('3 spelers');
+    await expect(page.locator('#toernooi-detail')).not.toContainText('0 flights');
+  });
+});

@@ -25,6 +25,37 @@ import { closeModal } from './admin.js';
 // v4.0.0: respecteert een lokale bekijk-dag (window._bekijkDagNr) zodat het
 // bekijken van een andere dag NIET meer naar Firestore wordt geschreven en
 // dus geen invloed heeft op andere gebruikers (fix 7.4).
+// ============================================================
+//  FOUTMELDINGEN DIE IETS ZEGGEN  (v5.9.0)
+// ============================================================
+//  WAT ER MIS WAS. Elke `catch` in dit bestand meldde "Er is iets misgegaan,
+//  probeer opnieuw". Toen Sierk op 11 september 2026 een toernooi niet kon
+//  starten, was dat het enige wat hij te zien kreeg: dertien verschillende
+//  oorzaken, één tekst. De echte fout stond in het verborgen logboek van de
+//  browser — op een telefoon onbereikbaar. Dat heeft een avond gekost.
+//
+//  `toernooiFout()` zet de echte oorzaak in de melding, mét de plek waar het
+//  misging. Dat is genoeg om het aan de telefoon voor te lezen.
+//
+//  ⚠ Deze functie mag zelf nooit omvallen — hij draait per definitie op het
+//  moment dat er al iets stuk is (BOUWNORMEN, regel 3).
+function toernooiFoutTekst(e) {
+  try {
+    if (!e) return 'onbekende oorzaak';
+    if (typeof e === 'string') return e.slice(0, 160);
+    const code = e.code ? String(e.code) : '';
+    const melding = e.message ? String(e.message) : '';
+    const tekst = [code, melding].filter(Boolean).join(' — ') || String(e);
+    return tekst.slice(0, 160);
+  } catch (_) { return 'onbekende oorzaak'; }
+}
+
+function toernooiFout(waar, e) {
+  try { console.error(waar + ' mislukt:', e); } catch (_) {}
+  try { toast(waar + ' mislukt: ' + toernooiFoutTekst(e), 9000); }
+  catch (_) { /* zelfs de melding mag de app niet omver trekken */ }
+}
+
 function actieveDag(t) {
   t = t || toernooiData;
   if (!t) return null;
@@ -69,10 +100,23 @@ function renderToernooi() {
   const wrap = document.getElementById('toernooi-actief-wrap');
   const setup = document.getElementById('toernooi-setup-wrap');
 
-  // v3.0.0-11.73: setup altijd expliciet zetten in elk pad — nooit afhankelijk van vorige render
-  setup.style.display = isBeheerder ? 'block' : 'none';
-  if (isBeheerder) initToernooiSetup();
-  renderGeannuleerdeKnop(isBeheerder); // v4.0.0 (fix 7.2)
+  // v5.9.0: het aanmaakformulier verdwijnt zodra er een toernooi loopt.
+  //
+  // WAT ER MIS WAS: hier stond `setup.style.display = isBeheerder ? 'block' : 'none'`
+  // zonder te kijken of er al een toernooi draait. Boven een vol lopend toernooi
+  // stond dus "Nog geen deelnemers geselecteerd" — Sierk las dat als een leeg
+  // toernooi terwijl er eronder negen spelers in vier flights zaten. Erger: je
+  // kon er een TWEEDE actief toernooi mee starten, en herlaadToernooien() pakte
+  // dan `alleToernooien[0]` uit een query zonder sorteervolgorde. Welk toernooi
+  // je te zien kreeg was dan willekeurig.
+  //
+  // Het formulier is niet weg, alleen opgeborgen achter één knop.
+  const heeftLopendToernooi = mijnToernooien.length > 0;
+  const toonFormulier = isBeheerder && (!heeftLopendToernooi || window._toonNieuwToernooiFormulier === true);
+  setup.style.display = toonFormulier ? 'block' : 'none';
+  if (toonFormulier) initToernooiSetup();
+  renderGeannuleerdeKnop(isBeheerder && toonFormulier); // v4.0.0 (fix 7.2)
+  renderNieuwToernooiKnop(isBeheerder && heeftLopendToernooi && !toonFormulier); // v5.9.0
 
   if (mijnToernooien.length > 0) {
     wrap.style.display = 'block';
@@ -98,6 +142,7 @@ function renderToernooi() {
     // Setup formulier alleen voor beheerder — gewone spelers zien nooit het aanmaakscherm
     setup.style.display = isBeheerder ? 'block' : 'none';
     if (isBeheerder) {
+      window._toonNieuwToernooiFormulier = false;
       initToernooiSetup();
     } else {
       // v3.0.0-11.73: wachtmelding voor spelers zonder actief toernooi
@@ -216,7 +261,14 @@ window.addEventListener('baanToegevoegd', (e) => {
 async function herlaadToernooien() {
   try {
     const snap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
-    store.alleToernooien = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // v5.9.0: nieuwste eerst. Een Firestore-query zonder orderBy heeft geen
+    // vaste volgorde, en op meerdere plekken wordt `alleToernooien[0]` gebruikt
+    // als "het" toernooi. Zijn er door een eerdere fout twee actief, dan kreeg
+    // je willekeurig het ene of het andere te zien. Nu is het voorspelbaar de
+    // laatst aangemaakte.
+    store.alleToernooien = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     if (actieveToernooiId) {
       const gevonden = alleToernooien.find(t => t.id === actieveToernooiId);
       store.toernooiData = gevonden || (alleToernooien.length > 0 ? alleToernooien[0] : null);
@@ -770,13 +822,71 @@ function openFlightIndeling() {
   document.getElementById('modal-flight-indeling').classList.add('open');
 }
 
+// v5.9.0: verdeelt alle ingedeelde spelers gelijkmatig over de bestaande
+// flights. Voorheen kwam een nieuwe flight leeg binnen en moest elke speler
+// met de hand worden verplaatst — bij negen spelers over vier flights is dat
+// negen keuzemenu's, en wie flight 1 helemaal leegmaakt houdt een lege flight
+// over die de app gewoon opsloeg. Zie de toelichting in CLAUDE.md.
+function verdeelSpelersOverFlights() {
+  const alle = _flights.flatMap(f => f.spelers);
+  if (alle.length === 0 || _flights.length === 0) return;
+  _flights.forEach(f => { f.spelers = []; });
+  alle.forEach((sp, i) => { _flights[i % _flights.length].spelers.push(sp); });
+  renderFlightLijst();
+}
+window.verdeelSpelersOverFlights = verdeelSpelersOverFlights;
+
+// v5.9.0: welke flights leeg zijn (0 spelers). Een lege flight geeft een
+// scorekaart met alleen holes en geen spelerskolommen.
+function _legeFlights() {
+  return _flights.map((f, i) => ({ f, i })).filter(x => x.f.spelers.length === 0);
+}
+
+// v5.9.0: laatste grendel vóór opslaan. Een lege flight werd tot en met
+// v5.8.9 gewoon weggeschreven — startToernooi() keek alleen of ALLE flights
+// leeg waren. Gevolg: een scorekaart met holes en geen spelerskolommen, en de
+// indruk dat het toernooi stuk is. Geeft true als er doorgegaan mag worden.
+function _verwerkLegeFlights() {
+  const leeg = _legeFlights();
+  if (leeg.length === 0) return true;
+  if (leeg.length === _flights.length) {
+    toast('Verdeel de spelers eerst over de flights');
+    return false;
+  }
+  const namen = leeg.map(x => x.f.naam).join(', ');
+  const enkel = leeg.length === 1;
+  if (!confirm(`${namen} ${enkel ? 'heeft' : 'hebben'} geen spelers.\n\n` +
+               `Een lege flight geeft een scorekaart zonder spelers. ` +
+               `${enkel ? 'Hem' : 'Ze'} weghalen en doorgaan?`)) return false;
+  store._flights = _flights.filter(f => f.spelers.length > 0);
+  _flights.forEach((f, i) => {
+    f.id = i + 1;
+    if (/^Flight \d+$/.test(f.naam)) f.naam = `Flight ${i + 1}`;
+  });
+  return true;
+}
+
 function renderFlightLijst() {
   const container = document.getElementById('flight-lijst');
   if (!container) return;
 
   const ingedeeld = new Set(_flights.flatMap(f => f.spelers.map(s => s.uid)));
+  const leeg = _legeFlights();
 
-  container.innerHTML = _flights.map((f, fi) => `
+  // v5.9.0: kop met het aantal spelers, een knop om gelijk te verdelen en een
+  // waarschuwing als er een flight leeg is.
+  const kop = `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <span style="font-size:13px;color:var(--mid)">${ingedeeld.size} speler(s) · ${_flights.length} flight(s)</span>
+      <button class="btn btn-sm btn-ghost" onclick="verdeelSpelersOverFlights()" style="margin-left:auto">⇄ Gelijk verdelen</button>
+    </div>
+    ${leeg.length > 0 ? `
+    <div style="background:var(--gold-pale);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--gold)">
+      ⚠️ ${leeg.map(x => esc(x.f.naam)).join(', ')} ${leeg.length === 1 ? 'is' : 'zijn'} leeg.
+      Een lege flight geeft een scorekaart zonder spelers. Verdeel de spelers of haal hem weg met ✕.
+    </div>` : ''}`;
+
+  container.innerHTML = kop + _flights.map((f, fi) => `
     <div style="border:1.5px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden">
       <div style="background:var(--green);padding:8px 12px;display:flex;align-items:center;gap:8px">
         <input type="text" value="${esc(f.naam)}" onchange="wijzigFlightNaam(${fi}, this.value)"
@@ -803,12 +913,12 @@ function renderFlightLijst() {
               onchange="wijzigFlightHcp(${fi}, ${si}, this.value)"
               style="width:48px;padding:3px 6px;text-align:center;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;font-size:13px;flex-shrink:0">
             ${_flights.length > 1 ? `
-            <select onchange="verplaatsSpelerFlight(${fi}, ${si}, this.value)" style="font-size:12px;border:1.5px solid var(--border);border-radius:5px;padding:3px 5px;background:var(--card-bg);color:var(--dark);flex-shrink:0;max-width:80px">
+            <select onchange="verplaatsSpelerFlight(${fi}, ${si}, this.value)" title="Verplaats naar een andere flight" style="font-size:12px;border:1.5px solid var(--border);border-radius:5px;padding:3px 5px;background:var(--card-bg);color:var(--dark);flex-shrink:0;min-width:104px;max-width:150px">
               ${_flights.map((lf, lfi) => `<option value="${lfi}" ${lfi === fi ? 'selected' : ''}>${esc(lf.naam)}</option>`).join('')}
             </select>` : ''}
           </div>
         `).join('')}
-        ${f.spelers.length === 0 ? '<p style="font-size:12px;color:var(--light);padding:8px 0">Geen spelers — voeg toe via dropdown hierboven</p>' : ''}
+        ${f.spelers.length === 0 ? '<p style="font-size:12px;color:var(--gold);padding:8px 0">Nog geen spelers. Gebruik ⇄ Gelijk verdelen, of verplaats iemand hierheen met het keuzemenu achter zijn naam.</p>' : ''}
       </div>
     </div>
   `).join('');
@@ -875,6 +985,14 @@ async function startToernooi() {
 
     if (!naam) { toast('Voer een naam in'); return; }
 
+    // v5.9.0: nooit twee actieve toernooien naast elkaar. Dat kon tot en met
+    // v5.8.9 omdat het aanmaakformulier boven een lopend toernooi bleef staan.
+    if (alleToernooien.length > 0) {
+      const lopend = alleToernooien[0];
+      toast(`"${lopend?.naam || 'Een toernooi'}" loopt nog. Sluit dat eerst af of annuleer het.`);
+      return;
+    }
+
     // Lees alle dag-blokken
     const dagBlokken = Array.from(document.querySelectorAll('#t-dag-blokken .dag-blok'));
     if (dagBlokken.length === 0) { toast('Configureer minimaal één dag'); return; }
@@ -901,9 +1019,10 @@ async function startToernooi() {
     }
 
     // Spelers uit flights
+    if (_flights.every(f => f.spelers.length === 0)) { toast('Verdeel spelers over flights'); return; }
+    if (!_verwerkLegeFlights()) return;   // v5.9.0
     const geselecteerd = _flights.flatMap(f => f.spelers);
     if (geselecteerd.length < 2) { toast('Voeg minimaal 2 spelers toe aan flights'); return; }
-    if (_flights.every(f => f.spelers.length === 0)) { toast('Verdeel spelers over flights'); return; }
 
     const spelers = geselecteerd.map(s => ({
       uid: s.uid, naam: s.naam, hcp: s.hcp, gast: s.gast || false
@@ -914,15 +1033,23 @@ async function startToernooi() {
       const scores = {};
       spelers.forEach(s => { scores[s.uid] = Array(cfg.holes.length).fill(null); });
 
-      // Dag 1 flights vanuit de flight indeling; overige dagen starten leeg
-      const flights = cfg.dagNr === 1
-        ? _flights.map(f => ({
-            id: f.id, naam: f.naam,
-            spelerIds: f.spelers.map(s => s.uid),
-            starthole: f.starthole || 1,
-            starttijd: f.starttijd || cfg.starttijd
-          }))
-        : [];
+      // v5.9.0: ELKE dag krijgt de indeling mee, niet alleen dag 1.
+      //
+      // WAT ER MIS WAS: hier stond `cfg.dagNr === 1 ? [...] : []`. Dag 2 van een
+      // meerdaags toernooi begon dus zonder flights, en dan toont de scorekaart
+      // holes zonder spelers — niet te onderscheiden van een kapot toernooi. In
+      // Sierks eigen St Andrews-toernooi is dat terug te zien: dag 1 twee
+      // flights, dag 2 nul.
+      //
+      // De indeling van dag 1 is een startpunt, geen eindoordeel: per dag is hij
+      // aan te passen met de knop ✈ Flights. Starttijden schuiven wel mee met de
+      // dag zelf, want die staat per dag ingesteld.
+      const flights = _flights.map(f => ({
+        id: f.id, naam: f.naam,
+        spelerIds: f.spelers.map(s => s.uid),
+        starthole: f.starthole || 1,
+        starttijd: f.starttijd || cfg.starttijd
+      }));
 
       return {
         dagNr:    cfg.dagNr,
@@ -990,7 +1117,7 @@ async function startToernooi() {
     renderToernooi();
     // v3.0.0-11.106: start live/ listeners direct na aanmaken
     herlaadToernooiListeners();
-  } catch(e) { console.error('startToernooi mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Toernooi starten', e); }
 }
 
 // ============================================================
@@ -1099,7 +1226,7 @@ async function voegDagToe() {
     closeModal('modal-nieuwe-dag');
     toast(`Dag ${nieuweDag.dagNr} toegevoegd`);
     renderToernooiActief();
-  } catch(e) { console.error('voegDagToe mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Dag toevoegen', e); }
 }
 
 // Open flight modal voor de actieve dag (niet voor dag 1 aanmaken maar voor herindeling)
@@ -1141,6 +1268,7 @@ async function slaFlightIndelingDagOp() {
     const t = toernooiData;
     const dag = actieveDag(t);
     if (!dag) return;
+    if (!_verwerkLegeFlights()) return;   // v5.9.0
 
     dag.flights = _flights.map(f => ({
       id: f.id, naam: f.naam,
@@ -1155,7 +1283,7 @@ async function slaFlightIndelingDagOp() {
     closeModal('modal-flight-indeling');
     toast('Flight indeling opgeslagen');
     renderToernooiActief();
-  } catch(e) { console.error('slaFlightIndelingDagOp mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Flightindeling opslaan', e); }
 }
 
 // Sluit dag af — consolideer live-scores naar hoofddoc, zet afgerond=true
@@ -1192,8 +1320,35 @@ async function sluitDagAf() {
     await slaToernooiOp();
     toast(`Dag ${dag.dagNr} afgesloten`);
     renderToernooiActief();
-  } catch(e) { console.error('sluitDagAf mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Dag afsluiten', e); }
 }
+
+// v5.9.0: een afgesloten dag weer openzetten.
+//
+// WAT ER MIS WAS: `dag.afgerond = true` werd nergens teruggezet. Eén verkeerde
+// klik op "Dag afsluiten" en de scores van die dag stonden voorgoed op slot —
+// ook de flightindeling was dan niet meer te wijzigen. Een toernooi opnieuw
+// activeren hielp niet: dat zet alleen de status van het toernooi om, niet die
+// van de dagen. Er was letterlijk geen weg terug.
+//
+// De uitslag blijft zichtbaar; alleen het slot gaat eraf.
+async function heropenDag() {
+  try {
+    const t   = toernooiData;
+    const dag = actieveDag(t);
+    if (!dag) { toast('Geen dag gevonden om te heropenen'); return; }
+    if (!dag.afgerond) { toast(`Dag ${dag.dagNr} is niet afgesloten`); return; }
+    if (!confirm(`Dag ${dag.dagNr} weer openzetten?\n\n` +
+                 `De scores worden weer aanpasbaar. De al berekende uitslag blijft staan ` +
+                 `en wordt opnieuw bepaald zodra je de dag opnieuw afsluit.`)) return;
+
+    dag.afgerond = false;
+    await slaToernooiOp();
+    toast(`Dag ${dag.dagNr} is weer open`);
+    renderToernooiActief();
+  } catch(e) { toernooiFout('Dag heropenen', e); }
+}
+window.heropenDag = heropenDag;
 
 // ============================================================
 //  MATRIX / UITSLAG TOGGLE
@@ -1219,7 +1374,7 @@ async function toonToernooiUitslag() {
     await setDoc(doc(db, 'toernooien', actieveToernooiId), toernooiData);
     renderToernooiActief();
     toast('Uitslag zichtbaar! 🏆');
-  } catch(e) { console.error('toonToernooiUitslag mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Uitslag tonen', e); }
 }
 
 // ============================================================
@@ -1308,7 +1463,7 @@ async function voegBestaandeSpelerToeAanToernooi() {
     closeModal('modal-toernooi-spelers');
     renderToernooiActief();
     toast(`${speler.naam.split(' ')[0]} toegevoegd ✓`);
-  } catch(e) { console.error('voegBestaandeSpelerToeAanToernooi mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Speler toevoegen', e); }
 }
 
 async function voegGastspelerToeAanToernooi() {
@@ -1333,7 +1488,7 @@ async function voegGastspelerToeAanToernooi() {
     closeModal('modal-toernooi-spelers');
     renderToernooiActief();
     toast(`${naam} toegevoegd als gastspeler ✓`);
-  } catch(e) { console.error('voegGastspelerToeAanToernooi mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Gastspeler toevoegen', e); }
 }
 
 async function verwijderToernooiSpelerNieuw(spelerId) {
@@ -1365,7 +1520,7 @@ async function verwijderToernooiSpelerNieuw(spelerId) {
     closeModal('modal-toernooi-spelers');
     renderToernooiActief();
     toast('Speler verwijderd ✓');
-  } catch(e) { console.error('verwijderToernooiSpelerNieuw mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Speler verwijderen', e); }
 }
 
 function openVerwijderToernooiSpeler() { openToernooiSpelersBeheer(); }
@@ -1574,6 +1729,11 @@ function renderToernooiActief() {
       ${uitslag && !dagAfgerond ? `
       <button class="btn btn-gold btn-block" onclick="sluitDagAf()" style="margin-bottom:8px">
         ✓ Dag ${dagNr} afsluiten
+      </button>
+      ` : ''}
+      ${dagAfgerond ? `
+      <button class="btn btn-ghost btn-block" onclick="heropenDag()" style="margin-bottom:8px">
+        ↩ Dag ${dagNr} heropenen
       </button>
       ` : ''}
       ${dagAfgerond && (t.dagen || []).every(d => d.afgerond) ? `
@@ -2545,7 +2705,7 @@ async function bevestigToernooiAfsluiten() {
     toast('Toernooi afgerond! 🏅 Ladder bijgewerkt.');
     renderToernooi();
     renderLadder();
-  } catch(e) { console.error('bevestigToernooiAfsluiten mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Toernooi afsluiten', e); }
 }
 
 // ============================================================
@@ -2608,10 +2768,7 @@ async function bewerkToernooi() {
     }
 
     toast('Instellingen hersteld — pas aan en start opnieuw');
-  } catch(e) {
-    console.error('bewerkToernooi mislukt:', e);
-    toast('Er is iets misgegaan, probeer opnieuw');
-  }
+  } catch(e) { toernooiFout('bewerkToernooi', e); }
 }
 window.bewerkToernooi = bewerkToernooi;
 
@@ -2708,7 +2865,7 @@ async function annuleerToernooi() {
     window._bekijkDagNr = null;
     renderToernooi();
     toast('Toernooi geannuleerd — herstelbaar via Geannuleerde toernooien');
-  } catch(e) { console.error('annuleerToernooi mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Toernooi annuleren', e); }
 }
 
 // ============================================================
@@ -2717,6 +2874,31 @@ async function annuleerToernooi() {
 // Geannuleerde toernooien bleven voorheen onzichtbaar in Firestore staan.
 // Deze sectie maakt ze zichtbaar voor de beheerder, met de keuze om te
 // herstellen (status terug naar actief) of definitief te verwijderen.
+
+// v5.9.0: zolang er een toernooi loopt is het aanmaakformulier opgeborgen.
+// Deze knop haalt het terug — bewust één extra handeling, zodat niemand per
+// ongeluk een tweede toernooi naast het lopende begint.
+function renderNieuwToernooiKnop(toon) {
+  let sectie = document.getElementById('toernooi-nieuw-sectie');
+  if (!toon) { if (sectie) sectie.remove(); return; }
+  if (sectie) return;
+  sectie = document.createElement('div');
+  sectie.id = 'toernooi-nieuw-sectie';
+  sectie.innerHTML = `
+    <button class="btn btn-ghost btn-block" style="font-size:13px;color:var(--mid);margin-top:4px" onclick="toonNieuwToernooiFormulier()">
+      ➕ Nieuw toernooi aanmaken
+    </button>`;
+  const pageEl = document.getElementById('page-toernooi');
+  if (pageEl) pageEl.appendChild(sectie);
+}
+
+function toonNieuwToernooiFormulier() {
+  window._toonNieuwToernooiFormulier = true;
+  renderToernooi();
+  const setup = document.getElementById('toernooi-setup-wrap');
+  if (setup) setup.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+window.toonNieuwToernooiFormulier = toonNieuwToernooiFormulier;
 
 function renderGeannuleerdeKnop(isBeheerder) {
   let sectie = document.getElementById('toernooi-geannuleerd-sectie');
@@ -2846,7 +3028,7 @@ async function toggleToernooiModus(aan) {
     // Laat auth.js de nav + header bijwerken
     window.dispatchEvent(new CustomEvent('toernooiModusGewijzigd'));
     toast(aan ? 'Toernooi-modus aan ✓' : 'Toernooi-modus uit');
-  } catch(e) { console.error('toggleToernooiModus mislukt:', e); toast('Er is iets misgegaan'); }
+  } catch(e) { toernooiFout('Toernooi-modus wijzigen', e); }
 }
 window.toggleToernooiModus = toggleToernooiModus;
 
@@ -2860,7 +3042,7 @@ async function toggleScoresVerborgen(aan) {
     await updateDoc(doc(db, 'toernooien', actieveToernooiId), { scoresVerborgen: !!aan });
     renderTScorecard();
     toast(aan ? 'Scores verborgen voor deelnemers ✓' : 'Scores zichtbaar voor deelnemers ✓');
-  } catch(e) { console.error('toggleScoresVerborgen mislukt:', e); toast('Er is iets misgegaan'); }
+  } catch(e) { toernooiFout('Scores verbergen wijzigen', e); }
 }
 window.toggleScoresVerborgen = toggleScoresVerborgen;
 
