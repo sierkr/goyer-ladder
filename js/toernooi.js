@@ -294,6 +294,29 @@ function markerVan(spelerUid, dag) {
   return null;
 }
 
+// v5.11.6: verdeelt de markerkring opnieuw over een flight. Nodig zodra de
+// samenstelling verandert.
+//
+// ⚠ WAT ER MIS WAS. Een speler toevoegen of verwijderen raakte `markers` niet
+// aan. De nieuwe speler had dan geen vermelding en viel terug op de kring,
+// terwijl de anderen hun opgeslagen marker hielden: één speler markeerde er
+// ineens twee en de nieuwe markeerde niemand. Niemand bleef zónder marker —
+// dat vangnet werkt — maar "ieder markeert er één" klopte niet meer, en dat is
+// juist de afspraak. Sierk vroeg ernaar voordat het in het echt misging.
+//
+// Afgesloten dagen blijven met rust: daar is de uitslag al vastgesteld, en de
+// indeling achteraf omgooien zou die geschiedenis veranderen.
+//
+// Er is (nog) geen scherm om een marker met de hand om te zetten, dus de
+// opgeslagen indeling bevat nooit iets wat de kring niet ook weet. Opnieuw
+// verdelen kan dus niets wegvagen.
+function herschikMarkers(toernooi) {
+  (toernooi?.dagen || []).forEach(dag => {
+    if (dag.afgerond) return;
+    (dag.flights || []).forEach(f => { f.markers = markerKring(f.spelerIds || []); });
+  });
+}
+
 // Haalt één laag van één dag uit een live-document.
 // `laag` is 'dagen', 'markerDagen' of 'beheerDagen'.
 function _laagVanDag(data, laag, dagNr) {
@@ -2119,6 +2142,7 @@ async function voegBestaandeSpelerToeAanToernooi() {
       }
     });
 
+    herschikMarkers(t);   // v5.11.6
     await setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(t)));
     closeModal('modal-toernooi-spelers');
     renderToernooiActief();
@@ -2171,6 +2195,7 @@ async function voegGastspelerToeAanToernooi() {
       }
     });
 
+    herschikMarkers(t);   // v5.11.6
     await setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(t)));
     closeModal('modal-toernooi-spelers');
     renderToernooiActief();
@@ -2202,6 +2227,7 @@ async function verwijderToernooiSpelerNieuw(spelerId) {
         dag.flights.forEach(f => { f.spelerIds = (f.spelerIds || []).filter(sid => sid !== spelerId); });
       }
     });
+    herschikMarkers(toernooiData);   // v5.11.6
     // v4.0.0: ruim ook het live-scoredocument van deze speler op
     try { await deleteDoc(doc(db, 'toernooien', actieveToernooiId, 'live', spelerId)); } catch(e) { /* bestond mogelijk niet */ }
     delete store._liveScores[spelerId];

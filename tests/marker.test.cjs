@@ -101,4 +101,52 @@ check('lege holes tellen niet mee in de regel',
 check('de holes komen ook los terug, voor het slot op de uitslagknop',
   M.kaartOordeel([k(3, 'rood'), k(7, 'rood')]).verschillen, [3, 7]);
 
+// ── Blok 5: opnieuw verdelen als de flight verandert ─────────
+console.log('\n══ DE KRING NA EEN SPELER ERBIJ OF ERAF ══\n');
+
+// ⚠ Toevoegen en verwijderen raakten `markers` niet aan. De nieuwe speler viel
+// dan terug op de kring terwijl de anderen hun opgeslagen marker hielden: één
+// speler markeerde er twee, de nieuwe niemand.
+const maakToernooi = () => ({
+  dagen: [
+    { dagNr: 1, afgerond: false, flights: [{ naam: 'Flight 1', spelerIds: ['a','b','c'],
+                                             markers: M.markerKring(['a','b','c']) }] },
+    { dagNr: 2, afgerond: true,  flights: [{ naam: 'Flight 1', spelerIds: ['a','b','c'],
+                                             markers: M.markerKring(['a','b','c']) }] },
+  ],
+});
+
+const netToegevoegd = maakToernooi();
+netToegevoegd.dagen[0].flights[0].spelerIds.push('d');
+netToegevoegd.dagen[1].flights[0].spelerIds.push('d');
+M.herschikMarkers(netToegevoegd);
+
+const kring1 = netToegevoegd.dagen[0].flights[0].markers;
+check('de nieuwe speler zit in de kring', Object.keys(kring1).sort(), ['a','b','c','d']);
+check('iedereen markeert precies één ander', new Set(Object.values(kring1)).size, 4);
+check('en niemand zichzelf',
+  Object.entries(kring1).filter(([s, m]) => s === m).length, 0);
+check('een AFGESLOTEN dag blijft met rust',
+  netToegevoegd.dagen[1].flights[0].markers, M.markerKring(['a','b','c']));
+
+const netVerwijderd = maakToernooi();
+netVerwijderd.dagen[0].flights[0].spelerIds =
+  netVerwijderd.dagen[0].flights[0].spelerIds.filter(x => x !== 'b');
+M.herschikMarkers(netVerwijderd);
+const kring2 = netVerwijderd.dagen[0].flights[0].markers;
+check('na verwijderen blijven de twee anderen over',
+  Object.keys(kring2).sort(), ['a','c']);
+check('en die markeren elkaar', kring2, { a: 'c', c: 'a' });
+check('de verwijderde speler komt nergens meer voor',
+  JSON.stringify(kring2).includes('b'), false);
+
+check('een flight van één overhoudt geen marker',
+  (() => { const t = maakToernooi();
+           t.dagen[0].flights[0].spelerIds = ['a'];
+           M.herschikMarkers(t);
+           return t.dagen[0].flights[0].markers; })(), {});
+
+check('een toernooi zonder dagen valt niet om',
+  (() => { M.herschikMarkers(null); M.herschikMarkers({}); return 'ok'; })(), 'ok');
+
 module.exports = staat;

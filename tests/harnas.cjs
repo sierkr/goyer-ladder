@@ -169,8 +169,8 @@ function laadNaamKern() {
 // ============================================================
 function laadMarkerKern() {
   const bron = `
-    ${knip('js/toernooi.js', ['markerKring', 'scoreOordeel', 'kaartOordeel'])}
-    return { markerKring, scoreOordeel, kaartOordeel };
+    ${knip('js/toernooi.js', ['markerKring', 'scoreOordeel', 'kaartOordeel', 'herschikMarkers'])}
+    return { markerKring, scoreOordeel, kaartOordeel, herschikMarkers };
   `;
   return new Function(bron)();
 }

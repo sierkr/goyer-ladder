@@ -426,6 +426,61 @@ test.describe('Toernooi — de hele route', () => {
     await expect(lijst).not.toContainText('undefined');
   });
 
+  // ============================================================
+  //  v5.11.6 — DE MARKERKRING NA EEN SPELER ERBIJ
+  // ============================================================
+  //  Een speler toevoegen aan een lopend toernooi raakte `markers` niet aan.
+  //  De nieuwe viel dan terug op de kring terwijl de anderen hun opgeslagen
+  //  marker hielden: één speler markeerde er twee, de nieuwe niemand. Niemand
+  //  bleef zónder marker, dus het viel niet op — maar "ieder markeert er één"
+  //  klopte niet meer, en dat is juist de afspraak.
+  // ============================================================
+  test('MARKERKRING: een speler erbij verdeelt de kring opnieuw', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Kring', 1);
+    for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Kring', { timeout: 15000 });
+
+    // Controleert de afspraak: ieder markeert er precies één, ieder wordt
+    // precies één keer gemarkeerd, en niemand markeert zichzelf.
+    const kringKlopt = (t) => {
+      const f = t.dagen[0].flights[0];
+      const m = f.markers || {};
+      const spelers = f.spelerIds || [];
+      return {
+        aantal: spelers.length,
+        iedereenHeeftEr1: Object.keys(m).length === spelers.length,
+        iedereenMarkeertEr1: new Set(Object.values(m)).size === spelers.length,
+        geenZelf: Object.entries(m).every(([s, mk]) => s !== mk),
+        alleenEchteSpelers: Object.entries(m).flat().every(uid => spelers.includes(uid)),
+      };
+    };
+
+    expect(kringKlopt(await haalToernooi('Kring')))
+      .toEqual({ aantal: 3, iedereenHeeftEr1: true, iedereenMarkeertEr1: true,
+                 geenZelf: true, alleenEchteSpelers: true });
+
+    // ── Een vierde speler erbij, via Spelers beheren ──────────
+    await page.click('#toernooi-detail button:has-text("Spelers")');
+    await page.fill('#toernooi-speler-zoek', 'Nina');
+    const regel = page.locator('#toernooi-speler-zoek-lijst >> text=Nina Nieuw').first();
+    await regel.waitFor({ state: 'visible', timeout: 5000 });
+    await regel.evaluate(el => el.click());
+    await page.click('#modal-toernooi-spelers button:has-text("+ Toevoegen")');
+    await expect(page.locator('#toernooi-detail')).toContainText('4 spelers', { timeout: 15000 });
+
+    await expect.poll(async () => kringKlopt(await haalToernooi('Kring')),
+      { timeout: 15000, message: 'de kring is opnieuw verdeeld' })
+      .toEqual({ aantal: 4, iedereenHeeftEr1: true, iedereenMarkeertEr1: true,
+                 geenZelf: true, alleenEchteSpelers: true });
+  });
+
   test('AFSLUITEN: alle scores, uitslag, dag afsluiten en weer heropenen', async ({ page }) => {
     test.setTimeout(180000);
     jaOpAlles(page);
