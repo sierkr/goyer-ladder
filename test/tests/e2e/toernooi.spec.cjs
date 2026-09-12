@@ -616,6 +616,30 @@ test.describe('Toernooi — de hele route', () => {
     await expect(lijst).toBeVisible({ timeout: 10000 });
     await expect(lijst, 'de inlognaam zoals de gast hem intikt').toContainText('karel.gast');
     await expect(lijst, 'zonder de toernooicode erachter').not.toContainText('gastentoernooi');
+    await page.click('#modal-toernooi-spelers button:has-text("Sluiten")');
+    await expect(page.locator('#modal-toernooi-spelers')).not.toHaveClass(/open/, { timeout: 10000 });
+
+    // v5.11.5: hetzelfde in het lijstje achter "Gastlogins tonen" — dat is het
+    // briefje dat je aan je gasten doorgeeft, dus daar mag de code al helemaal
+    // niet op staan.
+    await page.click('#toernooi-detail button:has-text("Gastlogins tonen")');
+    const briefje = page.locator('#archief-detail-inhoud');
+    await expect(briefje).toBeVisible({ timeout: 10000 });
+    await expect(briefje, 'de inlognaam staat erop').toContainText('karel.gast');
+    await expect(briefje, 'zonder toernooicode').not.toContainText('karel.gast.gastentoernooi');
+    await expect(briefje, 'met het wachtwoord erbij').toContainText('goyer2026');
+
+    // v5.11.5: en de markerindeling draagt geen TIJDELIJKE gast-sleutels meer.
+    // Die werden bij het starten overal vervangen behalve hier.
+    const naStart = await haalToernooi('Gastentoernooi');
+    const markerSleutels = (naStart.dagen[0].flights || [])
+      .flatMap(f => Object.entries(f.markers || {}).flat());
+    expect(markerSleutels.length, 'er staan markers in').toBeGreaterThan(0);
+    expect(markerSleutels.filter(k => String(k).startsWith('gast_')),
+      'geen tijdelijke sleutels meer in de markerindeling').toEqual([]);
+    const echteIds = new Set(naStart.spelers.map(sp => sp.uid));
+    expect(markerSleutels.every(k => echteIds.has(k)),
+      'elke marker verwijst naar een speler die echt meedoet').toBe(true);
 
     expect(fouten, 'geen JavaScript-fouten').toEqual([]);
   });
