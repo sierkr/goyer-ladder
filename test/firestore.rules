@@ -206,9 +206,40 @@ service cloud.firestore {
 
     // --- toernooien -------------------------------------------
     // Read publiek voor live meekijken; write alleen coordinator
+    //
+    // v5.10.0 - DE UITSLAGLINK IS ACHTERAF DICHT TE ZETTEN.
+    // De coordinator kan `publiek: false` op een toernooi zetten. Dan weigert
+    // de DATABASE het document aan iedereen die niet is ingelogd - niet alleen
+    // de meekijkpagina. Anders zou de link "niet gevonden" tonen terwijl de
+    // gegevens gewoon op te vragen bleven, en dat is geen dichte deur maar een
+    // gordijn.
+    //
+    // `get('publiek', true)` betekent: openbaar tenzij uitdrukkelijk dichtgezet.
+    // Alle bestaande toernooien hebben het veld niet en blijven dus zichtbaar.
+    //
+    // ⚠ NIET `resource.data.publiek != false` schrijven. Een veld opvragen dat
+    // niet bestaat is in Firestore-regels een FOUT, geen lege waarde - en een
+    // regel die een fout geeft weigert. Daarmee was in een klap elk bestaand
+    // toernooi onzichtbaar voor het live meekijken. De regeltest ving dat op
+    // (`toernooi is publiek leesbaar` sloeg meteen om), niet het toeval.
+    //
+    // LET OP bij een zoekopdracht (list). Firestore laat een hele zoekopdracht
+    // vallen zodra ook maar EEN gevonden document niet gelezen mag worden.
+    // toernooi-live.html zoekt zonder link-parameter naar het actieve toernooi.
+    // Daarom mag de app `publiek: false` alleen zetten op een toernooi dat NIET
+    // meer actief is - dan komt zo'n document in die zoekopdracht nooit voor.
+    // Die grendel zit in js/toernooi.js; hier staat waarom hij nodig is.
     match /toernooien/{doc} {
-      allow read:  if true;
+      allow read:  if isIngelogd() || resource.data.get('publiek', true) == true;
       allow write: if isCoordinator();
+
+      // v5.10.0: het wachtwoord voor de gastlogins van dit toernooi. Een
+      // ONDERLIGGENDE map erft de regels van het document er NIET van - daarom
+      // kan dit geheim blijven terwijl het toernooi zelf openbaar leesbaar is.
+      // Alleen de coordinator komt erbij.
+      match /beheer/{stuk} {
+        allow read, write: if isCoordinator();
+      }
 
       // v3.0.0-11.106: live-scores subcollectie - spelers schrijven scores hier.
       // v4.0.1 (fix 7.8): elke ingelogde speler mag live-scores schrijven, zodat

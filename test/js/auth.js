@@ -386,7 +386,25 @@ async function loginSubmit() {
   const email = invoer.includes('@') ? invoer.toLowerCase() : (invoer.toLowerCase() + EMAIL_SUFFIX);
   try {
     await signInWithEmailAndPassword(auth, email, wachtwoord);
+    return;
   } catch(e) {
+    // v5.10.0: tweede kans voor een toernooigast.
+    //
+    // Een gast van buiten de club tikt alleen zijn NAAM in plus het
+    // wachtwoord van het toernooi. Zijn echte inlognaam is
+    // `voornaam.achternaam.<toernooicode>`, maar die krijgt hij nooit te zien.
+    // Sierk, 12 september 2026: "Ik wil voor de login dat de gebruiker alleen
+    // voor en achternaam hoeft in te tikken."
+    //
+    // Dit kan omdat toernooidocumenten openbaar leesbaar zijn: het inlogscherm
+    // mag dus vóór het inloggen al opvragen welke toernooien lopen en welke
+    // code daarbij hoort. De code is geen geheim — het WACHTWOORD is dat.
+    //
+    // Alleen ACTIEVE toernooien tellen mee. Daarmee vervalt de gastinlog
+    // vanzelf zodra het toernooi is afgesloten, nog vóór de accounts worden
+    // opgeruimd. De uitslag blijft daarna gewoon zichtbaar via de meekijklink.
+    if (await _probeerGastLogin(invoer, wachtwoord)) return;
+
     const berichten = {
       'auth/user-not-found':    'Geen account gevonden',
       'auth/wrong-password':    'Onjuist wachtwoord',
@@ -395,6 +413,36 @@ async function loginSubmit() {
       'auth/invalid-credential':'Login of wachtwoord onjuist',
     };
     toonLoginFout(berichten[e.code] || 'Inloggen mislukt, probeer opnieuw');
+  }
+}
+
+// Probeert de invoer te lezen als "Voornaam Achternaam" van een gast in een
+// lopend toernooi. Geeft true als het inloggen daarmee gelukt is.
+//
+// ⚠ Deze functie mag nooit zelf een fout naar buiten laten: hij draait in de
+// catch van het inloggen, en een fout hier zou de nette foutmelding vervangen
+// door een stille mislukking.
+async function _probeerGastLogin(invoer, wachtwoord) {
+  try {
+    if (!invoer || invoer.includes('@')) return false;
+    const delen = invoer.trim().split(/\s+/).filter(Boolean);
+    if (delen.length < 2) return false;   // alleen een voornaam is te weinig
+
+    const schoon = t => String(t).toLowerCase().replace(/\s+/g, '');
+    const kern = `${schoon(delen[0])}.${schoon(delen.slice(1).join(' '))}`;
+
+    const snap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
+    const codes = snap.docs.map(d => d.data().gastCode).filter(Boolean);
+    for (const code of codes) {
+      try {
+        await signInWithEmailAndPassword(auth, `${kern}.${code}${EMAIL_SUFFIX}`, wachtwoord);
+        return true;
+      } catch (_) { /* volgende toernooi proberen */ }
+    }
+    return false;
+  } catch (e) {
+    console.warn('gastlogin proberen mislukt:', e?.code || e?.message);
+    return false;
   }
 }
 

@@ -4,9 +4,12 @@
 //  v11.106: live/-subcollectie als bron van waarheid; scorekaart bovenaan voor spelers
 //  Datastructuur: t.dagen[dagNr-1].{datum,baan,holes,flights,scores,afgerond}
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr, functions, httpsCallable, IS_TEST } from './config.js';
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr, functions, httpsCallable, IS_TEST, IS_EMULATOR, EMAIL_SUFFIX, firebaseConfig } from './config.js';
 // v5.2.1: toernooi-uitslag schrijft standen en punten samen weg (server-side).
 const _verwerkToernooiStandenFn = httpsCallable(functions, 'verwerkToernooiStanden');
+// v5.10.0: verwijdert een Auth-account waarvan het profiel al weg is. Bestond
+// al voor wees-accounts uit de bulk-import; hier hergebruikt voor gastlogins.
+const _verwijderGastAccountFn = httpsCallable(functions, 'verwijderWeesAccount');
 import { store, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tSpelersLadderIds, _tRankingLadderIds, _flights, _liveScores } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { renderHcpBlok, alleBANEN, renderHandmatigHoles } from './partij.js';
@@ -799,7 +802,15 @@ function openFlightIndeling() {
   const interval = parseInt(document.getElementById('t-interval')?.value) || 0;
 
   if (_flights.length === 0) {
-    store._flights = [{ id: 1, naam: 'Flight 1', spelers: geselecteerd.map(s => ({ uid: s.uid, naam: s.naam, hcp: s.hcp })), starthole: 1, starttijd }];
+    // v5.10.0: `gast` en `login` MOETEN mee.
+    //
+    // WAT HIER MIS WAS, en dat is ernstig. Hier stond `{ uid, naam, hcp }`.
+    // startToernooi() haalt de deelnemers uit _flights, dus een gastspeler die
+    // je vóór de start toevoegde verloor precies hier zijn gast-status — en
+    // telde daarna gewoon MEE VOOR DE LADDER. Op het scherm stond nog "(gast)",
+    // in het opgeslagen toernooi niet meer. Gevonden door de repetitie van
+    // v5.10.0, niet door iemand die het zag gebeuren.
+    store._flights = [{ id: 1, naam: 'Flight 1', spelers: geselecteerd.map(s => ({ ...s })), starthole: 1, starttijd }];
   } else {
     _flights.forEach((f, fi) => {
       if (!f.starttijd) f.starttijd = berekenFlightTijd(starttijd, interval, fi);
@@ -807,7 +818,7 @@ function openFlightIndeling() {
       f.spelers = f.spelers.filter(s => geselecteerd.some(g => g.uid === s.uid));
     });
     const ingedeeld = new Set(_flights.flatMap(f => f.spelers.map(s => s.uid)));
-    const nieuw = geselecteerd.filter(s => !ingedeeld.has(s.uid)).map(s => ({ uid: s.uid, naam: s.naam, hcp: s.hcp }));
+    const nieuw = geselecteerd.filter(s => !ingedeeld.has(s.uid)).map(s => ({ ...s }));  // v5.10.0: gast-vlag mee
     if (nieuw.length > 0 && _flights.length > 0) _flights[0].spelers.push(...nieuw);
   }
 
@@ -982,8 +993,16 @@ async function startToernooi() {
     const modus    = document.querySelector('input[name="t-modus"]:checked')?.value || 'matchplay';
     const starttijd = document.getElementById('t-starttijd')?.value || '09:00';
     const interval  = parseInt(document.getElementById('t-interval')?.value) || 0;
+    // v5.10.0: leeg laten mag — dan krijgen gastspelers geen inlog.
+    const gastWachtwoord = document.getElementById('t-gast-wachtwoord')?.value.trim() || '';
 
     if (!naam) { toast('Voer een naam in'); return; }
+    if (gastWachtwoord && gastWachtwoord.length < 6) {
+      toast('Het gastwachtwoord moet minstens 6 tekens hebben');
+      return;
+    }
+    if (gastWachtwoord && _gastBeheerGeblokkeerdInTest()) return;
+    const gastCode = toernooiCodeVan(naam);
 
     // v5.9.0: nooit twee actieve toernooien naast elkaar. Dat kon tot en met
     // v5.8.9 omdat het aanmaakformulier boven een lopend toernooi bleef staan.
@@ -1070,6 +1089,10 @@ async function startToernooi() {
     const nieuweToernooi = {
       status: 'actief',
       naam, modus,
+      // v5.10.0: openbaar, en dat mag — hiermee kan het inlogscherm de
+      // inlognaam van een gast afleiden. Het wachtwoord staat in de
+      // afgeschermde submap, niet hier.
+      ...(gastWachtwoord ? { gastCode } : {}),
       ptWin, ptTie, ptLoss, hcpPct,
       ladderId: ladderId || null,
       rankingLadderIds,
@@ -1081,6 +1104,37 @@ async function startToernooi() {
 
     const newRef = await addDoc(TOERNOOIEN_COL, nieuweToernooi);
     nieuweToernooi.id = newRef.id;
+
+    // v5.10.0: gastlogins. Pas HIER, nadat het toernooi echt bestaat — zo
+    // blijven er geen accounts achter van een aanmaakscherm dat je halverwege
+    // verlaat. Mislukt er één, dan gaat het toernooi gewoon door en zegt de
+    // app welke gast geen inlog kreeg: een toernooi zonder één inlog is
+    // beter dan geen toernooi.
+    if (gastWachtwoord) {
+      try {
+        await setDoc(doc(db, 'toernooien', newRef.id, 'beheer', 'gastlogin'),
+          { wachtwoord: gastWachtwoord, code: gastCode });
+      } catch (e) {
+        console.error('gastwachtwoord opslaan mislukt:', e);
+        toast('Let op: het gastwachtwoord kon niet worden bewaard — ' + toernooiFoutTekst(e), 9000);
+      }
+      const mislukt = [];
+      for (const sp of nieuweToernooi.spelers.filter(x => x.gast)) {
+        try {
+          const { uid, login } = await maakGastAccount(sp.naam, gastCode, gastWachtwoord, naam);
+          _vervangSpelerUid(nieuweToernooi, sp.uid, uid);
+          sp.uid = uid;
+          sp.login = login;
+        } catch (e) {
+          console.error('gastlogin mislukt voor', sp.naam, e);
+          mislukt.push(sp.naam);
+        }
+      }
+      await setDoc(doc(db, 'toernooien', newRef.id), nieuweToernooi);
+      if (mislukt.length > 0) {
+        toast(`Geen inlog gelukt voor: ${mislukt.join(', ')} — de rest staat klaar`, 9000);
+      }
+    }
     alleToernooien.push(nieuweToernooi);
     store.toernooiData = nieuweToernooi;
     store.actieveToernooiId = newRef.id;
@@ -1167,6 +1221,166 @@ function openNieuweDagModal() {
   // "toevoegen" zetten, zodat een eerdere wijzig-sessie niet blijft hangen.
   _zetDagModalStand(null);
   document.getElementById('modal-nieuwe-dag').classList.add('open');
+}
+
+// ============================================================
+//  GASTLOGINS  (v5.10.0)
+// ============================================================
+//  WAT DIT IS. Spelers van buiten de club doen één toernooi mee. Ze krijgen
+//  een inlog die alleen voor dat toernooi werkt, en die ze niet hoeven te
+//  wijzigen. Sierk, 12 september 2026: "Ik wil voor de login dat de gebruiker
+//  alleen voor en achternaam hoeft in te tikken."
+//
+//  HOE DE INLOG WERKT. De gast typt zijn naam plus het toernooiwachtwoord. De
+//  app maakt daar zelf de inlognaam van:
+//
+//      naam "Jan Jansen" + toernooicode "standrews2026"
+//         -> jan.jansen.standrews2026@MPladder.stb
+//
+//  De code staat openbaar op het toernooi — dat mag, want het WACHTWOORD is
+//  het geheim. Dat staat in toernooien/{id}/beheer/gastlogin, waar alleen de
+//  coordinator bij kan (zie firestore.rules).
+//
+//  ⚠ WAAROM DE CODE ACHTER DE NAAM STAAT. Zonder die toevoeging zou een gast
+//  die toevallig ook clublid is (Jan Jansen) botsen met zijn eigen account, en
+//  dan mislukt het aanmaken. Nu zijn het twee gescheiden accounts. Gevolg, en
+//  dat is met opzet: als gast telt hij NIET mee voor de ladder (`gast: true`).
+//
+//  ⚠ EEN GEDEELD WACHTWOORD. Wie het toernooiwachtwoord heeft kan inloggen
+//  onder de naam van elke deelnemer van dat toernooi. Hij ziet dan alleen dat
+//  ene toernooi. Dat is de prijs van "alleen je naam intikken"; daarom is het
+//  wachtwoord per toernooi en worden de accounts na afloop opgeruimd.
+// ============================================================
+
+// Toernooinaam -> code die in de inlognaam past. Alleen kleine letters en
+// cijfers; accenten eraf, zodat "Café 2026" niet op een raar teken stukloopt.
+function toernooiCodeVan(naam) {
+  const kaal = String(naam || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]/g, '');
+  return kaal.slice(0, 16) || 'toernooi';
+}
+
+// Splitst "Jan de Vries" op dezelfde manier als genereerEmail() verwacht:
+// eerste woord is de voornaam, de rest de achternaam. Aan beide kanten van de
+// inlog moet dit gelijk gebeuren, anders vindt de gast zijn eigen account niet.
+function splitsNaam(volleNaam) {
+  const delen = String(volleNaam || '').trim().split(/\s+/).filter(Boolean);
+  if (delen.length === 0) return { voornaam: '', achternaam: '' };
+  if (delen.length === 1) return { voornaam: delen[0], achternaam: '' };
+  return { voornaam: delen[0], achternaam: delen.slice(1).join(' ') };
+}
+
+// De inlog (zonder @-deel) voor een gast in een toernooi.
+function gastLoginVan(volleNaam, code) {
+  const { voornaam, achternaam } = splitsNaam(volleNaam);
+  const schoon = t => String(t || '').toLowerCase().replace(/\s+/g, '');
+  const kern = achternaam ? `${schoon(voornaam)}.${schoon(achternaam)}` : schoon(voornaam);
+  return `${kern}.${code}`;
+}
+
+// v3.0.0-11.103, overgenomen uit admin.js: gebruikersbeheer loopt via de
+// gedeelde Firebase Auth, die voor test én productie hetzelfde project is.
+// Een gastaccount aanmaken vanuit /test/ zou dus een ECHT account maken.
+function _gastBeheerGeblokkeerdInTest() {
+  if (IS_TEST) {
+    toast('Gastlogins aanmaken is uitgeschakeld in de testomgeving — inloggen is gedeeld met de echte app.');
+    return true;
+  }
+  return false;
+}
+
+// Leest het gastwachtwoord van een toernooi. Staat in een afgeschermde submap
+// waar alleen de coordinator bij kan; een gewone speler krijgt hier niets.
+async function _leesGastWachtwoord(toernooiId) {
+  if (!toernooiId) return null;
+  try {
+    const snap = await getDoc(doc(db, 'toernooien', toernooiId, 'beheer', 'gastlogin'));
+    return snap.exists() ? snap.data() : null;
+  } catch (e) {
+    console.warn('gastwachtwoord lezen mislukt:', e.code || e.message);
+    return null;
+  }
+}
+
+// Een gast krijgt pas bij het starten een echt account, en dus een echte uid.
+// Tot dat moment loopt hij mee onder een tijdelijke `gast_...`-sleutel. Die
+// sleutel staat óók in de flights en in de scorerijen van elke dag; blijft daar
+// de oude staan, dan hoort de speler bij niemand meer en toont zijn scorekaart
+// niets. Deze functie zet hem overal tegelijk om.
+function _vervangSpelerUid(toernooi, oudeUid, nieuweUid) {
+  if (!toernooi || oudeUid === nieuweUid) return;
+  (toernooi.spelers || []).forEach(sp => { if (sp.uid === oudeUid) sp.uid = nieuweUid; });
+  (toernooi.dagen || []).forEach(dag => {
+    (dag.flights || []).forEach(f => {
+      f.spelerIds = (f.spelerIds || []).map(sid => sid === oudeUid ? nieuweUid : sid);
+    });
+    if (dag.scores && Object.prototype.hasOwnProperty.call(dag.scores, oudeUid)) {
+      dag.scores[nieuweUid] = dag.scores[oudeUid];
+      delete dag.scores[oudeUid];
+    }
+  });
+}
+
+// Maakt één Auth-account plus het profiel. Geeft { uid, login } terug.
+//
+// Het account wordt aangemaakt in een APART Firebase-venster. Anders logt
+// createUser de coordinator uit en zit hij ineens als gast in zijn eigen app.
+async function maakGastAccount(volleNaam, code, wachtwoord, toernooiNaam) {
+  const { initializeApp: init2, deleteApp } =
+    await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+  const { getAuth: getAuth2, createUserWithEmailAndPassword: createUser, connectAuthEmulator: verbindEmulator } =
+    await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+
+  let login = gastLoginVan(volleNaam, code);
+  let tijdApp = null;
+  let uid = null;
+  let poging = 0;
+
+  while (uid === null && poging < 5) {
+    poging++;
+    const email = `${login}${EMAIL_SUFFIX}`;
+    try {
+      tijdApp = init2(firebaseConfig, `gast_${Date.now()}_${poging}`);
+      const tijdAuth = getAuth2(tijdApp);
+      // Draait de app tegen de nagemaakte database (de repetitie), dan moet dit
+      // tweede venster daar óók heen. Anders klopt het aan bij de echte
+      // Firebase — en dat is precies wat een repetitie nooit mag doen.
+      if (IS_EMULATOR) {
+        try { verbindEmulator(tijdAuth, 'http://127.0.0.1:9099', { disableWarnings: true }); }
+        catch (_) { /* al verbonden */ }
+      }
+      const cred = await createUser(tijdAuth, email, wachtwoord);
+      uid = cred.user.uid;
+    } catch (e) {
+      if (e?.code === 'auth/email-already-in-use') {
+        // Zelfde naam twee keer in hetzelfde toernooi: er een cijfer achter.
+        login = `${gastLoginVan(volleNaam, code)}${poging + 1}`;
+      } else {
+        throw e;
+      }
+    } finally {
+      if (tijdApp) { try { await deleteApp(tijdApp); } catch (_) {} tijdApp = null; }
+    }
+  }
+  if (!uid) throw new Error(`Inlognaam voor ${volleNaam} is niet vrij te krijgen`);
+
+  // Profiel erbij. eersteLogin BEWUST op false: een gast hoeft geen handicap
+  // en geen nieuw wachtwoord te kiezen, dat is juist het punt.
+  await setDoc(doc(db, 'spelers', uid), {
+    uid,
+    naam: volleNaam,
+    email: `${login}${EMAIL_SUFFIX}`,
+    rol: 'speler',
+    hcp: 0,
+    eersteLogin: false,
+    toernooiSpeler: true,
+    toernooiNaam: toernooiNaam || '',
+    toernooiGast: true,          // waaraan het opruimen ze herkent
+    toernooiCode: code
+  });
+
+  return { uid, login };
 }
 
 // ============================================================
@@ -1545,10 +1759,24 @@ function openToernooiSpelersBeheer() {
   const t = toernooiData;
   if (!t) return;
 
+  // v5.10.0: "met eigen inlog" alleen aanbieden als dit toernooi een
+  // gastwachtwoord heeft. Anders is het een vinkje dat niets kan doen.
+  const inlogWrap = document.getElementById('toernooi-gast-inlog-wrap');
+  const inlogVink = document.getElementById('toernooi-gast-inlog');
+  if (inlogVink) inlogVink.checked = false;
+  if (inlogWrap) {
+    inlogWrap.style.display = 'none';
+    if (t.gastCode && !IS_TEST) {
+      _leesGastWachtwoord(actieveToernooiId).then(geheim => {
+        if (geheim?.wachtwoord) inlogWrap.style.display = 'flex';
+      });
+    }
+  }
+
   const verwijderLijst = document.getElementById('toernooi-speler-verwijder-lijst');
   verwijderLijst.innerHTML = t.spelers.map(s => `
     <div style="display:flex;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
-      <span style="flex:1;font-size:14px">${esc(s.naam)}${s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}</span>
+      <span style="flex:1;font-size:14px">${esc(s.naam)}${s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}${s.login ? `<br><span style="font-size:11px;color:var(--light);font-family:'DM Mono',monospace">⌨ ${esc(s.login)}</span>` : ''}</span>
       <button class="btn btn-sm" style="background:var(--alert-bg);color:var(--alert-text);border:none;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:12px"
         onclick="verwijderToernooiSpelerNieuw('${escAttr(s.uid)}')">✕</button>
     </div>
@@ -1632,8 +1860,35 @@ async function voegGastspelerToeAanToernooi() {
     if (!naam) { toast('Voer een naam in'); return; }
     const t = toernooiData;
     const fi = parseInt(document.getElementById('toernooi-gast-flight-sel').value) || 0;
-    const gastId = 'gast_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8); // v4.0.0 (fix 7.7)
-    const speler = { uid: gastId, naam, hcp, gast: true };
+    // v5.10.0: waarschuwen als deze naam al een clublid is. Als gast telt hij
+    // NIET mee voor de ladderstand — dat is met opzet, maar het moet een keuze
+    // zijn en geen ongeluk.
+    const gelijkeNaam = (alleSpelersData || []).find(sp =>
+      String(sp.naam || '').trim().toLowerCase() === naam.toLowerCase());
+    if (gelijkeNaam) {
+      const inLadder = (alleLadders || []).filter(l => (l.spelerIds || []).includes(gelijkeNaam.uid));
+      if (inLadder.length > 0 && !confirm(
+        `${naam} staat al in ${inLadder.map(l => l.naam).join(', ')}.\n\n` +
+        `Als gastspeler telt hij NIET mee voor de ladderstand en krijgt hij een ` +
+        `losse inlog. Wil je hem als gast toevoegen?`)) return;
+    }
+
+    // v5.10.0: gastlogin, als dit toernooi er een wachtwoord voor heeft.
+    const gastLogin = document.getElementById('toernooi-gast-inlog')?.checked === true;
+    let gastId = 'gast_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8); // v4.0.0 (fix 7.7)
+    let login = null;
+    if (gastLogin) {
+      if (_gastBeheerGeblokkeerdInTest()) return;
+      const geheim = await _leesGastWachtwoord(actieveToernooiId);
+      if (!geheim?.wachtwoord) {
+        toast('Dit toernooi heeft geen gastwachtwoord — zet er eerst een bij het toernooi');
+        return;
+      }
+      const gemaakt = await maakGastAccount(naam, geheim.code || toernooiCodeVan(t.naam), geheim.wachtwoord, t.naam);
+      gastId = gemaakt.uid;
+      login = gemaakt.login;
+    }
+    const speler = { uid: gastId, naam, hcp, gast: true, ...(login ? { login } : {}) };
 
     t.spelers.push(speler);
     (t.dagen || []).forEach(dag => {
@@ -1646,7 +1901,9 @@ async function voegGastspelerToeAanToernooi() {
     await setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(t)));
     closeModal('modal-toernooi-spelers');
     renderToernooiActief();
-    toast(`${naam} toegevoegd als gastspeler ✓`);
+    toast(login
+      ? `${naam} toegevoegd — inloggen met de eigen naam en het toernooiwachtwoord ✓`
+      : `${naam} toegevoegd als gastspeler ✓`, login ? 7000 : 2500);
   } catch(e) { toernooiFout('Gastspeler toevoegen', e); }
 }
 
@@ -1887,6 +2144,11 @@ function renderToernooiActief() {
       ${!dagHeeftScores(dag) ? `
       <button class="btn btn-ghost btn-block" onclick="openDagBewerkenModal()" style="margin-bottom:8px">
         ✏️ Dag ${dagNr} wijzigen (datum, baan, holes)
+      </button>
+      ` : ''}
+      ${(t.spelers || []).some(sp => sp.login) ? `
+      <button class="btn btn-ghost btn-block" onclick="toonGastlogins()" style="margin-bottom:8px">
+        ⌨ Gastlogins tonen (${(t.spelers || []).filter(sp => sp.login).length})
       </button>
       ` : ''}
       ${heeftGeenScores(t) ? `
@@ -2729,6 +2991,9 @@ async function bevestigToernooiAfsluiten() {
     const t = toernooiData;
     if (!t) return;
 
+    // v5.10.0: gastlogins mogen na afloop weg.
+    try { await ruimGastloginsOp(t); } catch(e) { console.warn('gastlogins opruimen:', e); }
+
     if (t.modus === 'strokeplay') {
       t.status = 'afgerond';
       const idx = alleToernooien.findIndex(x => x.id === actieveToernooiId);
@@ -2736,7 +3001,11 @@ async function bevestigToernooiAfsluiten() {
       await setDoc(doc(db, 'toernooien', actieveToernooiId), t);
 
       // v3.0.0-11.73: reset toernooiSpeler-vlag voor batch-import deelnemers
-      const spelerUids = (t.spelers || []).filter(s => !s.gast).map(s => s.uid);
+      // v5.10.0: NIET meer `.filter(s => !s.gast)`. Sinds gasten een eigen inlog
+      // kunnen hebben, zijn juist zij degenen bij wie de toernooi-vlag uit moet.
+      // Een tijdelijke gast zonder account heeft geen profiel; die valt hier
+      // vanzelf af omdat het document niet bestaat.
+      const spelerUids = (t.spelers || []).map(s => s.uid).filter(u => u && !String(u).startsWith('gast_'));
       await Promise.all(spelerUids.map(uid =>
         getDoc(doc(db, 'spelers', uid)).then(snap => {
           if (snap.exists() && snap.data().toernooiSpeler === true) {
@@ -2876,9 +3145,11 @@ async function bevestigToernooiAfsluiten() {
 
     // v3.0.0-11.73: reset toernooiSpeler-vlag voor alle deelnemers die via batch-import
     // zijn aangemaakt. Ze kunnen de app daarna als gewone speler gebruiken.
+    // v5.10.0: gasten met een eigen inlog horen hier juist WEL bij — zie de
+    // toelichting bij de andere afsluitroute.
     const toernooiSpelerUids = (t.spelers || [])
-      .filter(s => !s.gast)
-      .map(s => s.uid);
+      .map(s => s.uid)
+      .filter(u => u && !String(u).startsWith('gast_'));
     if (toernooiSpelerUids.length > 0) {
       await Promise.all(toernooiSpelerUids.map(uid =>
         getDoc(doc(db, 'spelers', uid)).then(snap => {
@@ -3038,7 +3309,7 @@ function _herstelSetupVanuitToernooi(t) {
       starttijd: f.starttijd || dag1?.starttijd || '09:00',
       spelers:  (f.spelerIds || []).map(uid => {
         const sp = (t.spelers || []).find(s => s.uid === uid);
-        return sp ? { uid: sp.uid, naam: sp.naam, hcp: sp.hcp } : null;
+        return sp ? { ...sp } : null;   // v5.10.0: gast-vlag mee
       }).filter(Boolean)
     }));
   } else {
@@ -3051,6 +3322,9 @@ async function annuleerToernooi() {
     // v4.0.0 (fix 7.2): eerlijke tekst — annuleren is herstelbaar via de
     // sectie "Geannuleerde toernooien" onderaan de toernooipagina.
     if (!confirm("Toernooi annuleren?\n\nHet toernooi verdwijnt uit beeld, maar kan via 'Geannuleerde toernooien' worden hersteld of definitief verwijderd.")) return;
+    // v5.10.0: eerst de gastlogins aanbieden om op te ruimen, zolang het
+    // toernooi-object nog compleet in beeld is.
+    try { await ruimGastloginsOp(toernooiData); } catch(e) { console.warn('gastlogins opruimen:', e); }
     if (actieveToernooiId) await setDoc(doc(db, 'toernooien', actieveToernooiId), { ...toernooiData, status: 'geannuleerd' });
     store.alleToernooien = alleToernooien.filter(t => t.id !== actieveToernooiId);
     store.toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
@@ -3101,7 +3375,7 @@ function renderGeannuleerdeKnop(isBeheerder) {
   sectie.id = 'toernooi-geannuleerd-sectie';
   sectie.innerHTML = `
     <button class="btn btn-ghost btn-block" style="font-size:13px;color:var(--mid);margin-top:4px" onclick="laadGeannuleerdeToernooien()">
-      🗂 Geannuleerde toernooien tonen
+      🗂 Eerdere toernooien tonen
     </button>
     <div id="toernooi-geannuleerd-lijst"></div>`;
   const pageEl = document.getElementById('page-toernooi');
@@ -3113,23 +3387,48 @@ async function laadGeannuleerdeToernooien() {
   if (!lijst) return;
   lijst.innerHTML = '<p style="font-size:13px;color:var(--light);padding:8px 4px">Laden…</p>';
   try {
-    const snap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'geannuleerd')));
+    // v5.10.0: ook AFGERONDE toernooien staan hier.
+    //
+    // WAAROM DIT MOEST. De app haalt alleen toernooien op met status 'actief'.
+    // Sloot je een toernooi af, dan was het daarna nergens meer te bereiken —
+    // en dus ook de uitslaglink niet meer te beheren. Deze lijst was het enige
+    // venster op oude toernooien en liet alleen geannuleerde zien.
+    const snap = await getDocs(query(TOERNOOIEN_COL, where('status', 'in',
+      ['geannuleerd', 'afgerond', 'afgelopen'])));
     if (snap.empty) {
-      lijst.innerHTML = '<p style="font-size:13px;color:var(--light);padding:8px 4px">Geen geannuleerde toernooien.</p>';
+      lijst.innerHTML = '<p style="font-size:13px;color:var(--light);padding:8px 4px">Geen eerdere toernooien.</p>';
       return;
     }
     const items = snap.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-    lijst.innerHTML = '<div class="card" style="margin-top:8px">' + items.map(t => `
-      <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border)">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.naam || 'Naamloos')}</div>
-          <div style="font-size:11px;color:var(--light)">${(t.dagen || []).length} dag(en) · ${(t.spelers || []).length} spelers${t.timestamp ? ' · ' + new Date(t.timestamp).toLocaleDateString('nl-NL') : ''}</div>
+    lijst.innerHTML = '<div class="card" style="margin-top:8px">' + items.map(t => {
+      const geannuleerd = t.status === 'geannuleerd';
+      const openbaar = t.publiek !== false;
+      return `
+      <div style="padding:10px 14px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.naam || 'Naamloos')}</div>
+            <div style="font-size:11px;color:var(--light)">
+              ${geannuleerd ? 'geannuleerd' : 'afgerond'} · ${(t.dagen || []).length} dag(en) · ${(t.spelers || []).length} spelers${t.timestamp ? ' · ' + new Date(t.timestamp).toLocaleDateString('nl-NL') : ''}
+            </div>
+          </div>
+          ${geannuleerd ? `<button class="btn btn-sm btn-ghost" style="color:var(--green)" onclick="herstelGeannuleerdToernooi('${escAttr(t.id)}')">↩ Herstellen</button>` : ''}
+          <button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="verwijderGeannuleerdToernooi('${escAttr(t.id)}','${escAttr(t.naam || '')}')">🗑</button>
         </div>
-        <button class="btn btn-sm btn-ghost" style="color:var(--green)" onclick="herstelGeannuleerdToernooi('${escAttr(t.id)}')">↩ Herstellen</button>
-        <button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="verwijderGeannuleerdToernooi('${escAttr(t.id)}','${escAttr(t.naam || '')}')">🗑</button>
-      </div>`).join('') + '</div>';
+        ${!geannuleerd ? `
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--mid);flex:1;min-width:190px">
+            <input type="checkbox" ${openbaar ? 'checked' : ''}
+              onchange="zetToernooiOpenbaar('${escAttr(t.id)}', this.checked)"
+              style="accent-color:var(--green);width:16px;height:16px;flex-shrink:0">
+            <span>Uitslag openbaar via de link</span>
+          </label>
+          ${openbaar ? `<button class="btn btn-sm btn-ghost" onclick="kopieerUitslagLink('${escAttr(t.id)}')">🔗 Link kopiëren</button>` : ''}
+        </div>` : ''}
+      </div>`;
+    }).join('') + '</div>';
   } catch(e) {
     console.error('Geannuleerde toernooien laden mislukt:', e);
     lijst.innerHTML = '<p style="font-size:13px;color:var(--red);padding:8px 4px">Laden mislukt, probeer opnieuw.</p>';
@@ -3206,6 +3505,153 @@ function kopieerLiveLink() {
   });
 }
 window.kopieerLiveLink = kopieerLiveLink;
+
+// v5.10.0: dezelfde link, maar voor een toernooi dat al is afgesloten. Die
+// staat in de lijst "Eerdere toernooien", want een afgerond toernooi is
+// nergens anders meer te bereiken.
+function kopieerUitslagLink(id) {
+  const base = window.location.href.split('/').slice(0, -1).join('/');
+  const url = `${base}/toernooi-live.html?t=${id}`;
+  navigator.clipboard.writeText(url).then(() => {
+    toast('Link gekopieerd — hier blijft de uitslag staan ✓');
+  }).catch(() => {
+    prompt('Kopieer deze link:', url);
+  });
+}
+window.kopieerUitslagLink = kopieerUitslagLink;
+
+// v5.10.0: de uitslaglink achteraf dichtzetten of weer openen.
+//
+// ⚠ ALLEEN BIJ EEN NIET-ACTIEF TOERNOOI. Dat is geen willekeur: de
+// meekijkpagina zoekt zonder link-parameter zelf het actieve toernooi op, en
+// Firestore laat een hele zoekopdracht vallen zodra er ook maar één document
+// bij zit dat niet gelezen mag worden. Een dichtgezet ACTIEF toernooi zou het
+// meekijken dus voor alle toernooien tegelijk slopen. Zie ook de toelichting
+// in firestore.rules.
+async function zetToernooiOpenbaar(id, openbaar) {
+  try {
+    const snap = await getDoc(doc(db, 'toernooien', id));
+    if (!snap.exists()) { toast('Toernooi niet gevonden'); return; }
+    if (snap.data().status === 'actief') {
+      toast('Kan pas na afloop: een lopend toernooi blijft zichtbaar');
+      laadGeannuleerdeToernooien();
+      return;
+    }
+    await updateDoc(doc(db, 'toernooien', id), { publiek: !!openbaar });
+    toast(openbaar
+      ? 'Uitslag is weer openbaar via de link ✓'
+      : 'Uitslag is niet meer openbaar — de link geeft nu niets meer');
+    laadGeannuleerdeToernooien();
+  } catch(e) { toernooiFout('Uitslag openbaar wijzigen', e); }
+}
+window.zetToernooiOpenbaar = zetToernooiOpenbaar;
+
+// v5.10.0: alle gastlogins van dit toernooi bij elkaar, met het wachtwoord,
+// zodat de coordinator ze in één keer kan uitdelen.
+//
+// ⚠ Dit toont een wachtwoord op het scherm. Dat is precies de bedoeling — het
+// is een weggooiwachtwoord voor één toernooi — maar het is bewust een aparte
+// handeling en het staat nergens standaard in beeld.
+async function toonGastlogins() {
+  try {
+    const t = toernooiData;
+    if (!t) return;
+    const gasten = (t.spelers || []).filter(sp => sp.login);
+    if (gasten.length === 0) { toast('Geen gastlogins in dit toernooi'); return; }
+
+    const geheim = await _leesGastWachtwoord(actieveToernooiId);
+    const ww = geheim?.wachtwoord || '(wachtwoord niet gevonden)';
+    const regels = gasten.map(g => `${g.naam}  —  inlog: ${g.naam}  ·  wachtwoord: ${ww}`);
+    const tekst = `Inloggen op ${window.location.origin}${window.location.pathname}\n\n`
+      + regels.join('\n')
+      + `\n\nTip: de gast tikt zijn eigen voor- en achternaam in, plus dit wachtwoord.`;
+
+    const html = `
+      <p style="font-size:13px;color:var(--mid);margin-bottom:10px">
+        Deze spelers loggen in met hun <strong>voor- en achternaam</strong> en het
+        wachtwoord hieronder. Na afloop van het toernooi werkt de inlog niet meer.
+      </p>
+      <div style="background:var(--soft-bg);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+        <div style="font-size:11px;color:var(--mid);text-transform:uppercase;font-weight:600">Wachtwoord</div>
+        <div style="font-family:'DM Mono',monospace;font-size:16px">${esc(ww)}</div>
+      </div>
+      ${gasten.map(g => `
+        <div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
+          <span>${esc(g.naam)}</span>
+          <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--light)">${esc(g.login)}</span>
+        </div>`).join('')}
+      <button class="btn btn-primary btn-block" style="margin-top:12px"
+        onclick="kopieerGastlogins()">📋 Lijst kopiëren</button>`;
+
+    window._gastloginTekst = tekst;
+    document.getElementById('archief-detail-titel').textContent = 'Gastlogins';
+    document.getElementById('archief-detail-inhoud').innerHTML = html;
+    document.getElementById('modal-archief-detail').classList.add('open');
+  } catch(e) { toernooiFout('Gastlogins tonen', e); }
+}
+window.toonGastlogins = toonGastlogins;
+
+function kopieerGastlogins() {
+  const tekst = window._gastloginTekst || '';
+  navigator.clipboard.writeText(tekst)
+    .then(() => toast('Lijst gekopieerd ✓'))
+    .catch(() => prompt('Kopieer deze lijst:', tekst));
+}
+window.kopieerGastlogins = kopieerGastlogins;
+
+// ============================================================
+//  GASTLOGINS OPRUIMEN  (v5.10.0)
+// ============================================================
+//  Na afloop mogen de accounts weg. Sierk ruimt liever zelf op, maar dan moeten
+//  ze wel als groep herkenbaar zijn — vandaar de toernooicode in de inlognaam
+//  en het veld `toernooiGast` op het profiel.
+//
+//  ⚠ DRIE GRENDELS, want dit verwijdert accounts van mensen:
+//    1. alleen spelers met `gast: true` in DIT toernooi die een `login` hebben;
+//    2. het profiel moet `toernooiGast: true` dragen — een clublid heeft dat
+//       nooit, ook niet als hij toevallig als gast meedeed;
+//    3. de uid mag in GEEN ENKELE ladder voorkomen.
+//  Valt er ook maar één controle om, dan wordt die speler overgeslagen en
+//  gemeld. Liever een account te veel blijven staan dan een clublid kwijt.
+async function ruimGastloginsOp(toernooi) {
+  const t = toernooi || toernooiData;
+  const gasten = (t?.spelers || []).filter(sp => sp.gast && sp.login && sp.uid);
+  if (gasten.length === 0) return { verwijderd: 0, overgeslagen: [] };
+
+  if (!confirm(
+    `Er horen ${gasten.length} gastlogin(s) bij dit toernooi.\n\n` +
+    `Verwijderen? De spelers blijven in de uitslag staan; alleen hun inlog verdwijnt.`
+  )) return { verwijderd: 0, overgeslagen: [], afgezien: true };
+
+  const ladderUids = new Set((alleLadders || []).flatMap(l => l.spelerIds || []));
+  let verwijderd = 0;
+  const overgeslagen = [];
+
+  for (const g of gasten) {
+    try {
+      if (ladderUids.has(g.uid)) { overgeslagen.push(`${g.naam} (staat in een ladder)`); continue; }
+      const snap = await getDoc(doc(db, 'spelers', g.uid));
+      if (!snap.exists()) { overgeslagen.push(`${g.naam} (geen profiel)`); continue; }
+      if (snap.data().toernooiGast !== true) { overgeslagen.push(`${g.naam} (geen gastaccount)`); continue; }
+      // Eerst het profiel weg, dan het account. De Cloud Function verwijdert
+      // uitsluitend accounts ZONDER profiel — die veiligheidsklep blijft zo heel.
+      await deleteDoc(doc(db, 'spelers', g.uid));
+      await _verwijderGastAccountFn({ targetUid: g.uid, isTest: IS_TEST });
+      verwijderd++;
+    } catch (e) {
+      console.error('gastlogin opruimen mislukt voor', g.naam, e);
+      overgeslagen.push(`${g.naam} (${e?.code || e?.message || 'onbekende fout'})`);
+    }
+  }
+
+  if (overgeslagen.length > 0) {
+    toast(`${verwijderd} inlog(s) weg. Overgeslagen: ${overgeslagen.join(', ')}`, 9000);
+  } else {
+    toast(`${verwijderd} gastlogin(s) verwijderd ✓`);
+  }
+  return { verwijderd, overgeslagen };
+}
+window.ruimGastloginsOp = ruimGastloginsOp;
 
 // ============================================================
 //  TOERNOOI-MODUS

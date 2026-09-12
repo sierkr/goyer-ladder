@@ -63,6 +63,11 @@ async function main() {
     await db.doc('ladder/archief').set({ lijst: [] });
     await db.doc('snapshots/s1').set({ ladderId: 'mp', spelers: [] });
     await db.doc('toernooien/t1').set({ naam: 'Zomer', status: 'actief' });
+    // v5.10.0: twee afgeronde toernooien — een met de uitslag nog openbaar,
+    // een waarvan de coordinator de link heeft dichtgezet.
+    await db.doc('toernooien/t_open').set({ naam: 'Open', status: 'afgerond' });
+    await db.doc('toernooien/t_dicht').set({ naam: 'Dicht', status: 'afgerond', publiek: false });
+    await db.doc('toernooien/t1/beheer/gastlogin').set({ wachtwoord: 'geheim123' });
     await db.doc('toernooien/t1/live/' + SPELER).set({ dagNr: 1, scores: [4] });
     await db.doc('uitslagen/u1').set({ ladderId: 'mp', datum: '2026-08-01' });
   });
@@ -192,6 +197,32 @@ async function main() {
   // ══ toernooien ═════════════════════════════════════════════
   await R.magWel('toernooi is publiek leesbaar (live meekijken)',
     () => anon.doc('toernooien/t1').get());
+
+  // ── v5.10.0: de uitslaglink dichtzetten ──────────────────
+  // De link moet ECHT dicht kunnen, niet alleen in het scherm. Wie hem
+  // rechtstreeks opvraagt hoort ook nul te krijgen.
+  await R.magWel('afgerond toernooi blijft openbaar zolang het niet is dichtgezet',
+    () => anon.doc('toernooien/t_open').get());
+  await R.magNiet('dichtgezet toernooi is NIET meer openbaar leesbaar',
+    () => anon.doc('toernooien/t_dicht').get());
+  await R.magWel('een ingelogd clublid ziet een dichtgezet toernooi wel',
+    () => speler.doc('toernooien/t_dicht').get());
+  await R.magWel('de coordinator ziet een dichtgezet toernooi ook',
+    () => coord.doc('toernooien/t_dicht').get());
+
+  // ── v5.10.0: het gastwachtwoord blijft geheim ────────────
+  // Het toernooi zelf is openbaar leesbaar; de onderliggende map mag dat
+  // uitdrukkelijk NIET zijn, anders staat het wachtwoord op straat.
+  await R.magNiet('gastwachtwoord is niet openbaar leesbaar',
+    () => anon.doc('toernooien/t1/beheer/gastlogin').get());
+  await R.magNiet('een gewone speler mag het gastwachtwoord niet lezen',
+    () => speler.doc('toernooien/t1/beheer/gastlogin').get());
+  await R.magWel('de coordinator mag het gastwachtwoord lezen',
+    () => coord.doc('toernooien/t1/beheer/gastlogin').get());
+  await R.magNiet('een gewone speler mag geen gastwachtwoord zetten',
+    () => speler.doc('toernooien/t1/beheer/gastlogin').set({ wachtwoord: 'kaping' }));
+  await R.magWel('de coordinator mag het gastwachtwoord zetten',
+    () => coord.doc('toernooien/t1/beheer/gastlogin').set({ wachtwoord: 'nieuw123' }));
   await R.magNiet('speler kan een toernooi niet wijzigen',
     () => speler.doc('toernooien/t1').update({ naam: 'gehackt' }));
   await R.magWel('coordinator kan een toernooi wijzigen',

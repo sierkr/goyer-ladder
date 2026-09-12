@@ -817,6 +817,11 @@
     <div class="form-group">
       <label>Login</label>
       <input type="text" id="login-email" placeholder="voornaam.achternaam" autocomplete="username" inputmode="email">
+      <!-- v5.10.0: gasten van een toernooi tikken hier hun gewone naam in -->
+      <p style="font-size:11px;color:var(--light);margin:4px 0 0">
+        Doe je als gast mee aan een toernooi? Vul dan je voor- en achternaam in,
+        met het wachtwoord dat je van de organisatie hebt gekregen.
+      </p>
     </div>
     <div class="form-group">
       <label>Wachtwoord</label>
@@ -867,6 +872,12 @@
       <label>Flight</label>
       <select id="toernooi-gast-flight-sel"></select>
     </div>
+    <!-- v5.10.0: alleen zinvol als dit toernooi een gastwachtwoord heeft.
+         renderToernooiGastInlogKeuze() zet dit blok aan of uit. -->
+    <label id="toernooi-gast-inlog-wrap" style="display:none;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--dark);margin-bottom:8px">
+      <input type="checkbox" id="toernooi-gast-inlog" style="accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
+      <span>Met eigen inlog<br><span style="font-size:11px;color:var(--mid)">Logt in met voor- en achternaam plus het toernooiwachtwoord</span></span>
+    </label>
     <button class="btn btn-primary btn-block btn-sm" onclick="voegGastspelerToeAanToernooi()" style="margin-bottom:8px">+ Gastspeler toevoegen</button>
 
     <div class="modal-actions">
@@ -1704,6 +1715,19 @@
         </div>
         <div id="t-geselecteerde-spelers" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
         <button class="btn btn-ghost btn-sm btn-block" onclick="voegGastspelerToe()" style="margin-bottom:12px">+ Gastspeler toevoegen</button>
+
+        <!-- v5.10.0: gastlogins. Laat je dit leeg, dan krijgen gastspelers geen
+             inlog en werkt alles zoals voorheen. -->
+        <div class="divider"></div>
+        <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px">Inlog voor gastspelers (optioneel)</label>
+        <div class="form-group" style="margin-bottom:6px">
+          <input type="text" id="t-gast-wachtwoord" placeholder="Wachtwoord voor dit toernooi" autocomplete="off">
+        </div>
+        <p style="font-size:11px;color:var(--light);margin:0 0 12px">
+          Vul je dit in, dan krijgt elke gastspeler een inlog voor dit ene toernooi.
+          Ze loggen in met hun <strong>voor- en achternaam</strong> plus dit wachtwoord, en
+          hoeven niets te wijzigen. Na afloop van het toernooi werkt de inlog niet meer.
+        </p>
         <button class="btn btn-primary btn-block" onclick="openFlightIndeling()">Flight indeling →</button>
         </div>
       </div>

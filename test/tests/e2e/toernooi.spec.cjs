@@ -268,6 +268,68 @@ test.describe('Toernooi — de hele route', () => {
     expect(fouten, 'geen JavaScript-fouten tijdens dagbeheer').toEqual([]);
   });
 
+  test('GASTLOGIN: gast logt in met alleen zijn naam en het toernooiwachtwoord', async ({ page, browser }) => {
+    test.setTimeout(240000);
+    const fouten = [];
+    page.on('pageerror', e => fouten.push(e.message));
+
+    // Eén afhandelaar voor alle vensters: prompts krijgen een antwoord uit de
+    // rij, bevestigingsvragen een OK. Twee losse afhandelaars vechten om
+    // dezelfde vraag ("dialog which is already handled").
+    const antwoorden = ['Karel Gast', '15'];
+    page.on('dialog', async d => {
+      if (d.type() === 'prompt') await d.accept(antwoorden.shift() ?? '');
+      else await d.accept();
+    });
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+
+    await vulAanmaakformulier(page, 'Gastentoernooi', 1);
+    await kiesSpeler(page, 'Anna Speler');
+    await page.fill('#t-gast-wachtwoord', 'goyer2026');
+
+    await page.click('#toernooi-setup-wrap button:has-text("Gastspeler toevoegen")');
+    await expect(page.locator('#t-geselecteerde-spelers')).toContainText('Karel Gast');
+
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Gastentoernooi', { timeout: 20000 });
+
+    // De gast heeft een echt account gekregen, met de toernooicode erachter.
+    const t = await haalToernooi('Gastentoernooi');
+    expect(t.gastCode, 'het toernooi draagt een openbare gastcode').toBe('gastentoernooi');
+    const gast = t.spelers.find(sp => sp.naam === 'Karel Gast');
+    expect(gast, 'de gast staat in het toernooi').toBeTruthy();
+    expect(gast.gast, 'blijft een gast — telt niet mee voor de ladder').toBe(true);
+    expect(gast.login, 'heeft een inlognaam gekregen').toBe('karel.gast.gastentoernooi');
+    expect(String(gast.uid).startsWith('gast_'), 'heeft een echte uid, geen tijdelijke').toBe(false);
+
+    // Het wachtwoord staat NIET op het openbare toernooidocument.
+    expect(JSON.stringify(t)).not.toContain('goyer2026');
+
+    // En de gast zit in geen enkele ladder.
+    const ladder = await beheerDb.doc('ladders/mp').get();
+    expect((ladder.data().spelerIds || []).includes(gast.uid), 'staat niet in de ladder').toBe(false);
+
+    // ── De gast logt in met ALLEEN zijn naam en het wachtwoord ──
+    const gastPagina = await (await browser.newContext()).newPage();
+    await gastPagina.goto('/index.html');
+    await gastPagina.waitForSelector('#login-scherm', { state: 'visible' });
+    await gastPagina.fill('#login-email', 'Karel Gast');
+    await gastPagina.fill('#login-pass', 'goyer2026');
+    await gastPagina.click('#login-scherm button.btn-primary');
+    await gastPagina.waitForSelector('#login-scherm', { state: 'hidden', timeout: 25000 });
+
+    // Geen verplicht wijzigscherm, en alleen de toernooitab.
+    await expect(gastPagina.locator('#modal-eerste-login')).toHaveCount(0);
+    await expect(gastPagina.locator('#nav-ladder-btn')).toBeHidden();
+    await expect(gastPagina.locator('#page-toernooi')).toContainText('Gastentoernooi', { timeout: 20000 });
+
+    await gastPagina.close();
+    expect(fouten, 'geen JavaScript-fouten').toEqual([]);
+  });
+
   test('LEGE FLIGHT: starten met een lege flight kan niet ongemerkt', async ({ page }) => {
     test.setTimeout(120000);
     const gevraagd = [];
