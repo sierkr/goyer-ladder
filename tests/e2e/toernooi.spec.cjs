@@ -586,9 +586,37 @@ test.describe('Toernooi — de hele route', () => {
     // Geen verplicht wijzigscherm, en alleen de toernooitab.
     await expect(gastPagina.locator('#modal-eerste-login')).toHaveCount(0);
     await expect(gastPagina.locator('#nav-ladder-btn')).toBeHidden();
-    await expect(gastPagina.locator('#page-toernooi')).toContainText('Gastentoernooi', { timeout: 20000 });
+    await expect(gastPagina.locator('#page-toernooi')).toContainText('Jouw scorekaart', { timeout: 20000 });
 
+    // v5.11.4: het titelblok is voor een deelnemer weg — de toernooinaam staat
+    // in toernooi-modus al in de titelbalk, "Bezig" zegt hem niets en
+    // "← Ladder" werkt daar niet eens. Bij de coordinator staat het er wel.
+    await expect(gastPagina.locator('#toernooi-detail'), 'geen Bezig-blok bij de gast')
+      .not.toContainText('Bezig');
+    await expect(gastPagina.locator('#toernooi-detail button:has-text("Ladder")')).toHaveCount(0);
+    await expect(page.locator('#toernooi-detail'), 'de coordinator houdt het blok')
+      .toContainText('Bezig');
     await gastPagina.close();
+
+    // v5.11.4: dezelfde gast logt ook in met de PUNT-schrijfwijze — dat is wat
+    // het beheerscherm hem als inlognaam toont, dus dat moet werken.
+    const punt = await (await browser.newContext()).newPage();
+    await punt.goto('/index.html');
+    await punt.waitForSelector('#login-scherm', { state: 'visible' });
+    await punt.fill('#login-email', 'Karel.Gast');
+    await punt.fill('#login-pass', 'goyer2026');
+    await punt.click('#login-scherm button.btn-primary');
+    await punt.waitForSelector('#login-scherm', { state: 'hidden', timeout: 25000 });
+    await expect(punt.locator('#page-toernooi')).toContainText('Jouw scorekaart', { timeout: 20000 });
+    await punt.close();
+
+    // En het beheerscherm toont precies dát: karel.gast, zonder toernooicode.
+    await page.click('#toernooi-detail button:has-text("Spelers")');
+    const lijst = page.locator('#toernooi-speler-verwijder-lijst');
+    await expect(lijst).toBeVisible({ timeout: 10000 });
+    await expect(lijst, 'de inlognaam zoals de gast hem intikt').toContainText('karel.gast');
+    await expect(lijst, 'zonder de toernooicode erachter').not.toContainText('gastentoernooi');
+
     expect(fouten, 'geen JavaScript-fouten').toEqual([]);
   });
 

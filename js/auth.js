@@ -425,7 +425,16 @@ async function loginSubmit() {
 async function _probeerGastLogin(invoer, wachtwoord) {
   try {
     if (!invoer || invoer.includes('@')) return false;
-    const delen = invoer.trim().split(/\s+/).filter(Boolean);
+    // v5.11.4: een punt telt als scheiding, net als een spatie. "Test 1",
+    // "Test.1" en "test.1" komen dus op dezelfde gast uit.
+    //
+    // ⚠ WAAROM DIT NODIG WAS. Het beheerscherm toont een gast zijn inlognaam
+    // als `test.1` — dat is wat hij moet intikken. Werd hier alleen op spaties
+    // gesplitst, dan was "Test.1" één woord, viel hij buiten deze terugval, en
+    // weigerde precies de naam die op het scherm stond. Sierk, 12 september
+    // 2026: "van Test 1 is 1 de achternaam. hoezo accepteert de login Test.1
+    // dan niet."
+    const delen = invoer.trim().split(/[\s.]+/).filter(Boolean);
     if (delen.length < 2) return false;   // alleen een voornaam is te weinig
 
     const schoon = t => String(t).toLowerCase().replace(/\s+/g, '');

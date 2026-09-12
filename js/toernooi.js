@@ -2034,9 +2034,21 @@ function openToernooiSpelersBeheer() {
 // v5.10.0 bewust geblokkeerd, want het inloggen is gedeeld met de echte app.
 // Dan is een lege regel misleidend — je gaat zoeken naar een fout die er niet
 // is. Daarom zegt het scherm nu wat er aan de hand is.
+// v5.11.4: de toernooicode hoort NIET op het scherm. In de database heet een
+// gast `test.1.test1` — de code erachter zorgt dat twee toernooien allebei een
+// "Test 1" kunnen hebben en dat een gast nooit op het account van een clublid
+// botst. Maar intikken doet hij `test.1`, en dat is wat hier hoort te staan.
+// Sierk, 12 september 2026: "wat jij er op de achtergrond van maakt voor je
+// eigen database maakt mij niet uit."
+function zonderToernooiCode(login, code) {
+  if (!login || !code) return login || '';
+  const staart = '.' + String(code).toLowerCase();
+  return login.toLowerCase().endsWith(staart) ? login.slice(0, -staart.length) : login;
+}
+
 function inlogRegel(speler) {
   const stijl = "font-size:11px;color:var(--light);font-family:'DM Mono',monospace";
-  const eigen = speler.login
+  const eigen = zonderToernooiCode(speler.login, toernooiData?.gastCode)
     || loginNaamVan(alleSpelersData.find(x => x.uid === speler.uid)?.email || '');
   if (eigen) return `<span style="${stijl}">⌨ ${esc(eigen)}</span>`;
   if (speler.gast && IS_TEST) {
@@ -2306,7 +2318,13 @@ function renderToernooiActief() {
   // v3.0.0-11.106: bouw secties als variabelen op, zodat de volgorde
   // verschilt voor beheerder (scores onderaan) vs speler (scores bovenaan).
 
-  const titelKaart = `
+  // v5.11.4: voor een DEELNEMER is dit blok alleen ruis. De toernooinaam staat
+  // in toernooi-modus al in de titelbalk, "Bezig" zegt hem niets, en "← Ladder"
+  // werkt daar niet eens omdat die tab dan verborgen is. Sierk, 12 september
+  // 2026: "dat hele blok waar test 1 bezig staat moet weg." Zijn flightnaam en
+  // starttijd staan in de scorekaart zelf, dus die raakt hij niet kwijt.
+  // De coordinator houdt het blok ongewijzigd.
+  const titelKaart = !isBeheerder ? '' : `
     <div class="card">
       <div class="card-header">
         <h2>${esc(t.naam)}</h2>
