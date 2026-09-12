@@ -184,10 +184,31 @@ async function laadToernooi() {
       toernooiData = snap.data();
     }
 
-    if (toernooiData.status !== 'actief' && toernooiData.status !== 'afgelopen') {
-      document.getElementById('inhoud').innerHTML = '<div class="fout">Dit toernooi is niet actief.</div>';
+    // v5.10.0: een AFGESLOTEN toernooi hoort hier gewoon te staan.
+    //
+    // WAT ER MIS WAS: hier stond `!== 'actief' && !== 'afgelopen'`. De app zet
+    // een afgesloten toernooi op 'afgerond' — dat woord stond er niet bij, en
+    // 'afgelopen' komt in de rest van de code nergens voor (overgebleven oude
+    // naam; er staan nog twee oude toernooien mee in de database). Gevolg: op
+    // het moment dat de uitslag definitief werd, weigerde de meekijklink hem.
+    // Precies andersom dan bedoeld: juist dán wil je hem doorsturen.
+    //
+    // 'geannuleerd' blijft geweigerd — dat toernooi is niet gespeeld.
+    const zichtbareStatus = ['actief', 'afgelopen', 'afgerond'];
+    if (!zichtbareStatus.includes(toernooiData.status)) {
+      document.getElementById('inhoud').innerHTML = '<div class="fout">Dit toernooi is niet beschikbaar.</div>';
       return;
     }
+
+    // v5.10.0: de coordinator kan de link achteraf dichtzetten. De database
+    // weigert het document dan al voor wie niet is ingelogd — deze controle is
+    // alleen voor de nette melding, niet de beveiliging.
+    if (toernooiData.publiek === false) {
+      document.getElementById('inhoud').innerHTML = '<div class="fout">De uitslag van dit toernooi is niet meer openbaar.</div>';
+      return;
+    }
+
+    const isAfgerond = toernooiData.status !== 'actief';
 
     document.getElementById('toernooi-naam').textContent = toernooiData.naam;
 
@@ -198,7 +219,12 @@ async function laadToernooi() {
     const baanLabel = actDag?.baan || toernooiData.baan || '';
     const datumLabel = actDag?.datum || toernooiData.datum || '';
     document.getElementById('toernooi-meta').textContent =
+      (isAfgerond ? 'Einduitslag · ' : '') +
       dagLabel + baanLabel + (datumLabel ? ' · ' + new Date(datumLabel).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' }) : '');
+    // v5.10.0: bij een afgesloten toernooi is er niets meer live. De knop
+    // 'Live' die om de tien seconden ververst zou dan een leugen zijn.
+    const verversKnop = document.querySelector('.refresh-btn');
+    if (verversKnop && isAfgerond) verversKnop.style.display = 'none';
     document.getElementById('tab-bar').style.display = 'flex';
 
     // Dag-tabs toevoegen als meerdere dagen
@@ -223,7 +249,8 @@ async function laadToernooi() {
     renderInhoud();
 
     // v3.0.0-11.106: start real-time listeners
-    startLiveListeners();
+    // v5.10.0: alleen zolang er nog gespeeld wordt.
+    if (!isAfgerond) startLiveListeners();
   } catch(e) {
     console.error('Laden mislukt:', e);
     document.getElementById('inhoud').innerHTML = '<div class="fout">Laden mislukt. Controleer je verbinding.</div>';

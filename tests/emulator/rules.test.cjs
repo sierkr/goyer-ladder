@@ -63,6 +63,11 @@ async function main() {
     await db.doc('ladder/archief').set({ lijst: [] });
     await db.doc('snapshots/s1').set({ ladderId: 'mp', spelers: [] });
     await db.doc('toernooien/t1').set({ naam: 'Zomer', status: 'actief' });
+    // v5.10.0: twee afgeronde toernooien — een met de uitslag nog openbaar,
+    // een waarvan de coordinator de link heeft dichtgezet.
+    await db.doc('toernooien/t_open').set({ naam: 'Open', status: 'afgerond' });
+    await db.doc('toernooien/t_dicht').set({ naam: 'Dicht', status: 'afgerond', publiek: false });
+    await db.doc('toernooien/t1/beheer/gastlogin').set({ wachtwoord: 'geheim123' });
     await db.doc('toernooien/t1/live/' + SPELER).set({ dagNr: 1, scores: [4] });
     await db.doc('uitslagen/u1').set({ ladderId: 'mp', datum: '2026-08-01' });
   });
@@ -192,6 +197,32 @@ async function main() {
   // ══ toernooien ═════════════════════════════════════════════
   await R.magWel('toernooi is publiek leesbaar (live meekijken)',
     () => anon.doc('toernooien/t1').get());
+
+  // ── v5.10.0: de uitslaglink dichtzetten ──────────────────
+  // De link moet ECHT dicht kunnen, niet alleen in het scherm. Wie hem
+  // rechtstreeks opvraagt hoort ook nul te krijgen.
+  await R.magWel('afgerond toernooi blijft openbaar zolang het niet is dichtgezet',
+    () => anon.doc('toernooien/t_open').get());
+  await R.magNiet('dichtgezet toernooi is NIET meer openbaar leesbaar',
+    () => anon.doc('toernooien/t_dicht').get());
+  await R.magWel('een ingelogd clublid ziet een dichtgezet toernooi wel',
+    () => speler.doc('toernooien/t_dicht').get());
+  await R.magWel('de coordinator ziet een dichtgezet toernooi ook',
+    () => coord.doc('toernooien/t_dicht').get());
+
+  // ── v5.10.0: het gastwachtwoord blijft geheim ────────────
+  // Het toernooi zelf is openbaar leesbaar; de onderliggende map mag dat
+  // uitdrukkelijk NIET zijn, anders staat het wachtwoord op straat.
+  await R.magNiet('gastwachtwoord is niet openbaar leesbaar',
+    () => anon.doc('toernooien/t1/beheer/gastlogin').get());
+  await R.magNiet('een gewone speler mag het gastwachtwoord niet lezen',
+    () => speler.doc('toernooien/t1/beheer/gastlogin').get());
+  await R.magWel('de coordinator mag het gastwachtwoord lezen',
+    () => coord.doc('toernooien/t1/beheer/gastlogin').get());
+  await R.magNiet('een gewone speler mag geen gastwachtwoord zetten',
+    () => speler.doc('toernooien/t1/beheer/gastlogin').set({ wachtwoord: 'kaping' }));
+  await R.magWel('de coordinator mag het gastwachtwoord zetten',
+    () => coord.doc('toernooien/t1/beheer/gastlogin').set({ wachtwoord: 'nieuw123' }));
   await R.magNiet('speler kan een toernooi niet wijzigen',
     () => speler.doc('toernooien/t1').update({ naam: 'gehackt' }));
   await R.magWel('coordinator kan een toernooi wijzigen',
@@ -200,6 +231,21 @@ async function main() {
     () => speler.doc(`toernooien/t1/live/${SPELER2}`).set({ dagNr: 1, scores: [5] }));
   await R.magNiet('anoniem kan geen live-scores schrijven',
     () => anon.doc(`toernooien/t1/live/${SPELER}`).set({ dagNr: 1, scores: [9] }));
+
+  // ══ v5.11.0: de drie scorelagen ════════════════════════════
+  // De laag `beheerDagen` zet een hole definitief op slot voor speler en
+  // marker. Wie hem kan schrijven kan dus een uitslag bepalen — daarom is
+  // alleen die laag afgeschermd, en de andere twee niet.
+  await R.magWel('speler kan zijn markerlaag schrijven',
+    () => speler.doc(`toernooien/t1/live/${SPELER2}`).set({ markerDagen: { '1': [5] } }, { merge: true }));
+  await R.magNiet('speler kan de vastgestelde laag NIET schrijven',
+    () => speler.doc(`toernooien/t1/live/${SPELER2}`).set({ beheerDagen: { '1': [3] } }, { merge: true }));
+  await R.magNiet('speler kan de vastgestelde laag ook niet in een nieuw document zetten',
+    () => speler.doc('toernooien/t1/live/uid_nieuw_cccccccccccc').set({ beheerDagen: { '1': [3] } }));
+  await R.magWel('coordinator kan de vastgestelde laag wel schrijven',
+    () => coord.doc(`toernooien/t1/live/${SPELER2}`).set({ beheerDagen: { '1': [4] } }, { merge: true }));
+  await R.magNiet('speler kan een live-document niet verwijderen',
+    () => speler.doc(`toernooien/t1/live/${SPELER2}`).delete());
 
   // ══ uitslagen ══════════════════════════════════════════════
   await R.magWel('speler kan uitslagen lezen',

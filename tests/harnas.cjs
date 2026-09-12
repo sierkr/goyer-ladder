@@ -43,6 +43,9 @@ function laadToernooiKern() {
     'berekenStrokeplayTotaal', 'countback', 'getDag', 'actieveDag',
     'heeftGeenScores', 'alleScoresIngevuld', 'berekenFlightTijd',
     'berekenTPunten', '_liveScoresVanDag',
+    // v5.11.0: _liveScoresVanDag lost nu de drie scorelagen op en heeft deze
+    // drie nodig. Ze worden ECHT uit de app geknipt, net als de rest.
+    '_laagVanDag', 'lagenVanDag', 'scoreOordeel',
   ]);
   const k = knip('js/knockout.js', ['rondesNaarObj', 'objNaarRondes', 'verwerkKnockoutVoortgang']);
   const bron = `
@@ -141,6 +144,37 @@ function laadScoreKern() {
   return new Function('slagenOpHole', 'hcpInstellingen', bron)(hcp.slagenOpHole, hcp.hcpInstellingen);
 }
 
+// ============================================================
+//  v5.11.0 — KORTE, UNIEKE NAMEN
+// ------------------------------------------------------------
+//  kortNaam() maakt van "Arjan van Venrooij" een "Arjan V" zodra er meer
+//  Arjans meedoen. Het wordt gebruikt in de scorekaart, de onderlinge stand,
+//  het archief en de groene pill van het uitslagenscherm. De functies worden
+//  ECHT uit js/partij.js geknipt.
+// ============================================================
+function laadNaamKern() {
+  const bron = `
+    ${knip('js/partij.js', ['splitsNaam', 'kortNaam', 'kortNaamMap'])}
+    return { splitsNaam, kortNaam, kortNaamMap };
+  `;
+  return new Function(bron)();
+}
+
+// ============================================================
+//  v5.11.0 — MARKERS: wie markeert wie, en welke kleur hoort erbij
+// ------------------------------------------------------------
+//  markerKring() verdeelt de markers over een flight, scoreOordeel() bepaalt
+//  per hole welke score telt en welke kleur hij krijgt. Beide uit
+//  js/toernooi.js geknipt, zodat de tests met de app meebewegen.
+// ============================================================
+function laadMarkerKern() {
+  const bron = `
+    ${knip('js/toernooi.js', ['markerKring', 'scoreOordeel', 'kaartOordeel'])}
+    return { markerKring, scoreOordeel, kaartOordeel };
+  `;
+  return new Function(bron)();
+}
+
 // ─── Kleine assertie-helper ──────────────────────────────────
 function maakChecker() {
   const staat = { ok: 0, fout: 0, bevindingen: [] };
@@ -152,4 +186,5 @@ function maakChecker() {
   return { staat, check };
 }
 
-module.exports = { laadToernooiKern, laadLadderKern, laadHcpKern, laadScoreKern, maakChecker };
+module.exports = { laadToernooiKern, laadLadderKern, laadHcpKern, laadScoreKern,
+                   laadNaamKern, laadMarkerKern, maakChecker };

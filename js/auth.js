@@ -18,7 +18,7 @@ import { renderLadder } from './ladder.js';
 import { toonUitdagingBadge } from './archief.js';
 import { closeModal, renderAdmin, renderProfiel } from './admin.js';
 import { renderRonde } from './ronde.js';
-import { renderToernooi, getActiefToernooiMetModus, herlaadToernooiListeners } from './toernooi.js';
+import { renderToernooi, getActiefToernooiMetModus, herlaadToernooiListeners, behoudLiveScores } from './toernooi.js';
 import { renderUitslagen } from './uitslagen.js';
 import { leesScores } from './scores.js';
 import { startAlleStandenListeners, stopAlleStandenListeners,
@@ -346,7 +346,7 @@ function vervolgIngelogd() {
   if (versieBadge) versieBadge.style.display = isBeheerderRol() ? '' : 'none';
 
   // v3.0.0-11.74: herstart per-doc toernooi-listeners na login zodat ze
-  // huidigeBruiker correct hebben voor scoresVerborgen, toernooiModus etc.
+  // huidigeBruiker correct hebben voor toernooiModus etc.
   herlaadToernooiListeners();
 
   // Pas toernooi-modus nav toe (verbergt tabs voor deelnemers indien actief)
@@ -386,7 +386,25 @@ async function loginSubmit() {
   const email = invoer.includes('@') ? invoer.toLowerCase() : (invoer.toLowerCase() + EMAIL_SUFFIX);
   try {
     await signInWithEmailAndPassword(auth, email, wachtwoord);
+    return;
   } catch(e) {
+    // v5.10.0: tweede kans voor een toernooigast.
+    //
+    // Een gast van buiten de club tikt alleen zijn NAAM in plus het
+    // wachtwoord van het toernooi. Zijn echte inlognaam is
+    // `voornaam.achternaam.<toernooicode>`, maar die krijgt hij nooit te zien.
+    // Sierk, 12 september 2026: "Ik wil voor de login dat de gebruiker alleen
+    // voor en achternaam hoeft in te tikken."
+    //
+    // Dit kan omdat toernooidocumenten openbaar leesbaar zijn: het inlogscherm
+    // mag dus vóór het inloggen al opvragen welke toernooien lopen en welke
+    // code daarbij hoort. De code is geen geheim — het WACHTWOORD is dat.
+    //
+    // Alleen ACTIEVE toernooien tellen mee. Daarmee vervalt de gastinlog
+    // vanzelf zodra het toernooi is afgesloten, nog vóór de accounts worden
+    // opgeruimd. De uitslag blijft daarna gewoon zichtbaar via de meekijklink.
+    if (await _probeerGastLogin(invoer, wachtwoord)) return;
+
     const berichten = {
       'auth/user-not-found':    'Geen account gevonden',
       'auth/wrong-password':    'Onjuist wachtwoord',
@@ -395,6 +413,36 @@ async function loginSubmit() {
       'auth/invalid-credential':'Login of wachtwoord onjuist',
     };
     toonLoginFout(berichten[e.code] || 'Inloggen mislukt, probeer opnieuw');
+  }
+}
+
+// Probeert de invoer te lezen als "Voornaam Achternaam" van een gast in een
+// lopend toernooi. Geeft true als het inloggen daarmee gelukt is.
+//
+// ⚠ Deze functie mag nooit zelf een fout naar buiten laten: hij draait in de
+// catch van het inloggen, en een fout hier zou de nette foutmelding vervangen
+// door een stille mislukking.
+async function _probeerGastLogin(invoer, wachtwoord) {
+  try {
+    if (!invoer || invoer.includes('@')) return false;
+    const delen = invoer.trim().split(/\s+/).filter(Boolean);
+    if (delen.length < 2) return false;   // alleen een voornaam is te weinig
+
+    const schoon = t => String(t).toLowerCase().replace(/\s+/g, '');
+    const kern = `${schoon(delen[0])}.${schoon(delen.slice(1).join(' '))}`;
+
+    const snap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
+    const codes = snap.docs.map(d => d.data().gastCode).filter(Boolean);
+    for (const code of codes) {
+      try {
+        await signInWithEmailAndPassword(auth, `${kern}.${code}${EMAIL_SUFFIX}`, wachtwoord);
+        return true;
+      } catch (_) { /* volgende toernooi proberen */ }
+    }
+    return false;
+  } catch (e) {
+    console.warn('gastlogin proberen mislukt:', e?.code || e?.message);
+    return false;
   }
 }
 
@@ -693,7 +741,12 @@ async function initFirestore() {
         store.actieveToernooiId = alleToernooien[0].id;
       } else if (toernooiData) {
         const bijgewerkt = alleToernooien.find(t => t.id === actieveToernooiId);
-        if (bijgewerkt) store.toernooiData = bijgewerkt;
+        // v5.11.0: ⚠ hier ging het mis. De serverversie bevat de scores van een
+        // LOPENDE dag niet — die staan in de live/-submap tot de dag wordt
+        // afgesloten. Zonder deze regel werden de invoervakjes leeg getekend
+        // zodra de coordinator ergens een vinkje omzette. Zie behoudLiveScores()
+        // in js/toernooi.js; de meeluisteraar daar gebruikt dezelfde functie.
+        if (bijgewerkt) store.toernooiData = behoudLiveScores(bijgewerkt);
         else if (alleToernooien.length > 0) {
           store.toernooiData      = alleToernooien[0];
           store.actieveToernooiId = alleToernooien[0].id;
@@ -1268,12 +1321,31 @@ function isBeheerderRol() {
   return huidigeBruiker?.rol === 'beheerder';
 }
 
-function toast(msg) {
+// v5.9.0: `ms` is optioneel en verandert niets aan de bestaande aanroepen.
+// Een foutmelding die de echte oorzaak noemt is langer dan "Opgeslagen ✓" en
+// moet lang genoeg blijven staan om aan de telefoon voorgelezen te worden.
+let _toastTimer = null;
+function toast(msg, ms) {
   const t = document.getElementById('toast');
+  if (!t) return;
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2500);
+  // v5.11.2: wegtikken. Een foutmelding blijft negen seconden staan, en zo lang
+  // wil je er niet tegenaan kijken als je hem gelezen hebt. Eén keer koppelen,
+  // niet bij elke melding opnieuw.
+  if (!t._klikGekoppeld) {
+    t.addEventListener('click', () => {
+      t.classList.remove('show');
+      if (_toastTimer) clearTimeout(_toastTimer);
+    });
+    t._klikGekoppeld = true;
+  }
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove('show'), ms || 2500);
 }
+// v5.11.2: ook op window, zodat de browsertest de ECHTE meldingfunctie kan
+// aanroepen in plaats van een nagemaakte — inclusief het wegtikken.
+window.toast = toast;
 
 function registreerNotificatieToken() {}
 

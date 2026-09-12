@@ -397,6 +397,15 @@
   }
 
   /* TOAST */
+  /* v5.11.2 — DE INFORMATIEBALK MOET TE LEZEN ZIJN.
+     ⚠ WAT ER MIS WAS: `white-space: nowrap` zonder maximale breedte. Een korte
+     bevestiging paste, maar sinds v5.9.0 noemen foutmeldingen de ECHTE oorzaak
+     en die zijn lang. Zo'n melding werd één regel die aan beide kanten buiten
+     het scherm liep — juist de tekst die je nodig hebt was onleesbaar.
+     Sierk, 12 september 2026: "de informatiebalk heeft geen regelterugloop en
+     verdwijnt buiten beeld."
+     Nu loopt hij door over meerdere regels, blijft hij binnen het scherm, en
+     kun je hem wegtikken in plaats van negen seconden te wachten. */
   #toast {
     position: fixed;
     bottom: 80px;
@@ -411,9 +420,15 @@
     transition: all 0.3s;
     z-index: 999;
     pointer-events: none;
-    white-space: nowrap;
+    /* Breed genoeg om te lezen, smal genoeg om binnen het scherm te blijven.
+       De 92vw wint op een telefoon, de 420px op een breed scherm. */
+    max-width: min(92vw, 420px);
+    box-sizing: border-box;
+    text-align: center;
+    line-height: 1.35;
+    overflow-wrap: anywhere;   /* een lange foutcode breekt af i.p.v. eruit te lopen */
   }
-  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; cursor: pointer; }
 
   /* MODAL */
   .modal-overlay {
@@ -735,6 +750,57 @@
   html[data-theme="matchcheck"] .section-title { color: var(--mid) !important; font-size: 11px !important; letter-spacing: 0.06em !important; text-transform: uppercase; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ============================================================
+     v5.11.0 — DE KLEUREN VAN DE TOERNOOIKAART
+     ------------------------------------------------------------
+     zwart  = klopt (vastgesteld, of speler en marker gelijk)
+     oranje = één van de twee heeft ingevuld, de ander nog niet
+     rood   = allebei ingevuld, verschillend
+
+     Naast de kleur ook een andere RAND: oranje tegen zwart is op een telefoon
+     in de zon slecht te zien, en niet iedereen onderscheidt kleuren even goed.
+
+     ⚠ !important is hier nodig, niet netjes-bedoeld. Hierboven staat
+     `html[data-theme="matchcheck"] .scorecard input[type=number] { border: ...
+     !important }` — de standaardstijl van de club. Zonder !important wint die
+     rand van de kleur en ziet niemand het verschil. De browsertest MARKERS
+     ving dit op: hij leest de rand zoals hij echt op het scherm staat.
+     ============================================================ */
+  /* ⚠ De keuzes hieronder zijn zwaarder gemaakt dan ze eruitzien: de
+     clubstijl gebruikt `html[data-theme="matchcheck"] .scorecard
+     input[type=number]` mét !important, en dat weegt zwaarder dan een gewone
+     klasse. Vandaar `html ... input[type=number].t-cel.t-cel-<kleur>`. */
+  html .scorecard input[type=number].t-cel, html .scorecard span.t-cel {
+    width: 46px;
+    padding: 4px;
+    text-align: center;
+    font-size: 14px;
+    font-family: 'DM Mono', monospace;
+    border-radius: 5px;
+    background: var(--input-bg);
+    color: var(--dark);
+  }
+  html .scorecard span.t-cel { display: inline-block; }
+  html .scorecard input[type=number].t-cel.t-cel-zwart,
+  html .scorecard span.t-cel.t-cel-zwart {
+    border: 1.5px solid var(--border) !important;
+  }
+  html .scorecard input[type=number].t-cel.t-cel-vast,
+  html .scorecard span.t-cel.t-cel-vast {
+    border: 1.5px solid var(--green) !important;
+  }
+  html .scorecard input[type=number].t-cel.t-cel-oranje,
+  html .scorecard span.t-cel.t-cel-oranje {
+    border: 2px dashed #e8a33d !important;
+    color: #b26a00 !important;
+  }
+  html .scorecard input[type=number].t-cel.t-cel-rood,
+  html .scorecard span.t-cel.t-cel-rood {
+    border: 3px double #c0392b !important;
+    color: #c0392b !important;
+    font-weight: 700;
+  }
 </style>
 </head>
 <body>
@@ -817,6 +883,11 @@
     <div class="form-group">
       <label>Login</label>
       <input type="text" id="login-email" placeholder="voornaam.achternaam" autocomplete="username" inputmode="email">
+      <!-- v5.10.0: gasten van een toernooi tikken hier hun gewone naam in -->
+      <p style="font-size:11px;color:var(--light);margin:4px 0 0">
+        Doe je als gast mee aan een toernooi? Vul dan je voor- en achternaam in,
+        met het wachtwoord dat je van de organisatie hebt gekregen.
+      </p>
     </div>
     <div class="form-group">
       <label>Wachtwoord</label>
@@ -867,6 +938,12 @@
       <label>Flight</label>
       <select id="toernooi-gast-flight-sel"></select>
     </div>
+    <!-- v5.10.0: alleen zinvol als dit toernooi een gastwachtwoord heeft.
+         renderToernooiGastInlogKeuze() zet dit blok aan of uit. -->
+    <label id="toernooi-gast-inlog-wrap" style="display:none;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--dark);margin-bottom:8px">
+      <input type="checkbox" id="toernooi-gast-inlog" style="accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
+      <span>Met eigen inlog<br><span style="font-size:11px;color:var(--mid)">Logt in met voor- en achternaam plus het toernooiwachtwoord</span></span>
+    </label>
     <button class="btn btn-primary btn-block btn-sm" onclick="voegGastspelerToeAanToernooi()" style="margin-bottom:8px">+ Gastspeler toevoegen</button>
 
     <div class="modal-actions">
@@ -1051,7 +1128,7 @@
 
 <div class="modal-overlay" id="modal-nieuwe-dag">
   <div class="modal" style="max-width:420px">
-    <h3>Nieuwe dag toevoegen</h3>
+    <h3 id="modal-dag-titel">Nieuwe dag toevoegen</h3>
     <div class="form-group">
       <label>Datum</label>
       <input type="date" id="t-dag-datum">
@@ -1082,10 +1159,15 @@
         <input type="number" id="t-dag-interval" min="0" max="60" value="10" style="text-align:center">
       </div>
     </div>
-    <p style="font-size:12px;color:var(--mid);margin:8px 0">De flight indeling voor deze dag stel je in na het toevoegen via de Flights knop in de scorekaart.</p>
+    <p style="font-size:12px;color:var(--mid);margin:8px 0" id="modal-dag-uitleg">De flight indeling voor deze dag stel je in na het toevoegen via de Flights knop in de scorekaart.</p>
+    <!-- v5.9.1: dit venster doet nu twee dingen — een dag toevoegen en een
+         bestaande dag wijzigen. De knop wisselt van opschrift en handeling,
+         net als bij de flightindeling. -->
+    <button class="btn btn-ghost btn-block btn-sm" id="modal-dag-verwijder-btn" onclick="verwijderDag()"
+      style="display:none;color:var(--red);margin-bottom:10px">🗑 Deze dag verwijderen</button>
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-nieuwe-dag')">Annuleren</button>
-      <button class="btn btn-primary" style="flex:2" onclick="voegDagToe()">Dag toevoegen →</button>
+      <button class="btn btn-primary" style="flex:2" id="modal-dag-opslaan-btn" onclick="voegDagToe()">Dag toevoegen →</button>
     </div>
   </div>
 </div>
@@ -1699,6 +1781,19 @@
         </div>
         <div id="t-geselecteerde-spelers" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
         <button class="btn btn-ghost btn-sm btn-block" onclick="voegGastspelerToe()" style="margin-bottom:12px">+ Gastspeler toevoegen</button>
+
+        <!-- v5.10.0: gastlogins. Laat je dit leeg, dan krijgen gastspelers geen
+             inlog en werkt alles zoals voorheen. -->
+        <div class="divider"></div>
+        <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px">Inlog voor gastspelers (optioneel)</label>
+        <div class="form-group" style="margin-bottom:6px">
+          <input type="text" id="t-gast-wachtwoord" placeholder="Wachtwoord voor dit toernooi" autocomplete="off">
+        </div>
+        <p style="font-size:11px;color:var(--light);margin:0 0 12px">
+          Vul je dit in, dan krijgt elke gastspeler een inlog voor dit ene toernooi.
+          Ze loggen in met hun <strong>voor- en achternaam</strong> plus dit wachtwoord, en
+          hoeven niets te wijzigen. Na afloop van het toernooi werkt de inlog niet meer.
+        </p>
         <button class="btn btn-primary btn-block" onclick="openFlightIndeling()">Flight indeling →</button>
         </div>
       </div>

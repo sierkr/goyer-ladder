@@ -4,12 +4,15 @@
 //  v11.106: live/-subcollectie als bron van waarheid; scorekaart bovenaan voor spelers
 //  Datastructuur: t.dagen[dagNr-1].{datum,baan,holes,flights,scores,afgerond}
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr, functions, httpsCallable, IS_TEST } from './config.js';
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr, functions, httpsCallable, IS_TEST, IS_EMULATOR, EMAIL_SUFFIX, firebaseConfig, loginNaamVan } from './config.js';
 // v5.2.1: toernooi-uitslag schrijft standen en punten samen weg (server-side).
 const _verwerkToernooiStandenFn = httpsCallable(functions, 'verwerkToernooiStanden');
+// v5.10.0: verwijdert een Auth-account waarvan het profiel al weg is. Bestond
+// al voor wees-accounts uit de bulk-import; hier hergebruikt voor gastlogins.
+const _verwijderGastAccountFn = httpsCallable(functions, 'verwijderWeesAccount');
 import { store, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tSpelersLadderIds, _tRankingLadderIds, _flights, _liveScores } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
-import { renderHcpBlok, alleBANEN, renderHandmatigHoles } from './partij.js';
+import { renderHcpBlok, alleBANEN, renderHandmatigHoles, kortNaamMap } from './partij.js';
 import { renderLadder } from './ladder.js';
 import { slaSnapshotOp } from './beheer.js';
 import { toggleAdminKaart } from './knockout.js';
@@ -25,6 +28,37 @@ import { closeModal } from './admin.js';
 // v4.0.0: respecteert een lokale bekijk-dag (window._bekijkDagNr) zodat het
 // bekijken van een andere dag NIET meer naar Firestore wordt geschreven en
 // dus geen invloed heeft op andere gebruikers (fix 7.4).
+// ============================================================
+//  FOUTMELDINGEN DIE IETS ZEGGEN  (v5.9.0)
+// ============================================================
+//  WAT ER MIS WAS. Elke `catch` in dit bestand meldde "Er is iets misgegaan,
+//  probeer opnieuw". Toen Sierk op 11 september 2026 een toernooi niet kon
+//  starten, was dat het enige wat hij te zien kreeg: dertien verschillende
+//  oorzaken, één tekst. De echte fout stond in het verborgen logboek van de
+//  browser — op een telefoon onbereikbaar. Dat heeft een avond gekost.
+//
+//  `toernooiFout()` zet de echte oorzaak in de melding, mét de plek waar het
+//  misging. Dat is genoeg om het aan de telefoon voor te lezen.
+//
+//  ⚠ Deze functie mag zelf nooit omvallen — hij draait per definitie op het
+//  moment dat er al iets stuk is (BOUWNORMEN, regel 3).
+function toernooiFoutTekst(e) {
+  try {
+    if (!e) return 'onbekende oorzaak';
+    if (typeof e === 'string') return e.slice(0, 160);
+    const code = e.code ? String(e.code) : '';
+    const melding = e.message ? String(e.message) : '';
+    const tekst = [code, melding].filter(Boolean).join(' — ') || String(e);
+    return tekst.slice(0, 160);
+  } catch (_) { return 'onbekende oorzaak'; }
+}
+
+function toernooiFout(waar, e) {
+  try { console.error(waar + ' mislukt:', e); } catch (_) {}
+  try { toast(waar + ' mislukt: ' + toernooiFoutTekst(e), 9000); }
+  catch (_) { /* zelfs de melding mag de app niet omver trekken */ }
+}
+
 function actieveDag(t) {
   t = t || toernooiData;
   if (!t) return null;
@@ -69,10 +103,23 @@ function renderToernooi() {
   const wrap = document.getElementById('toernooi-actief-wrap');
   const setup = document.getElementById('toernooi-setup-wrap');
 
-  // v3.0.0-11.73: setup altijd expliciet zetten in elk pad — nooit afhankelijk van vorige render
-  setup.style.display = isBeheerder ? 'block' : 'none';
-  if (isBeheerder) initToernooiSetup();
-  renderGeannuleerdeKnop(isBeheerder); // v4.0.0 (fix 7.2)
+  // v5.9.0: het aanmaakformulier verdwijnt zodra er een toernooi loopt.
+  //
+  // WAT ER MIS WAS: hier stond `setup.style.display = isBeheerder ? 'block' : 'none'`
+  // zonder te kijken of er al een toernooi draait. Boven een vol lopend toernooi
+  // stond dus "Nog geen deelnemers geselecteerd" — Sierk las dat als een leeg
+  // toernooi terwijl er eronder negen spelers in vier flights zaten. Erger: je
+  // kon er een TWEEDE actief toernooi mee starten, en herlaadToernooien() pakte
+  // dan `alleToernooien[0]` uit een query zonder sorteervolgorde. Welk toernooi
+  // je te zien kreeg was dan willekeurig.
+  //
+  // Het formulier is niet weg, alleen opgeborgen achter één knop.
+  const heeftLopendToernooi = mijnToernooien.length > 0;
+  const toonFormulier = isBeheerder && (!heeftLopendToernooi || window._toonNieuwToernooiFormulier === true);
+  setup.style.display = toonFormulier ? 'block' : 'none';
+  if (toonFormulier) initToernooiSetup();
+  renderGeannuleerdeKnop(isBeheerder && toonFormulier); // v4.0.0 (fix 7.2)
+  renderNieuwToernooiKnop(isBeheerder && heeftLopendToernooi && !toonFormulier); // v5.9.0
 
   if (mijnToernooien.length > 0) {
     wrap.style.display = 'block';
@@ -98,6 +145,7 @@ function renderToernooi() {
     // Setup formulier alleen voor beheerder — gewone spelers zien nooit het aanmaakscherm
     setup.style.display = isBeheerder ? 'block' : 'none';
     if (isBeheerder) {
+      window._toonNieuwToernooiFormulier = false;
       initToernooiSetup();
     } else {
       // v3.0.0-11.73: wachtmelding voor spelers zonder actief toernooi
@@ -137,36 +185,200 @@ function renderToernooi() {
 // Nu bewaart het document de scores per dag onder `dagen`, met merge:true
 // zodat andere dagen ongemoeid blijven. `dagNr` en `scores` blijven ernaast
 // staan voor schermen die nog het oude formaat lezen.
-async function slaSpelerScoreOp(uid, dagNr, scores) {
+//
+// v5.11.0: `laag` zegt WIE dit intikte — 'dagen' (de speler zelf),
+// 'markerDagen' (zijn marker) of 'beheerDagen' (de wedstrijdleiding). De drie
+// lagen staan in hetzelfde document maar raken elkaar niet, dus ze kunnen
+// elkaar ook niet meer overschrijven. De wachttijd loopt per laag apart:
+// anders wist de timer van de marker die van de speler.
+async function slaSpelerScoreOp(uid, dagNr, scores, laag = 'dagen') {
   if (!actieveToernooiId || !uid) return;
   if (!window._tSpelerSaveTimers) window._tSpelerSaveTimers = {};
-  clearTimeout(window._tSpelerSaveTimers[uid]);
-  window._tSpelerSaveTimers[uid] = setTimeout(async () => {
+  const sleutel = uid + '|' + laag;
+  clearTimeout(window._tSpelerSaveTimers[sleutel]);
+  window._tSpelerSaveTimers[sleutel] = setTimeout(async () => {
     try {
-      await setDoc(
-        doc(db, 'toernooien', actieveToernooiId, 'live', uid),
-        {
-          dagNr,
-          scores,
-          dagen: { [String(dagNr)]: scores },
-          timestamp: Date.now(),
-        },
-        { merge: true }
-      );
+      const velden = { [laag]: { [String(dagNr)]: scores }, timestamp: Date.now() };
+      // Het oude formaat (`dagNr` + `scores` los ernaast) blijft alleen voor de
+      // speler meelopen, zodat schermen die het nog lezen niet omvallen.
+      if (laag === 'dagen') { velden.dagNr = dagNr; velden.scores = scores; }
+      await setDoc(doc(db, 'toernooien', actieveToernooiId, 'live', uid), velden, { merge: true });
     } catch(e) {
       console.error('Speler score opslaan mislukt:', e);
     }
   }, 800);
 }
 
-// v5.3.0: haalt de scores van een specifieke dag uit een live-document.
-// Nieuw formaat (`dagen`) heeft voorrang; valt terug op het oude formaat.
+// ============================================================
+//  SCORES OP HET SCHERM HOUDEN — v5.11.0
+// ============================================================
+//  WAT ER MIS WAS (gemeten op test, 12 september 2026). Zet de coordinator
+//  een vinkje om — "Scores verbergen", "Toernooi-modus" — dan schrijft dat
+//  naar het toernooidocument. Twee meeluisteraars reageren daarop: die in dit
+//  bestand hield de ingevoerde scores vast, die in js/auth.js (de lijst met
+//  actieve toernooien) niet. Die tweede verving de gegevens door de kale
+//  serverversie, en op de server staan de scores van een LOPENDE dag nog niet:
+//  die staan tot "dag afsluiten" in de live/-submap.
+//
+//  Gevolg op het scherm: de invoervakjes werden leeg getekend terwijl de
+//  regel "Tot" gewoon het juiste totaal bleef tonen. Er ging niets verloren —
+//  maar wie over zo'n leeg ogend vakje heen typt, overschrijft wél een goede
+//  score. Sierk zag precies dat.
+//
+//  ⚠ Kijk naar de dag die op het SCHERM staat, niet naar de dag die "actief"
+//  heet: met `_bekijkDagNr` kun je naar een andere dag kijken, en zoek de dag
+//  op dagNr op — sinds een dag verwijderd kan worden, is de plek in de rij
+//  niet meer hetzelfde als het dagnummer.
+// ============================================================
+function behoudLiveScores(nieuweData) {
+  if (!nieuweData || !toernooiData) return nieuweData;
+  if (nieuweData.id && actieveToernooiId && nieuweData.id !== actieveToernooiId) return nieuweData;
+  const nieuweDagen = nieuweData.dagen || [];
+  (toernooiData.dagen || []).forEach(oud => {
+    if (!oud || oud.afgerond || !oud.scores) return;
+    const nw = nieuweDagen.find(d => d && d.dagNr === oud.dagNr);
+    if (!nw || nw.afgerond) return;
+    nw.scores = oud.scores;
+  });
+  return nieuweData;
+}
+
+// ============================================================
+//  MARKERS EN DE DRIE SCOREKAARTEN — v5.11.0
+// ============================================================
+//  In een toernooi houdt een MARKER de kaart bij van één medespeler. Pas als
+//  speler en marker hetzelfde getal hebben staan, is een hole betrouwbaar.
+//
+//  Daarom staan er per speler DRIE lagen in `toernooien/{id}/live/{spelerUid}`:
+//
+//      dagen        wat de speler zelf intikte      (bestond al)
+//      markerDagen  wat zijn marker intikte         (nieuw)
+//      beheerDagen  wat de wedstrijdleiding vaststelde (nieuw, beslissend)
+//
+//  ⚠ WAT ER MIS WAS. Tot v5.10.0 schreven de speler EN de coordinator in
+//  precies hetzelfde veld. Wie het laatst typte won, zonder spoor en zonder
+//  melding. Door de lagen uit elkaar te halen kan dat niet meer, en kunnen we
+//  bovendien laten zien of een score al gecontroleerd is.
+//
+//  Wie wat ziet: ieder ziet het getal dat hij ZELF heeft ingetikt, de
+//  wedstrijdleiding ziet dat van de speler. Niemand ziet het getal van de
+//  ander — speler en marker moeten het er onderling over eens worden, en dat
+//  gaat niet als je elkaars antwoord kunt overschrijven.
+// ============================================================
+
+// Verdeelt de markers in een kring over een flight: de eerste markeert de
+// tweede, de tweede de derde, de laatste weer de eerste. Bij twee spelers
+// markeren ze elkaar; bij één speler is er niets te markeren.
+// Geeft terug: { spelerUid: uid van degene die ZIJN kaart bijhoudt }.
+function markerKring(spelerIds) {
+  const ids = (spelerIds || []).filter(Boolean);
+  const kring = {};
+  if (ids.length < 2) return kring;
+  ids.forEach((uid, i) => { kring[uid] = ids[(i - 1 + ids.length) % ids.length]; });
+  return kring;
+}
+
+// Wie markeert deze speler op deze dag? Een vaste indeling in de flight gaat
+// voor; staat die er niet (oudere toernooien), dan wordt de kring afgeleid uit
+// de volgorde van de flight. Buiten een flight is er geen marker.
+function markerVan(spelerUid, dag) {
+  for (const f of (dag?.flights || [])) {
+    const ids = f.spelerIds || [];
+    if (!ids.includes(spelerUid)) continue;
+    // Een vastgelegde marker die intussen uit de flight is gehaald telt niet
+    // meer mee — anders wacht die kaart voor eeuwig op iemand die er niet is.
+    const vast = f.markers && f.markers[spelerUid];
+    if (vast && ids.includes(vast)) return vast;
+    return markerKring(ids)[spelerUid] || null;
+  }
+  return null;
+}
+
+// Haalt één laag van één dag uit een live-document.
+// `laag` is 'dagen', 'markerDagen' of 'beheerDagen'.
+function _laagVanDag(data, laag, dagNr) {
+  if (!data) return null;
+  const perDag = data[laag]?.[String(dagNr)];
+  if (Array.isArray(perDag)) return perDag;
+  // v5.3.0-formaat: één losse dag naast `dagen`. Gold alleen voor de speler.
+  if (laag === 'dagen' && data.dagNr === dagNr && Array.isArray(data.scores)) return data.scores;
+  return null;
+}
+
+// De drie lagen van één speler op één dag, altijd als array (leeg mag).
+function lagenVanDag(data, dagNr) {
+  return {
+    speler: _laagVanDag(data, 'dagen',       dagNr) || [],
+    marker: _laagVanDag(data, 'markerDagen', dagNr) || [],
+    beheer: _laagVanDag(data, 'beheerDagen', dagNr) || [],
+  };
+}
+
+// Het oordeel over ÉÉN hole. Dit is de enige plek waar wordt bepaald welke
+// score telt en welke kleur erbij hoort; scorekaart, onderlinge stand,
+// ranglijst, dag afsluiten en de meekijkpagina leunen er allemaal op.
+//
+//   zwart   vastgesteld door de wedstrijdleiding, OF speler en marker gelijk
+//   oranje  één van de twee heeft ingevuld, de ander nog niet
+//   rood    allebei ingevuld, verschillend
+//   leeg    nog niemand
+//
+// `vast` betekent: de wedstrijdleiding heeft het laatste woord gesproken.
+// Speler en marker kunnen die hole dan niet meer wijzigen — anders kan een
+// gecontroleerde score weer opengetrokken worden.
+function scoreOordeel(spelerWaarde, markerWaarde, beheerWaarde) {
+  const leeg = (v) => v === null || v === undefined || v === '';
+  const sp = leeg(spelerWaarde) ? null : Number(spelerWaarde);
+  const mk = leeg(markerWaarde) ? null : Number(markerWaarde);
+  const bh = leeg(beheerWaarde) ? null : Number(beheerWaarde);
+
+  if (bh !== null) {
+    return { kleur: 'zwart', vast: true, tel: bh, speler: bh, marker: bh, beheer: bh };
+  }
+  // Wat meetelt zolang er niets is vastgesteld: het getal van de speler zelf.
+  // Heeft alleen de marker ingevuld, dan is dat het enige getal dat er is.
+  const tel = sp !== null ? sp : mk;
+  let kleur = 'leeg';
+  if (sp !== null && mk !== null) kleur = (sp === mk) ? 'zwart' : 'rood';
+  else if (sp !== null || mk !== null) kleur = 'oranje';
+
+  return { kleur, vast: false, tel, speler: sp, marker: mk, beheer: null };
+}
+
+// v5.3.0 / v5.11.0: de scores van één speler op één dag, zoals ze MEETELLEN.
+// Geeft null als deze speler voor deze dag in geen enkele laag iets heeft —
+// daar rekenen de meeluisteraar en het afsluiten van een dag op.
 function _liveScoresVanDag(data, dagNr) {
   if (!data) return null;
-  const perDag = data.dagen?.[String(dagNr)];
-  if (Array.isArray(perDag)) return perDag;
-  if (data.dagNr === dagNr && Array.isArray(data.scores)) return data.scores;
-  return null;
+  const l = lagenVanDag(data, dagNr);
+  const lengte = Math.max(l.speler.length, l.marker.length, l.beheer.length);
+  if (lengte === 0) return null;
+  const uit = [];
+  for (let i = 0; i < lengte; i++) {
+    uit.push(scoreOordeel(l.speler[i], l.marker[i], l.beheer[i]).tel);
+  }
+  return uit;
+}
+
+// Vat een scorekaart samen voor de waarschuwingsregel erboven. `kleuren` is
+// een lijst van { holeNr, kleur }. Die regel staat bij speler, marker EN
+// wedstrijdleiding — een rood vakje halverwege een kaart van 18 holes zie je
+// op een telefoon anders niet.
+function kaartOordeel(kleuren) {
+  const verschillen = (kleuren || []).filter(k => k.kleur === 'rood').map(k => k.holeNr);
+  const wachtend    = (kleuren || []).filter(k => k.kleur === 'oranje').map(k => k.holeNr);
+  const delen = [];
+  if (verschillen.length > 0) {
+    delen.push(verschillen.length === 1
+      ? `1 verschil (hole ${verschillen[0]})`
+      : `${verschillen.length} verschillen (holes ${verschillen.join(', ')})`);
+  }
+  if (wachtend.length > 0) {
+    delen.push(wachtend.length === 1
+      ? '1 hole wacht op bevestiging'
+      : `${wachtend.length} holes wachten op bevestiging`);
+  }
+  return { verschillen, wachtend, tekst: delen.join(' · ') };
 }
 
 // ============================================================
@@ -216,7 +428,14 @@ window.addEventListener('baanToegevoegd', (e) => {
 async function herlaadToernooien() {
   try {
     const snap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
-    store.alleToernooien = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // v5.9.0: nieuwste eerst. Een Firestore-query zonder orderBy heeft geen
+    // vaste volgorde, en op meerdere plekken wordt `alleToernooien[0]` gebruikt
+    // als "het" toernooi. Zijn er door een eerdere fout twee actief, dan kreeg
+    // je willekeurig het ene of het andere te zien. Nu is het voorspelbaar de
+    // laatst aangemaakte.
+    store.alleToernooien = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     if (actieveToernooiId) {
       const gevonden = alleToernooien.find(t => t.id === actieveToernooiId);
       store.toernooiData = gevonden || (alleToernooien.length > 0 ? alleToernooien[0] : null);
@@ -237,7 +456,20 @@ async function herlaadToernooien() {
 function herlaadToernooiListeners() {
   _toernooiListeners.forEach(unsub => unsub());
   store._toernooiListeners = [];
-  store._liveScores = {};
+
+  // v5.11.0: ⚠ NIET zomaar leeggooien. Deze functie draait bij ELKE wijziging
+  // in de toernooien-collectie, en de scorelagen (wie tikte wat in) staan in
+  // _liveScores. Werd die leeggegooid, dan viel de scorekaart tot de volgende
+  // meeluister-melding terug op het toernooidocument — en daar staat alleen
+  // wat MEETELT, niet wie het invulde. Gevolg: een net ingevulde oranje score
+  // sprong een tel lang op zwart, alsof hij al gecontroleerd was. Precies het
+  // signaal waar de marker op zit te wachten.
+  // Bij het wisselen van toernooi moet hij er wél uit: die lagen horen bij een
+  // ander toernooi.
+  if (window._liveScoresVanToernooi !== actieveToernooiId) {
+    store._liveScores = {};
+    window._liveScoresVanToernooi = actieveToernooiId;
+  }
 
   // v3.0.0-11.106: ALLE gebruikers luisteren op live/ subcollectie
   // zodat scores real-time zichtbaar zijn zonder de coördinator als tussenschakel.
@@ -268,6 +500,15 @@ function herlaadToernooiListeners() {
             gewijzigd = true;
           }
         });
+        // v5.11.0: de kleuren ALTIJD bijwerken, ook als er niets aan het
+        // meetellende getal verandert. Tikt de marker hetzelfde getal in als
+        // de speler, dan blijft de score gelijk maar springt het vakje van
+        // oranje naar zwart — en dat is juist het signaal waar iedereen op zit
+        // te wachten. Hertekenen doen we niet: dan raak je de cursor kwijt van
+        // wie op dat moment aan het typen is.
+        verversScoreKleuren();
+        verversUitslagKnop();
+
         if (gewijzigd) {
           updateTTotaalRijInline();
           renderTMatrix();
@@ -294,20 +535,10 @@ alleToernooien.forEach(t => {
       const isBeheerder = isCoordinatorRol();
       const detail = document.getElementById('toernooi-detail');
 
-      // v3.0.0-11.106: Behoud dag.scores voor de actieve niet-afgeronde dag.
-      // Tijdens het spelen is de live/-subcollectie de bron van waarheid;
-      // het hoofddocument bevat alleen geconsolideerde scores (na "dag afsluiten").
-      // Als we hier de serverversie klakkeloos overnemen, overschrijft dat
-      // de lokaal-ingevoerde scores die nog in de live-write-queue zitten.
-      const actieveDagNr = nieuweData.actiefDagNr || 1;
-      const actieveDagIdx = actieveDagNr - 1;
-      if (nieuweData.dagen && nieuweData.dagen[actieveDagIdx] &&
-          !nieuweData.dagen[actieveDagIdx].afgerond && toernooiData) {
-        const huidigeDag = actieveDag(toernooiData);
-        if (huidigeDag && huidigeDag.scores) {
-          nieuweData.dagen[actieveDagIdx].scores = huidigeDag.scores;
-        }
-      }
+      // v3.0.0-11.106 / v5.11.0: behoud de lokaal ingevoerde scores van elke
+      // nog lopende dag. Eén bron voor die regel — zie behoudLiveScores()
+      // hierboven; js/auth.js gebruikt dezelfde functie.
+      behoudLiveScores(nieuweData);
 
       if (detail) {
         const dag = actieveDag(nieuweData);
@@ -316,9 +547,8 @@ alleToernooien.forEach(t => {
           const dagUitslag = dag?.afgerond || nieuweData.uitslagZichtbaar;
           if (dagUitslag || nieuweData.modus === 'strokeplay') renderTRanglijst();
         } else {
-          const oudeMatrixIngeklapt  = toernooiData?.matrixIngeklapt;
+          const oudeMatrixVerborgen  = toernooiData?.matrixVerborgen;
           const oudeUitslagZichtbaar = toernooiData?.uitslagZichtbaar;
-          const oudeScoresVerborgen  = toernooiData?.scoresVerborgen;
           const oudeStatus           = toernooiData?.status;
           const oudeToernooiModus    = toernooiData?.toernooiModus;
           store.toernooiData = nieuweData;
@@ -341,16 +571,11 @@ alleToernooien.forEach(t => {
             window.dispatchEvent(new CustomEvent('toernooiModusGewijzigd'));
           }
 
-          // Scores verborgen/zichtbaar gezet
-          if (nieuweData.scoresVerborgen !== oudeScoresVerborgen) {
-            renderTScorecard();
-          }
-
-          if (nieuweData.matrixIngeklapt !== oudeMatrixIngeklapt) {
-            const collapse = document.getElementById('t-matrix-collapse');
-            const header = collapse?.previousElementSibling;
-            if (collapse) collapse.classList.toggle('ingeklapt', !!nieuweData.matrixIngeklapt);
-            if (header) header.classList.toggle('ingeklapt', !!nieuweData.matrixIngeklapt);
+          // v5.11.1: zet de coordinator de onderlinge stand aan of uit, dan moet
+          // het blok bij de deelnemer verschijnen of verdwijnen — inklappen is
+          // niet genoeg, want dan staan de gegevens er nog gewoon.
+          if (nieuweData.matrixVerborgen !== oudeMatrixVerborgen) {
+            renderToernooiActief();
           }
 
           clearTimeout(window._matrixUpdateTimer);
@@ -412,6 +637,15 @@ function slaToernooiConceptOp() {
         spelers:        store._tGeselecteerdeSpelers || [],
         spelersLadders: [...(_tSpelersLadderIds || [])],
         rankingLadders: [...(_tRankingLadderIds || [])],
+        // v5.11.3: ⚠ de flightindeling hoorde hier vanaf het begin in te staan.
+        // Alles van het aanmaakformulier werd bewaard behalve dít, en juist dit
+        // kost de meeste moeite: bij een herlaad begon je weer bij één flight
+        // met iedereen erin. Sierk: "een niet gestart toernooi moest ik steeds
+        // opnieuw indelen."
+        flights: (_flights || []).map(f => ({
+          id: f.id, naam: f.naam, starthole: f.starthole, starttijd: f.starttijd,
+          spelers: (f.spelers || []).map(sp => ({ ...sp })),
+        })),
         timestamp: Date.now()
       };
       localStorage.setItem(TOERNOOI_CONCEPT_KEY, JSON.stringify(concept));
@@ -422,6 +656,9 @@ function slaToernooiConceptOp() {
 function wisToernooiConcept() {
   try { localStorage.removeItem(TOERNOOI_CONCEPT_KEY); } catch(e) { /* ok */ }
   window._tConceptDagen = null;
+  // v5.11.3: de flightindeling hoort bij dit concept. Blijft hij staan, dan erf
+  // je hem bij het volgende toernooi — met spelers die daar niet meedoen.
+  store._flights = [];
 }
 
 // Herstelt state + simpele velden; dag-blok-waarden worden na renderDagBlokken
@@ -448,10 +685,23 @@ function herstelToernooiConcept() {
     store._tGeselecteerdeSpelers = c.spelers || [];
     store._tSpelersLadderIds = new Set(c.spelersLadders || []);
     store._tRankingLadderIds = new Set(c.rankingLadders || []);
+    store._flights = (c.flights || []).map(f => ({
+      id: f.id, naam: f.naam, starthole: f.starthole, starttijd: f.starttijd,
+      spelers: (f.spelers || []).map(sp => ({ ...sp })),
+    }));
     window._tConceptDagen = c.dagen || null;
 
     const isBetekenisvol = (c.naam || '').trim() !== '' || (c.spelers || []).length > 0;
-    if (isBetekenisvol) toast('Concept-toernooi hersteld 📝');
+    if (isBetekenisvol) {
+      toast('Concept-toernooi hersteld 📝');
+      // v5.11.3: en klap het aanmaakscherm dan ook open. Een hersteld concept
+      // achter een dichtgeklapte kop is niet hersteld voor wie ernaar kijkt —
+      // je ziet "Nieuw Toernooi" en begint gewoon opnieuw.
+      const kop = document.querySelector('#toernooi-setup-wrap .card-header.inklapbaar');
+      const vak = kop?.nextElementSibling;
+      kop?.classList.remove('ingeklapt');
+      if (vak?.classList.contains('card-collapse')) vak.classList.remove('ingeklapt');
+    }
     return true;
   } catch(e) { console.warn('Concept herstellen mislukt:', e); return false; }
 }
@@ -747,7 +997,15 @@ function openFlightIndeling() {
   const interval = parseInt(document.getElementById('t-interval')?.value) || 0;
 
   if (_flights.length === 0) {
-    store._flights = [{ id: 1, naam: 'Flight 1', spelers: geselecteerd.map(s => ({ uid: s.uid, naam: s.naam, hcp: s.hcp })), starthole: 1, starttijd }];
+    // v5.10.0: `gast` en `login` MOETEN mee.
+    //
+    // WAT HIER MIS WAS, en dat is ernstig. Hier stond `{ uid, naam, hcp }`.
+    // startToernooi() haalt de deelnemers uit _flights, dus een gastspeler die
+    // je vóór de start toevoegde verloor precies hier zijn gast-status — en
+    // telde daarna gewoon MEE VOOR DE LADDER. Op het scherm stond nog "(gast)",
+    // in het opgeslagen toernooi niet meer. Gevonden door de repetitie van
+    // v5.10.0, niet door iemand die het zag gebeuren.
+    store._flights = [{ id: 1, naam: 'Flight 1', spelers: geselecteerd.map(s => ({ ...s })), starthole: 1, starttijd }];
   } else {
     _flights.forEach((f, fi) => {
       if (!f.starttijd) f.starttijd = berekenFlightTijd(starttijd, interval, fi);
@@ -755,7 +1013,7 @@ function openFlightIndeling() {
       f.spelers = f.spelers.filter(s => geselecteerd.some(g => g.uid === s.uid));
     });
     const ingedeeld = new Set(_flights.flatMap(f => f.spelers.map(s => s.uid)));
-    const nieuw = geselecteerd.filter(s => !ingedeeld.has(s.uid)).map(s => ({ uid: s.uid, naam: s.naam, hcp: s.hcp }));
+    const nieuw = geselecteerd.filter(s => !ingedeeld.has(s.uid)).map(s => ({ ...s }));  // v5.10.0: gast-vlag mee
     if (nieuw.length > 0 && _flights.length > 0) _flights[0].spelers.push(...nieuw);
   }
 
@@ -770,13 +1028,81 @@ function openFlightIndeling() {
   document.getElementById('modal-flight-indeling').classList.add('open');
 }
 
+// v5.9.0: verdeelt alle ingedeelde spelers gelijkmatig over de bestaande
+// flights. Voorheen kwam een nieuwe flight leeg binnen en moest elke speler
+// met de hand worden verplaatst — bij negen spelers over vier flights is dat
+// negen keuzemenu's, en wie flight 1 helemaal leegmaakt houdt een lege flight
+// over die de app gewoon opsloeg. Zie de toelichting in CLAUDE.md.
+function verdeelSpelersOverFlights() {
+  const alle = _flights.flatMap(f => f.spelers);
+  if (alle.length === 0 || _flights.length === 0) return;
+  _flights.forEach(f => { f.spelers = []; });
+  alle.forEach((sp, i) => { _flights[i % _flights.length].spelers.push(sp); });
+  renderFlightLijst();
+}
+window.verdeelSpelersOverFlights = verdeelSpelersOverFlights;
+
+// v5.9.0: welke flights leeg zijn (0 spelers). Een lege flight geeft een
+// scorekaart met alleen holes en geen spelerskolommen.
+function _legeFlights() {
+  return _flights.map((f, i) => ({ f, i })).filter(x => x.f.spelers.length === 0);
+}
+
+// v5.9.0: laatste grendel vóór opslaan. Een lege flight werd tot en met
+// v5.8.9 gewoon weggeschreven — startToernooi() keek alleen of ALLE flights
+// leeg waren. Gevolg: een scorekaart met holes en geen spelerskolommen, en de
+// indruk dat het toernooi stuk is. Geeft true als er doorgegaan mag worden.
+function _verwerkLegeFlights() {
+  const leeg = _legeFlights();
+  if (leeg.length === 0) return true;
+  if (leeg.length === _flights.length) {
+    toast('Verdeel de spelers eerst over de flights');
+    return false;
+  }
+  const namen = leeg.map(x => x.f.naam).join(', ');
+  const enkel = leeg.length === 1;
+  if (!confirm(`${namen} ${enkel ? 'heeft' : 'hebben'} geen spelers.\n\n` +
+               `Een lege flight geeft een scorekaart zonder spelers. ` +
+               `${enkel ? 'Hem' : 'Ze'} weghalen en doorgaan?`)) return false;
+  store._flights = _flights.filter(f => f.spelers.length > 0);
+  _flights.forEach((f, i) => {
+    f.id = i + 1;
+    if (/^Flight \d+$/.test(f.naam)) f.naam = `Flight ${i + 1}`;
+  });
+  return true;
+}
+
+// v5.11.3: één plek die de indeling in het concept bewaart. Het flightvenster
+// van een LOPEND toernooi (de dag-modus) hoort hier niet bij: die indeling
+// staat al in het toernooi zelf, en zou het concept van een volgend toernooi
+// vervuilen.
+function bewaarFlightsInConcept() {
+  if (window._flightDagModus) return;
+  slaToernooiConceptOp();
+}
+
 function renderFlightLijst() {
   const container = document.getElementById('flight-lijst');
   if (!container) return;
+  bewaarFlightsInConcept();
 
   const ingedeeld = new Set(_flights.flatMap(f => f.spelers.map(s => s.uid)));
+  const leeg = _legeFlights();
 
-  container.innerHTML = _flights.map((f, fi) => `
+  // v5.9.0: kop met het aantal spelers, een knop om gelijk te verdelen en een
+  // waarschuwing als er een flight leeg is.
+  const kop = `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <span style="font-size:13px;color:var(--mid)">${ingedeeld.size} speler(s) · ${_flights.length} flight(s)</span>
+      <button class="btn btn-sm btn-ghost" onclick="verdeelSpelersOverFlights()" style="margin-left:auto">⇄ Gelijk verdelen</button>
+    </div>
+    ${leeg.length > 0 ? `
+    <div style="background:var(--gold-pale);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--gold)">
+      ⚠️ ${leeg.map(x => esc(x.f.naam)).join(', ')} ${leeg.length === 1 ? 'is' : 'zijn'} leeg.
+      Een lege flight geeft een scorekaart zonder spelers. Verdeel de spelers of haal hem weg met ✕.
+    </div>` : ''}`;
+
+  container.innerHTML = kop + _flights.map((f, fi) => `
     <div style="border:1.5px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden">
       <div style="background:var(--green);padding:8px 12px;display:flex;align-items:center;gap:8px">
         <input type="text" value="${esc(f.naam)}" onchange="wijzigFlightNaam(${fi}, this.value)"
@@ -803,12 +1129,12 @@ function renderFlightLijst() {
               onchange="wijzigFlightHcp(${fi}, ${si}, this.value)"
               style="width:48px;padding:3px 6px;text-align:center;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;font-size:13px;flex-shrink:0">
             ${_flights.length > 1 ? `
-            <select onchange="verplaatsSpelerFlight(${fi}, ${si}, this.value)" style="font-size:12px;border:1.5px solid var(--border);border-radius:5px;padding:3px 5px;background:var(--card-bg);color:var(--dark);flex-shrink:0;max-width:80px">
+            <select onchange="verplaatsSpelerFlight(${fi}, ${si}, this.value)" title="Verplaats naar een andere flight" style="font-size:12px;border:1.5px solid var(--border);border-radius:5px;padding:3px 5px;background:var(--card-bg);color:var(--dark);flex-shrink:0;min-width:104px;max-width:150px">
               ${_flights.map((lf, lfi) => `<option value="${lfi}" ${lfi === fi ? 'selected' : ''}>${esc(lf.naam)}</option>`).join('')}
             </select>` : ''}
           </div>
         `).join('')}
-        ${f.spelers.length === 0 ? '<p style="font-size:12px;color:var(--light);padding:8px 0">Geen spelers — voeg toe via dropdown hierboven</p>' : ''}
+        ${f.spelers.length === 0 ? '<p style="font-size:12px;color:var(--gold);padding:8px 0">Nog geen spelers. Gebruik ⇄ Gelijk verdelen, of verplaats iemand hierheen met het keuzemenu achter zijn naam.</p>' : ''}
       </div>
     </div>
   `).join('');
@@ -830,8 +1156,8 @@ function voegFlightToe() {
   renderFlightLijst();
 }
 
-function wijzigFlightStarttijd(fi, val) { if (_flights[fi]) _flights[fi].starttijd = val; }
-function wijzigFlightStarthole(fi, val) { if (_flights[fi]) _flights[fi].starthole = parseInt(val) || 1; }
+function wijzigFlightStarttijd(fi, val) { if (_flights[fi]) _flights[fi].starttijd = val; bewaarFlightsInConcept(); }
+function wijzigFlightStarthole(fi, val) { if (_flights[fi]) _flights[fi].starthole = parseInt(val) || 1; bewaarFlightsInConcept(); }
 
 function verwijderFlight(fi) {
   if (_flights.length <= 1) return;
@@ -841,8 +1167,8 @@ function verwijderFlight(fi) {
   renderFlightLijst();
 }
 
-function wijzigFlightNaam(fi, naam) { if (_flights[fi]) _flights[fi].naam = naam; }
-function wijzigFlightHcp(fi, si, val) { if (_flights[fi]?.spelers[si]) _flights[fi].spelers[si].hcp = parseFloat(val) || 0; }
+function wijzigFlightNaam(fi, naam) { if (_flights[fi]) _flights[fi].naam = naam; bewaarFlightsInConcept(); }
+function wijzigFlightHcp(fi, si, val) { if (_flights[fi]?.spelers[si]) _flights[fi].spelers[si].hcp = parseFloat(val) || 0; bewaarFlightsInConcept(); }
 
 function verplaatsSpelerFlight(vanFi, si, naarFi) {
   naarFi = parseInt(naarFi);
@@ -872,8 +1198,24 @@ async function startToernooi() {
     const modus    = document.querySelector('input[name="t-modus"]:checked')?.value || 'matchplay';
     const starttijd = document.getElementById('t-starttijd')?.value || '09:00';
     const interval  = parseInt(document.getElementById('t-interval')?.value) || 0;
+    // v5.10.0: leeg laten mag — dan krijgen gastspelers geen inlog.
+    const gastWachtwoord = document.getElementById('t-gast-wachtwoord')?.value.trim() || '';
 
     if (!naam) { toast('Voer een naam in'); return; }
+    if (gastWachtwoord && gastWachtwoord.length < 6) {
+      toast('Het gastwachtwoord moet minstens 6 tekens hebben');
+      return;
+    }
+    if (gastWachtwoord && _gastBeheerGeblokkeerdInTest()) return;
+    const gastCode = toernooiCodeVan(naam);
+
+    // v5.9.0: nooit twee actieve toernooien naast elkaar. Dat kon tot en met
+    // v5.8.9 omdat het aanmaakformulier boven een lopend toernooi bleef staan.
+    if (alleToernooien.length > 0) {
+      const lopend = alleToernooien[0];
+      toast(`"${lopend?.naam || 'Een toernooi'}" loopt nog. Sluit dat eerst af of annuleer het.`);
+      return;
+    }
 
     // Lees alle dag-blokken
     const dagBlokken = Array.from(document.querySelectorAll('#t-dag-blokken .dag-blok'));
@@ -901,9 +1243,10 @@ async function startToernooi() {
     }
 
     // Spelers uit flights
+    if (_flights.every(f => f.spelers.length === 0)) { toast('Verdeel spelers over flights'); return; }
+    if (!_verwerkLegeFlights()) return;   // v5.9.0
     const geselecteerd = _flights.flatMap(f => f.spelers);
     if (geselecteerd.length < 2) { toast('Voeg minimaal 2 spelers toe aan flights'); return; }
-    if (_flights.every(f => f.spelers.length === 0)) { toast('Verdeel spelers over flights'); return; }
 
     const spelers = geselecteerd.map(s => ({
       uid: s.uid, naam: s.naam, hcp: s.hcp, gast: s.gast || false
@@ -914,11 +1257,25 @@ async function startToernooi() {
       const scores = {};
       spelers.forEach(s => { scores[s.uid] = Array(cfg.holes.length).fill(null); });
 
-      // Dag 1 flights vanuit de flight indeling; overige dagen starten leeg
+      // Alleen dag 1 krijgt hier een indeling. De volgende dagen beginnen leeg.
+      //
+      // v5.9.0 deed dit even anders — daar werd de indeling van dag 1 naar élke
+      // dag gekopieerd. Dat was een verkeerde reparatie van een echt probleem.
+      // Sierk, 12 september 2026: "Dag 2 wordt ingedeeld ahv de prestaties van
+      // dag 1. Dus het is fijner om de volgende dag niet al automatisch in te
+      // delen." Een voorgekauwde indeling is daar niet behulpzaam maar
+      // misleidend: hij ziet er af als een besluit dat al genomen is.
+      //
+      // Het echte probleem was dat een niet-ingedeelde dag er KAPOT uitzag: een
+      // scorekaart met holes en geen spelers, zonder één woord uitleg. Dat is
+      // opgelost in renderTScorecard(), niet hier. Zie v5.9.1.
       const flights = cfg.dagNr === 1
         ? _flights.map(f => ({
             id: f.id, naam: f.naam,
             spelerIds: f.spelers.map(s => s.uid),
+            // v5.11.0: de markerindeling wordt meteen meegeschreven, zodat hij
+            // vastligt en de coordinator hem kan omzetten.
+            markers: markerKring(f.spelers.map(s => s.uid)),
             starthole: f.starthole || 1,
             starttijd: f.starttijd || cfg.starttijd
           }))
@@ -940,6 +1297,10 @@ async function startToernooi() {
     const nieuweToernooi = {
       status: 'actief',
       naam, modus,
+      // v5.10.0: openbaar, en dat mag — hiermee kan het inlogscherm de
+      // inlognaam van een gast afleiden. Het wachtwoord staat in de
+      // afgeschermde submap, niet hier.
+      ...(gastWachtwoord ? { gastCode } : {}),
       ptWin, ptTie, ptLoss, hcpPct,
       ladderId: ladderId || null,
       rankingLadderIds,
@@ -951,6 +1312,37 @@ async function startToernooi() {
 
     const newRef = await addDoc(TOERNOOIEN_COL, nieuweToernooi);
     nieuweToernooi.id = newRef.id;
+
+    // v5.10.0: gastlogins. Pas HIER, nadat het toernooi echt bestaat — zo
+    // blijven er geen accounts achter van een aanmaakscherm dat je halverwege
+    // verlaat. Mislukt er één, dan gaat het toernooi gewoon door en zegt de
+    // app welke gast geen inlog kreeg: een toernooi zonder één inlog is
+    // beter dan geen toernooi.
+    if (gastWachtwoord) {
+      try {
+        await setDoc(doc(db, 'toernooien', newRef.id, 'beheer', 'gastlogin'),
+          { wachtwoord: gastWachtwoord, code: gastCode });
+      } catch (e) {
+        console.error('gastwachtwoord opslaan mislukt:', e);
+        toast('Let op: het gastwachtwoord kon niet worden bewaard — ' + toernooiFoutTekst(e), 9000);
+      }
+      const mislukt = [];
+      for (const sp of nieuweToernooi.spelers.filter(x => x.gast)) {
+        try {
+          const { uid, login } = await maakGastAccount(sp.naam, gastCode, gastWachtwoord, naam);
+          _vervangSpelerUid(nieuweToernooi, sp.uid, uid);
+          sp.uid = uid;
+          sp.login = login;
+        } catch (e) {
+          console.error('gastlogin mislukt voor', sp.naam, e);
+          mislukt.push(sp.naam);
+        }
+      }
+      await setDoc(doc(db, 'toernooien', newRef.id), nieuweToernooi);
+      if (mislukt.length > 0) {
+        toast(`Geen inlog gelukt voor: ${mislukt.join(', ')} — de rest staat klaar`, 9000);
+      }
+    }
     alleToernooien.push(nieuweToernooi);
     store.toernooiData = nieuweToernooi;
     store.actieveToernooiId = newRef.id;
@@ -990,7 +1382,7 @@ async function startToernooi() {
     renderToernooi();
     // v3.0.0-11.106: start live/ listeners direct na aanmaken
     herlaadToernooiListeners();
-  } catch(e) { console.error('startToernooi mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Toernooi starten', e); }
 }
 
 // ============================================================
@@ -1033,8 +1425,324 @@ function openNieuweDagModal() {
       .join('');
     if (vorigeDag?.baan && banen[vorigeDag.baan]) baanEl.value = vorigeDag.baan;
   }
+  // v5.9.1: het venster doet nu twee dingen. Hier expliciet in de stand
+  // "toevoegen" zetten, zodat een eerdere wijzig-sessie niet blijft hangen.
+  _zetDagModalStand(null);
   document.getElementById('modal-nieuwe-dag').classList.add('open');
 }
+
+// ============================================================
+//  GASTLOGINS  (v5.10.0)
+// ============================================================
+//  WAT DIT IS. Spelers van buiten de club doen één toernooi mee. Ze krijgen
+//  een inlog die alleen voor dat toernooi werkt, en die ze niet hoeven te
+//  wijzigen. Sierk, 12 september 2026: "Ik wil voor de login dat de gebruiker
+//  alleen voor en achternaam hoeft in te tikken."
+//
+//  HOE DE INLOG WERKT. De gast typt zijn naam plus het toernooiwachtwoord. De
+//  app maakt daar zelf de inlognaam van:
+//
+//      naam "Jan Jansen" + toernooicode "standrews2026"
+//         -> jan.jansen.standrews2026@MPladder.stb
+//
+//  De code staat openbaar op het toernooi — dat mag, want het WACHTWOORD is
+//  het geheim. Dat staat in toernooien/{id}/beheer/gastlogin, waar alleen de
+//  coordinator bij kan (zie firestore.rules).
+//
+//  ⚠ WAAROM DE CODE ACHTER DE NAAM STAAT. Zonder die toevoeging zou een gast
+//  die toevallig ook clublid is (Jan Jansen) botsen met zijn eigen account, en
+//  dan mislukt het aanmaken. Nu zijn het twee gescheiden accounts. Gevolg, en
+//  dat is met opzet: als gast telt hij NIET mee voor de ladder (`gast: true`).
+//
+//  ⚠ EEN GEDEELD WACHTWOORD. Wie het toernooiwachtwoord heeft kan inloggen
+//  onder de naam van elke deelnemer van dat toernooi. Hij ziet dan alleen dat
+//  ene toernooi. Dat is de prijs van "alleen je naam intikken"; daarom is het
+//  wachtwoord per toernooi en worden de accounts na afloop opgeruimd.
+// ============================================================
+
+// Toernooinaam -> code die in de inlognaam past. Alleen kleine letters en
+// cijfers; accenten eraf, zodat "Café 2026" niet op een raar teken stukloopt.
+function toernooiCodeVan(naam) {
+  const kaal = String(naam || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]/g, '');
+  return kaal.slice(0, 16) || 'toernooi';
+}
+
+// Splitst "Jan de Vries" op dezelfde manier als genereerEmail() verwacht:
+// eerste woord is de voornaam, de rest de achternaam. Aan beide kanten van de
+// inlog moet dit gelijk gebeuren, anders vindt de gast zijn eigen account niet.
+function splitsNaam(volleNaam) {
+  const delen = String(volleNaam || '').trim().split(/\s+/).filter(Boolean);
+  if (delen.length === 0) return { voornaam: '', achternaam: '' };
+  if (delen.length === 1) return { voornaam: delen[0], achternaam: '' };
+  return { voornaam: delen[0], achternaam: delen.slice(1).join(' ') };
+}
+
+// De inlog (zonder @-deel) voor een gast in een toernooi.
+function gastLoginVan(volleNaam, code) {
+  const { voornaam, achternaam } = splitsNaam(volleNaam);
+  const schoon = t => String(t || '').toLowerCase().replace(/\s+/g, '');
+  const kern = achternaam ? `${schoon(voornaam)}.${schoon(achternaam)}` : schoon(voornaam);
+  return `${kern}.${code}`;
+}
+
+// v3.0.0-11.103, overgenomen uit admin.js: gebruikersbeheer loopt via de
+// gedeelde Firebase Auth, die voor test én productie hetzelfde project is.
+// Een gastaccount aanmaken vanuit /test/ zou dus een ECHT account maken.
+function _gastBeheerGeblokkeerdInTest() {
+  if (IS_TEST) {
+    toast('Gastlogins aanmaken is uitgeschakeld in de testomgeving — inloggen is gedeeld met de echte app.');
+    return true;
+  }
+  return false;
+}
+
+// Leest het gastwachtwoord van een toernooi. Staat in een afgeschermde submap
+// waar alleen de coordinator bij kan; een gewone speler krijgt hier niets.
+async function _leesGastWachtwoord(toernooiId) {
+  if (!toernooiId) return null;
+  try {
+    const snap = await getDoc(doc(db, 'toernooien', toernooiId, 'beheer', 'gastlogin'));
+    return snap.exists() ? snap.data() : null;
+  } catch (e) {
+    console.warn('gastwachtwoord lezen mislukt:', e.code || e.message);
+    return null;
+  }
+}
+
+// Een gast krijgt pas bij het starten een echt account, en dus een echte uid.
+// Tot dat moment loopt hij mee onder een tijdelijke `gast_...`-sleutel. Die
+// sleutel staat óók in de flights en in de scorerijen van elke dag; blijft daar
+// de oude staan, dan hoort de speler bij niemand meer en toont zijn scorekaart
+// niets. Deze functie zet hem overal tegelijk om.
+function _vervangSpelerUid(toernooi, oudeUid, nieuweUid) {
+  if (!toernooi || oudeUid === nieuweUid) return;
+  (toernooi.spelers || []).forEach(sp => { if (sp.uid === oudeUid) sp.uid = nieuweUid; });
+  (toernooi.dagen || []).forEach(dag => {
+    (dag.flights || []).forEach(f => {
+      f.spelerIds = (f.spelerIds || []).map(sid => sid === oudeUid ? nieuweUid : sid);
+    });
+    if (dag.scores && Object.prototype.hasOwnProperty.call(dag.scores, oudeUid)) {
+      dag.scores[nieuweUid] = dag.scores[oudeUid];
+      delete dag.scores[oudeUid];
+    }
+  });
+}
+
+// Maakt één Auth-account plus het profiel. Geeft { uid, login } terug.
+//
+// Het account wordt aangemaakt in een APART Firebase-venster. Anders logt
+// createUser de coordinator uit en zit hij ineens als gast in zijn eigen app.
+async function maakGastAccount(volleNaam, code, wachtwoord, toernooiNaam) {
+  const { initializeApp: init2, deleteApp } =
+    await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+  const { getAuth: getAuth2, createUserWithEmailAndPassword: createUser, connectAuthEmulator: verbindEmulator } =
+    await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+
+  let login = gastLoginVan(volleNaam, code);
+  let tijdApp = null;
+  let uid = null;
+  let poging = 0;
+
+  while (uid === null && poging < 5) {
+    poging++;
+    const email = `${login}${EMAIL_SUFFIX}`;
+    try {
+      tijdApp = init2(firebaseConfig, `gast_${Date.now()}_${poging}`);
+      const tijdAuth = getAuth2(tijdApp);
+      // Draait de app tegen de nagemaakte database (de repetitie), dan moet dit
+      // tweede venster daar óók heen. Anders klopt het aan bij de echte
+      // Firebase — en dat is precies wat een repetitie nooit mag doen.
+      if (IS_EMULATOR) {
+        try { verbindEmulator(tijdAuth, 'http://127.0.0.1:9099', { disableWarnings: true }); }
+        catch (_) { /* al verbonden */ }
+      }
+      const cred = await createUser(tijdAuth, email, wachtwoord);
+      uid = cred.user.uid;
+    } catch (e) {
+      if (e?.code === 'auth/email-already-in-use') {
+        // Zelfde naam twee keer in hetzelfde toernooi: er een cijfer achter.
+        login = `${gastLoginVan(volleNaam, code)}${poging + 1}`;
+      } else {
+        throw e;
+      }
+    } finally {
+      if (tijdApp) { try { await deleteApp(tijdApp); } catch (_) {} tijdApp = null; }
+    }
+  }
+  if (!uid) throw new Error(`Inlognaam voor ${volleNaam} is niet vrij te krijgen`);
+
+  // Profiel erbij. eersteLogin BEWUST op false: een gast hoeft geen handicap
+  // en geen nieuw wachtwoord te kiezen, dat is juist het punt.
+  await setDoc(doc(db, 'spelers', uid), {
+    uid,
+    naam: volleNaam,
+    email: `${login}${EMAIL_SUFFIX}`,
+    rol: 'speler',
+    hcp: 0,
+    eersteLogin: false,
+    toernooiSpeler: true,
+    toernooiNaam: toernooiNaam || '',
+    toernooiGast: true,          // waaraan het opruimen ze herkent
+    toernooiCode: code
+  });
+
+  return { uid, login };
+}
+
+// ============================================================
+//  EEN BESTAANDE DAG WIJZIGEN OF VERWIJDEREN  (v5.9.1)
+// ============================================================
+//  WAAROM. Sierk, 12 september 2026: "ik maak een toernooi aan voor 1 dag op
+//  baan A maar het toernooi blijkt 2 dagen te zijn met dag 2 op baan B". Tot
+//  v5.9.0 was daar maar één uitweg voor: het hele toernooi weggooien met
+//  "Terug naar aanmaakscherm" en opnieuw instellen.
+//
+//  ⚠ De grendel: wijzigen en verwijderen kan alleen zolang er voor die dag
+//  GEEN scores zijn. Een dag met scores aanpassen zou stilletjes andermans
+//  ronde veranderen — en bij een ander aantal holes zelfs scores afknippen.
+function dagHeeftScores(dag) {
+  if (!dag) return false;
+  if (dag.afgerond) return true;
+  return Object.values(dag.scores || {}).some(arr =>
+    (arr || []).some(v => v !== null && v !== undefined && v !== ''));
+}
+
+// Zet het venster in de stand "toevoegen" (dagNr null) of "wijzigen".
+function _zetDagModalStand(dagNr) {
+  window._dagBewerkenNr = dagNr;
+  const titel   = document.getElementById('modal-dag-titel');
+  const knop    = document.getElementById('modal-dag-opslaan-btn');
+  const wis     = document.getElementById('modal-dag-verwijder-btn');
+  const uitleg  = document.getElementById('modal-dag-uitleg');
+  const bewerkt = dagNr != null;
+  if (titel) titel.textContent = bewerkt ? `Dag ${dagNr} wijzigen` : 'Nieuwe dag toevoegen';
+  if (knop) {
+    knop.textContent = bewerkt ? 'Wijziging opslaan →' : 'Dag toevoegen →';
+    knop.onclick = bewerkt ? slaDagWijzigingOp : voegDagToe;
+  }
+  if (wis) wis.style.display = bewerkt && (toernooiData?.dagen || []).length > 1 ? 'block' : 'none';
+  if (uitleg) {
+    uitleg.textContent = bewerkt
+      ? 'Alleen mogelijk zolang er voor deze dag nog geen scores zijn ingevuld.'
+      : 'De flight indeling voor deze dag stel je in na het toevoegen via de Flights knop in de scorekaart.';
+  }
+}
+
+function openDagBewerkenModal() {
+  const t = toernooiData;
+  const dag = actieveDag(t);
+  if (!dag) { toast('Geen dag gevonden'); return; }
+  if (dagHeeftScores(dag)) {
+    toast(`Dag ${dag.dagNr} heeft al scores — wijzigen kan niet meer`);
+    return;
+  }
+  const datumEl = document.getElementById('t-dag-datum');
+  if (datumEl) datumEl.value = dag.datum || '';
+
+  const baanEl = document.getElementById('t-dag-baan');
+  if (baanEl) {
+    const banen = alleBANEN();
+    baanEl.innerHTML = Object.keys(banen)
+      .filter(n => n !== 'Handmatig invoeren')
+      .map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`)
+      .join('');
+    if (dag.baan && banen[dag.baan]) baanEl.value = dag.baan;
+  }
+
+  const aantal = (dag.holes || []).length;
+  const holesEl = document.getElementById('t-dag-holes');
+  const custEl  = document.getElementById('t-dag-holes-custom');
+  const custWrap = document.getElementById('t-dag-holes-custom-wrap');
+  if (holesEl) {
+    if (aantal === 18 || aantal === 9) {
+      holesEl.value = String(aantal);
+      if (custWrap) custWrap.style.display = 'none';
+    } else {
+      holesEl.value = 'custom';
+      if (custEl) custEl.value = aantal;
+      if (custWrap) custWrap.style.display = 'block';
+    }
+  }
+  const tijdEl = document.getElementById('t-dag-starttijd');
+  if (tijdEl) tijdEl.value = dag.starttijd || '09:00';
+  const intEl = document.getElementById('t-dag-interval');
+  if (intEl) intEl.value = dag.interval != null ? dag.interval : 10;
+
+  _zetDagModalStand(dag.dagNr);
+  document.getElementById('modal-nieuwe-dag').classList.add('open');
+}
+window.openDagBewerkenModal = openDagBewerkenModal;
+
+async function slaDagWijzigingOp() {
+  try {
+    const t = toernooiData;
+    const dagNr = window._dagBewerkenNr;
+    const dag = (t?.dagen || []).find(d => d.dagNr === dagNr);
+    if (!dag) { toast('Geen dag gevonden'); return; }
+    if (dagHeeftScores(dag)) { toast(`Dag ${dagNr} heeft al scores — wijzigen kan niet meer`); return; }
+
+    const datum    = document.getElementById('t-dag-datum')?.value;
+    const baanNaam = document.getElementById('t-dag-baan')?.value;
+    const holesVal = document.getElementById('t-dag-holes')?.value || '18';
+    const holesCount = holesVal === 'custom'
+      ? parseInt(document.getElementById('t-dag-holes-custom')?.value) || 18
+      : parseInt(holesVal);
+
+    if (!datum)    { toast('Voer een datum in'); return; }
+    if (!baanNaam) { toast('Selecteer een baan'); return; }
+
+    const banen = alleBANEN();
+    const holes = (banen[baanNaam]?.holes || []).slice(0, holesCount);
+    if (!holes.length) { toast('Baan heeft geen holes geconfigureerd'); return; }
+
+    const anderAantal = holes.length !== (dag.holes || []).length;
+    dag.datum     = datum;
+    dag.baan      = baanNaam;
+    dag.holes     = holes;
+    dag.starttijd = document.getElementById('t-dag-starttijd')?.value || dag.starttijd || '09:00';
+    const intVal  = parseInt(document.getElementById('t-dag-interval')?.value);
+    dag.interval  = Number.isFinite(intVal) ? intVal : (dag.interval || 0);
+
+    // Bij een ander aantal holes moeten de (lege) scorerijen mee. Er zijn hier
+    // per definitie geen ingevulde scores, dus er gaat niets verloren.
+    if (anderAantal) {
+      dag.scores = {};
+      (t.spelers || []).forEach(sp => { dag.scores[sp.uid] = Array(holes.length).fill(null); });
+    }
+
+    await slaToernooiOp();
+    closeModal('modal-nieuwe-dag');
+    toast(`Dag ${dagNr} gewijzigd`);
+    renderToernooiActief();
+  } catch(e) { toernooiFout('Dag wijzigen', e); }
+}
+window.slaDagWijzigingOp = slaDagWijzigingOp;
+
+async function verwijderDag() {
+  try {
+    const t = toernooiData;
+    const dagNr = window._dagBewerkenNr;
+    const dagen = t?.dagen || [];
+    const dag = dagen.find(d => d.dagNr === dagNr);
+    if (!dag) { toast('Geen dag gevonden'); return; }
+    if (dagen.length <= 1) { toast('Een toernooi moet minstens één dag houden'); return; }
+    if (dagHeeftScores(dag)) { toast(`Dag ${dagNr} heeft al scores — verwijderen kan niet meer`); return; }
+    if (!confirm(`Dag ${dagNr} verwijderen?\n\nDe overige dagen worden opnieuw genummerd.`)) return;
+
+    t.dagen = dagen.filter(d => d.dagNr !== dagNr);
+    t.dagen.forEach((d, i) => { d.dagNr = i + 1; });
+    t.actiefDagNr = Math.min(t.actiefDagNr || 1, t.dagen.length);
+    window._bekijkDagNr = null;
+
+    await slaToernooiOp();
+    closeModal('modal-nieuwe-dag');
+    toast(`Dag ${dagNr} verwijderd`);
+    renderToernooiActief();
+  } catch(e) { toernooiFout('Dag verwijderen', e); }
+}
+window.verwijderDag = verwijderDag;
 
 // Voeg nieuwe dag toe aan bestaand toernooi
 async function voegDagToe() {
@@ -1099,7 +1807,7 @@ async function voegDagToe() {
     closeModal('modal-nieuwe-dag');
     toast(`Dag ${nieuweDag.dagNr} toegevoegd`);
     renderToernooiActief();
-  } catch(e) { console.error('voegDagToe mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Dag toevoegen', e); }
 }
 
 // Open flight modal voor de actieve dag (niet voor dag 1 aanmaken maar voor herindeling)
@@ -1141,10 +1849,14 @@ async function slaFlightIndelingDagOp() {
     const t = toernooiData;
     const dag = actieveDag(t);
     if (!dag) return;
+    if (!_verwerkLegeFlights()) return;   // v5.9.0
 
     dag.flights = _flights.map(f => ({
       id: f.id, naam: f.naam,
       spelerIds: f.spelers.map(s => s.uid),
+      // v5.11.0: markers in een kring — de eerste houdt de kaart bij van de
+      // tweede, enzovoort, de laatste die van de eerste.
+      markers: markerKring(f.spelers.map(s => s.uid)),
       starthole: f.starthole || 1,
       starttijd: f.starttijd || ''
     }));
@@ -1155,7 +1867,7 @@ async function slaFlightIndelingDagOp() {
     closeModal('modal-flight-indeling');
     toast('Flight indeling opgeslagen');
     renderToernooiActief();
-  } catch(e) { console.error('slaFlightIndelingDagOp mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Flightindeling opslaan', e); }
 }
 
 // Sluit dag af — consolideer live-scores naar hoofddoc, zet afgerond=true
@@ -1192,21 +1904,63 @@ async function sluitDagAf() {
     await slaToernooiOp();
     toast(`Dag ${dag.dagNr} afgesloten`);
     renderToernooiActief();
-  } catch(e) { console.error('sluitDagAf mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Dag afsluiten', e); }
 }
+
+// v5.9.0: een afgesloten dag weer openzetten.
+//
+// WAT ER MIS WAS: `dag.afgerond = true` werd nergens teruggezet. Eén verkeerde
+// klik op "Dag afsluiten" en de scores van die dag stonden voorgoed op slot —
+// ook de flightindeling was dan niet meer te wijzigen. Een toernooi opnieuw
+// activeren hielp niet: dat zet alleen de status van het toernooi om, niet die
+// van de dagen. Er was letterlijk geen weg terug.
+//
+// De uitslag blijft zichtbaar; alleen het slot gaat eraf.
+async function heropenDag() {
+  try {
+    const t   = toernooiData;
+    const dag = actieveDag(t);
+    if (!dag) { toast('Geen dag gevonden om te heropenen'); return; }
+    if (!dag.afgerond) { toast(`Dag ${dag.dagNr} is niet afgesloten`); return; }
+    if (!confirm(`Dag ${dag.dagNr} weer openzetten?\n\n` +
+                 `De scores worden weer aanpasbaar. De al berekende uitslag blijft staan ` +
+                 `en wordt opnieuw bepaald zodra je de dag opnieuw afsluit.`)) return;
+
+    dag.afgerond = false;
+    await slaToernooiOp();
+    toast(`Dag ${dag.dagNr} is weer open`);
+    renderToernooiActief();
+  } catch(e) { toernooiFout('Dag heropenen', e); }
+}
+window.heropenDag = heropenDag;
 
 // ============================================================
 //  MATRIX / UITSLAG TOGGLE
 // ============================================================
-async function toggleToernooiMatrix() {
+// v5.11.1: in- en uitklappen is voortaan iets van je EIGEN scherm. Het wordt
+// niet meer bewaard en niet meer naar de deelnemers gestuurd; daar is de
+// schakelaar "Onderlinge stand tonen aan deelnemers" voor.
+function toggleToernooiMatrix() {
+  window._matrixIngeklapt = !window._matrixIngeklapt;
+  const collapse = document.getElementById('t-matrix-collapse');
+  const kop = collapse?.previousElementSibling;
+  if (collapse) collapse.classList.toggle('ingeklapt', !!window._matrixIngeklapt);
+  if (kop)      kop.classList.toggle('ingeklapt', !!window._matrixIngeklapt);
+}
+
+// De schakelaar zelf: zetten de deelnemers de onderlinge stand te zien?
+async function toggleMatrixVoorDeelnemers(aan) {
   try {
     if (!toernooiData || !actieveToernooiId) return;
-    toernooiData.matrixIngeklapt = !toernooiData.matrixIngeklapt;
-    // v4.0.0 (fix 7.6): alleen het gewijzigde veld schrijven i.p.v. het hele document
-    await updateDoc(doc(db, 'toernooien', actieveToernooiId), { matrixIngeklapt: toernooiData.matrixIngeklapt });
+    toernooiData.matrixVerborgen = !aan;
+    const idx = alleToernooien.findIndex(t => t.id === actieveToernooiId);
+    if (idx >= 0) alleToernooien[idx].matrixVerborgen = !aan;
+    await updateDoc(doc(db, 'toernooien', actieveToernooiId), { matrixVerborgen: !aan });
     renderToernooiActief();
-  } catch(e) { console.error('toggleToernooiMatrix mislukt:', e); }
+    toast(aan ? 'Onderlinge stand zichtbaar voor deelnemers ✓' : 'Onderlinge stand verborgen voor deelnemers');
+  } catch(e) { toernooiFout('Onderlinge stand aan/uit zetten', e); }
 }
+window.toggleMatrixVoorDeelnemers = toggleMatrixVoorDeelnemers;
 
 async function toonToernooiUitslag() {
   try {
@@ -1219,7 +1973,7 @@ async function toonToernooiUitslag() {
     await setDoc(doc(db, 'toernooien', actieveToernooiId), toernooiData);
     renderToernooiActief();
     toast('Uitslag zichtbaar! 🏆');
-  } catch(e) { console.error('toonToernooiUitslag mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Uitslag tonen', e); }
 }
 
 // ============================================================
@@ -1231,10 +1985,24 @@ function openToernooiSpelersBeheer() {
   const t = toernooiData;
   if (!t) return;
 
+  // v5.10.0: "met eigen inlog" alleen aanbieden als dit toernooi een
+  // gastwachtwoord heeft. Anders is het een vinkje dat niets kan doen.
+  const inlogWrap = document.getElementById('toernooi-gast-inlog-wrap');
+  const inlogVink = document.getElementById('toernooi-gast-inlog');
+  if (inlogVink) inlogVink.checked = false;
+  if (inlogWrap) {
+    inlogWrap.style.display = 'none';
+    if (t.gastCode && !IS_TEST) {
+      _leesGastWachtwoord(actieveToernooiId).then(geheim => {
+        if (geheim?.wachtwoord) inlogWrap.style.display = 'flex';
+      });
+    }
+  }
+
   const verwijderLijst = document.getElementById('toernooi-speler-verwijder-lijst');
   verwijderLijst.innerHTML = t.spelers.map(s => `
     <div style="display:flex;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
-      <span style="flex:1;font-size:14px">${esc(s.naam)}${s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}</span>
+      <span style="flex:1;font-size:14px">${esc(s.naam)}${s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}<br>${inlogRegel(s)}</span>
       <button class="btn btn-sm" style="background:var(--alert-bg);color:var(--alert-text);border:none;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:12px"
         onclick="verwijderToernooiSpelerNieuw('${escAttr(s.uid)}')">✕</button>
     </div>
@@ -1253,6 +2021,28 @@ function openToernooiSpelersBeheer() {
   _toernooiSpelerToevoegen = null;
 
   document.getElementById('modal-toernooi-spelers').classList.add('open');
+}
+
+// v5.11.3: de inlognaam in "Spelers beheren".
+//
+// ⚠ WAT ER MIS WAS. Dit scherm toonde `s.login`, en dat veld wordt alleen
+// gevuld voor een GAST die bij het starten een eigen inlog kreeg. Bij een
+// clublid stond er dus niets, terwijl zijn inlognaam gewoon bekend is — hij
+// staat in zijn eigen account (`spelers/{uid}.email`), niet in het toernooi.
+//
+// ⚠ En op de TESTOMGEVING krijgen gasten helemaal geen inlog: dat is sinds
+// v5.10.0 bewust geblokkeerd, want het inloggen is gedeeld met de echte app.
+// Dan is een lege regel misleidend — je gaat zoeken naar een fout die er niet
+// is. Daarom zegt het scherm nu wat er aan de hand is.
+function inlogRegel(speler) {
+  const stijl = "font-size:11px;color:var(--light);font-family:'DM Mono',monospace";
+  const eigen = speler.login
+    || loginNaamVan(alleSpelersData.find(x => x.uid === speler.uid)?.email || '');
+  if (eigen) return `<span style="${stijl}">⌨ ${esc(eigen)}</span>`;
+  if (speler.gast && IS_TEST) {
+    return `<span style="${stijl}">geen inlog — gastlogins staan uit in test</span>`;
+  }
+  return `<span style="${stijl}">geen eigen inlog</span>`;
 }
 
 function zoekToernooiSpelerModal(zoek) {
@@ -1308,7 +2098,7 @@ async function voegBestaandeSpelerToeAanToernooi() {
     closeModal('modal-toernooi-spelers');
     renderToernooiActief();
     toast(`${speler.naam.split(' ')[0]} toegevoegd ✓`);
-  } catch(e) { console.error('voegBestaandeSpelerToeAanToernooi mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Speler toevoegen', e); }
 }
 
 async function voegGastspelerToeAanToernooi() {
@@ -1318,8 +2108,35 @@ async function voegGastspelerToeAanToernooi() {
     if (!naam) { toast('Voer een naam in'); return; }
     const t = toernooiData;
     const fi = parseInt(document.getElementById('toernooi-gast-flight-sel').value) || 0;
-    const gastId = 'gast_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8); // v4.0.0 (fix 7.7)
-    const speler = { uid: gastId, naam, hcp, gast: true };
+    // v5.10.0: waarschuwen als deze naam al een clublid is. Als gast telt hij
+    // NIET mee voor de ladderstand — dat is met opzet, maar het moet een keuze
+    // zijn en geen ongeluk.
+    const gelijkeNaam = (alleSpelersData || []).find(sp =>
+      String(sp.naam || '').trim().toLowerCase() === naam.toLowerCase());
+    if (gelijkeNaam) {
+      const inLadder = (alleLadders || []).filter(l => (l.spelerIds || []).includes(gelijkeNaam.uid));
+      if (inLadder.length > 0 && !confirm(
+        `${naam} staat al in ${inLadder.map(l => l.naam).join(', ')}.\n\n` +
+        `Als gastspeler telt hij NIET mee voor de ladderstand en krijgt hij een ` +
+        `losse inlog. Wil je hem als gast toevoegen?`)) return;
+    }
+
+    // v5.10.0: gastlogin, als dit toernooi er een wachtwoord voor heeft.
+    const gastLogin = document.getElementById('toernooi-gast-inlog')?.checked === true;
+    let gastId = 'gast_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8); // v4.0.0 (fix 7.7)
+    let login = null;
+    if (gastLogin) {
+      if (_gastBeheerGeblokkeerdInTest()) return;
+      const geheim = await _leesGastWachtwoord(actieveToernooiId);
+      if (!geheim?.wachtwoord) {
+        toast('Dit toernooi heeft geen gastwachtwoord — zet er eerst een bij het toernooi');
+        return;
+      }
+      const gemaakt = await maakGastAccount(naam, geheim.code || toernooiCodeVan(t.naam), geheim.wachtwoord, t.naam);
+      gastId = gemaakt.uid;
+      login = gemaakt.login;
+    }
+    const speler = { uid: gastId, naam, hcp, gast: true, ...(login ? { login } : {}) };
 
     t.spelers.push(speler);
     (t.dagen || []).forEach(dag => {
@@ -1332,8 +2149,10 @@ async function voegGastspelerToeAanToernooi() {
     await setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(t)));
     closeModal('modal-toernooi-spelers');
     renderToernooiActief();
-    toast(`${naam} toegevoegd als gastspeler ✓`);
-  } catch(e) { console.error('voegGastspelerToeAanToernooi mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+    toast(login
+      ? `${naam} toegevoegd — inloggen met de eigen naam en het toernooiwachtwoord ✓`
+      : `${naam} toegevoegd als gastspeler ✓`, login ? 7000 : 2500);
+  } catch(e) { toernooiFout('Gastspeler toevoegen', e); }
 }
 
 async function verwijderToernooiSpelerNieuw(spelerId) {
@@ -1365,7 +2184,7 @@ async function verwijderToernooiSpelerNieuw(spelerId) {
     closeModal('modal-toernooi-spelers');
     renderToernooiActief();
     toast('Speler verwijderd ✓');
-  } catch(e) { console.error('verwijderToernooiSpelerNieuw mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Speler verwijderen', e); }
 }
 
 function openVerwijderToernooiSpeler() { openToernooiSpelersBeheer(); }
@@ -1467,9 +2286,15 @@ function renderToernooiActief() {
         Dag ${d.dagNr}${d.afgerond ? ' ✓' : ''}
       </button>`;
     });
-    // Knop: nieuwe dag toevoegen (alleen als laatste dag afgerond is)
-    const laasteAfgerond = (t.dagen || []).every(d => d.afgerond);
-    if (isBeheerder && laasteAfgerond) {
+    // v5.9.1: "+ Dag toevoegen" is er voor de coordinator altijd.
+    //
+    // WAT ER MIS WAS: de knop verscheen alleen als ALLE dagen al afgesloten
+    // waren. Merk je bij het aanmaken dat het toernooi twee dagen duurt in
+    // plaats van één, dan was de enige uitweg het hele toernooi weggooien en
+    // opnieuw instellen. Terwijl voegDagToe() er al klaar voor was: die
+    // waarschuwt zelf netjes als de vorige dag nog niet is afgesloten. De
+    // functie kon het dus wel, het scherm liet het niet toe.
+    if (isBeheerder) {
       dagTabsHtml += `<button onclick="openNieuweDagModal()"
         style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px dashed var(--border);border-bottom:none;background:transparent;color:var(--green);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">
         + Dag toevoegen
@@ -1516,13 +2341,29 @@ function renderToernooiActief() {
       <div id="t-ranglijst"></div>
     </div>` : '';
 
-  const matrixKaart = t.modus !== 'strokeplay' ? `
+  // v5.11.1: de onderlinge stand kan voor DEELNEMERS worden uitgezet. Dan wordt
+  // het blok bij hen niet getekend — niet ingeklapt maar weg. De coordinator
+  // ziet hem altijd; die kan hem voor zichzelf inklappen met het pijltje.
+  //
+  // ⚠ WAT ER MIS WAS. Er bestond al een schakelaar, maar verstopt ALS dat
+  // pijltje: `matrixIngeklapt` werd naar het toernooidocument geschreven en de
+  // deelnemers kregen hem ingeklapt te zien, zonder dat iets de coordinator
+  // vertelde dat hij daarmee iets voor anderen omzette. En hij hield op te
+  // werken zodra de uitslag was vrijgegeven (`&& !uitslag`), want dan klapte
+  // het blok bij iedereen weer open. Sierk, 12 september 2026: het gaat om
+  // "het onderlinge stand blokje dat aan/uit gezet moet worden".
+  //
+  // Nu: één schakelaar met een naam (matrixVerborgen), en het pijltje is weer
+  // gewoon een pijltje — alleen voor het eigen scherm, niets wordt bewaard.
+  const matrixZichtbaar = isBeheerder || !t.matrixVerborgen;
+  const matrixKaart = (t.modus !== 'strokeplay' && matrixZichtbaar) ? `
     <div class="card">
-      <div class="card-header ${isBeheerder ? 'inklapbaar' : ''} ${t.matrixIngeklapt && !uitslag ? 'ingeklapt' : ''}"
+      <div class="card-header ${isBeheerder ? 'inklapbaar' : ''} ${isBeheerder && window._matrixIngeklapt ? 'ingeklapt' : ''}"
         ${isBeheerder ? 'onclick="toggleToernooiMatrix()"' : ''}>
         <h2>Onderlinge stand</h2>
+        ${isBeheerder && t.matrixVerborgen ? '<span style="font-size:11px;color:var(--mid)">· niet zichtbaar voor deelnemers</span>' : ''}
       </div>
-      <div class="card-collapse ${t.matrixIngeklapt && !uitslag ? 'ingeklapt' : ''}" id="t-matrix-collapse">
+      <div class="card-collapse ${isBeheerder && window._matrixIngeklapt ? 'ingeklapt' : ''}" id="t-matrix-collapse">
         <div id="t-matrix" style="overflow-x:auto;padding:8px"></div>
       </div>
     </div>` : '';
@@ -1564,6 +2405,25 @@ function renderToernooiActief() {
 
   const beheerderKnoppen = isBeheerder ? `
     <div style="padding:0 0 16px">
+      ${!dagHeeftScores(dag) ? `
+      <button class="btn btn-ghost btn-block" onclick="openDagBewerkenModal()" style="margin-bottom:8px">
+        ✏️ Dag ${dagNr} wijzigen (datum, baan, holes)
+      </button>
+      ` : ''}
+      ${(t.spelers || []).some(sp => sp.login) ? `
+      <button class="btn btn-ghost btn-block" onclick="toonGastlogins()" style="margin-bottom:8px">
+        ⌨ Gastlogins tonen (${(t.spelers || []).filter(sp => sp.login).length})
+      </button>
+      ` : ''}
+      ${heeftGeenScores(t) ? `
+      <button class="btn btn-secondary btn-block" onclick="bewerkToernooi()" style="margin-bottom:8px">
+        ↺ Toernooi opnieuw instellen
+      </button>
+      <p style="font-size:11px;color:var(--light);margin:-4px 0 10px">
+        Het huidige toernooi wordt verwijderd en alle instellingen komen terug in het
+        aanmaakscherm. Voor alleen een dag erbij of een andere baan: gebruik de knoppen hierboven.
+      </p>
+      ` : ''}
       ${!dagAfgerond && !uitslag ? `
       <button id="t-uitslag-btn" class="btn btn-primary btn-block"
         style="margin-bottom:8px;${!allesIngevuld ? 'opacity:0.5;cursor:not-allowed' : ''}"
@@ -1574,6 +2434,11 @@ function renderToernooiActief() {
       ${uitslag && !dagAfgerond ? `
       <button class="btn btn-gold btn-block" onclick="sluitDagAf()" style="margin-bottom:8px">
         ✓ Dag ${dagNr} afsluiten
+      </button>
+      ` : ''}
+      ${dagAfgerond ? `
+      <button class="btn btn-ghost btn-block" onclick="heropenDag()" style="margin-bottom:8px">
+        ↩ Dag ${dagNr} heropenen
       </button>
       ` : ''}
       ${dagAfgerond && (t.dagen || []).every(d => d.afgerond) ? `
@@ -1595,19 +2460,19 @@ function renderToernooiActief() {
         💡 <strong>Tip:</strong> Zet toernooi-modus aan zodat deelnemers direct hun scorekaart zien en niet per ongeluk een ladderpartij starten.
       </div>
       ` : ''}
-      ${heeftGeenScores(t) ? `
-      <button class="btn btn-secondary btn-block" onclick="bewerkToernooi()" style="margin-bottom:8px">
-        ✏️ Terug naar aanmaakscherm
-      </button>
-      ` : ''}
       <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border);margin-bottom:8px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;font-size:13px;color:var(--dark)">
-          <input type="checkbox" id="t-scores-verborgen-chk"
-            ${t.scoresVerborgen ? 'checked' : ''}
-            onchange="toggleScoresVerborgen(this.checked)"
+          <input type="checkbox" id="t-matrix-zichtbaar-chk"
+            ${t.matrixVerborgen ? '' : 'checked'}
+            onchange="toggleMatrixVoorDeelnemers(this.checked)"
             style="accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
-          <span><strong>Scores verbergen</strong><br><span style="font-size:11px;color:var(--mid)">Deelnemers zien alleen hun eigen invoerkolom, niet die van anderen.</span></span>
+          <span><strong>Onderlinge stand tonen aan deelnemers</strong><br><span style="font-size:11px;color:var(--mid)">Uit: het blok staat alleen bij jou. Jij ziet hem altijd.</span></span>
         </label>
+      </div>
+      <div style="padding:8px 12px;background:var(--green-pale);border-radius:8px;margin-bottom:8px;font-size:12px;color:var(--mid);border-top:1px solid var(--border)">
+        👀 <strong>Markers</strong> — binnen elke flight houdt iedereen de kaart bij van één medespeler.
+        Deelnemers zien hun eigen kolom en die van hun marker-speler; de rest staat op punten.
+        Het oude vinkje "Scores verbergen" is daarmee vervallen.
       </div>
       <button class="btn btn-ghost btn-block" onclick="annuleerToernooi()" style="margin-bottom:8px;color:var(--red)">
         Toernooi annuleren
@@ -1668,6 +2533,119 @@ window.selecteerRanglijstDag = selecteerRanglijstDag;
 // ============================================================
 //  SCORECARD
 // ============================================================
+// ============================================================
+//  DE SCOREKAART: rollen, kleuren en meldingen — v5.11.0
+// ============================================================
+
+// Welke rol heeft de ingelogde gebruiker in de kolom van deze speler?
+function rolVoorKolom(spelerUid, dag) {
+  if (isCoordinatorRol()) return 'beheer';
+  const mij = huidigeBruiker?.uid || null;
+  if (!mij) return 'kijker';
+  if (mij === spelerUid) return 'speler';
+  if (markerVan(spelerUid, dag) === mij) return 'marker';
+  return 'kijker';
+}
+
+// Het oordeel over één vakje. Tijdens het spelen is de live/-submap de bron;
+// staat daar voor deze hole niets, dan valt hij terug op het toernooidocument
+// (geconsolideerde scores van een afgesloten dag, of oudere toernooien).
+function celOordeel(spelerUid, holeIdx, dag) {
+  const l = lagenVanDag(_liveScores[spelerUid], dag.dagNr);
+  const o = scoreOordeel(l.speler[holeIdx], l.marker[holeIdx], l.beheer[holeIdx]);
+  if (o.kleur !== 'leeg') return o;
+  const uitDoc = dag.scores?.[spelerUid]?.[holeIdx];
+  if (uitDoc === null || uitDoc === undefined || uitDoc === '') return o;
+  const v = Number(uitDoc);
+  return { kleur: 'zwart', vast: false, tel: v, speler: v, marker: v, beheer: null };
+}
+
+// Welk getal krijgt DEZE kijker te zien? Ieder ziet wat hij zelf intikte; de
+// wedstrijdleiding ziet dat van de speler. Zodra zij iets vaststelt, ziet
+// iedereen hetzelfde getal.
+function celWaarde(oordeel, rol) {
+  if (oordeel.vast) return oordeel.beheer;
+  return rol === 'marker' ? oordeel.marker : oordeel.speler;
+}
+
+// De opmaak van één vakje zit in CSS-klassen, niet in een stijl hier. Dat moet
+// ook: de clubstijl geeft elk invoerveld op een scorekaart een eigen rand mét
+// !important, en die wint van een losse stijl op het element. Zie het blok
+// "DE KLEUREN VAN DE TOERNOOIKAART" onderaan de opmaak in index.html.
+//   zwart = gewone rand, oranje = stippellijn, rood = dubbele rand
+function celKlasse(kleur, vast) {
+  const stand = kleur === 'rood' ? 't-cel-rood' : (kleur === 'oranje' ? 't-cel-oranje' : 't-cel-zwart');
+  return 't-cel ' + stand + (vast ? ' t-cel-vast' : '');
+}
+
+// De regel boven de kaart. Is er niets aan de hand, dan valt hij weg.
+function waarschuwingStijl(oordeel) {
+  if (!oordeel.tekst) return 'display:none';
+  const rood = oordeel.verschillen.length > 0;
+  return 'display:block;margin:6px 12px;padding:8px 10px;border-radius:8px;font-size:12px;'
+       + (rood ? 'background:#fdecea;color:#c0392b;font-weight:600;'
+               : 'background:var(--gold-pale);color:var(--gold);');
+}
+
+// Uitleg bij het aantikken van een vakje. Zonder het getal van de ander:
+// speler en marker moeten het er onderling over eens worden.
+function meldCelStatus(spelerUid, holeIdx) {
+  const dag = actieveDag();
+  if (!dag) return;
+  const o   = celOordeel(spelerUid, holeIdx, dag);
+  const rol = rolVoorKolom(spelerUid, dag);
+  if (o.kleur === 'rood') {
+    toast(rol === 'beheer'
+      ? `Hole ${holeIdx+1}: speler en marker hebben hier iets anders staan.`
+      : `Hole ${holeIdx+1}: jij en je marker hebben hier iets anders staan — overleg even en pas aan.`, 6000);
+  } else if (o.kleur === 'oranje' && rol !== 'beheer') {
+    toast(`Hole ${holeIdx+1}: wacht nog op je marker.`, 4000);
+  }
+}
+window.meldCelStatus = meldCelStatus;
+
+// Werkt de kleuren, de getallen en de waarschuwingsregel bij ZONDER de kaart
+// opnieuw op te bouwen. Nodig omdat de marker en de wedstrijdleiding tijdens
+// het invullen meetypen: een volledige hertekening zou de cursor uit het
+// vakje halen waar je net in staat. Het vakje dat de focus heeft blijft
+// daarom met rust.
+function verversScoreKleuren() {
+  const wrap = document.getElementById('t-scorecard-wrap');
+  const dag  = actieveDag();
+  if (!wrap || !dag) return;
+  const kleuren = [];
+  let herbouwNodig = false;
+  wrap.querySelectorAll('[data-uid]').forEach(el => {
+    const uid     = el.getAttribute('data-uid');
+    const holeIdx = Number(el.getAttribute('data-hole'));
+    const o       = celOordeel(uid, holeIdx, dag);
+    const rol     = rolVoorKolom(uid, dag);
+    kleuren.push({ holeNr: holeIdx + 1, kleur: o.kleur });
+    el.className = celKlasse(o.kleur, o.vast);
+
+    // Heeft de wedstrijdleiding deze hole zojuist vastgesteld, dan hoort er
+    // geen invoerveld meer te staan. Het veld gaat hier meteen op slot (zodat
+    // er niets meer doorheen glipt) en de kaart wordt opnieuw getekend zodra
+    // niemand in deze kaart aan het typen is.
+    const moetInvoer = !dag.afgerond && rol !== 'kijker' && !(o.vast && rol !== 'beheer');
+    if (moetInvoer !== (el.tagName === 'INPUT')) herbouwNodig = true;
+    if (el.tagName === 'INPUT' && !moetInvoer) el.readOnly = true;
+
+    if (el === document.activeElement) return;   // niet in andermans typewerk snijden
+    const val = celWaarde(o, rol);
+    const tekst = (val === null || val === undefined) ? '' : String(val);
+    if (el.tagName === 'INPUT') { if (el.value !== tekst) el.value = tekst; }
+    else el.textContent = tekst === '' ? '—' : tekst;
+  });
+  const regel = document.getElementById('t-kaart-waarschuwing');
+  if (regel) {
+    const o = kaartOordeel(kleuren);
+    regel.textContent = o.tekst;
+    regel.setAttribute('style', dag.afgerond ? 'display:none' : waarschuwingStijl(o));
+  }
+  if (herbouwNodig && !wrap.contains(document.activeElement)) renderTScorecard();
+}
+
 function renderTScorecard() {
   const t = toernooiData;
   if (!t) return;
@@ -1706,6 +2684,25 @@ function renderTScorecard() {
 
   let html = '';
 
+  // v5.9.1: melden dat deze dag nog niet is ingedeeld.
+  //
+  // Een dag zonder flights is NIET stuk: hierboven valt hij terug op één kaart
+  // met alle spelers erop, en daar kan gewoon op gescoord worden. Maar je kunt
+  // niet zien of dat een bewuste keuze is of dat de indeling nog moet komen —
+  // en bij een meerdaags toernooi moet hij nog komen, want dag 2 wordt
+  // ingedeeld op de prestaties van dag 1.
+  //
+  // (In v5.9.0 stond hier een verkeerde reparatie: toen kreeg elke dag de
+  // indeling van dag 1 gekopieerd. Wat Sierk op 11 september zag was iets
+  // anders — een flight MET een naam en ZONDER spelers. Dat is de lege flight,
+  // en die wordt sinds v5.9.0 tegengehouden bij het opslaan.)
+  if (isBeheerder && flights.length === 0 && !dag.afgerond) {
+    html += `<div style="background:var(--gold-pale);border-radius:8px;padding:10px 12px;margin:8px 12px;font-size:12px;color:var(--gold);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="flex:1;min-width:180px">⚑ Dag ${dag.dagNr} is nog niet in flights ingedeeld. Iedereen staat nu op één kaart.</span>
+      <button class="btn btn-sm btn-ghost" onclick="openFlightIndelingDag()">✈ Nu indelen</button>
+    </div>`;
+  }
+
   if (isBeheerder && teTonenFlights.length > 1) {
     html += `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);overflow-x:auto;scrollbar-width:none;padding:0 4px">`;
     teTonenFlights.forEach(({ naam }, ti) => {
@@ -1737,11 +2734,37 @@ function renderTScorecard() {
     </div>`;
   }
 
+  // v5.11.0: wie mag in welke kolom typen, en wat ziet hij daar?
+  //   beheer  de wedstrijdleiding — overal, en haar getal is beslissend
+  //   speler  zijn eigen kolom
+  //   marker  de kolom van de speler wiens kaart hij bijhoudt
+  //   kijker  alleen kijken, en dan zonder getal (een • zoals vroeger)
+  // Hiermee vervalt het vinkje "Scores verbergen": wie wat ziet volgt nu
+  // vanzelf uit de markerindeling, zonder knop om te vergeten.
+  const rollen = {};
+  spelers.forEach(s => { rollen[s.uid] = rolVoorKolom(s.uid, dag); });
+
+  // De waarschuwingsregel. Staat bij speler, marker EN wedstrijdleiding: een
+  // rood vakje op hole 7 van 18 zie je op een telefoon anders pas als je scrolt.
+  const kleuren = [];
+  spelers.forEach(s => {
+    if (rollen[s.uid] === 'kijker') return;
+    holesInVolgorde.forEach(holeIdx => {
+      kleuren.push({ holeNr: holeIdx + 1, kleur: celOordeel(s.uid, holeIdx, dag).kleur });
+    });
+  });
+  html += `<div id="t-kaart-waarschuwing" style="${dagAfgerond ? 'display:none' : waarschuwingStijl(kaartOordeel(kleuren))}">${esc(kaartOordeel(kleuren).tekst)}</div>`;
+
   html += `<div style="overflow-x:auto"><table class="scorecard" style="width:100%"><thead><tr><th class="player-col">Hole</th>`;
+  // v5.11.0: unieke korte namen binnen DEZE kaart. Drie spelers die Arjan
+  // heten stonden hier alle drie als "Arjan"; nu Arjan V, Arjan R, Arjan P.
+  const korteNamen = kortNaamMap(spelers);
   spelers.forEach(s => {
     const delen = s.naam.split(' ');
+    const rol = rollen[s.uid];
+    const merk = rol === 'marker' ? ' <span title="Jij markeert deze speler" style="color:var(--green)">✔</span>' : '';
     html += `<th class="player-col" style="max-width:70px">
-      <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px" title="${esc(s.naam)}">${esc(delen[0])}</span>
+      <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px" title="${esc(s.naam)}">${esc(korteNamen[s.uid] || delen[0])}${merk}</span>
       <span class="hole-par" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px;${isBeheerder&&!dagAfgerond?'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)':''}" ${isBeheerder&&!dagAfgerond?`onclick="editToernooiHcp('${escAttr(s.uid)}')"`:''}>
         ${esc(delen.slice(1).join(' ') || 'hcp '+Math.round(s.hcp))}
       </span>
@@ -1753,23 +2776,31 @@ function renderTScorecard() {
     const h = dag.holes[holeIdx];
     html += `<tr><td class="player-col" style="font-weight:600">${holeIdx+1}<span class="hole-par">p${h.par} SI${h.si}</span></td>`;
     spelers.forEach((s, si) => {
-      const val = dag.scores?.[s.uid]?.[holeIdx];
+      const rol = rollen[s.uid];
+      const o   = celOordeel(s.uid, holeIdx, dag);
+      const val = celWaarde(o, rol);
       // v4.0.2: cursor-richting per rol. Beheerder vult per speler in
       // (kolom omlaag), spelers vullen per hole in (rij naar rechts:
       // hole 1 speler 1 → hole 1 speler 2 → ... → hole 2 speler 1).
       const tabIdx = isBeheerder
         ? tabOffset + si * dag.holes.length + spelRij + 1
         : tabOffset + spelRij * spelers.length + si + 1;
-      if (dagAfgerond) {
-        html += `<td style="text-align:center;font-family:'DM Mono',monospace;font-size:14px">${val !== null && val !== undefined ? val : '—'}</td>`;
-      } else if (!isBeheerder && t.scoresVerborgen && s.uid !== mijnUid2) {
-        // v3.0.0-11.73: scores van andere spelers verbergen als beheerder dit heeft ingesteld
+      // Vastgesteld door de wedstrijdleiding? Dan kunnen speler en marker die
+      // hole niet meer wijzigen. Anders kan een gecontroleerde score weer
+      // opengetrokken worden en ben je terug bij af.
+      const opSlot = dagAfgerond || (o.vast && rol !== 'beheer');
+      if (rol === 'kijker' && !dagAfgerond) {
         html += `<td style="text-align:center;color:var(--light);font-size:14px">•</td>`;
+      } else if (opSlot) {
+        html += `<td style="text-align:center"><span data-uid="${escAttr(s.uid)}" data-hole="${holeIdx}"
+          class="${celKlasse(o.kleur, o.vast)}"
+          title="${o.vast ? 'Vastgesteld door de wedstrijdleiding' : ''}">${val !== null && val !== undefined ? val : '—'}</span></td>`;
       } else {
         html += `<td><input type="number" min="1" max="12" inputmode="numeric" value="${val !== null && val !== undefined ? val : ''}"
-          tabindex="${tabIdx}" onfocus="this.select()"
+          data-uid="${escAttr(s.uid)}" data-hole="${holeIdx}"
+          tabindex="${tabIdx}" onfocus="this.select();meldCelStatus('${escAttr(s.uid)}',${holeIdx})"
           oninput="updateTScoreAndAdvance('${escAttr(s.uid)}',${holeIdx},${tabIdx},this.value)"
-          style="width:42px;padding:4px;text-align:center;font-size:14px;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--dark)"></td>`;
+          class="${celKlasse(o.kleur, o.vast)}"></td>`;
       }
     });
     html += '</tr>';
@@ -1777,8 +2808,7 @@ function renderTScorecard() {
 
   html += '<tr class="t-totaal-rij" style="background:var(--green-pale)"><td class="player-col" style="font-weight:700">Tot</td>';
   spelers.forEach(s => {
-    // v3.0.0-11.73: verberg totaal van anderen als scoresVerborgen aan staat
-    if (!isBeheerder && t.scoresVerborgen && s.uid !== mijnUid2) {
+    if (rollen[s.uid] === 'kijker' && !dagAfgerond) {
       html += `<td data-speler-id="${s.uid}" style="text-align:center;color:var(--light)">•</td>`;
     } else {
       const scores = dag.scores?.[s.uid] || [];
@@ -1799,15 +2829,8 @@ function refreshToernooiScorekaart() {
   renderTScorecard();
   renderTMatrix();
   if (actieveDag()?.uitslagZichtbaar || toernooiData?.modus === 'strokeplay') renderTRanglijst();
-  const alles = alleScoresIngevuld(toernooiData);
-  const uitslagBtn = document.getElementById('t-uitslag-btn');
-  if (uitslagBtn) {
-    uitslagBtn.disabled = !alles;
-    uitslagBtn.style.opacity = alles ? '1' : '0.5';
-    uitslagBtn.style.cursor = alles ? 'pointer' : 'not-allowed';
-    uitslagBtn.textContent = `📊 Naar de uitslag${alles ? '' : ' (scores onvolledig)'}`;
-    uitslagBtn.onclick = alles ? toonToernooiUitslag : null;
-  }
+  // v5.11.0: één plek voor de uitslagknop — zie verversUitslagKnop().
+  verversUitslagKnop();
 }
 
 function selecteerFlightTab(fi) {
@@ -1829,19 +2852,47 @@ function updateTScoreAndAdvance(spelerId, holeIdx, tabIdx, val) {
   }
 }
 
+// v5.11.0: elke invoer gaat naar de laag van degene die hem intikt.
+// Zie "MARKERS EN DE DRIE SCOREKAARTEN" bovenin dit bestand.
 function updateTScore(spelerId, holeIdx, val) {
   if (!toernooiData || !actieveToernooiId) return;
   const dag = actieveDag();
   if (!dag || dag.afgerond) return;
 
   const key = String(spelerId);
-  if (!dag.scores[key]) dag.scores[key] = Array(dag.holes.length).fill(null);
-  dag.scores[key][holeIdx] = val === '' ? null : parseInt(val);
+  const rol = rolVoorKolom(key, dag);
+  if (rol === 'kijker') return;                 // mag hier niet typen
+
+  const bestaand = celOordeel(key, holeIdx, dag);
+  if (bestaand.vast && rol !== 'beheer') return; // wedstrijdleiding heeft het laatste woord
+
+  const laag  = rol === 'beheer' ? 'beheerDagen' : (rol === 'marker' ? 'markerDagen' : 'dagen');
+  const dagNr = dag.dagNr || toernooiData.actiefDagNr || 1;   // v4.0.0 (fix 7.4)
+
+  // 1. de eigen laag bijwerken (lokaal, zodat de kleur meteen klopt)
+  const live   = _liveScores[key] || {};
+  const perDag = { ...(live[laag] || {}) };
+  const rij    = Array.isArray(perDag[String(dagNr)]) ? [...perDag[String(dagNr)]] : [];
+  while (rij.length < dag.holes.length) rij.push(null);
+  rij[holeIdx] = val === '' ? null : parseInt(val);
+  perDag[String(dagNr)] = rij;
+  store._liveScores[key] = { ...live, [laag]: perDag, timestamp: Date.now() };
+  if (laag === 'dagen') {
+    store._liveScores[key].dagNr  = dagNr;
+    store._liveScores[key].scores = rij;
+  }
+
+  // 2. opnieuw bepalen wat er MEETELT (zwart, of bij twijfel het getal van de
+  //    speler). Alles wat verderop rekent — totaal, matrix, ranglijst,
+  //    dag afsluiten — leest dag.scores en hoeft van de lagen niets te weten.
+  if (!dag.scores) dag.scores = {};
+  dag.scores[key] = _liveScoresVanDag(store._liveScores[key], dagNr) || [];
 
   const idx = alleToernooien.findIndex(t => t.id === actieveToernooiId);
   if (idx >= 0) alleToernooien[idx] = JSON.parse(JSON.stringify(toernooiData));
 
   updateTTotaalRijInline();
+  verversScoreKleuren();
 
   const isBeheerder = isCoordinatorRol();
   if (isBeheerder) {
@@ -1853,25 +2904,57 @@ function updateTScore(spelerId, holeIdx, val) {
 
   if (dag.uitslagZichtbaar) renderTRanglijst();
 
-  const alles = alleScoresIngevuld(toernooiData);
-  const btn = document.getElementById('t-uitslag-btn');
-  if (btn) {
-    btn.disabled = !alles;
-    btn.style.opacity = alles ? '1' : '0.5';
-    btn.style.cursor = alles ? 'pointer' : 'not-allowed';
-    const dagNr = dag.dagNr || toernooiData.actiefDagNr || 1; // v4.0.0 (fix 7.4)
-    btn.textContent = `📊 Uitslag dag ${dagNr}${alles ? '' : ' (scores onvolledig)'}`;
-    btn.onclick = alles ? toonToernooiUitslag : null;
-  }
+  verversUitslagKnop();
 
   // v3.0.0-11.106: ALLE score-invoer gaat naar live/{spelerId}.
-  // Coördinator en speler schrijven beide naar de subcollectie;
-  // het hoofddocument wordt pas bij "dag afsluiten" bijgewerkt.
-  const dagNr = dag.dagNr || toernooiData.actiefDagNr || 1; // v4.0.0 (fix 7.4)
-  const scoresCopy = [...(dag.scores[String(spelerId)] || [])];
-  // Update _liveScores lokaal voor directe weergave
-  store._liveScores[String(spelerId)] = { dagNr, scores: scoresCopy, timestamp: Date.now() };
-  slaSpelerScoreOp(spelerId, dagNr, scoresCopy);
+  // Het hoofddocument wordt pas bij "dag afsluiten" bijgewerkt.
+  slaSpelerScoreOp(key, dagNr, rij, laag);
+}
+
+// Holes waar speler en marker het niet eens zijn. Een uitslag op ruzie-scores
+// is erger dan een uitslag die vijf minuten later komt, dus hierop gaat de
+// knop "Naar de uitslag" op slot.
+function openVerschillen(t, dag) {
+  t = t || toernooiData;
+  dag = dag || actieveDag(t);
+  if (!t || !dag) return [];
+  const uit = [];
+  (t.spelers || []).forEach(s => {
+    const l = lagenVanDag(_liveScores[s.uid], dag.dagNr);
+    (dag.holes || []).forEach((_, i) => {
+      if (scoreOordeel(l.speler[i], l.marker[i], l.beheer[i]).kleur === 'rood') {
+        uit.push({ uid: s.uid, holeNr: i + 1 });
+      }
+    });
+  });
+  return uit;
+}
+
+// Eén plek waar de uitslagknop wordt bijgewerkt. Stond eerder op twee plekken
+// met bijna dezelfde tekst; bij een wijziging bleef er steevast een achter.
+function verversUitslagKnop() {
+  const btn = document.getElementById('t-uitslag-btn');
+  if (!btn) return;
+  const t    = toernooiData;
+  const dag  = actieveDag(t);
+  const alles = alleScoresIngevuld(t, dag);
+  const rood  = openVerschillen(t, dag);
+  const mag   = alles && rood.length === 0;
+  const dagNr = dag?.dagNr || t?.actiefDagNr || 1;
+
+  btn.disabled = !mag;
+  btn.style.opacity = mag ? '1' : '0.5';
+  btn.style.cursor  = mag ? 'pointer' : 'not-allowed';
+  // Een verschil gaat vóór een gat: een gat vult zichzelf terwijl er gespeeld
+  // wordt, een verschil niet — daar moeten twee mensen iets voor doen, en hoe
+  // eerder ze het horen hoe beter ze het zich nog herinneren.
+  let staart = '';
+  if (rood.length > 0) {
+    const holes = [...new Set(rood.map(r => r.holeNr))].sort((a, b) => a - b);
+    staart = ` (eerst ${holes.length === 1 ? 'hole ' + holes[0] : 'holes ' + holes.join(', ')} uitpraten)`;
+  } else if (!alles) staart = ' (scores onvolledig)';
+  btn.textContent = `📊 Uitslag dag ${dagNr}${staart}`;
+  btn.onclick = mag ? toonToernooiUitslag : null;
 }
 
 function updateTTotaalRijInline() {
@@ -2284,15 +3367,19 @@ function renderTMatrix() {
 
   const kleur = { W: '#d4edda', L: '#f8d7da', T: '#fff3cd' };
 
+  // v5.11.0: unieke korte namen over het hele toernooi. In de onderlinge stand
+  // stonden drie kolommen én drie rijen met alleen "Arjan" — niet te lezen.
+  const korteNamen = kortNaamMap(t.spelers);
+
   let html = `<table style="border-collapse:collapse;font-size:11px;width:100%">`;
   html += `<tr><th style="padding:4px;background:var(--green);color:white"></th>`;
   t.spelers.forEach(s => {
-    html += `<th style="padding:4px 6px;background:var(--green);color:white;text-align:center">${esc(s.naam.split(' ')[0])}</th>`;
+    html += `<th style="padding:4px 6px;background:var(--green);color:white;text-align:center" title="${escAttr(s.naam)}">${esc(korteNamen[s.uid])}</th>`;
   });
   html += '</tr>';
 
   t.spelers.forEach((sA, i) => {
-    html += `<tr><td style="padding:4px 8px;font-weight:600;font-size:12px;white-space:nowrap">${esc(sA.naam.split(' ')[0])}</td>`;
+    html += `<tr><td style="padding:4px 8px;font-weight:600;font-size:12px;white-space:nowrap" title="${escAttr(sA.naam)}">${esc(korteNamen[sA.uid])}</td>`;
     t.spelers.forEach((sB, j) => {
       if (i === j) {
         html += `<td style="background:var(--border);text-align:center;padding:4px">—</td>`;
@@ -2376,6 +3463,9 @@ async function bevestigToernooiAfsluiten() {
     const t = toernooiData;
     if (!t) return;
 
+    // v5.10.0: gastlogins mogen na afloop weg.
+    try { await ruimGastloginsOp(t); } catch(e) { console.warn('gastlogins opruimen:', e); }
+
     if (t.modus === 'strokeplay') {
       t.status = 'afgerond';
       const idx = alleToernooien.findIndex(x => x.id === actieveToernooiId);
@@ -2383,7 +3473,11 @@ async function bevestigToernooiAfsluiten() {
       await setDoc(doc(db, 'toernooien', actieveToernooiId), t);
 
       // v3.0.0-11.73: reset toernooiSpeler-vlag voor batch-import deelnemers
-      const spelerUids = (t.spelers || []).filter(s => !s.gast).map(s => s.uid);
+      // v5.10.0: NIET meer `.filter(s => !s.gast)`. Sinds gasten een eigen inlog
+      // kunnen hebben, zijn juist zij degenen bij wie de toernooi-vlag uit moet.
+      // Een tijdelijke gast zonder account heeft geen profiel; die valt hier
+      // vanzelf af omdat het document niet bestaat.
+      const spelerUids = (t.spelers || []).map(s => s.uid).filter(u => u && !String(u).startsWith('gast_'));
       await Promise.all(spelerUids.map(uid =>
         getDoc(doc(db, 'spelers', uid)).then(snap => {
           if (snap.exists() && snap.data().toernooiSpeler === true) {
@@ -2512,7 +3606,9 @@ async function bevestigToernooiAfsluiten() {
       dagen: (t.dagen || []).map(d => ({ dagNr: d.dagNr, datum: d.datum, baan: d.baan, holes: d.holes.length })),
       ptWin: t.ptWin, ptTie: t.ptTie, ptLoss: t.ptLoss,
       ranglijst: volgorde.map(e => ({ naam: e.s.naam, hcp: Math.round(e.s.hcp), punten: e.pt, won: e.w, tied: e.ti, lost: e.l })),
-      spelerNamen: t.spelers.map(s => s.naam.split(' ')[0]),
+      // v5.11.0: ook in het archief unieke korte namen — anders staan er in de
+      // bewaarde matrix drie kolommen "Arjan" en is hij achteraf onleesbaar.
+      spelerNamen: (nm => t.spelers.map(s => nm[s.uid]))(kortNaamMap(t.spelers)),
       matrix: matrixArchief,
       timestamp: Date.now()
     });
@@ -2523,9 +3619,11 @@ async function bevestigToernooiAfsluiten() {
 
     // v3.0.0-11.73: reset toernooiSpeler-vlag voor alle deelnemers die via batch-import
     // zijn aangemaakt. Ze kunnen de app daarna als gewone speler gebruiken.
+    // v5.10.0: gasten met een eigen inlog horen hier juist WEL bij — zie de
+    // toelichting bij de andere afsluitroute.
     const toernooiSpelerUids = (t.spelers || [])
-      .filter(s => !s.gast)
-      .map(s => s.uid);
+      .map(s => s.uid)
+      .filter(u => u && !String(u).startsWith('gast_'));
     if (toernooiSpelerUids.length > 0) {
       await Promise.all(toernooiSpelerUids.map(uid =>
         getDoc(doc(db, 'spelers', uid)).then(snap => {
@@ -2545,7 +3643,7 @@ async function bevestigToernooiAfsluiten() {
     toast('Toernooi afgerond! 🏅 Ladder bijgewerkt.');
     renderToernooi();
     renderLadder();
-  } catch(e) { console.error('bevestigToernooiAfsluiten mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Toernooi afsluiten', e); }
 }
 
 // ============================================================
@@ -2608,10 +3706,7 @@ async function bewerkToernooi() {
     }
 
     toast('Instellingen hersteld — pas aan en start opnieuw');
-  } catch(e) {
-    console.error('bewerkToernooi mislukt:', e);
-    toast('Er is iets misgegaan, probeer opnieuw');
-  }
+  } catch(e) { toernooiFout('bewerkToernooi', e); }
 }
 window.bewerkToernooi = bewerkToernooi;
 
@@ -2688,7 +3783,7 @@ function _herstelSetupVanuitToernooi(t) {
       starttijd: f.starttijd || dag1?.starttijd || '09:00',
       spelers:  (f.spelerIds || []).map(uid => {
         const sp = (t.spelers || []).find(s => s.uid === uid);
-        return sp ? { uid: sp.uid, naam: sp.naam, hcp: sp.hcp } : null;
+        return sp ? { ...sp } : null;   // v5.10.0: gast-vlag mee
       }).filter(Boolean)
     }));
   } else {
@@ -2701,6 +3796,9 @@ async function annuleerToernooi() {
     // v4.0.0 (fix 7.2): eerlijke tekst — annuleren is herstelbaar via de
     // sectie "Geannuleerde toernooien" onderaan de toernooipagina.
     if (!confirm("Toernooi annuleren?\n\nHet toernooi verdwijnt uit beeld, maar kan via 'Geannuleerde toernooien' worden hersteld of definitief verwijderd.")) return;
+    // v5.10.0: eerst de gastlogins aanbieden om op te ruimen, zolang het
+    // toernooi-object nog compleet in beeld is.
+    try { await ruimGastloginsOp(toernooiData); } catch(e) { console.warn('gastlogins opruimen:', e); }
     if (actieveToernooiId) await setDoc(doc(db, 'toernooien', actieveToernooiId), { ...toernooiData, status: 'geannuleerd' });
     store.alleToernooien = alleToernooien.filter(t => t.id !== actieveToernooiId);
     store.toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
@@ -2708,7 +3806,7 @@ async function annuleerToernooi() {
     window._bekijkDagNr = null;
     renderToernooi();
     toast('Toernooi geannuleerd — herstelbaar via Geannuleerde toernooien');
-  } catch(e) { console.error('annuleerToernooi mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { toernooiFout('Toernooi annuleren', e); }
 }
 
 // ============================================================
@@ -2718,6 +3816,31 @@ async function annuleerToernooi() {
 // Deze sectie maakt ze zichtbaar voor de beheerder, met de keuze om te
 // herstellen (status terug naar actief) of definitief te verwijderen.
 
+// v5.9.0: zolang er een toernooi loopt is het aanmaakformulier opgeborgen.
+// Deze knop haalt het terug — bewust één extra handeling, zodat niemand per
+// ongeluk een tweede toernooi naast het lopende begint.
+function renderNieuwToernooiKnop(toon) {
+  let sectie = document.getElementById('toernooi-nieuw-sectie');
+  if (!toon) { if (sectie) sectie.remove(); return; }
+  if (sectie) return;
+  sectie = document.createElement('div');
+  sectie.id = 'toernooi-nieuw-sectie';
+  sectie.innerHTML = `
+    <button class="btn btn-ghost btn-block" style="font-size:13px;color:var(--mid);margin-top:4px" onclick="toonNieuwToernooiFormulier()">
+      ➕ Nieuw toernooi aanmaken
+    </button>`;
+  const pageEl = document.getElementById('page-toernooi');
+  if (pageEl) pageEl.appendChild(sectie);
+}
+
+function toonNieuwToernooiFormulier() {
+  window._toonNieuwToernooiFormulier = true;
+  renderToernooi();
+  const setup = document.getElementById('toernooi-setup-wrap');
+  if (setup) setup.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+window.toonNieuwToernooiFormulier = toonNieuwToernooiFormulier;
+
 function renderGeannuleerdeKnop(isBeheerder) {
   let sectie = document.getElementById('toernooi-geannuleerd-sectie');
   if (!isBeheerder) { if (sectie) sectie.remove(); return; }
@@ -2726,7 +3849,7 @@ function renderGeannuleerdeKnop(isBeheerder) {
   sectie.id = 'toernooi-geannuleerd-sectie';
   sectie.innerHTML = `
     <button class="btn btn-ghost btn-block" style="font-size:13px;color:var(--mid);margin-top:4px" onclick="laadGeannuleerdeToernooien()">
-      🗂 Geannuleerde toernooien tonen
+      🗂 Eerdere toernooien tonen
     </button>
     <div id="toernooi-geannuleerd-lijst"></div>`;
   const pageEl = document.getElementById('page-toernooi');
@@ -2738,23 +3861,48 @@ async function laadGeannuleerdeToernooien() {
   if (!lijst) return;
   lijst.innerHTML = '<p style="font-size:13px;color:var(--light);padding:8px 4px">Laden…</p>';
   try {
-    const snap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'geannuleerd')));
+    // v5.10.0: ook AFGERONDE toernooien staan hier.
+    //
+    // WAAROM DIT MOEST. De app haalt alleen toernooien op met status 'actief'.
+    // Sloot je een toernooi af, dan was het daarna nergens meer te bereiken —
+    // en dus ook de uitslaglink niet meer te beheren. Deze lijst was het enige
+    // venster op oude toernooien en liet alleen geannuleerde zien.
+    const snap = await getDocs(query(TOERNOOIEN_COL, where('status', 'in',
+      ['geannuleerd', 'afgerond', 'afgelopen'])));
     if (snap.empty) {
-      lijst.innerHTML = '<p style="font-size:13px;color:var(--light);padding:8px 4px">Geen geannuleerde toernooien.</p>';
+      lijst.innerHTML = '<p style="font-size:13px;color:var(--light);padding:8px 4px">Geen eerdere toernooien.</p>';
       return;
     }
     const items = snap.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-    lijst.innerHTML = '<div class="card" style="margin-top:8px">' + items.map(t => `
-      <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border)">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.naam || 'Naamloos')}</div>
-          <div style="font-size:11px;color:var(--light)">${(t.dagen || []).length} dag(en) · ${(t.spelers || []).length} spelers${t.timestamp ? ' · ' + new Date(t.timestamp).toLocaleDateString('nl-NL') : ''}</div>
+    lijst.innerHTML = '<div class="card" style="margin-top:8px">' + items.map(t => {
+      const geannuleerd = t.status === 'geannuleerd';
+      const openbaar = t.publiek !== false;
+      return `
+      <div style="padding:10px 14px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.naam || 'Naamloos')}</div>
+            <div style="font-size:11px;color:var(--light)">
+              ${geannuleerd ? 'geannuleerd' : 'afgerond'} · ${(t.dagen || []).length} dag(en) · ${(t.spelers || []).length} spelers${t.timestamp ? ' · ' + new Date(t.timestamp).toLocaleDateString('nl-NL') : ''}
+            </div>
+          </div>
+          ${geannuleerd ? `<button class="btn btn-sm btn-ghost" style="color:var(--green)" onclick="herstelGeannuleerdToernooi('${escAttr(t.id)}')">↩ Herstellen</button>` : ''}
+          <button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="verwijderGeannuleerdToernooi('${escAttr(t.id)}','${escAttr(t.naam || '')}')">🗑</button>
         </div>
-        <button class="btn btn-sm btn-ghost" style="color:var(--green)" onclick="herstelGeannuleerdToernooi('${escAttr(t.id)}')">↩ Herstellen</button>
-        <button class="btn btn-sm btn-ghost" style="color:var(--red)" onclick="verwijderGeannuleerdToernooi('${escAttr(t.id)}','${escAttr(t.naam || '')}')">🗑</button>
-      </div>`).join('') + '</div>';
+        ${!geannuleerd ? `
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--mid);flex:1;min-width:190px">
+            <input type="checkbox" ${openbaar ? 'checked' : ''}
+              onchange="zetToernooiOpenbaar('${escAttr(t.id)}', this.checked)"
+              style="accent-color:var(--green);width:16px;height:16px;flex-shrink:0">
+            <span>Uitslag openbaar via de link</span>
+          </label>
+          ${openbaar ? `<button class="btn btn-sm btn-ghost" onclick="kopieerUitslagLink('${escAttr(t.id)}')">🔗 Link kopiëren</button>` : ''}
+        </div>` : ''}
+      </div>`;
+    }).join('') + '</div>';
   } catch(e) {
     console.error('Geannuleerde toernooien laden mislukt:', e);
     lijst.innerHTML = '<p style="font-size:13px;color:var(--red);padding:8px 4px">Laden mislukt, probeer opnieuw.</p>';
@@ -2832,6 +3980,153 @@ function kopieerLiveLink() {
 }
 window.kopieerLiveLink = kopieerLiveLink;
 
+// v5.10.0: dezelfde link, maar voor een toernooi dat al is afgesloten. Die
+// staat in de lijst "Eerdere toernooien", want een afgerond toernooi is
+// nergens anders meer te bereiken.
+function kopieerUitslagLink(id) {
+  const base = window.location.href.split('/').slice(0, -1).join('/');
+  const url = `${base}/toernooi-live.html?t=${id}`;
+  navigator.clipboard.writeText(url).then(() => {
+    toast('Link gekopieerd — hier blijft de uitslag staan ✓');
+  }).catch(() => {
+    prompt('Kopieer deze link:', url);
+  });
+}
+window.kopieerUitslagLink = kopieerUitslagLink;
+
+// v5.10.0: de uitslaglink achteraf dichtzetten of weer openen.
+//
+// ⚠ ALLEEN BIJ EEN NIET-ACTIEF TOERNOOI. Dat is geen willekeur: de
+// meekijkpagina zoekt zonder link-parameter zelf het actieve toernooi op, en
+// Firestore laat een hele zoekopdracht vallen zodra er ook maar één document
+// bij zit dat niet gelezen mag worden. Een dichtgezet ACTIEF toernooi zou het
+// meekijken dus voor alle toernooien tegelijk slopen. Zie ook de toelichting
+// in firestore.rules.
+async function zetToernooiOpenbaar(id, openbaar) {
+  try {
+    const snap = await getDoc(doc(db, 'toernooien', id));
+    if (!snap.exists()) { toast('Toernooi niet gevonden'); return; }
+    if (snap.data().status === 'actief') {
+      toast('Kan pas na afloop: een lopend toernooi blijft zichtbaar');
+      laadGeannuleerdeToernooien();
+      return;
+    }
+    await updateDoc(doc(db, 'toernooien', id), { publiek: !!openbaar });
+    toast(openbaar
+      ? 'Uitslag is weer openbaar via de link ✓'
+      : 'Uitslag is niet meer openbaar — de link geeft nu niets meer');
+    laadGeannuleerdeToernooien();
+  } catch(e) { toernooiFout('Uitslag openbaar wijzigen', e); }
+}
+window.zetToernooiOpenbaar = zetToernooiOpenbaar;
+
+// v5.10.0: alle gastlogins van dit toernooi bij elkaar, met het wachtwoord,
+// zodat de coordinator ze in één keer kan uitdelen.
+//
+// ⚠ Dit toont een wachtwoord op het scherm. Dat is precies de bedoeling — het
+// is een weggooiwachtwoord voor één toernooi — maar het is bewust een aparte
+// handeling en het staat nergens standaard in beeld.
+async function toonGastlogins() {
+  try {
+    const t = toernooiData;
+    if (!t) return;
+    const gasten = (t.spelers || []).filter(sp => sp.login);
+    if (gasten.length === 0) { toast('Geen gastlogins in dit toernooi'); return; }
+
+    const geheim = await _leesGastWachtwoord(actieveToernooiId);
+    const ww = geheim?.wachtwoord || '(wachtwoord niet gevonden)';
+    const regels = gasten.map(g => `${g.naam}  —  inlog: ${g.naam}  ·  wachtwoord: ${ww}`);
+    const tekst = `Inloggen op ${window.location.origin}${window.location.pathname}\n\n`
+      + regels.join('\n')
+      + `\n\nTip: de gast tikt zijn eigen voor- en achternaam in, plus dit wachtwoord.`;
+
+    const html = `
+      <p style="font-size:13px;color:var(--mid);margin-bottom:10px">
+        Deze spelers loggen in met hun <strong>voor- en achternaam</strong> en het
+        wachtwoord hieronder. Na afloop van het toernooi werkt de inlog niet meer.
+      </p>
+      <div style="background:var(--soft-bg);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+        <div style="font-size:11px;color:var(--mid);text-transform:uppercase;font-weight:600">Wachtwoord</div>
+        <div style="font-family:'DM Mono',monospace;font-size:16px">${esc(ww)}</div>
+      </div>
+      ${gasten.map(g => `
+        <div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">
+          <span>${esc(g.naam)}</span>
+          <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--light)">${esc(g.login)}</span>
+        </div>`).join('')}
+      <button class="btn btn-primary btn-block" style="margin-top:12px"
+        onclick="kopieerGastlogins()">📋 Lijst kopiëren</button>`;
+
+    window._gastloginTekst = tekst;
+    document.getElementById('archief-detail-titel').textContent = 'Gastlogins';
+    document.getElementById('archief-detail-inhoud').innerHTML = html;
+    document.getElementById('modal-archief-detail').classList.add('open');
+  } catch(e) { toernooiFout('Gastlogins tonen', e); }
+}
+window.toonGastlogins = toonGastlogins;
+
+function kopieerGastlogins() {
+  const tekst = window._gastloginTekst || '';
+  navigator.clipboard.writeText(tekst)
+    .then(() => toast('Lijst gekopieerd ✓'))
+    .catch(() => prompt('Kopieer deze lijst:', tekst));
+}
+window.kopieerGastlogins = kopieerGastlogins;
+
+// ============================================================
+//  GASTLOGINS OPRUIMEN  (v5.10.0)
+// ============================================================
+//  Na afloop mogen de accounts weg. Sierk ruimt liever zelf op, maar dan moeten
+//  ze wel als groep herkenbaar zijn — vandaar de toernooicode in de inlognaam
+//  en het veld `toernooiGast` op het profiel.
+//
+//  ⚠ DRIE GRENDELS, want dit verwijdert accounts van mensen:
+//    1. alleen spelers met `gast: true` in DIT toernooi die een `login` hebben;
+//    2. het profiel moet `toernooiGast: true` dragen — een clublid heeft dat
+//       nooit, ook niet als hij toevallig als gast meedeed;
+//    3. de uid mag in GEEN ENKELE ladder voorkomen.
+//  Valt er ook maar één controle om, dan wordt die speler overgeslagen en
+//  gemeld. Liever een account te veel blijven staan dan een clublid kwijt.
+async function ruimGastloginsOp(toernooi) {
+  const t = toernooi || toernooiData;
+  const gasten = (t?.spelers || []).filter(sp => sp.gast && sp.login && sp.uid);
+  if (gasten.length === 0) return { verwijderd: 0, overgeslagen: [] };
+
+  if (!confirm(
+    `Er horen ${gasten.length} gastlogin(s) bij dit toernooi.\n\n` +
+    `Verwijderen? De spelers blijven in de uitslag staan; alleen hun inlog verdwijnt.`
+  )) return { verwijderd: 0, overgeslagen: [], afgezien: true };
+
+  const ladderUids = new Set((alleLadders || []).flatMap(l => l.spelerIds || []));
+  let verwijderd = 0;
+  const overgeslagen = [];
+
+  for (const g of gasten) {
+    try {
+      if (ladderUids.has(g.uid)) { overgeslagen.push(`${g.naam} (staat in een ladder)`); continue; }
+      const snap = await getDoc(doc(db, 'spelers', g.uid));
+      if (!snap.exists()) { overgeslagen.push(`${g.naam} (geen profiel)`); continue; }
+      if (snap.data().toernooiGast !== true) { overgeslagen.push(`${g.naam} (geen gastaccount)`); continue; }
+      // Eerst het profiel weg, dan het account. De Cloud Function verwijdert
+      // uitsluitend accounts ZONDER profiel — die veiligheidsklep blijft zo heel.
+      await deleteDoc(doc(db, 'spelers', g.uid));
+      await _verwijderGastAccountFn({ targetUid: g.uid, isTest: IS_TEST });
+      verwijderd++;
+    } catch (e) {
+      console.error('gastlogin opruimen mislukt voor', g.naam, e);
+      overgeslagen.push(`${g.naam} (${e?.code || e?.message || 'onbekende fout'})`);
+    }
+  }
+
+  if (overgeslagen.length > 0) {
+    toast(`${verwijderd} inlog(s) weg. Overgeslagen: ${overgeslagen.join(', ')}`, 9000);
+  } else {
+    toast(`${verwijderd} gastlogin(s) verwijderd ✓`);
+  }
+  return { verwijderd, overgeslagen };
+}
+window.ruimGastloginsOp = ruimGastloginsOp;
+
 // ============================================================
 //  TOERNOOI-MODUS
 // ============================================================
@@ -2846,27 +4141,14 @@ async function toggleToernooiModus(aan) {
     // Laat auth.js de nav + header bijwerken
     window.dispatchEvent(new CustomEvent('toernooiModusGewijzigd'));
     toast(aan ? 'Toernooi-modus aan ✓' : 'Toernooi-modus uit');
-  } catch(e) { console.error('toggleToernooiModus mislukt:', e); toast('Er is iets misgegaan'); }
+  } catch(e) { toernooiFout('Toernooi-modus wijzigen', e); }
 }
 window.toggleToernooiModus = toggleToernooiModus;
 
-async function toggleScoresVerborgen(aan) {
-  try {
-    if (!toernooiData || !actieveToernooiId) return;
-    toernooiData.scoresVerborgen = !!aan;
-    const idx = alleToernooien.findIndex(t => t.id === actieveToernooiId);
-    if (idx >= 0) alleToernooien[idx].scoresVerborgen = !!aan;
-    // v4.0.0 (fix 7.6): alleen het gewijzigde veld schrijven
-    await updateDoc(doc(db, 'toernooien', actieveToernooiId), { scoresVerborgen: !!aan });
-    renderTScorecard();
-    toast(aan ? 'Scores verborgen voor deelnemers ✓' : 'Scores zichtbaar voor deelnemers ✓');
-  } catch(e) { console.error('toggleScoresVerborgen mislukt:', e); toast('Er is iets misgegaan'); }
-}
-window.toggleScoresVerborgen = toggleScoresVerborgen;
 
 export function getActiefToernooiMetModus() {
   return alleToernooien.find(t => t.toernooiModus && t.status === 'actief') || null;
 }
 
 
-export { alleScoresIngevuld, annuleerToernooi, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarLadderTab, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, herlaadToernooiListeners, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, toggleTRankingLadder, toggleTScorecard, toggleTSpeler, toggleTSpelersLadder, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
+export { alleScoresIngevuld, annuleerToernooi, behoudLiveScores, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarLadderTab, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, herlaadToernooiListeners, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, toggleTRankingLadder, toggleTScorecard, toggleTSpeler, toggleTSpelersLadder, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
