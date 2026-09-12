@@ -547,7 +547,7 @@ alleToernooien.forEach(t => {
           const dagUitslag = dag?.afgerond || nieuweData.uitslagZichtbaar;
           if (dagUitslag || nieuweData.modus === 'strokeplay') renderTRanglijst();
         } else {
-          const oudeMatrixIngeklapt  = toernooiData?.matrixIngeklapt;
+          const oudeMatrixVerborgen  = toernooiData?.matrixVerborgen;
           const oudeUitslagZichtbaar = toernooiData?.uitslagZichtbaar;
           const oudeStatus           = toernooiData?.status;
           const oudeToernooiModus    = toernooiData?.toernooiModus;
@@ -571,11 +571,11 @@ alleToernooien.forEach(t => {
             window.dispatchEvent(new CustomEvent('toernooiModusGewijzigd'));
           }
 
-          if (nieuweData.matrixIngeklapt !== oudeMatrixIngeklapt) {
-            const collapse = document.getElementById('t-matrix-collapse');
-            const header = collapse?.previousElementSibling;
-            if (collapse) collapse.classList.toggle('ingeklapt', !!nieuweData.matrixIngeklapt);
-            if (header) header.classList.toggle('ingeklapt', !!nieuweData.matrixIngeklapt);
+          // v5.11.1: zet de coordinator de onderlinge stand aan of uit, dan moet
+          // het blok bij de deelnemer verschijnen of verdwijnen — inklappen is
+          // niet genoeg, want dan staan de gegevens er nog gewoon.
+          if (nieuweData.matrixVerborgen !== oudeMatrixVerborgen) {
+            renderToernooiActief();
           }
 
           clearTimeout(window._matrixUpdateTimer);
@@ -1902,15 +1902,30 @@ window.heropenDag = heropenDag;
 // ============================================================
 //  MATRIX / UITSLAG TOGGLE
 // ============================================================
-async function toggleToernooiMatrix() {
+// v5.11.1: in- en uitklappen is voortaan iets van je EIGEN scherm. Het wordt
+// niet meer bewaard en niet meer naar de deelnemers gestuurd; daar is de
+// schakelaar "Onderlinge stand tonen aan deelnemers" voor.
+function toggleToernooiMatrix() {
+  window._matrixIngeklapt = !window._matrixIngeklapt;
+  const collapse = document.getElementById('t-matrix-collapse');
+  const kop = collapse?.previousElementSibling;
+  if (collapse) collapse.classList.toggle('ingeklapt', !!window._matrixIngeklapt);
+  if (kop)      kop.classList.toggle('ingeklapt', !!window._matrixIngeklapt);
+}
+
+// De schakelaar zelf: zetten de deelnemers de onderlinge stand te zien?
+async function toggleMatrixVoorDeelnemers(aan) {
   try {
     if (!toernooiData || !actieveToernooiId) return;
-    toernooiData.matrixIngeklapt = !toernooiData.matrixIngeklapt;
-    // v4.0.0 (fix 7.6): alleen het gewijzigde veld schrijven i.p.v. het hele document
-    await updateDoc(doc(db, 'toernooien', actieveToernooiId), { matrixIngeklapt: toernooiData.matrixIngeklapt });
+    toernooiData.matrixVerborgen = !aan;
+    const idx = alleToernooien.findIndex(t => t.id === actieveToernooiId);
+    if (idx >= 0) alleToernooien[idx].matrixVerborgen = !aan;
+    await updateDoc(doc(db, 'toernooien', actieveToernooiId), { matrixVerborgen: !aan });
     renderToernooiActief();
-  } catch(e) { console.error('toggleToernooiMatrix mislukt:', e); }
+    toast(aan ? 'Onderlinge stand zichtbaar voor deelnemers ✓' : 'Onderlinge stand verborgen voor deelnemers');
+  } catch(e) { toernooiFout('Onderlinge stand aan/uit zetten', e); }
 }
+window.toggleMatrixVoorDeelnemers = toggleMatrixVoorDeelnemers;
 
 async function toonToernooiUitslag() {
   try {
@@ -2269,13 +2284,29 @@ function renderToernooiActief() {
       <div id="t-ranglijst"></div>
     </div>` : '';
 
-  const matrixKaart = t.modus !== 'strokeplay' ? `
+  // v5.11.1: de onderlinge stand kan voor DEELNEMERS worden uitgezet. Dan wordt
+  // het blok bij hen niet getekend — niet ingeklapt maar weg. De coordinator
+  // ziet hem altijd; die kan hem voor zichzelf inklappen met het pijltje.
+  //
+  // ⚠ WAT ER MIS WAS. Er bestond al een schakelaar, maar verstopt ALS dat
+  // pijltje: `matrixIngeklapt` werd naar het toernooidocument geschreven en de
+  // deelnemers kregen hem ingeklapt te zien, zonder dat iets de coordinator
+  // vertelde dat hij daarmee iets voor anderen omzette. En hij hield op te
+  // werken zodra de uitslag was vrijgegeven (`&& !uitslag`), want dan klapte
+  // het blok bij iedereen weer open. Sierk, 12 september 2026: het gaat om
+  // "het onderlinge stand blokje dat aan/uit gezet moet worden".
+  //
+  // Nu: één schakelaar met een naam (matrixVerborgen), en het pijltje is weer
+  // gewoon een pijltje — alleen voor het eigen scherm, niets wordt bewaard.
+  const matrixZichtbaar = isBeheerder || !t.matrixVerborgen;
+  const matrixKaart = (t.modus !== 'strokeplay' && matrixZichtbaar) ? `
     <div class="card">
-      <div class="card-header ${isBeheerder ? 'inklapbaar' : ''} ${t.matrixIngeklapt && !uitslag ? 'ingeklapt' : ''}"
+      <div class="card-header ${isBeheerder ? 'inklapbaar' : ''} ${isBeheerder && window._matrixIngeklapt ? 'ingeklapt' : ''}"
         ${isBeheerder ? 'onclick="toggleToernooiMatrix()"' : ''}>
         <h2>Onderlinge stand</h2>
+        ${isBeheerder && t.matrixVerborgen ? '<span style="font-size:11px;color:var(--mid)">· niet zichtbaar voor deelnemers</span>' : ''}
       </div>
-      <div class="card-collapse ${t.matrixIngeklapt && !uitslag ? 'ingeklapt' : ''}" id="t-matrix-collapse">
+      <div class="card-collapse ${isBeheerder && window._matrixIngeklapt ? 'ingeklapt' : ''}" id="t-matrix-collapse">
         <div id="t-matrix" style="overflow-x:auto;padding:8px"></div>
       </div>
     </div>` : '';
@@ -2372,6 +2403,15 @@ function renderToernooiActief() {
         💡 <strong>Tip:</strong> Zet toernooi-modus aan zodat deelnemers direct hun scorekaart zien en niet per ongeluk een ladderpartij starten.
       </div>
       ` : ''}
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border);margin-bottom:8px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;font-size:13px;color:var(--dark)">
+          <input type="checkbox" id="t-matrix-zichtbaar-chk"
+            ${t.matrixVerborgen ? '' : 'checked'}
+            onchange="toggleMatrixVoorDeelnemers(this.checked)"
+            style="accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
+          <span><strong>Onderlinge stand tonen aan deelnemers</strong><br><span style="font-size:11px;color:var(--mid)">Uit: het blok staat alleen bij jou. Jij ziet hem altijd.</span></span>
+        </label>
+      </div>
       <div style="padding:8px 12px;background:var(--green-pale);border-radius:8px;margin-bottom:8px;font-size:12px;color:var(--mid);border-top:1px solid var(--border)">
         👀 <strong>Markers</strong> — binnen elke flight houdt iedereen de kaart bij van één medespeler.
         Deelnemers zien hun eigen kolom en die van hun marker-speler; de rest staat op punten.

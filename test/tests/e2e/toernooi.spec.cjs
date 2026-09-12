@@ -296,6 +296,56 @@ test.describe('Toernooi — de hele route', () => {
     }
   });
 
+  // ============================================================
+  //  v5.11.1 — DE ONDERLINGE STAND AAN OF UIT VOOR DEELNEMERS
+  // ============================================================
+  //  Er bestond al een schakelaar, maar verstopt als het inklap-pijltje op de
+  //  kop van het blok: de coordinator klapte het bij zichzelf in en klapte het
+  //  ongemerkt ook bij alle deelnemers in. Nu is het een schakelaar met een
+  //  naam, en bij "uit" wordt het blok bij de deelnemer NIET GETEKEND — niet
+  //  ingeklapt, want dan staan de gegevens er nog gewoon in.
+  // ============================================================
+  test('ONDERLINGE STAND: de coordinator zet het blok aan en uit voor deelnemers', async ({ browser }) => {
+    test.setTimeout(180000);
+
+    const ctxCoord  = await browser.newContext();
+    const ctxSpeler = await browser.newContext();
+    try {
+      const coord = await ctxCoord.newPage();
+      jaOpAlles(coord);
+      await inloggen(coord, 'coord@MPladder.stb');
+      await naarToernooi(coord);
+      await vulAanmaakformulier(coord, 'Standblok', 1);
+      for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(coord, n);
+      await naarFlightIndeling(coord);
+      await coord.click('#flight-modal-start-btn');
+      await expect(coord.locator('#toernooi-detail')).toContainText('Standblok', { timeout: 15000 });
+
+      const speler = await ctxSpeler.newPage();
+      jaOpAlles(speler);
+      await inloggen(speler, 'anna@MPladder.stb');
+      await naarToernooi(speler);
+
+      const blok = (pagina) => pagina.locator('#toernooi-detail h2:has-text("Onderlinge stand")');
+
+      // Standaard aan: de deelnemer ziet het blok.
+      await expect(blok(speler)).toBeVisible({ timeout: 15000 });
+      await expect(blok(coord)).toBeVisible();
+
+      // Uit: bij de deelnemer verdwijnt het blok helemaal, ook de gegevens.
+      await coord.uncheck('#t-matrix-zichtbaar-chk');
+      await expect(blok(speler)).toHaveCount(0, { timeout: 20000 });
+      await expect(speler.locator('#t-matrix')).toHaveCount(0);
+      await expect(blok(coord), 'de coordinator ziet hem altijd').toBeVisible();
+
+      // En weer aan.
+      await coord.check('#t-matrix-zichtbaar-chk');
+      await expect(blok(speler)).toBeVisible({ timeout: 20000 });
+    } finally {
+      await ctxCoord.close(); await ctxSpeler.close();
+    }
+  });
+
   test('AFSLUITEN: alle scores, uitslag, dag afsluiten en weer heropenen', async ({ page }) => {
     test.setTimeout(180000);
     jaOpAlles(page);
