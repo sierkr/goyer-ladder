@@ -1051,7 +1051,7 @@
 
 <div class="modal-overlay" id="modal-nieuwe-dag">
   <div class="modal" style="max-width:420px">
-    <h3>Nieuwe dag toevoegen</h3>
+    <h3 id="modal-dag-titel">Nieuwe dag toevoegen</h3>
     <div class="form-group">
       <label>Datum</label>
       <input type="date" id="t-dag-datum">
@@ -1082,10 +1082,15 @@
         <input type="number" id="t-dag-interval" min="0" max="60" value="10" style="text-align:center">
       </div>
     </div>
-    <p style="font-size:12px;color:var(--mid);margin:8px 0">De flight indeling voor deze dag stel je in na het toevoegen via de Flights knop in de scorekaart.</p>
+    <p style="font-size:12px;color:var(--mid);margin:8px 0" id="modal-dag-uitleg">De flight indeling voor deze dag stel je in na het toevoegen via de Flights knop in de scorekaart.</p>
+    <!-- v5.9.1: dit venster doet nu twee dingen — een dag toevoegen en een
+         bestaande dag wijzigen. De knop wisselt van opschrift en handeling,
+         net als bij de flightindeling. -->
+    <button class="btn btn-ghost btn-block btn-sm" id="modal-dag-verwijder-btn" onclick="verwijderDag()"
+      style="display:none;color:var(--red);margin-bottom:10px">🗑 Deze dag verwijderen</button>
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-nieuwe-dag')">Annuleren</button>
-      <button class="btn btn-primary" style="flex:2" onclick="voegDagToe()">Dag toevoegen →</button>
+      <button class="btn btn-primary" style="flex:2" id="modal-dag-opslaan-btn" onclick="voegDagToe()">Dag toevoegen →</button>
     </div>
   </div>
 </div>

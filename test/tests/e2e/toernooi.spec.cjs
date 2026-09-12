@@ -218,6 +218,56 @@ test.describe('Toernooi — de hele route', () => {
     expect(fouten, 'geen JavaScript-fouten tijdens afsluiten en heropenen').toEqual([]);
   });
 
+  test('DAGEN BEHEREN: dag toevoegen op een andere baan, wijzigen en verwijderen', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+    const fouten = [];
+    page.on('pageerror', e => fouten.push(e.message));
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+
+    // Eendaags toernooi aanmaken — precies het scenario van Sierk.
+    await vulAanmaakformulier(page, 'Dagenbeheer', 1);
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Dagenbeheer', { timeout: 15000 });
+
+    // "+ Dag toevoegen" moet er meteen staan. Tot en met v5.9.0 verscheen die
+    // knop pas als ALLE dagen waren afgesloten — en was het toernooi dus alleen
+    // te redden door het weg te gooien.
+    const dagErbij = page.locator('#toernooi-detail button:has-text("Dag toevoegen")');
+    await expect(dagErbij).toBeVisible();
+    await dagErbij.click();
+    await page.waitForSelector('#modal-nieuwe-dag.open');
+    await page.fill('#t-dag-datum', '2026-10-05');
+    await page.selectOption('#t-dag-baan', 'De Goyer');
+    await page.click('#modal-dag-opslaan-btn');
+
+    await expect.poll(async () => (await haalToernooi('Dagenbeheer')).dagen.length,
+      { timeout: 15000, message: 'dag 2 moet erbij komen' }).toBe(2);
+
+    // Dag 2 wijzigen: andere datum.
+    await page.click('#toernooi-detail >> text=Dag 2');
+    await page.click('#toernooi-detail button:has-text("wijzigen")');
+    await page.waitForSelector('#modal-nieuwe-dag.open');
+    await expect(page.locator('#modal-dag-titel')).toContainText('Dag 2 wijzigen');
+    await page.fill('#t-dag-datum', '2026-10-09');
+    await page.click('#modal-dag-opslaan-btn');
+    await expect.poll(async () => (await haalToernooi('Dagenbeheer')).dagen[1].datum,
+      { timeout: 15000, message: 'de datum van dag 2 moet veranderen' }).toBe('2026-10-09');
+
+    // En weer weghalen.
+    await page.click('#toernooi-detail button:has-text("wijzigen")');
+    await page.waitForSelector('#modal-nieuwe-dag.open');
+    await page.click('#modal-dag-verwijder-btn');
+    await expect.poll(async () => (await haalToernooi('Dagenbeheer')).dagen.length,
+      { timeout: 15000, message: 'dag 2 moet weg zijn' }).toBe(1);
+
+    expect(fouten, 'geen JavaScript-fouten tijdens dagbeheer').toEqual([]);
+  });
+
   test('LEGE FLIGHT: starten met een lege flight kan niet ongemerkt', async ({ page }) => {
     test.setTimeout(120000);
     const gevraagd = [];
@@ -264,7 +314,7 @@ test.describe('Toernooi — de hele route', () => {
     await expect(page.locator('#toast')).toContainText('loopt nog', { timeout: 10000 });
   });
 
-  test('MEERDAAGS: dag 2 krijgt ook een flightindeling', async ({ page }) => {
+  test('MEERDAAGS: dag 2 wordt NIET vooraf ingedeeld, maar zegt dat wel', async ({ page }) => {
     test.setTimeout(150000);
     jaOpAlles(page);
     await inloggen(page, 'coord@MPladder.stb');
@@ -276,10 +326,19 @@ test.describe('Toernooi — de hele route', () => {
     await page.click('#flight-modal-start-btn');
     await expect(page.locator('#toernooi-detail')).toContainText('Tweedaags', { timeout: 15000 });
 
-    // Dag 2 aanklikken en kijken of daar spelers staan. Tot en met v5.8.9
-    // begon dag 2 met NUL flights en toonde de scorekaart alleen holes.
+    // Dag 2 hoort LEEG te beginnen. Sierk, 12 september 2026: "Dag 2 wordt
+    // ingedeeld ahv de prestaties van dag 1. Dus het is fijner om de volgende
+    // dag niet al automatisch in te delen." v5.9.0 kopieerde de indeling van
+    // dag 1 wél — dat is in v5.9.1 teruggedraaid.
+    //
+    // Maar de dag moet dan wel zeggen dat hij nog niet is ingedeeld, anders is
+    // het niet te onderscheiden van een storing. Dat was het echte probleem.
     await page.click('#toernooi-detail >> text=Dag 2');
+    await expect(page.locator('#toernooi-detail')).toContainText('nog niet in flights ingedeeld');
     await expect(page.locator('#toernooi-detail')).toContainText('3 spelers');
-    await expect(page.locator('#toernooi-detail')).not.toContainText('0 flights');
+
+    const t = await haalToernooi('Tweedaags');
+    expect(t.dagen[0].flights.length, 'dag 1 is wel ingedeeld').toBeGreaterThan(0);
+    expect(t.dagen[1].flights.length, 'dag 2 begint zonder indeling').toBe(0);
   });
 });

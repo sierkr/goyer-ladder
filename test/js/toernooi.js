@@ -1033,23 +1033,26 @@ async function startToernooi() {
       const scores = {};
       spelers.forEach(s => { scores[s.uid] = Array(cfg.holes.length).fill(null); });
 
-      // v5.9.0: ELKE dag krijgt de indeling mee, niet alleen dag 1.
+      // Alleen dag 1 krijgt hier een indeling. De volgende dagen beginnen leeg.
       //
-      // WAT ER MIS WAS: hier stond `cfg.dagNr === 1 ? [...] : []`. Dag 2 van een
-      // meerdaags toernooi begon dus zonder flights, en dan toont de scorekaart
-      // holes zonder spelers — niet te onderscheiden van een kapot toernooi. In
-      // Sierks eigen St Andrews-toernooi is dat terug te zien: dag 1 twee
-      // flights, dag 2 nul.
+      // v5.9.0 deed dit even anders — daar werd de indeling van dag 1 naar élke
+      // dag gekopieerd. Dat was een verkeerde reparatie van een echt probleem.
+      // Sierk, 12 september 2026: "Dag 2 wordt ingedeeld ahv de prestaties van
+      // dag 1. Dus het is fijner om de volgende dag niet al automatisch in te
+      // delen." Een voorgekauwde indeling is daar niet behulpzaam maar
+      // misleidend: hij ziet er af als een besluit dat al genomen is.
       //
-      // De indeling van dag 1 is een startpunt, geen eindoordeel: per dag is hij
-      // aan te passen met de knop ✈ Flights. Starttijden schuiven wel mee met de
-      // dag zelf, want die staat per dag ingesteld.
-      const flights = _flights.map(f => ({
-        id: f.id, naam: f.naam,
-        spelerIds: f.spelers.map(s => s.uid),
-        starthole: f.starthole || 1,
-        starttijd: f.starttijd || cfg.starttijd
-      }));
+      // Het echte probleem was dat een niet-ingedeelde dag er KAPOT uitzag: een
+      // scorekaart met holes en geen spelers, zonder één woord uitleg. Dat is
+      // opgelost in renderTScorecard(), niet hier. Zie v5.9.1.
+      const flights = cfg.dagNr === 1
+        ? _flights.map(f => ({
+            id: f.id, naam: f.naam,
+            spelerIds: f.spelers.map(s => s.uid),
+            starthole: f.starthole || 1,
+            starttijd: f.starttijd || cfg.starttijd
+          }))
+        : [];
 
       return {
         dagNr:    cfg.dagNr,
@@ -1160,8 +1163,164 @@ function openNieuweDagModal() {
       .join('');
     if (vorigeDag?.baan && banen[vorigeDag.baan]) baanEl.value = vorigeDag.baan;
   }
+  // v5.9.1: het venster doet nu twee dingen. Hier expliciet in de stand
+  // "toevoegen" zetten, zodat een eerdere wijzig-sessie niet blijft hangen.
+  _zetDagModalStand(null);
   document.getElementById('modal-nieuwe-dag').classList.add('open');
 }
+
+// ============================================================
+//  EEN BESTAANDE DAG WIJZIGEN OF VERWIJDEREN  (v5.9.1)
+// ============================================================
+//  WAAROM. Sierk, 12 september 2026: "ik maak een toernooi aan voor 1 dag op
+//  baan A maar het toernooi blijkt 2 dagen te zijn met dag 2 op baan B". Tot
+//  v5.9.0 was daar maar één uitweg voor: het hele toernooi weggooien met
+//  "Terug naar aanmaakscherm" en opnieuw instellen.
+//
+//  ⚠ De grendel: wijzigen en verwijderen kan alleen zolang er voor die dag
+//  GEEN scores zijn. Een dag met scores aanpassen zou stilletjes andermans
+//  ronde veranderen — en bij een ander aantal holes zelfs scores afknippen.
+function dagHeeftScores(dag) {
+  if (!dag) return false;
+  if (dag.afgerond) return true;
+  return Object.values(dag.scores || {}).some(arr =>
+    (arr || []).some(v => v !== null && v !== undefined && v !== ''));
+}
+
+// Zet het venster in de stand "toevoegen" (dagNr null) of "wijzigen".
+function _zetDagModalStand(dagNr) {
+  window._dagBewerkenNr = dagNr;
+  const titel   = document.getElementById('modal-dag-titel');
+  const knop    = document.getElementById('modal-dag-opslaan-btn');
+  const wis     = document.getElementById('modal-dag-verwijder-btn');
+  const uitleg  = document.getElementById('modal-dag-uitleg');
+  const bewerkt = dagNr != null;
+  if (titel) titel.textContent = bewerkt ? `Dag ${dagNr} wijzigen` : 'Nieuwe dag toevoegen';
+  if (knop) {
+    knop.textContent = bewerkt ? 'Wijziging opslaan →' : 'Dag toevoegen →';
+    knop.onclick = bewerkt ? slaDagWijzigingOp : voegDagToe;
+  }
+  if (wis) wis.style.display = bewerkt && (toernooiData?.dagen || []).length > 1 ? 'block' : 'none';
+  if (uitleg) {
+    uitleg.textContent = bewerkt
+      ? 'Alleen mogelijk zolang er voor deze dag nog geen scores zijn ingevuld.'
+      : 'De flight indeling voor deze dag stel je in na het toevoegen via de Flights knop in de scorekaart.';
+  }
+}
+
+function openDagBewerkenModal() {
+  const t = toernooiData;
+  const dag = actieveDag(t);
+  if (!dag) { toast('Geen dag gevonden'); return; }
+  if (dagHeeftScores(dag)) {
+    toast(`Dag ${dag.dagNr} heeft al scores — wijzigen kan niet meer`);
+    return;
+  }
+  const datumEl = document.getElementById('t-dag-datum');
+  if (datumEl) datumEl.value = dag.datum || '';
+
+  const baanEl = document.getElementById('t-dag-baan');
+  if (baanEl) {
+    const banen = alleBANEN();
+    baanEl.innerHTML = Object.keys(banen)
+      .filter(n => n !== 'Handmatig invoeren')
+      .map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`)
+      .join('');
+    if (dag.baan && banen[dag.baan]) baanEl.value = dag.baan;
+  }
+
+  const aantal = (dag.holes || []).length;
+  const holesEl = document.getElementById('t-dag-holes');
+  const custEl  = document.getElementById('t-dag-holes-custom');
+  const custWrap = document.getElementById('t-dag-holes-custom-wrap');
+  if (holesEl) {
+    if (aantal === 18 || aantal === 9) {
+      holesEl.value = String(aantal);
+      if (custWrap) custWrap.style.display = 'none';
+    } else {
+      holesEl.value = 'custom';
+      if (custEl) custEl.value = aantal;
+      if (custWrap) custWrap.style.display = 'block';
+    }
+  }
+  const tijdEl = document.getElementById('t-dag-starttijd');
+  if (tijdEl) tijdEl.value = dag.starttijd || '09:00';
+  const intEl = document.getElementById('t-dag-interval');
+  if (intEl) intEl.value = dag.interval != null ? dag.interval : 10;
+
+  _zetDagModalStand(dag.dagNr);
+  document.getElementById('modal-nieuwe-dag').classList.add('open');
+}
+window.openDagBewerkenModal = openDagBewerkenModal;
+
+async function slaDagWijzigingOp() {
+  try {
+    const t = toernooiData;
+    const dagNr = window._dagBewerkenNr;
+    const dag = (t?.dagen || []).find(d => d.dagNr === dagNr);
+    if (!dag) { toast('Geen dag gevonden'); return; }
+    if (dagHeeftScores(dag)) { toast(`Dag ${dagNr} heeft al scores — wijzigen kan niet meer`); return; }
+
+    const datum    = document.getElementById('t-dag-datum')?.value;
+    const baanNaam = document.getElementById('t-dag-baan')?.value;
+    const holesVal = document.getElementById('t-dag-holes')?.value || '18';
+    const holesCount = holesVal === 'custom'
+      ? parseInt(document.getElementById('t-dag-holes-custom')?.value) || 18
+      : parseInt(holesVal);
+
+    if (!datum)    { toast('Voer een datum in'); return; }
+    if (!baanNaam) { toast('Selecteer een baan'); return; }
+
+    const banen = alleBANEN();
+    const holes = (banen[baanNaam]?.holes || []).slice(0, holesCount);
+    if (!holes.length) { toast('Baan heeft geen holes geconfigureerd'); return; }
+
+    const anderAantal = holes.length !== (dag.holes || []).length;
+    dag.datum     = datum;
+    dag.baan      = baanNaam;
+    dag.holes     = holes;
+    dag.starttijd = document.getElementById('t-dag-starttijd')?.value || dag.starttijd || '09:00';
+    const intVal  = parseInt(document.getElementById('t-dag-interval')?.value);
+    dag.interval  = Number.isFinite(intVal) ? intVal : (dag.interval || 0);
+
+    // Bij een ander aantal holes moeten de (lege) scorerijen mee. Er zijn hier
+    // per definitie geen ingevulde scores, dus er gaat niets verloren.
+    if (anderAantal) {
+      dag.scores = {};
+      (t.spelers || []).forEach(sp => { dag.scores[sp.uid] = Array(holes.length).fill(null); });
+    }
+
+    await slaToernooiOp();
+    closeModal('modal-nieuwe-dag');
+    toast(`Dag ${dagNr} gewijzigd`);
+    renderToernooiActief();
+  } catch(e) { toernooiFout('Dag wijzigen', e); }
+}
+window.slaDagWijzigingOp = slaDagWijzigingOp;
+
+async function verwijderDag() {
+  try {
+    const t = toernooiData;
+    const dagNr = window._dagBewerkenNr;
+    const dagen = t?.dagen || [];
+    const dag = dagen.find(d => d.dagNr === dagNr);
+    if (!dag) { toast('Geen dag gevonden'); return; }
+    if (dagen.length <= 1) { toast('Een toernooi moet minstens één dag houden'); return; }
+    if (dagHeeftScores(dag)) { toast(`Dag ${dagNr} heeft al scores — verwijderen kan niet meer`); return; }
+    if (!confirm(`Dag ${dagNr} verwijderen?\n\nDe overige dagen worden opnieuw genummerd.`)) return;
+
+    t.dagen = dagen.filter(d => d.dagNr !== dagNr);
+    t.dagen.forEach((d, i) => { d.dagNr = i + 1; });
+    t.actiefDagNr = Math.min(t.actiefDagNr || 1, t.dagen.length);
+    window._bekijkDagNr = null;
+
+    await slaToernooiOp();
+    closeModal('modal-nieuwe-dag');
+    toast(`Dag ${dagNr} verwijderd`);
+    renderToernooiActief();
+  } catch(e) { toernooiFout('Dag verwijderen', e); }
+}
+window.verwijderDag = verwijderDag;
 
 // Voeg nieuwe dag toe aan bestaand toernooi
 async function voegDagToe() {
@@ -1622,9 +1781,15 @@ function renderToernooiActief() {
         Dag ${d.dagNr}${d.afgerond ? ' ✓' : ''}
       </button>`;
     });
-    // Knop: nieuwe dag toevoegen (alleen als laatste dag afgerond is)
-    const laasteAfgerond = (t.dagen || []).every(d => d.afgerond);
-    if (isBeheerder && laasteAfgerond) {
+    // v5.9.1: "+ Dag toevoegen" is er voor de coordinator altijd.
+    //
+    // WAT ER MIS WAS: de knop verscheen alleen als ALLE dagen al afgesloten
+    // waren. Merk je bij het aanmaken dat het toernooi twee dagen duurt in
+    // plaats van één, dan was de enige uitweg het hele toernooi weggooien en
+    // opnieuw instellen. Terwijl voegDagToe() er al klaar voor was: die
+    // waarschuwt zelf netjes als de vorige dag nog niet is afgesloten. De
+    // functie kon het dus wel, het scherm liet het niet toe.
+    if (isBeheerder) {
       dagTabsHtml += `<button onclick="openNieuweDagModal()"
         style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px dashed var(--border);border-bottom:none;background:transparent;color:var(--green);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">
         + Dag toevoegen
@@ -1719,6 +1884,20 @@ function renderToernooiActief() {
 
   const beheerderKnoppen = isBeheerder ? `
     <div style="padding:0 0 16px">
+      ${!dagHeeftScores(dag) ? `
+      <button class="btn btn-ghost btn-block" onclick="openDagBewerkenModal()" style="margin-bottom:8px">
+        ✏️ Dag ${dagNr} wijzigen (datum, baan, holes)
+      </button>
+      ` : ''}
+      ${heeftGeenScores(t) ? `
+      <button class="btn btn-secondary btn-block" onclick="bewerkToernooi()" style="margin-bottom:8px">
+        ↺ Toernooi opnieuw instellen
+      </button>
+      <p style="font-size:11px;color:var(--light);margin:-4px 0 10px">
+        Het huidige toernooi wordt verwijderd en alle instellingen komen terug in het
+        aanmaakscherm. Voor alleen een dag erbij of een andere baan: gebruik de knoppen hierboven.
+      </p>
+      ` : ''}
       ${!dagAfgerond && !uitslag ? `
       <button id="t-uitslag-btn" class="btn btn-primary btn-block"
         style="margin-bottom:8px;${!allesIngevuld ? 'opacity:0.5;cursor:not-allowed' : ''}"
@@ -1754,11 +1933,6 @@ function renderToernooiActief() {
       <div style="padding:6px 16px 10px;background:var(--gold-pale);border-radius:8px;margin-bottom:8px;font-size:12px;color:var(--gold)">
         💡 <strong>Tip:</strong> Zet toernooi-modus aan zodat deelnemers direct hun scorekaart zien en niet per ongeluk een ladderpartij starten.
       </div>
-      ` : ''}
-      ${heeftGeenScores(t) ? `
-      <button class="btn btn-secondary btn-block" onclick="bewerkToernooi()" style="margin-bottom:8px">
-        ✏️ Terug naar aanmaakscherm
-      </button>
       ` : ''}
       <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border);margin-bottom:8px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;font-size:13px;color:var(--dark)">
@@ -1865,6 +2039,25 @@ function renderTScorecard() {
     : 0;
 
   let html = '';
+
+  // v5.9.1: melden dat deze dag nog niet is ingedeeld.
+  //
+  // Een dag zonder flights is NIET stuk: hierboven valt hij terug op één kaart
+  // met alle spelers erop, en daar kan gewoon op gescoord worden. Maar je kunt
+  // niet zien of dat een bewuste keuze is of dat de indeling nog moet komen —
+  // en bij een meerdaags toernooi moet hij nog komen, want dag 2 wordt
+  // ingedeeld op de prestaties van dag 1.
+  //
+  // (In v5.9.0 stond hier een verkeerde reparatie: toen kreeg elke dag de
+  // indeling van dag 1 gekopieerd. Wat Sierk op 11 september zag was iets
+  // anders — een flight MET een naam en ZONDER spelers. Dat is de lege flight,
+  // en die wordt sinds v5.9.0 tegengehouden bij het opslaan.)
+  if (isBeheerder && flights.length === 0 && !dag.afgerond) {
+    html += `<div style="background:var(--gold-pale);border-radius:8px;padding:10px 12px;margin:8px 12px;font-size:12px;color:var(--gold);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="flex:1;min-width:180px">⚑ Dag ${dag.dagNr} is nog niet in flights ingedeeld. Iedereen staat nu op één kaart.</span>
+      <button class="btn btn-sm btn-ghost" onclick="openFlightIndelingDag()">✈ Nu indelen</button>
+    </div>`;
+  }
 
   if (isBeheerder && teTonenFlights.length > 1) {
     html += `<div style="display:flex;gap:0;border-bottom:2px solid var(--border);overflow-x:auto;scrollbar-width:none;padding:0 4px">`;
