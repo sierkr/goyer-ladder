@@ -18,7 +18,7 @@ import { renderLadder } from './ladder.js';
 import { toonUitdagingBadge } from './archief.js';
 import { closeModal, renderAdmin, renderProfiel } from './admin.js';
 import { renderRonde } from './ronde.js';
-import { renderToernooi, getActiefToernooiMetModus, herlaadToernooiListeners } from './toernooi.js';
+import { renderToernooi, getActiefToernooiMetModus, herlaadToernooiListeners, behoudLiveScores } from './toernooi.js';
 import { renderUitslagen } from './uitslagen.js';
 import { leesScores } from './scores.js';
 import { startAlleStandenListeners, stopAlleStandenListeners,
@@ -346,7 +346,7 @@ function vervolgIngelogd() {
   if (versieBadge) versieBadge.style.display = isBeheerderRol() ? '' : 'none';
 
   // v3.0.0-11.74: herstart per-doc toernooi-listeners na login zodat ze
-  // huidigeBruiker correct hebben voor scoresVerborgen, toernooiModus etc.
+  // huidigeBruiker correct hebben voor toernooiModus etc.
   herlaadToernooiListeners();
 
   // Pas toernooi-modus nav toe (verbergt tabs voor deelnemers indien actief)
@@ -741,7 +741,12 @@ async function initFirestore() {
         store.actieveToernooiId = alleToernooien[0].id;
       } else if (toernooiData) {
         const bijgewerkt = alleToernooien.find(t => t.id === actieveToernooiId);
-        if (bijgewerkt) store.toernooiData = bijgewerkt;
+        // v5.11.0: ⚠ hier ging het mis. De serverversie bevat de scores van een
+        // LOPENDE dag niet — die staan in de live/-submap tot de dag wordt
+        // afgesloten. Zonder deze regel werden de invoervakjes leeg getekend
+        // zodra de coordinator ergens een vinkje omzette. Zie behoudLiveScores()
+        // in js/toernooi.js; de meeluisteraar daar gebruikt dezelfde functie.
+        if (bijgewerkt) store.toernooiData = behoudLiveScores(bijgewerkt);
         else if (alleToernooien.length > 0) {
           store.toernooiData      = alleToernooien[0];
           store.actieveToernooiId = alleToernooien[0].id;

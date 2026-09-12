@@ -9,6 +9,8 @@ const suites = [
   ['Partijverwerking (ladder)',  './partij.test.cjs'],
   ['Toernooi',                   './toernooi.test.cjs'],
   ['Knockout',                   './knockout.test.cjs'],
+  ['Korte unieke namen',         './namen.test.cjs'],
+  ['Markers en scorelagen',      './marker.test.cjs'],
 ];
 
 let totOk = 0, totFout = 0;

@@ -12,7 +12,7 @@ const _verwerkToernooiStandenFn = httpsCallable(functions, 'verwerkToernooiStand
 const _verwijderGastAccountFn = httpsCallable(functions, 'verwijderWeesAccount');
 import { store, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tSpelersLadderIds, _tRankingLadderIds, _flights, _liveScores } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
-import { renderHcpBlok, alleBANEN, renderHandmatigHoles } from './partij.js';
+import { renderHcpBlok, alleBANEN, renderHandmatigHoles, kortNaamMap } from './partij.js';
 import { renderLadder } from './ladder.js';
 import { slaSnapshotOp } from './beheer.js';
 import { toggleAdminKaart } from './knockout.js';
@@ -185,36 +185,200 @@ function renderToernooi() {
 // Nu bewaart het document de scores per dag onder `dagen`, met merge:true
 // zodat andere dagen ongemoeid blijven. `dagNr` en `scores` blijven ernaast
 // staan voor schermen die nog het oude formaat lezen.
-async function slaSpelerScoreOp(uid, dagNr, scores) {
+//
+// v5.11.0: `laag` zegt WIE dit intikte — 'dagen' (de speler zelf),
+// 'markerDagen' (zijn marker) of 'beheerDagen' (de wedstrijdleiding). De drie
+// lagen staan in hetzelfde document maar raken elkaar niet, dus ze kunnen
+// elkaar ook niet meer overschrijven. De wachttijd loopt per laag apart:
+// anders wist de timer van de marker die van de speler.
+async function slaSpelerScoreOp(uid, dagNr, scores, laag = 'dagen') {
   if (!actieveToernooiId || !uid) return;
   if (!window._tSpelerSaveTimers) window._tSpelerSaveTimers = {};
-  clearTimeout(window._tSpelerSaveTimers[uid]);
-  window._tSpelerSaveTimers[uid] = setTimeout(async () => {
+  const sleutel = uid + '|' + laag;
+  clearTimeout(window._tSpelerSaveTimers[sleutel]);
+  window._tSpelerSaveTimers[sleutel] = setTimeout(async () => {
     try {
-      await setDoc(
-        doc(db, 'toernooien', actieveToernooiId, 'live', uid),
-        {
-          dagNr,
-          scores,
-          dagen: { [String(dagNr)]: scores },
-          timestamp: Date.now(),
-        },
-        { merge: true }
-      );
+      const velden = { [laag]: { [String(dagNr)]: scores }, timestamp: Date.now() };
+      // Het oude formaat (`dagNr` + `scores` los ernaast) blijft alleen voor de
+      // speler meelopen, zodat schermen die het nog lezen niet omvallen.
+      if (laag === 'dagen') { velden.dagNr = dagNr; velden.scores = scores; }
+      await setDoc(doc(db, 'toernooien', actieveToernooiId, 'live', uid), velden, { merge: true });
     } catch(e) {
       console.error('Speler score opslaan mislukt:', e);
     }
   }, 800);
 }
 
-// v5.3.0: haalt de scores van een specifieke dag uit een live-document.
-// Nieuw formaat (`dagen`) heeft voorrang; valt terug op het oude formaat.
+// ============================================================
+//  SCORES OP HET SCHERM HOUDEN — v5.11.0
+// ============================================================
+//  WAT ER MIS WAS (gemeten op test, 12 september 2026). Zet de coordinator
+//  een vinkje om — "Scores verbergen", "Toernooi-modus" — dan schrijft dat
+//  naar het toernooidocument. Twee meeluisteraars reageren daarop: die in dit
+//  bestand hield de ingevoerde scores vast, die in js/auth.js (de lijst met
+//  actieve toernooien) niet. Die tweede verving de gegevens door de kale
+//  serverversie, en op de server staan de scores van een LOPENDE dag nog niet:
+//  die staan tot "dag afsluiten" in de live/-submap.
+//
+//  Gevolg op het scherm: de invoervakjes werden leeg getekend terwijl de
+//  regel "Tot" gewoon het juiste totaal bleef tonen. Er ging niets verloren —
+//  maar wie over zo'n leeg ogend vakje heen typt, overschrijft wél een goede
+//  score. Sierk zag precies dat.
+//
+//  ⚠ Kijk naar de dag die op het SCHERM staat, niet naar de dag die "actief"
+//  heet: met `_bekijkDagNr` kun je naar een andere dag kijken, en zoek de dag
+//  op dagNr op — sinds een dag verwijderd kan worden, is de plek in de rij
+//  niet meer hetzelfde als het dagnummer.
+// ============================================================
+function behoudLiveScores(nieuweData) {
+  if (!nieuweData || !toernooiData) return nieuweData;
+  if (nieuweData.id && actieveToernooiId && nieuweData.id !== actieveToernooiId) return nieuweData;
+  const nieuweDagen = nieuweData.dagen || [];
+  (toernooiData.dagen || []).forEach(oud => {
+    if (!oud || oud.afgerond || !oud.scores) return;
+    const nw = nieuweDagen.find(d => d && d.dagNr === oud.dagNr);
+    if (!nw || nw.afgerond) return;
+    nw.scores = oud.scores;
+  });
+  return nieuweData;
+}
+
+// ============================================================
+//  MARKERS EN DE DRIE SCOREKAARTEN — v5.11.0
+// ============================================================
+//  In een toernooi houdt een MARKER de kaart bij van één medespeler. Pas als
+//  speler en marker hetzelfde getal hebben staan, is een hole betrouwbaar.
+//
+//  Daarom staan er per speler DRIE lagen in `toernooien/{id}/live/{spelerUid}`:
+//
+//      dagen        wat de speler zelf intikte      (bestond al)
+//      markerDagen  wat zijn marker intikte         (nieuw)
+//      beheerDagen  wat de wedstrijdleiding vaststelde (nieuw, beslissend)
+//
+//  ⚠ WAT ER MIS WAS. Tot v5.10.0 schreven de speler EN de coordinator in
+//  precies hetzelfde veld. Wie het laatst typte won, zonder spoor en zonder
+//  melding. Door de lagen uit elkaar te halen kan dat niet meer, en kunnen we
+//  bovendien laten zien of een score al gecontroleerd is.
+//
+//  Wie wat ziet: ieder ziet het getal dat hij ZELF heeft ingetikt, de
+//  wedstrijdleiding ziet dat van de speler. Niemand ziet het getal van de
+//  ander — speler en marker moeten het er onderling over eens worden, en dat
+//  gaat niet als je elkaars antwoord kunt overschrijven.
+// ============================================================
+
+// Verdeelt de markers in een kring over een flight: de eerste markeert de
+// tweede, de tweede de derde, de laatste weer de eerste. Bij twee spelers
+// markeren ze elkaar; bij één speler is er niets te markeren.
+// Geeft terug: { spelerUid: uid van degene die ZIJN kaart bijhoudt }.
+function markerKring(spelerIds) {
+  const ids = (spelerIds || []).filter(Boolean);
+  const kring = {};
+  if (ids.length < 2) return kring;
+  ids.forEach((uid, i) => { kring[uid] = ids[(i - 1 + ids.length) % ids.length]; });
+  return kring;
+}
+
+// Wie markeert deze speler op deze dag? Een vaste indeling in de flight gaat
+// voor; staat die er niet (oudere toernooien), dan wordt de kring afgeleid uit
+// de volgorde van de flight. Buiten een flight is er geen marker.
+function markerVan(spelerUid, dag) {
+  for (const f of (dag?.flights || [])) {
+    const ids = f.spelerIds || [];
+    if (!ids.includes(spelerUid)) continue;
+    // Een vastgelegde marker die intussen uit de flight is gehaald telt niet
+    // meer mee — anders wacht die kaart voor eeuwig op iemand die er niet is.
+    const vast = f.markers && f.markers[spelerUid];
+    if (vast && ids.includes(vast)) return vast;
+    return markerKring(ids)[spelerUid] || null;
+  }
+  return null;
+}
+
+// Haalt één laag van één dag uit een live-document.
+// `laag` is 'dagen', 'markerDagen' of 'beheerDagen'.
+function _laagVanDag(data, laag, dagNr) {
+  if (!data) return null;
+  const perDag = data[laag]?.[String(dagNr)];
+  if (Array.isArray(perDag)) return perDag;
+  // v5.3.0-formaat: één losse dag naast `dagen`. Gold alleen voor de speler.
+  if (laag === 'dagen' && data.dagNr === dagNr && Array.isArray(data.scores)) return data.scores;
+  return null;
+}
+
+// De drie lagen van één speler op één dag, altijd als array (leeg mag).
+function lagenVanDag(data, dagNr) {
+  return {
+    speler: _laagVanDag(data, 'dagen',       dagNr) || [],
+    marker: _laagVanDag(data, 'markerDagen', dagNr) || [],
+    beheer: _laagVanDag(data, 'beheerDagen', dagNr) || [],
+  };
+}
+
+// Het oordeel over ÉÉN hole. Dit is de enige plek waar wordt bepaald welke
+// score telt en welke kleur erbij hoort; scorekaart, onderlinge stand,
+// ranglijst, dag afsluiten en de meekijkpagina leunen er allemaal op.
+//
+//   zwart   vastgesteld door de wedstrijdleiding, OF speler en marker gelijk
+//   oranje  één van de twee heeft ingevuld, de ander nog niet
+//   rood    allebei ingevuld, verschillend
+//   leeg    nog niemand
+//
+// `vast` betekent: de wedstrijdleiding heeft het laatste woord gesproken.
+// Speler en marker kunnen die hole dan niet meer wijzigen — anders kan een
+// gecontroleerde score weer opengetrokken worden.
+function scoreOordeel(spelerWaarde, markerWaarde, beheerWaarde) {
+  const leeg = (v) => v === null || v === undefined || v === '';
+  const sp = leeg(spelerWaarde) ? null : Number(spelerWaarde);
+  const mk = leeg(markerWaarde) ? null : Number(markerWaarde);
+  const bh = leeg(beheerWaarde) ? null : Number(beheerWaarde);
+
+  if (bh !== null) {
+    return { kleur: 'zwart', vast: true, tel: bh, speler: bh, marker: bh, beheer: bh };
+  }
+  // Wat meetelt zolang er niets is vastgesteld: het getal van de speler zelf.
+  // Heeft alleen de marker ingevuld, dan is dat het enige getal dat er is.
+  const tel = sp !== null ? sp : mk;
+  let kleur = 'leeg';
+  if (sp !== null && mk !== null) kleur = (sp === mk) ? 'zwart' : 'rood';
+  else if (sp !== null || mk !== null) kleur = 'oranje';
+
+  return { kleur, vast: false, tel, speler: sp, marker: mk, beheer: null };
+}
+
+// v5.3.0 / v5.11.0: de scores van één speler op één dag, zoals ze MEETELLEN.
+// Geeft null als deze speler voor deze dag in geen enkele laag iets heeft —
+// daar rekenen de meeluisteraar en het afsluiten van een dag op.
 function _liveScoresVanDag(data, dagNr) {
   if (!data) return null;
-  const perDag = data.dagen?.[String(dagNr)];
-  if (Array.isArray(perDag)) return perDag;
-  if (data.dagNr === dagNr && Array.isArray(data.scores)) return data.scores;
-  return null;
+  const l = lagenVanDag(data, dagNr);
+  const lengte = Math.max(l.speler.length, l.marker.length, l.beheer.length);
+  if (lengte === 0) return null;
+  const uit = [];
+  for (let i = 0; i < lengte; i++) {
+    uit.push(scoreOordeel(l.speler[i], l.marker[i], l.beheer[i]).tel);
+  }
+  return uit;
+}
+
+// Vat een scorekaart samen voor de waarschuwingsregel erboven. `kleuren` is
+// een lijst van { holeNr, kleur }. Die regel staat bij speler, marker EN
+// wedstrijdleiding — een rood vakje halverwege een kaart van 18 holes zie je
+// op een telefoon anders niet.
+function kaartOordeel(kleuren) {
+  const verschillen = (kleuren || []).filter(k => k.kleur === 'rood').map(k => k.holeNr);
+  const wachtend    = (kleuren || []).filter(k => k.kleur === 'oranje').map(k => k.holeNr);
+  const delen = [];
+  if (verschillen.length > 0) {
+    delen.push(verschillen.length === 1
+      ? `1 verschil (hole ${verschillen[0]})`
+      : `${verschillen.length} verschillen (holes ${verschillen.join(', ')})`);
+  }
+  if (wachtend.length > 0) {
+    delen.push(wachtend.length === 1
+      ? '1 hole wacht op bevestiging'
+      : `${wachtend.length} holes wachten op bevestiging`);
+  }
+  return { verschillen, wachtend, tekst: delen.join(' · ') };
 }
 
 // ============================================================
@@ -292,7 +456,20 @@ async function herlaadToernooien() {
 function herlaadToernooiListeners() {
   _toernooiListeners.forEach(unsub => unsub());
   store._toernooiListeners = [];
-  store._liveScores = {};
+
+  // v5.11.0: ⚠ NIET zomaar leeggooien. Deze functie draait bij ELKE wijziging
+  // in de toernooien-collectie, en de scorelagen (wie tikte wat in) staan in
+  // _liveScores. Werd die leeggegooid, dan viel de scorekaart tot de volgende
+  // meeluister-melding terug op het toernooidocument — en daar staat alleen
+  // wat MEETELT, niet wie het invulde. Gevolg: een net ingevulde oranje score
+  // sprong een tel lang op zwart, alsof hij al gecontroleerd was. Precies het
+  // signaal waar de marker op zit te wachten.
+  // Bij het wisselen van toernooi moet hij er wél uit: die lagen horen bij een
+  // ander toernooi.
+  if (window._liveScoresVanToernooi !== actieveToernooiId) {
+    store._liveScores = {};
+    window._liveScoresVanToernooi = actieveToernooiId;
+  }
 
   // v3.0.0-11.106: ALLE gebruikers luisteren op live/ subcollectie
   // zodat scores real-time zichtbaar zijn zonder de coördinator als tussenschakel.
@@ -323,6 +500,15 @@ function herlaadToernooiListeners() {
             gewijzigd = true;
           }
         });
+        // v5.11.0: de kleuren ALTIJD bijwerken, ook als er niets aan het
+        // meetellende getal verandert. Tikt de marker hetzelfde getal in als
+        // de speler, dan blijft de score gelijk maar springt het vakje van
+        // oranje naar zwart — en dat is juist het signaal waar iedereen op zit
+        // te wachten. Hertekenen doen we niet: dan raak je de cursor kwijt van
+        // wie op dat moment aan het typen is.
+        verversScoreKleuren();
+        verversUitslagKnop();
+
         if (gewijzigd) {
           updateTTotaalRijInline();
           renderTMatrix();
@@ -349,20 +535,10 @@ alleToernooien.forEach(t => {
       const isBeheerder = isCoordinatorRol();
       const detail = document.getElementById('toernooi-detail');
 
-      // v3.0.0-11.106: Behoud dag.scores voor de actieve niet-afgeronde dag.
-      // Tijdens het spelen is de live/-subcollectie de bron van waarheid;
-      // het hoofddocument bevat alleen geconsolideerde scores (na "dag afsluiten").
-      // Als we hier de serverversie klakkeloos overnemen, overschrijft dat
-      // de lokaal-ingevoerde scores die nog in de live-write-queue zitten.
-      const actieveDagNr = nieuweData.actiefDagNr || 1;
-      const actieveDagIdx = actieveDagNr - 1;
-      if (nieuweData.dagen && nieuweData.dagen[actieveDagIdx] &&
-          !nieuweData.dagen[actieveDagIdx].afgerond && toernooiData) {
-        const huidigeDag = actieveDag(toernooiData);
-        if (huidigeDag && huidigeDag.scores) {
-          nieuweData.dagen[actieveDagIdx].scores = huidigeDag.scores;
-        }
-      }
+      // v3.0.0-11.106 / v5.11.0: behoud de lokaal ingevoerde scores van elke
+      // nog lopende dag. Eén bron voor die regel — zie behoudLiveScores()
+      // hierboven; js/auth.js gebruikt dezelfde functie.
+      behoudLiveScores(nieuweData);
 
       if (detail) {
         const dag = actieveDag(nieuweData);
@@ -373,7 +549,6 @@ alleToernooien.forEach(t => {
         } else {
           const oudeMatrixIngeklapt  = toernooiData?.matrixIngeklapt;
           const oudeUitslagZichtbaar = toernooiData?.uitslagZichtbaar;
-          const oudeScoresVerborgen  = toernooiData?.scoresVerborgen;
           const oudeStatus           = toernooiData?.status;
           const oudeToernooiModus    = toernooiData?.toernooiModus;
           store.toernooiData = nieuweData;
@@ -394,11 +569,6 @@ alleToernooien.forEach(t => {
           // Toernooi-modus aan/uit gezet door beheerder
           if (nieuweData.toernooiModus !== oudeToernooiModus) {
             window.dispatchEvent(new CustomEvent('toernooiModusGewijzigd'));
-          }
-
-          // Scores verborgen/zichtbaar gezet
-          if (nieuweData.scoresVerborgen !== oudeScoresVerborgen) {
-            renderTScorecard();
           }
 
           if (nieuweData.matrixIngeklapt !== oudeMatrixIngeklapt) {
@@ -1068,6 +1238,9 @@ async function startToernooi() {
         ? _flights.map(f => ({
             id: f.id, naam: f.naam,
             spelerIds: f.spelers.map(s => s.uid),
+            // v5.11.0: de markerindeling wordt meteen meegeschreven, zodat hij
+            // vastligt en de coordinator hem kan omzetten.
+            markers: markerKring(f.spelers.map(s => s.uid)),
             starthole: f.starthole || 1,
             starttijd: f.starttijd || cfg.starttijd
           }))
@@ -1646,6 +1819,9 @@ async function slaFlightIndelingDagOp() {
     dag.flights = _flights.map(f => ({
       id: f.id, naam: f.naam,
       spelerIds: f.spelers.map(s => s.uid),
+      // v5.11.0: markers in een kring — de eerste houdt de kaart bij van de
+      // tweede, enzovoort, de laatste die van de eerste.
+      markers: markerKring(f.spelers.map(s => s.uid)),
       starthole: f.starthole || 1,
       starttijd: f.starttijd || ''
     }));
@@ -2196,14 +2372,10 @@ function renderToernooiActief() {
         💡 <strong>Tip:</strong> Zet toernooi-modus aan zodat deelnemers direct hun scorekaart zien en niet per ongeluk een ladderpartij starten.
       </div>
       ` : ''}
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border);margin-bottom:8px">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;font-size:13px;color:var(--dark)">
-          <input type="checkbox" id="t-scores-verborgen-chk"
-            ${t.scoresVerborgen ? 'checked' : ''}
-            onchange="toggleScoresVerborgen(this.checked)"
-            style="accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
-          <span><strong>Scores verbergen</strong><br><span style="font-size:11px;color:var(--mid)">Deelnemers zien alleen hun eigen invoerkolom, niet die van anderen.</span></span>
-        </label>
+      <div style="padding:8px 12px;background:var(--green-pale);border-radius:8px;margin-bottom:8px;font-size:12px;color:var(--mid);border-top:1px solid var(--border)">
+        👀 <strong>Markers</strong> — binnen elke flight houdt iedereen de kaart bij van één medespeler.
+        Deelnemers zien hun eigen kolom en die van hun marker-speler; de rest staat op punten.
+        Het oude vinkje "Scores verbergen" is daarmee vervallen.
       </div>
       <button class="btn btn-ghost btn-block" onclick="annuleerToernooi()" style="margin-bottom:8px;color:var(--red)">
         Toernooi annuleren
@@ -2264,6 +2436,119 @@ window.selecteerRanglijstDag = selecteerRanglijstDag;
 // ============================================================
 //  SCORECARD
 // ============================================================
+// ============================================================
+//  DE SCOREKAART: rollen, kleuren en meldingen — v5.11.0
+// ============================================================
+
+// Welke rol heeft de ingelogde gebruiker in de kolom van deze speler?
+function rolVoorKolom(spelerUid, dag) {
+  if (isCoordinatorRol()) return 'beheer';
+  const mij = huidigeBruiker?.uid || null;
+  if (!mij) return 'kijker';
+  if (mij === spelerUid) return 'speler';
+  if (markerVan(spelerUid, dag) === mij) return 'marker';
+  return 'kijker';
+}
+
+// Het oordeel over één vakje. Tijdens het spelen is de live/-submap de bron;
+// staat daar voor deze hole niets, dan valt hij terug op het toernooidocument
+// (geconsolideerde scores van een afgesloten dag, of oudere toernooien).
+function celOordeel(spelerUid, holeIdx, dag) {
+  const l = lagenVanDag(_liveScores[spelerUid], dag.dagNr);
+  const o = scoreOordeel(l.speler[holeIdx], l.marker[holeIdx], l.beheer[holeIdx]);
+  if (o.kleur !== 'leeg') return o;
+  const uitDoc = dag.scores?.[spelerUid]?.[holeIdx];
+  if (uitDoc === null || uitDoc === undefined || uitDoc === '') return o;
+  const v = Number(uitDoc);
+  return { kleur: 'zwart', vast: false, tel: v, speler: v, marker: v, beheer: null };
+}
+
+// Welk getal krijgt DEZE kijker te zien? Ieder ziet wat hij zelf intikte; de
+// wedstrijdleiding ziet dat van de speler. Zodra zij iets vaststelt, ziet
+// iedereen hetzelfde getal.
+function celWaarde(oordeel, rol) {
+  if (oordeel.vast) return oordeel.beheer;
+  return rol === 'marker' ? oordeel.marker : oordeel.speler;
+}
+
+// De opmaak van één vakje zit in CSS-klassen, niet in een stijl hier. Dat moet
+// ook: de clubstijl geeft elk invoerveld op een scorekaart een eigen rand mét
+// !important, en die wint van een losse stijl op het element. Zie het blok
+// "DE KLEUREN VAN DE TOERNOOIKAART" onderaan de opmaak in index.html.
+//   zwart = gewone rand, oranje = stippellijn, rood = dubbele rand
+function celKlasse(kleur, vast) {
+  const stand = kleur === 'rood' ? 't-cel-rood' : (kleur === 'oranje' ? 't-cel-oranje' : 't-cel-zwart');
+  return 't-cel ' + stand + (vast ? ' t-cel-vast' : '');
+}
+
+// De regel boven de kaart. Is er niets aan de hand, dan valt hij weg.
+function waarschuwingStijl(oordeel) {
+  if (!oordeel.tekst) return 'display:none';
+  const rood = oordeel.verschillen.length > 0;
+  return 'display:block;margin:6px 12px;padding:8px 10px;border-radius:8px;font-size:12px;'
+       + (rood ? 'background:#fdecea;color:#c0392b;font-weight:600;'
+               : 'background:var(--gold-pale);color:var(--gold);');
+}
+
+// Uitleg bij het aantikken van een vakje. Zonder het getal van de ander:
+// speler en marker moeten het er onderling over eens worden.
+function meldCelStatus(spelerUid, holeIdx) {
+  const dag = actieveDag();
+  if (!dag) return;
+  const o   = celOordeel(spelerUid, holeIdx, dag);
+  const rol = rolVoorKolom(spelerUid, dag);
+  if (o.kleur === 'rood') {
+    toast(rol === 'beheer'
+      ? `Hole ${holeIdx+1}: speler en marker hebben hier iets anders staan.`
+      : `Hole ${holeIdx+1}: jij en je marker hebben hier iets anders staan — overleg even en pas aan.`, 6000);
+  } else if (o.kleur === 'oranje' && rol !== 'beheer') {
+    toast(`Hole ${holeIdx+1}: wacht nog op je marker.`, 4000);
+  }
+}
+window.meldCelStatus = meldCelStatus;
+
+// Werkt de kleuren, de getallen en de waarschuwingsregel bij ZONDER de kaart
+// opnieuw op te bouwen. Nodig omdat de marker en de wedstrijdleiding tijdens
+// het invullen meetypen: een volledige hertekening zou de cursor uit het
+// vakje halen waar je net in staat. Het vakje dat de focus heeft blijft
+// daarom met rust.
+function verversScoreKleuren() {
+  const wrap = document.getElementById('t-scorecard-wrap');
+  const dag  = actieveDag();
+  if (!wrap || !dag) return;
+  const kleuren = [];
+  let herbouwNodig = false;
+  wrap.querySelectorAll('[data-uid]').forEach(el => {
+    const uid     = el.getAttribute('data-uid');
+    const holeIdx = Number(el.getAttribute('data-hole'));
+    const o       = celOordeel(uid, holeIdx, dag);
+    const rol     = rolVoorKolom(uid, dag);
+    kleuren.push({ holeNr: holeIdx + 1, kleur: o.kleur });
+    el.className = celKlasse(o.kleur, o.vast);
+
+    // Heeft de wedstrijdleiding deze hole zojuist vastgesteld, dan hoort er
+    // geen invoerveld meer te staan. Het veld gaat hier meteen op slot (zodat
+    // er niets meer doorheen glipt) en de kaart wordt opnieuw getekend zodra
+    // niemand in deze kaart aan het typen is.
+    const moetInvoer = !dag.afgerond && rol !== 'kijker' && !(o.vast && rol !== 'beheer');
+    if (moetInvoer !== (el.tagName === 'INPUT')) herbouwNodig = true;
+    if (el.tagName === 'INPUT' && !moetInvoer) el.readOnly = true;
+
+    if (el === document.activeElement) return;   // niet in andermans typewerk snijden
+    const val = celWaarde(o, rol);
+    const tekst = (val === null || val === undefined) ? '' : String(val);
+    if (el.tagName === 'INPUT') { if (el.value !== tekst) el.value = tekst; }
+    else el.textContent = tekst === '' ? '—' : tekst;
+  });
+  const regel = document.getElementById('t-kaart-waarschuwing');
+  if (regel) {
+    const o = kaartOordeel(kleuren);
+    regel.textContent = o.tekst;
+    regel.setAttribute('style', dag.afgerond ? 'display:none' : waarschuwingStijl(o));
+  }
+  if (herbouwNodig && !wrap.contains(document.activeElement)) renderTScorecard();
+}
+
 function renderTScorecard() {
   const t = toernooiData;
   if (!t) return;
@@ -2352,11 +2637,37 @@ function renderTScorecard() {
     </div>`;
   }
 
+  // v5.11.0: wie mag in welke kolom typen, en wat ziet hij daar?
+  //   beheer  de wedstrijdleiding — overal, en haar getal is beslissend
+  //   speler  zijn eigen kolom
+  //   marker  de kolom van de speler wiens kaart hij bijhoudt
+  //   kijker  alleen kijken, en dan zonder getal (een • zoals vroeger)
+  // Hiermee vervalt het vinkje "Scores verbergen": wie wat ziet volgt nu
+  // vanzelf uit de markerindeling, zonder knop om te vergeten.
+  const rollen = {};
+  spelers.forEach(s => { rollen[s.uid] = rolVoorKolom(s.uid, dag); });
+
+  // De waarschuwingsregel. Staat bij speler, marker EN wedstrijdleiding: een
+  // rood vakje op hole 7 van 18 zie je op een telefoon anders pas als je scrolt.
+  const kleuren = [];
+  spelers.forEach(s => {
+    if (rollen[s.uid] === 'kijker') return;
+    holesInVolgorde.forEach(holeIdx => {
+      kleuren.push({ holeNr: holeIdx + 1, kleur: celOordeel(s.uid, holeIdx, dag).kleur });
+    });
+  });
+  html += `<div id="t-kaart-waarschuwing" style="${dagAfgerond ? 'display:none' : waarschuwingStijl(kaartOordeel(kleuren))}">${esc(kaartOordeel(kleuren).tekst)}</div>`;
+
   html += `<div style="overflow-x:auto"><table class="scorecard" style="width:100%"><thead><tr><th class="player-col">Hole</th>`;
+  // v5.11.0: unieke korte namen binnen DEZE kaart. Drie spelers die Arjan
+  // heten stonden hier alle drie als "Arjan"; nu Arjan V, Arjan R, Arjan P.
+  const korteNamen = kortNaamMap(spelers);
   spelers.forEach(s => {
     const delen = s.naam.split(' ');
+    const rol = rollen[s.uid];
+    const merk = rol === 'marker' ? ' <span title="Jij markeert deze speler" style="color:var(--green)">✔</span>' : '';
     html += `<th class="player-col" style="max-width:70px">
-      <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px" title="${esc(s.naam)}">${esc(delen[0])}</span>
+      <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px" title="${esc(s.naam)}">${esc(korteNamen[s.uid] || delen[0])}${merk}</span>
       <span class="hole-par" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px;${isBeheerder&&!dagAfgerond?'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)':''}" ${isBeheerder&&!dagAfgerond?`onclick="editToernooiHcp('${escAttr(s.uid)}')"`:''}>
         ${esc(delen.slice(1).join(' ') || 'hcp '+Math.round(s.hcp))}
       </span>
@@ -2368,23 +2679,31 @@ function renderTScorecard() {
     const h = dag.holes[holeIdx];
     html += `<tr><td class="player-col" style="font-weight:600">${holeIdx+1}<span class="hole-par">p${h.par} SI${h.si}</span></td>`;
     spelers.forEach((s, si) => {
-      const val = dag.scores?.[s.uid]?.[holeIdx];
+      const rol = rollen[s.uid];
+      const o   = celOordeel(s.uid, holeIdx, dag);
+      const val = celWaarde(o, rol);
       // v4.0.2: cursor-richting per rol. Beheerder vult per speler in
       // (kolom omlaag), spelers vullen per hole in (rij naar rechts:
       // hole 1 speler 1 → hole 1 speler 2 → ... → hole 2 speler 1).
       const tabIdx = isBeheerder
         ? tabOffset + si * dag.holes.length + spelRij + 1
         : tabOffset + spelRij * spelers.length + si + 1;
-      if (dagAfgerond) {
-        html += `<td style="text-align:center;font-family:'DM Mono',monospace;font-size:14px">${val !== null && val !== undefined ? val : '—'}</td>`;
-      } else if (!isBeheerder && t.scoresVerborgen && s.uid !== mijnUid2) {
-        // v3.0.0-11.73: scores van andere spelers verbergen als beheerder dit heeft ingesteld
+      // Vastgesteld door de wedstrijdleiding? Dan kunnen speler en marker die
+      // hole niet meer wijzigen. Anders kan een gecontroleerde score weer
+      // opengetrokken worden en ben je terug bij af.
+      const opSlot = dagAfgerond || (o.vast && rol !== 'beheer');
+      if (rol === 'kijker' && !dagAfgerond) {
         html += `<td style="text-align:center;color:var(--light);font-size:14px">•</td>`;
+      } else if (opSlot) {
+        html += `<td style="text-align:center"><span data-uid="${escAttr(s.uid)}" data-hole="${holeIdx}"
+          class="${celKlasse(o.kleur, o.vast)}"
+          title="${o.vast ? 'Vastgesteld door de wedstrijdleiding' : ''}">${val !== null && val !== undefined ? val : '—'}</span></td>`;
       } else {
         html += `<td><input type="number" min="1" max="12" inputmode="numeric" value="${val !== null && val !== undefined ? val : ''}"
-          tabindex="${tabIdx}" onfocus="this.select()"
+          data-uid="${escAttr(s.uid)}" data-hole="${holeIdx}"
+          tabindex="${tabIdx}" onfocus="this.select();meldCelStatus('${escAttr(s.uid)}',${holeIdx})"
           oninput="updateTScoreAndAdvance('${escAttr(s.uid)}',${holeIdx},${tabIdx},this.value)"
-          style="width:42px;padding:4px;text-align:center;font-size:14px;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;background:var(--input-bg);color:var(--dark)"></td>`;
+          class="${celKlasse(o.kleur, o.vast)}"></td>`;
       }
     });
     html += '</tr>';
@@ -2392,8 +2711,7 @@ function renderTScorecard() {
 
   html += '<tr class="t-totaal-rij" style="background:var(--green-pale)"><td class="player-col" style="font-weight:700">Tot</td>';
   spelers.forEach(s => {
-    // v3.0.0-11.73: verberg totaal van anderen als scoresVerborgen aan staat
-    if (!isBeheerder && t.scoresVerborgen && s.uid !== mijnUid2) {
+    if (rollen[s.uid] === 'kijker' && !dagAfgerond) {
       html += `<td data-speler-id="${s.uid}" style="text-align:center;color:var(--light)">•</td>`;
     } else {
       const scores = dag.scores?.[s.uid] || [];
@@ -2414,15 +2732,8 @@ function refreshToernooiScorekaart() {
   renderTScorecard();
   renderTMatrix();
   if (actieveDag()?.uitslagZichtbaar || toernooiData?.modus === 'strokeplay') renderTRanglijst();
-  const alles = alleScoresIngevuld(toernooiData);
-  const uitslagBtn = document.getElementById('t-uitslag-btn');
-  if (uitslagBtn) {
-    uitslagBtn.disabled = !alles;
-    uitslagBtn.style.opacity = alles ? '1' : '0.5';
-    uitslagBtn.style.cursor = alles ? 'pointer' : 'not-allowed';
-    uitslagBtn.textContent = `📊 Naar de uitslag${alles ? '' : ' (scores onvolledig)'}`;
-    uitslagBtn.onclick = alles ? toonToernooiUitslag : null;
-  }
+  // v5.11.0: één plek voor de uitslagknop — zie verversUitslagKnop().
+  verversUitslagKnop();
 }
 
 function selecteerFlightTab(fi) {
@@ -2444,19 +2755,47 @@ function updateTScoreAndAdvance(spelerId, holeIdx, tabIdx, val) {
   }
 }
 
+// v5.11.0: elke invoer gaat naar de laag van degene die hem intikt.
+// Zie "MARKERS EN DE DRIE SCOREKAARTEN" bovenin dit bestand.
 function updateTScore(spelerId, holeIdx, val) {
   if (!toernooiData || !actieveToernooiId) return;
   const dag = actieveDag();
   if (!dag || dag.afgerond) return;
 
   const key = String(spelerId);
-  if (!dag.scores[key]) dag.scores[key] = Array(dag.holes.length).fill(null);
-  dag.scores[key][holeIdx] = val === '' ? null : parseInt(val);
+  const rol = rolVoorKolom(key, dag);
+  if (rol === 'kijker') return;                 // mag hier niet typen
+
+  const bestaand = celOordeel(key, holeIdx, dag);
+  if (bestaand.vast && rol !== 'beheer') return; // wedstrijdleiding heeft het laatste woord
+
+  const laag  = rol === 'beheer' ? 'beheerDagen' : (rol === 'marker' ? 'markerDagen' : 'dagen');
+  const dagNr = dag.dagNr || toernooiData.actiefDagNr || 1;   // v4.0.0 (fix 7.4)
+
+  // 1. de eigen laag bijwerken (lokaal, zodat de kleur meteen klopt)
+  const live   = _liveScores[key] || {};
+  const perDag = { ...(live[laag] || {}) };
+  const rij    = Array.isArray(perDag[String(dagNr)]) ? [...perDag[String(dagNr)]] : [];
+  while (rij.length < dag.holes.length) rij.push(null);
+  rij[holeIdx] = val === '' ? null : parseInt(val);
+  perDag[String(dagNr)] = rij;
+  store._liveScores[key] = { ...live, [laag]: perDag, timestamp: Date.now() };
+  if (laag === 'dagen') {
+    store._liveScores[key].dagNr  = dagNr;
+    store._liveScores[key].scores = rij;
+  }
+
+  // 2. opnieuw bepalen wat er MEETELT (zwart, of bij twijfel het getal van de
+  //    speler). Alles wat verderop rekent — totaal, matrix, ranglijst,
+  //    dag afsluiten — leest dag.scores en hoeft van de lagen niets te weten.
+  if (!dag.scores) dag.scores = {};
+  dag.scores[key] = _liveScoresVanDag(store._liveScores[key], dagNr) || [];
 
   const idx = alleToernooien.findIndex(t => t.id === actieveToernooiId);
   if (idx >= 0) alleToernooien[idx] = JSON.parse(JSON.stringify(toernooiData));
 
   updateTTotaalRijInline();
+  verversScoreKleuren();
 
   const isBeheerder = isCoordinatorRol();
   if (isBeheerder) {
@@ -2468,25 +2807,57 @@ function updateTScore(spelerId, holeIdx, val) {
 
   if (dag.uitslagZichtbaar) renderTRanglijst();
 
-  const alles = alleScoresIngevuld(toernooiData);
-  const btn = document.getElementById('t-uitslag-btn');
-  if (btn) {
-    btn.disabled = !alles;
-    btn.style.opacity = alles ? '1' : '0.5';
-    btn.style.cursor = alles ? 'pointer' : 'not-allowed';
-    const dagNr = dag.dagNr || toernooiData.actiefDagNr || 1; // v4.0.0 (fix 7.4)
-    btn.textContent = `📊 Uitslag dag ${dagNr}${alles ? '' : ' (scores onvolledig)'}`;
-    btn.onclick = alles ? toonToernooiUitslag : null;
-  }
+  verversUitslagKnop();
 
   // v3.0.0-11.106: ALLE score-invoer gaat naar live/{spelerId}.
-  // Coördinator en speler schrijven beide naar de subcollectie;
-  // het hoofddocument wordt pas bij "dag afsluiten" bijgewerkt.
-  const dagNr = dag.dagNr || toernooiData.actiefDagNr || 1; // v4.0.0 (fix 7.4)
-  const scoresCopy = [...(dag.scores[String(spelerId)] || [])];
-  // Update _liveScores lokaal voor directe weergave
-  store._liveScores[String(spelerId)] = { dagNr, scores: scoresCopy, timestamp: Date.now() };
-  slaSpelerScoreOp(spelerId, dagNr, scoresCopy);
+  // Het hoofddocument wordt pas bij "dag afsluiten" bijgewerkt.
+  slaSpelerScoreOp(key, dagNr, rij, laag);
+}
+
+// Holes waar speler en marker het niet eens zijn. Een uitslag op ruzie-scores
+// is erger dan een uitslag die vijf minuten later komt, dus hierop gaat de
+// knop "Naar de uitslag" op slot.
+function openVerschillen(t, dag) {
+  t = t || toernooiData;
+  dag = dag || actieveDag(t);
+  if (!t || !dag) return [];
+  const uit = [];
+  (t.spelers || []).forEach(s => {
+    const l = lagenVanDag(_liveScores[s.uid], dag.dagNr);
+    (dag.holes || []).forEach((_, i) => {
+      if (scoreOordeel(l.speler[i], l.marker[i], l.beheer[i]).kleur === 'rood') {
+        uit.push({ uid: s.uid, holeNr: i + 1 });
+      }
+    });
+  });
+  return uit;
+}
+
+// Eén plek waar de uitslagknop wordt bijgewerkt. Stond eerder op twee plekken
+// met bijna dezelfde tekst; bij een wijziging bleef er steevast een achter.
+function verversUitslagKnop() {
+  const btn = document.getElementById('t-uitslag-btn');
+  if (!btn) return;
+  const t    = toernooiData;
+  const dag  = actieveDag(t);
+  const alles = alleScoresIngevuld(t, dag);
+  const rood  = openVerschillen(t, dag);
+  const mag   = alles && rood.length === 0;
+  const dagNr = dag?.dagNr || t?.actiefDagNr || 1;
+
+  btn.disabled = !mag;
+  btn.style.opacity = mag ? '1' : '0.5';
+  btn.style.cursor  = mag ? 'pointer' : 'not-allowed';
+  // Een verschil gaat vóór een gat: een gat vult zichzelf terwijl er gespeeld
+  // wordt, een verschil niet — daar moeten twee mensen iets voor doen, en hoe
+  // eerder ze het horen hoe beter ze het zich nog herinneren.
+  let staart = '';
+  if (rood.length > 0) {
+    const holes = [...new Set(rood.map(r => r.holeNr))].sort((a, b) => a - b);
+    staart = ` (eerst ${holes.length === 1 ? 'hole ' + holes[0] : 'holes ' + holes.join(', ')} uitpraten)`;
+  } else if (!alles) staart = ' (scores onvolledig)';
+  btn.textContent = `📊 Uitslag dag ${dagNr}${staart}`;
+  btn.onclick = mag ? toonToernooiUitslag : null;
 }
 
 function updateTTotaalRijInline() {
@@ -2899,15 +3270,19 @@ function renderTMatrix() {
 
   const kleur = { W: '#d4edda', L: '#f8d7da', T: '#fff3cd' };
 
+  // v5.11.0: unieke korte namen over het hele toernooi. In de onderlinge stand
+  // stonden drie kolommen én drie rijen met alleen "Arjan" — niet te lezen.
+  const korteNamen = kortNaamMap(t.spelers);
+
   let html = `<table style="border-collapse:collapse;font-size:11px;width:100%">`;
   html += `<tr><th style="padding:4px;background:var(--green);color:white"></th>`;
   t.spelers.forEach(s => {
-    html += `<th style="padding:4px 6px;background:var(--green);color:white;text-align:center">${esc(s.naam.split(' ')[0])}</th>`;
+    html += `<th style="padding:4px 6px;background:var(--green);color:white;text-align:center" title="${escAttr(s.naam)}">${esc(korteNamen[s.uid])}</th>`;
   });
   html += '</tr>';
 
   t.spelers.forEach((sA, i) => {
-    html += `<tr><td style="padding:4px 8px;font-weight:600;font-size:12px;white-space:nowrap">${esc(sA.naam.split(' ')[0])}</td>`;
+    html += `<tr><td style="padding:4px 8px;font-weight:600;font-size:12px;white-space:nowrap" title="${escAttr(sA.naam)}">${esc(korteNamen[sA.uid])}</td>`;
     t.spelers.forEach((sB, j) => {
       if (i === j) {
         html += `<td style="background:var(--border);text-align:center;padding:4px">—</td>`;
@@ -3134,7 +3509,9 @@ async function bevestigToernooiAfsluiten() {
       dagen: (t.dagen || []).map(d => ({ dagNr: d.dagNr, datum: d.datum, baan: d.baan, holes: d.holes.length })),
       ptWin: t.ptWin, ptTie: t.ptTie, ptLoss: t.ptLoss,
       ranglijst: volgorde.map(e => ({ naam: e.s.naam, hcp: Math.round(e.s.hcp), punten: e.pt, won: e.w, tied: e.ti, lost: e.l })),
-      spelerNamen: t.spelers.map(s => s.naam.split(' ')[0]),
+      // v5.11.0: ook in het archief unieke korte namen — anders staan er in de
+      // bewaarde matrix drie kolommen "Arjan" en is hij achteraf onleesbaar.
+      spelerNamen: (nm => t.spelers.map(s => nm[s.uid]))(kortNaamMap(t.spelers)),
       matrix: matrixArchief,
       timestamp: Date.now()
     });
@@ -3671,23 +4048,10 @@ async function toggleToernooiModus(aan) {
 }
 window.toggleToernooiModus = toggleToernooiModus;
 
-async function toggleScoresVerborgen(aan) {
-  try {
-    if (!toernooiData || !actieveToernooiId) return;
-    toernooiData.scoresVerborgen = !!aan;
-    const idx = alleToernooien.findIndex(t => t.id === actieveToernooiId);
-    if (idx >= 0) alleToernooien[idx].scoresVerborgen = !!aan;
-    // v4.0.0 (fix 7.6): alleen het gewijzigde veld schrijven
-    await updateDoc(doc(db, 'toernooien', actieveToernooiId), { scoresVerborgen: !!aan });
-    renderTScorecard();
-    toast(aan ? 'Scores verborgen voor deelnemers ✓' : 'Scores zichtbaar voor deelnemers ✓');
-  } catch(e) { toernooiFout('Scores verbergen wijzigen', e); }
-}
-window.toggleScoresVerborgen = toggleScoresVerborgen;
 
 export function getActiefToernooiMetModus() {
   return alleToernooien.find(t => t.toernooiModus && t.status === 'actief') || null;
 }
 
 
-export { alleScoresIngevuld, annuleerToernooi, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarLadderTab, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, herlaadToernooiListeners, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, toggleTRankingLadder, toggleTScorecard, toggleTSpeler, toggleTSpelersLadder, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
+export { alleScoresIngevuld, annuleerToernooi, behoudLiveScores, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarLadderTab, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, herlaadToernooiListeners, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, toggleTRankingLadder, toggleTScorecard, toggleTSpeler, toggleTSpelersLadder, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };

@@ -6,7 +6,7 @@
 //  tegelijk werken. De eerste test is letterlijk de fout van v5.3.0 — een
 //  speler die voor het eerst inlogde zag alle spelers op rang 0.
 // ============================================================
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./hulp-browser.cjs');
 
 const WACHTWOORD = 'test1234';
 // v5.4.3: de inlogknop op EEN plek. Niet op tekst zoeken: in #login-scherm

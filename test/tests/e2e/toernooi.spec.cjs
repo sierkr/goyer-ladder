@@ -17,7 +17,7 @@
 //  De vier fouten van 11 september staan er los in, elk met de naam van het
 //  probleem, zodat een terugval meteen herkenbaar is.
 // ============================================================
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./hulp-browser.cjs');
 
 // De tests delen één database (workers: 1). Zonder opruimen zou het toernooi
 // van de vorige test het volgende blokkeren — sinds v5.9.0 mag er maar één
@@ -162,6 +162,138 @@ test.describe('Toernooi — de hele route', () => {
     await expect(page.locator('#toernooi-geannuleerd-sectie')).toHaveCount(0);
 
     expect(fouten, 'geen JavaScript-fouten tijdens de hele route').toEqual([]);
+  });
+
+  // ============================================================
+  //  v5.11.0 — DRIE MENSEN TEGELIJK: SPELER, MARKER EN WEDSTRIJDLEIDING
+  // ============================================================
+  //  Dit is de test die er tot nu toe niet was, en de reden dat de
+  //  toernooimodus bugs bleef houden: de sommen klopten, maar of drie mensen
+  //  er tegelijk doorheen kunnen klikken werd nergens bewaakt.
+  //
+  //  Drie aparte browservensters, drie echte inlogs. Elk venster schrijft naar
+  //  ZIJN EIGEN laag — de app kiest die laag op grond van wie er is ingelogd.
+  //  De kleur van een vakje is hier het bewijs: oranje = wacht op de ander,
+  //  rood = ze verschillen, zwart = het klopt.
+  //
+  //  De kleur wordt uit de ECHTE opmaak gelezen (de rand), niet uit een
+  //  hulpveld dat de test zelf zou kunnen zetten.
+  // ============================================================
+  test('MARKERS: speler, marker en wedstrijdleiding tegelijk aan één kaart', async ({ browser }) => {
+    test.setTimeout(240000);
+
+    // Leest de kleur zoals hij op het scherm staat: stippellijn = oranje,
+    // dubbele rand = rood, gewone rand = zwart.
+    const kleurVanCel = (pagina, uid, hole) => pagina.evaluate(({ uid, hole }) => {
+      const el = document.querySelector(`#t-scorecard-wrap [data-uid="${uid}"][data-hole="${hole}"]`);
+      if (!el) return 'geen';
+      const rand = getComputedStyle(el).borderStyle || '';
+      if (rand.startsWith('double')) return 'rood';
+      if (rand.startsWith('dashed')) return 'oranje';
+      return 'zwart';
+    }, { uid, hole });
+
+    const wachtOpKleur = async (pagina, uid, hole, verwacht) => {
+      await expect.poll(() => kleurVanCel(pagina, uid, hole),
+        { timeout: 20000, message: `vakje van ${uid} op hole ${hole + 1} wordt ${verwacht}` }
+      ).toBe(verwacht);
+    };
+
+    const ctxCoord  = await browser.newContext();
+    const ctxSpeler = await browser.newContext();
+    const ctxMarker = await browser.newContext();
+    try {
+      // ── 1. De wedstrijdleiding zet een toernooi van één flight op ──
+      const coord = await ctxCoord.newPage();
+      jaOpAlles(coord);
+      await inloggen(coord, 'coord@MPladder.stb');
+      await naarToernooi(coord);
+      await vulAanmaakformulier(coord, 'Markers', 1);
+      for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(coord, n);
+      await naarFlightIndeling(coord);
+      await coord.click('#flight-modal-start-btn');
+      await expect(coord.locator('#toernooi-detail')).toContainText('Markers', { timeout: 15000 });
+
+      // ── 2. De markerkring ligt vast in de flight ──────────────
+      const t      = await haalToernooi('Markers');
+      const ids    = t.dagen[0].flights[0].spelerIds;
+      const markers = t.dagen[0].flights[0].markers;
+      expect(Object.keys(markers).length, 'iedereen heeft een marker').toBe(ids.length);
+      expect(Object.entries(markers).filter(([s, m]) => s === m).length,
+        'niemand markeert zichzelf').toBe(0);
+
+      // We volgen één speler en zijn marker.
+      const uidSpeler = ids[1];
+      const uidMarker = markers[uidSpeler];
+      expect(uidMarker, 'de marker van de tweede is de eerste').toBe(ids[0]);
+      const naamVan = (uid) => t.spelers.find(s => s.uid === uid).naam.split(' ')[0].toLowerCase();
+      const uidDerde = ids.find(u => u !== uidSpeler && u !== uidMarker);
+
+      const speler = await ctxSpeler.newPage();
+      const marker = await ctxMarker.newPage();
+      jaOpAlles(speler); jaOpAlles(marker);
+      await inloggen(speler, `${naamVan(uidSpeler)}@MPladder.stb`);
+      await inloggen(marker, `${naamVan(uidMarker)}@MPladder.stb`);
+      await naarToernooi(speler);
+      await naarToernooi(marker);
+
+      // ── 3. Wie mag waar typen ────────────────────────────────
+      // De speler: zijn eigen kolom en die van de speler die HIJ markeert.
+      // De kolom van de derde staat op punten — hiermee vervalt het oude
+      // vinkje "Scores verbergen".
+      const magTypen = (pagina, uid) => pagina.locator(`#t-scorecard-wrap input[data-uid="${uid}"]`).count();
+      expect(await magTypen(speler, uidSpeler), 'eigen kolom is invulbaar').toBeGreaterThan(0);
+      const doorSpelerGemarkeerd = Object.keys(markers).find(k => markers[k] === uidSpeler);
+      expect(await magTypen(speler, doorSpelerGemarkeerd), 'de kolom van zijn marker-speler ook').toBeGreaterThan(0);
+      const verboden = ids.find(u => u !== uidSpeler && u !== doorSpelerGemarkeerd);
+      expect(await magTypen(speler, verboden), 'de kolom van een ander niet').toBe(0);
+      expect(await magTypen(coord, uidDerde), 'de wedstrijdleiding mag overal').toBeGreaterThan(0);
+
+      // ── 4. De speler vult in: oranje, want de marker moet nog ──
+      await speler.evaluate(({ uid }) => window.updateTScore(uid, 0, 5), { uid: uidSpeler });
+      await wachtOpKleur(speler, uidSpeler, 0, 'oranje');
+      await wachtOpKleur(coord,  uidSpeler, 0, 'oranje');
+      await expect(coord.locator('#t-kaart-waarschuwing')).toContainText('wacht', { timeout: 20000 });
+
+      // ── 5. De marker vult iets ANDERS in: rood, bij alle drie ──
+      await marker.evaluate(({ uid }) => window.updateTScore(uid, 0, 6), { uid: uidSpeler });
+      await wachtOpKleur(marker, uidSpeler, 0, 'rood');
+      await wachtOpKleur(speler, uidSpeler, 0, 'rood');
+      await wachtOpKleur(coord,  uidSpeler, 0, 'rood');
+      await expect(speler.locator('#t-kaart-waarschuwing')).toContainText('verschil', { timeout: 20000 });
+
+      // Ieder ziet zijn EIGEN getal — niemand dat van de ander.
+      const getalIn = (pagina, uid, hole) => pagina.evaluate(({ uid, hole }) =>
+        document.querySelector(`#t-scorecard-wrap [data-uid="${uid}"][data-hole="${hole}"]`)?.value,
+        { uid, hole });
+      expect(await getalIn(speler, uidSpeler, 0), 'de speler ziet zijn eigen 5').toBe('5');
+      expect(await getalIn(marker, uidSpeler, 0), 'de marker ziet zijn eigen 6').toBe('6');
+
+      // ── 6. Zolang het rood is, gaat de uitslag niet open ──────
+      await expect(coord.locator('#t-uitslag-btn')).toContainText('uitpraten', { timeout: 20000 });
+      await expect(coord.locator('#t-uitslag-btn')).toBeDisabled();
+
+      // ── 7. Ze praten het uit: de marker past aan → zwart ──────
+      await marker.evaluate(({ uid }) => window.updateTScore(uid, 0, 5), { uid: uidSpeler });
+      await wachtOpKleur(speler, uidSpeler, 0, 'zwart');
+      await wachtOpKleur(coord,  uidSpeler, 0, 'zwart');
+      await expect(coord.locator('#t-uitslag-btn')).not.toContainText('uitpraten', { timeout: 20000 });
+      await expect(coord.locator('#t-kaart-waarschuwing')).not.toContainText('verschil', { timeout: 20000 });
+
+      // ── 8. De wedstrijdleiding stelt vast en zet de hole op slot ──
+      await speler.evaluate(({ uid }) => window.updateTScore(uid, 1, 4), { uid: uidSpeler });
+      await coord.evaluate(({ uid }) => window.updateTScore(uid, 1, 7), { uid: uidSpeler });
+      await wachtOpKleur(speler, uidSpeler, 1, 'zwart');
+      // De speler kan er niet meer bij, en ziet het getal van de wedstrijdleiding.
+      const magTypenOpHole = (pagina, uid, hole) =>
+        pagina.locator(`#t-scorecard-wrap input[data-uid="${uid}"][data-hole="${hole}"]`).count();
+      await expect.poll(() => magTypenOpHole(speler, uidSpeler, 1), { timeout: 20000 }).toBe(0);
+      await expect.poll(() => speler.evaluate(({ uid }) =>
+        document.querySelector(`#t-scorecard-wrap [data-uid="${uid}"][data-hole="1"]`)?.textContent?.trim(),
+        { uid: uidSpeler }), { timeout: 20000 }).toBe('7');
+    } finally {
+      await ctxCoord.close(); await ctxSpeler.close(); await ctxMarker.close();
+    }
   });
 
   test('AFSLUITEN: alle scores, uitslag, dag afsluiten en weer heropenen', async ({ page }) => {

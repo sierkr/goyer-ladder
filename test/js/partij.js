@@ -1384,49 +1384,50 @@ async function startPartij() {
 // ============================================================
 //  NAAM HELPER — unieke korte namen binnen een groep spelers
 // ============================================================
-// Geeft de voornaam terug, maar voegt letters van de achternaam toe
-// totdat alle namen binnen de gegeven lijst uniek zijn.
-// Voorbeeld: ["Jan de Vries", "Jan Jansen"] → ["Jan d", "Jan J"]
+// Geeft de voornaam terug, en plakt er letters van de ACHTERNAAM achter tot
+// alle namen binnen de gegeven lijst uniek zijn.
+//
+// v5.11.0 — WAT ER MIS WAS: het tussenvoegsel telde mee. "Arjan van Venrooij"
+// werd dan onderscheiden met de v van "van", terwijl het de V van "Venrooij"
+// moet zijn. Sierk, 12 september 2026: "Arjan van Venrooij moet worden
+// Arjan V, de V van Venrooij en niet Arjan v, de v van van." Het
+// tussenvoegsel wordt nu overgeslagen; er komt alleen een letter bij zolang
+// het nog niet uniek is.
+//
+// Voorbeeld: ["Arjan van Venrooij", "Arjan Ribbe", "Arjan Paulussen"]
+//            → ["Arjan V", "Arjan R", "Arjan P"]
+// En bij twee achternamen die op elkaar lijken groeit het vanzelf mee:
+//            ["Arjan van Venrooij", "Arjan van der Veen"]
+//            → ["Arjan Ven", "Arjan Vee"]
+//
+// Splitst een volledige naam in voornaam en achternaam, met het tussenvoegsel
+// eruit. "Bart Jan van Genderen" → { voornaam: 'Bart', achternaam: 'Genderen' }.
+// Het laatste woord wordt nooit als tussenvoegsel gezien: iemand die "Jan de"
+// heet houdt "de" als achternaam en valt niet terug op niets.
+function splitsNaam(volleNaam) {
+  const voorvoegsels = new Set(
+    ['van','de','den','der','het','te','ter','ten','op','in','aan','bij']);
+  const delen = String(volleNaam || '').trim().split(/\s+/);
+  const voornaam = delen[0] || '';
+  let i = 1;
+  while (i < delen.length - 1 && voorvoegsels.has(delen[i].toLowerCase())) i++;
+  return { voornaam, achternaam: delen.slice(i).join(' ') };
+}
+
 function kortNaam(speler, alleSpelers) {
-  const delen = speler.naam.trim().split(/\s+/);
-  const voornaam = delen[0];
+  const { voornaam, achternaam } = splitsNaam(speler.naam);
 
-  // Splits naam in voornaam, tussenvoegsel (voorvoegsel), achternaam
-  // Voorvoegsels: van, de, den, der, het, te, ter, ten, 'van der' etc.
-  const voorvoegsels = new Set(['van','de','den','der','het','te','ter','ten','op','in','aan','bij']);
-  let vi = 1;
-  while (vi < delen.length - 1 && voorvoegsels.has(delen[vi].toLowerCase())) vi++;
-  const tussenvoegsel = delen.slice(1, vi).join(' '); // bijv. "van der"
-  const achternaam = delen.slice(vi).join(' ');       // bijv. "Veen"
-  const naamZonderVoornaam = [tussenvoegsel, achternaam].filter(Boolean).join(' '); // "van der Veen"
+  const gelijkeVoornaam = (alleSpelers || []).filter(s =>
+    s.uid !== speler.uid &&
+    splitsNaam(s.naam).voornaam.toLowerCase() === voornaam.toLowerCase());
+  if (gelijkeVoornaam.length === 0) return voornaam;
 
-  // Geen duplicaten: alleen voornaam
-  const duplicaten = alleSpelers.filter(s => s.uid !== speler.uid && s.naam.trim().split(/\s+/)[0].toLowerCase() === voornaam.toLowerCase());
-  if (duplicaten.length === 0) return voornaam;
-
-  // Bouw vergelijkbare naamZonderVoornaam voor duplicaten
-  const anderenRest = duplicaten.map(s => {
-    const d = s.naam.trim().split(/\s+/);
-    let di = 1;
-    while (di < d.length - 1 && voorvoegsels.has(d[di].toLowerCase())) di++;
-    return d.slice(1).join(' '); // tussenvoegsel + achternaam volledig
-  });
-
-  // Voeg steeds één letter toe aan achternaam (inclusief volledig tussenvoegsel)
-  const prefix = tussenvoegsel ? voornaam + ' ' + tussenvoegsel + ' ' : voornaam + ' ';
+  const anderen = gelijkeVoornaam.map(s => splitsNaam(s.naam).achternaam);
   for (let i = 1; i <= achternaam.length; i++) {
-    const kandidaat = prefix + achternaam.slice(0, i);
-    const nogSteeds = anderenRest.filter(a => {
-      const ad = a.trim().split(/\s+/);
-      let ai = 0;
-      while (ai < ad.length - 1 && voorvoegsels.has(ad[ai].toLowerCase())) ai++;
-      const aAchternaam = ad.slice(ai).join(' ');
-      const aPrefix = ad.slice(0, ai).join(' ');
-      const aKandidaat = (aPrefix ? voornaam + ' ' + aPrefix + ' ' : voornaam + ' ') + aAchternaam.slice(0, i);
-      return aKandidaat === kandidaat;
-    });
-    if (nogSteeds.length === 0) return kandidaat;
+    const stuk = achternaam.slice(0, i);
+    if (!anderen.some(a => a.slice(0, i) === stuk)) return voornaam + ' ' + stuk;
   }
+  // Twee keer precies dezelfde naam: dan maar de hele naam, die is tenminste eerlijk.
   return speler.naam;
 }
 

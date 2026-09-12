@@ -20,6 +20,15 @@
 const POORT = process.env.TEST_POORT || '5000';
 const BASIS = `http://127.0.0.1:${POORT}`;
 
+// v5.11.0: CHROMIUM_PAD wijst een browser aan die al op de machine staat.
+// Nodig op een werkplek waar Playwright zijn eigen browser niet mag ophalen
+// (de hulpmachine waarop deze tests vóór oplevering draaien): daar staat
+// Chromium al klaar, maar in een andere versiemap dan Playwright verwacht,
+// en dan valt de hele suite om op "Executable doesn't exist".
+// Zonder de variabele verandert er niets — op GitHub en op de Mint pakt
+// Playwright gewoon zijn eigen gedownloade browser.
+const CHROMIUM_PAD = process.env.CHROMIUM_PAD || '';
+
 module.exports = {
   testDir: './tests/e2e',
   testMatch: '**/*.spec.cjs',
@@ -44,7 +53,11 @@ module.exports = {
   projects: [
     {
       name: 'chromium',
-      use: { browserName: 'chromium', viewport: { width: 1280, height: 900 } },
+      use: {
+        browserName: 'chromium',
+        viewport: { width: 1280, height: 900 },
+        ...(CHROMIUM_PAD ? { launchOptions: { executablePath: CHROMIUM_PAD } } : {}),
+      },
     },
   ],
 

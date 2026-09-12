@@ -735,6 +735,57 @@
   html[data-theme="matchcheck"] .section-title { color: var(--mid) !important; font-size: 11px !important; letter-spacing: 0.06em !important; text-transform: uppercase; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ============================================================
+     v5.11.0 — DE KLEUREN VAN DE TOERNOOIKAART
+     ------------------------------------------------------------
+     zwart  = klopt (vastgesteld, of speler en marker gelijk)
+     oranje = één van de twee heeft ingevuld, de ander nog niet
+     rood   = allebei ingevuld, verschillend
+
+     Naast de kleur ook een andere RAND: oranje tegen zwart is op een telefoon
+     in de zon slecht te zien, en niet iedereen onderscheidt kleuren even goed.
+
+     ⚠ !important is hier nodig, niet netjes-bedoeld. Hierboven staat
+     `html[data-theme="matchcheck"] .scorecard input[type=number] { border: ...
+     !important }` — de standaardstijl van de club. Zonder !important wint die
+     rand van de kleur en ziet niemand het verschil. De browsertest MARKERS
+     ving dit op: hij leest de rand zoals hij echt op het scherm staat.
+     ============================================================ */
+  /* ⚠ De keuzes hieronder zijn zwaarder gemaakt dan ze eruitzien: de
+     clubstijl gebruikt `html[data-theme="matchcheck"] .scorecard
+     input[type=number]` mét !important, en dat weegt zwaarder dan een gewone
+     klasse. Vandaar `html ... input[type=number].t-cel.t-cel-<kleur>`. */
+  html .scorecard input[type=number].t-cel, html .scorecard span.t-cel {
+    width: 46px;
+    padding: 4px;
+    text-align: center;
+    font-size: 14px;
+    font-family: 'DM Mono', monospace;
+    border-radius: 5px;
+    background: var(--input-bg);
+    color: var(--dark);
+  }
+  html .scorecard span.t-cel { display: inline-block; }
+  html .scorecard input[type=number].t-cel.t-cel-zwart,
+  html .scorecard span.t-cel.t-cel-zwart {
+    border: 1.5px solid var(--border) !important;
+  }
+  html .scorecard input[type=number].t-cel.t-cel-vast,
+  html .scorecard span.t-cel.t-cel-vast {
+    border: 1.5px solid var(--green) !important;
+  }
+  html .scorecard input[type=number].t-cel.t-cel-oranje,
+  html .scorecard span.t-cel.t-cel-oranje {
+    border: 2px dashed #e8a33d !important;
+    color: #b26a00 !important;
+  }
+  html .scorecard input[type=number].t-cel.t-cel-rood,
+  html .scorecard span.t-cel.t-cel-rood {
+    border: 3px double #c0392b !important;
+    color: #c0392b !important;
+    font-weight: 700;
+  }
 </style>
 </head>
 <body>

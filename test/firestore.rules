@@ -34,7 +34,9 @@ rules_version = '2';
 //  - uitslagen/{doc}: create open voor ingelogde, update/delete alleen coordinator
 //    (voorkomt dat speler andermans uitslagen overschrijft).
 //  - toernooien/{doc}: read blijft publiek (live meekijken), write alleen coordinator.
-//    Subcollectie live scores blijft open.
+//    Subcollectie live scores blijft open voor elke ingelogde speler, BEHALVE de
+//    laag `beheerDagen` (v5.11.0): die stelt een score definitief vast en is
+//    daarom alleen voor de coordinator.
 //  - snapshots/{doc}: read alleen coordinator (bevat volledige ladderstanden +
 //    speler-identiteit - niet gedeeld met iedere speler).
 //  - ladders/{id}/standen/{uid}: write door elke ingelogde speler die in de ladder
@@ -247,9 +249,29 @@ service cloud.firestore {
       // voor de hele flight). Voorheen blokkeerde de regel alles behalve de eigen
       // uid of de coordinator - waardoor alleen de eigen score doorkwam.
       // Read publiek zodat toernooi-live.html real-time scores kan tonen.
+      //
+      // v5.11.0 - DRIE LAGEN IN EEN DOCUMENT.
+      //   dagen        de speler zelf
+      //   markerDagen  zijn marker
+      //   beheerDagen  de wedstrijdleiding - en die is beslissend
+      //
+      // De eerste twee mag elke ingelogde speler schrijven: de app bepaalt wie
+      // wiens marker is, en een club waarvan iedereen een eigen inlog heeft is
+      // geen plek om dat met databaseregels dicht te timmeren. De DERDE laag is
+      // wel afgeschermd: die zet een hole definitief op slot voor speler en
+      // marker, dus wie hem kan schrijven kan een uitslag bepalen.
+      //
+      // ⚠ hasAny() op affectedKeys() is hier de juiste vraag: "verandert deze
+      // schrijfactie beheerDagen?" Een create heeft geen resource.data, vandaar
+      // de aparte tak.
       match /live/{uid} {
-        allow read:  if true;
-        allow write: if isIngelogd();
+        allow read:   if true;
+        allow create: if isIngelogd() &&
+                        (!request.resource.data.keys().hasAny(['beheerDagen']) || isCoordinator());
+        allow update: if isIngelogd() &&
+                        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['beheerDagen'])
+                         || isCoordinator());
+        allow delete: if isCoordinator();
       }
     }
 

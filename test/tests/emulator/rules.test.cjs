@@ -232,6 +232,21 @@ async function main() {
   await R.magNiet('anoniem kan geen live-scores schrijven',
     () => anon.doc(`toernooien/t1/live/${SPELER}`).set({ dagNr: 1, scores: [9] }));
 
+  // ══ v5.11.0: de drie scorelagen ════════════════════════════
+  // De laag `beheerDagen` zet een hole definitief op slot voor speler en
+  // marker. Wie hem kan schrijven kan dus een uitslag bepalen — daarom is
+  // alleen die laag afgeschermd, en de andere twee niet.
+  await R.magWel('speler kan zijn markerlaag schrijven',
+    () => speler.doc(`toernooien/t1/live/${SPELER2}`).set({ markerDagen: { '1': [5] } }, { merge: true }));
+  await R.magNiet('speler kan de vastgestelde laag NIET schrijven',
+    () => speler.doc(`toernooien/t1/live/${SPELER2}`).set({ beheerDagen: { '1': [3] } }, { merge: true }));
+  await R.magNiet('speler kan de vastgestelde laag ook niet in een nieuw document zetten',
+    () => speler.doc('toernooien/t1/live/uid_nieuw_cccccccccccc').set({ beheerDagen: { '1': [3] } }));
+  await R.magWel('coordinator kan de vastgestelde laag wel schrijven',
+    () => coord.doc(`toernooien/t1/live/${SPELER2}`).set({ beheerDagen: { '1': [4] } }, { merge: true }));
+  await R.magNiet('speler kan een live-document niet verwijderen',
+    () => speler.doc(`toernooien/t1/live/${SPELER2}`).delete());
+
   // ══ uitslagen ══════════════════════════════════════════════
   await R.magWel('speler kan uitslagen lezen',
     () => speler.doc('uitslagen/u1').get());
