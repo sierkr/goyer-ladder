@@ -253,6 +253,57 @@ test.describe('Partij en scores', () => {
   });
 });
 
+test.describe('Informatiebalk', () => {
+  // ============================================================
+  //  v5.11.2 — EEN MELDING DIE JE NIET KUNT LEZEN IS GEEN MELDING
+  // ------------------------------------------------------------
+  //  De balk stond op `white-space: nowrap` zonder maximale breedte. Korte
+  //  bevestigingen pasten, maar sinds v5.9.0 noemen foutmeldingen de echte
+  //  oorzaak — en die lopen dan aan beide kanten het scherm uit. Sierk zag een
+  //  toernooi niet starten en kon de reden niet lezen.
+  //
+  //  Deze test meet het op telefoonformaat: de melding moet HOGER zijn dan één
+  //  regel en helemaal BINNEN het scherm vallen.
+  // ============================================================
+  test('een lange foutmelding loopt door en blijft binnen het scherm', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 780 });   // iPhone-formaat
+    await inloggen(page, 'coord@MPladder.stb');
+
+    const LANG = 'Er is iets misgegaan bij het starten van het toernooi: '
+               + 'de database weigerde de schrijfactie omdat je geen coordinator bent (permission-denied).';
+    await page.evaluate((m) => window.toast(m, 9000), LANG);
+
+    const balk = page.locator('#toast');
+    await expect(balk).toBeVisible();
+    await expect(balk).toContainText('permission-denied');
+
+    const maat = await balk.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return { links: r.left, rechts: r.right, hoogte: r.height, breedte: window.innerWidth };
+    });
+    expect(maat.links, 'linkerkant valt binnen het scherm').toBeGreaterThanOrEqual(0);
+    expect(maat.rechts, 'rechterkant valt binnen het scherm').toBeLessThanOrEqual(maat.breedte);
+    expect(maat.hoogte, 'de tekst loopt door over meerdere regels').toBeGreaterThan(40);
+
+    // En je hoeft de negen seconden niet uit te zitten.
+    // Let op: de balk blijft in de pagina staan en wordt alleen doorzichtig
+    // (klasse `show` eraf). `toBeVisible` kijkt niet naar doorzichtigheid, dus
+    // dat zou hier altijd slagen — meet de klasse, en dat hij geen klikken meer
+    // onderschept.
+    await balk.click();
+    await expect(balk).not.toHaveClass(/show/, { timeout: 5000 });
+    const klikbaar = await balk.evaluate(el => getComputedStyle(el).pointerEvents);
+    expect(klikbaar, 'een weggetikte balk vangt geen klikken meer af').toBe('none');
+  });
+
+  test('een korte bevestiging blijft één regel', async ({ page }) => {
+    await inloggen(page, 'coord@MPladder.stb');
+    await page.evaluate(() => window.toast('Opgeslagen ✓'));
+    const hoogte = await page.locator('#toast').evaluate(el => el.getBoundingClientRect().height);
+    expect(hoogte, 'korte meldingen zien er hetzelfde uit als altijd').toBeLessThan(45);
+  });
+});
+
 test.describe('Beheer', () => {
 
   test('coordinator ziet de beheertabbladen, speler niet', async ({ browser }) => {

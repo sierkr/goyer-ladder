@@ -397,6 +397,15 @@
   }
 
   /* TOAST */
+  /* v5.11.2 — DE INFORMATIEBALK MOET TE LEZEN ZIJN.
+     ⚠ WAT ER MIS WAS: `white-space: nowrap` zonder maximale breedte. Een korte
+     bevestiging paste, maar sinds v5.9.0 noemen foutmeldingen de ECHTE oorzaak
+     en die zijn lang. Zo'n melding werd één regel die aan beide kanten buiten
+     het scherm liep — juist de tekst die je nodig hebt was onleesbaar.
+     Sierk, 12 september 2026: "de informatiebalk heeft geen regelterugloop en
+     verdwijnt buiten beeld."
+     Nu loopt hij door over meerdere regels, blijft hij binnen het scherm, en
+     kun je hem wegtikken in plaats van negen seconden te wachten. */
   #toast {
     position: fixed;
     bottom: 80px;
@@ -411,9 +420,15 @@
     transition: all 0.3s;
     z-index: 999;
     pointer-events: none;
-    white-space: nowrap;
+    /* Breed genoeg om te lezen, smal genoeg om binnen het scherm te blijven.
+       De 92vw wint op een telefoon, de 420px op een breed scherm. */
+    max-width: min(92vw, 420px);
+    box-sizing: border-box;
+    text-align: center;
+    line-height: 1.35;
+    overflow-wrap: anywhere;   /* een lange foutcode breekt af i.p.v. eruit te lopen */
   }
-  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; cursor: pointer; }
 
   /* MODAL */
   .modal-overlay {

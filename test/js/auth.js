@@ -1330,9 +1330,22 @@ function toast(msg, ms) {
   if (!t) return;
   t.textContent = msg;
   t.classList.add('show');
+  // v5.11.2: wegtikken. Een foutmelding blijft negen seconden staan, en zo lang
+  // wil je er niet tegenaan kijken als je hem gelezen hebt. Eén keer koppelen,
+  // niet bij elke melding opnieuw.
+  if (!t._klikGekoppeld) {
+    t.addEventListener('click', () => {
+      t.classList.remove('show');
+      if (_toastTimer) clearTimeout(_toastTimer);
+    });
+    t._klikGekoppeld = true;
+  }
   if (_toastTimer) clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => t.classList.remove('show'), ms || 2500);
 }
+// v5.11.2: ook op window, zodat de browsertest de ECHTE meldingfunctie kan
+// aanroepen in plaats van een nagemaakte — inclusief het wegtikken.
+window.toast = toast;
 
 function registreerNotificatieToken() {}
 
