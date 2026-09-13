@@ -422,6 +422,23 @@ async function loginSubmit() {
 // ⚠ Deze functie mag nooit zelf een fout naar buiten laten: hij draait in de
 // catch van het inloggen, en een fout hier zou de nette foutmelding vervangen
 // door een stille mislukking.
+// Maakt van wat de gast intikt het eerste deel van zijn inlognaam, ZONDER de
+// toernooicode. Dit moet exact hetzelfde uitpakken als gastLoginVan() in
+// js/toernooi.js, want dat is de kant die het account aanmaakt. Lopen ze uit de
+// pas, dan vindt de gast zijn eigen account niet. De rekentest 'Gastlogin'
+// vergelijkt beide kanten met elkaar.
+//
+// v5.11.7: een punt scheidt net als een spatie ("Test.1" = "Test 1"), en ÉÉN
+// woord is genoeg — een gast mag met alleen een voornaam worden toegevoegd.
+function gastKernVan(invoer) {
+  const delen = String(invoer || '').trim().split(/[\s.]+/).filter(Boolean);
+  if (delen.length === 0) return '';
+  const schoon = t => String(t).toLowerCase().replace(/\s+/g, '');
+  return delen.length === 1
+    ? schoon(delen[0])
+    : `${schoon(delen[0])}.${schoon(delen.slice(1).join(' '))}`;
+}
+
 async function _probeerGastLogin(invoer, wachtwoord) {
   try {
     if (!invoer || invoer.includes('@')) return false;
@@ -434,11 +451,8 @@ async function _probeerGastLogin(invoer, wachtwoord) {
     // weigerde precies de naam die op het scherm stond. Sierk, 12 september
     // 2026: "van Test 1 is 1 de achternaam. hoezo accepteert de login Test.1
     // dan niet."
-    const delen = invoer.trim().split(/[\s.]+/).filter(Boolean);
-    if (delen.length < 2) return false;   // alleen een voornaam is te weinig
-
-    const schoon = t => String(t).toLowerCase().replace(/\s+/g, '');
-    const kern = `${schoon(delen[0])}.${schoon(delen.slice(1).join(' '))}`;
+    const kern = gastKernVan(invoer);
+    if (!kern) return false;
 
     const snap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
     const codes = snap.docs.map(d => d.data().gastCode).filter(Boolean);

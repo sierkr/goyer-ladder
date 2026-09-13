@@ -11,6 +11,7 @@ const suites = [
   ['Knockout',                   './knockout.test.cjs'],
   ['Korte unieke namen',         './namen.test.cjs'],
   ['Markers en scorelagen',      './marker.test.cjs'],
+  ['Gastlogins',                 './gastlogin.test.cjs'],
 ];
 
 let totOk = 0, totFout = 0;

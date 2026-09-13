@@ -426,6 +426,61 @@ test.describe('Toernooi — de hele route', () => {
     await expect(lijst).not.toContainText('undefined');
   });
 
+  // ============================================================
+  //  v5.11.6 — DE MARKERKRING NA EEN SPELER ERBIJ
+  // ============================================================
+  //  Een speler toevoegen aan een lopend toernooi raakte `markers` niet aan.
+  //  De nieuwe viel dan terug op de kring terwijl de anderen hun opgeslagen
+  //  marker hielden: één speler markeerde er twee, de nieuwe niemand. Niemand
+  //  bleef zónder marker, dus het viel niet op — maar "ieder markeert er één"
+  //  klopte niet meer, en dat is juist de afspraak.
+  // ============================================================
+  test('MARKERKRING: een speler erbij verdeelt de kring opnieuw', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Kring', 1);
+    for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Kring', { timeout: 15000 });
+
+    // Controleert de afspraak: ieder markeert er precies één, ieder wordt
+    // precies één keer gemarkeerd, en niemand markeert zichzelf.
+    const kringKlopt = (t) => {
+      const f = t.dagen[0].flights[0];
+      const m = f.markers || {};
+      const spelers = f.spelerIds || [];
+      return {
+        aantal: spelers.length,
+        iedereenHeeftEr1: Object.keys(m).length === spelers.length,
+        iedereenMarkeertEr1: new Set(Object.values(m)).size === spelers.length,
+        geenZelf: Object.entries(m).every(([s, mk]) => s !== mk),
+        alleenEchteSpelers: Object.entries(m).flat().every(uid => spelers.includes(uid)),
+      };
+    };
+
+    expect(kringKlopt(await haalToernooi('Kring')))
+      .toEqual({ aantal: 3, iedereenHeeftEr1: true, iedereenMarkeertEr1: true,
+                 geenZelf: true, alleenEchteSpelers: true });
+
+    // ── Een vierde speler erbij, via Spelers beheren ──────────
+    await page.click('#toernooi-detail button:has-text("Spelers")');
+    await page.fill('#toernooi-speler-zoek', 'Nina');
+    const regel = page.locator('#toernooi-speler-zoek-lijst >> text=Nina Nieuw').first();
+    await regel.waitFor({ state: 'visible', timeout: 5000 });
+    await regel.evaluate(el => el.click());
+    await page.click('#modal-toernooi-spelers button:has-text("+ Toevoegen")');
+    await expect(page.locator('#toernooi-detail')).toContainText('4 spelers', { timeout: 15000 });
+
+    await expect.poll(async () => kringKlopt(await haalToernooi('Kring')),
+      { timeout: 15000, message: 'de kring is opnieuw verdeeld' })
+      .toEqual({ aantal: 4, iedereenHeeftEr1: true, iedereenMarkeertEr1: true,
+                 geenZelf: true, alleenEchteSpelers: true });
+  });
+
   test('AFSLUITEN: alle scores, uitslag, dag afsluiten en weer heropenen', async ({ page }) => {
     test.setTimeout(180000);
     jaOpAlles(page);
@@ -538,7 +593,10 @@ test.describe('Toernooi — de hele route', () => {
     // Eén afhandelaar voor alle vensters: prompts krijgen een antwoord uit de
     // rij, bevestigingsvragen een OK. Twee losse afhandelaars vechten om
     // dezelfde vraag ("dialog which is already handled").
-    const antwoorden = ['Karel Gast', '15'];
+    // v5.11.7: ook een gast met ALLEEN een voornaam. Die kon worden toegevoegd
+    // en kreeg een account, maar het inlogscherm weigerde hem — één woord viel
+    // buiten de gastherkenning.
+    const antwoorden = ['Karel Gast', '15', 'Bep', '12'];
     page.on('dialog', async d => {
       if (d.type() === 'prompt') await d.accept(antwoorden.shift() ?? '');
       else await d.accept();
@@ -553,18 +611,34 @@ test.describe('Toernooi — de hele route', () => {
 
     await page.click('#toernooi-setup-wrap button:has-text("Gastspeler toevoegen")');
     await expect(page.locator('#t-geselecteerde-spelers')).toContainText('Karel Gast');
+    await page.click('#toernooi-setup-wrap button:has-text("Gastspeler toevoegen")');
+    await expect(page.locator('#t-geselecteerde-spelers')).toContainText('Bep');
 
     await naarFlightIndeling(page);
     await page.click('#flight-modal-start-btn');
     await expect(page.locator('#toernooi-detail')).toContainText('Gastentoernooi', { timeout: 20000 });
 
     // De gast heeft een echt account gekregen, met de toernooicode erachter.
+    //
+    // ⚠ Wachten tot de accounts er ECHT zijn. startToernooi() schrijft het
+    // toernooi eerst weg en maakt de gastaccounts daarna aan, één voor één, met
+    // een tweede Firebase-venster per gast. Bij twee gasten duurt dat langer dan
+    // bij één — en dan las deze test het document van vóór die tweede
+    // schrijfactie. Dat kostte een meetronde: het leek alsof het aanmaken
+    // mislukte terwijl het alleen nog bezig was.
+    await expect.poll(async () => {
+      const x = await haalToernooi('Gastentoernooi');
+      return (x.spelers || []).filter(sp => sp.gast && sp.login).length;
+    }, { timeout: 30000, message: 'beide gasten hebben een inlog' }).toBe(2);
     const t = await haalToernooi('Gastentoernooi');
     expect(t.gastCode, 'het toernooi draagt een openbare gastcode').toBe('gastentoernooi');
     const gast = t.spelers.find(sp => sp.naam === 'Karel Gast');
     expect(gast, 'de gast staat in het toernooi').toBeTruthy();
     expect(gast.gast, 'blijft een gast — telt niet mee voor de ladder').toBe(true);
     expect(gast.login, 'heeft een inlognaam gekregen').toBe('karel.gast.gastentoernooi');
+    const bep = t.spelers.find(sp => sp.naam === 'Bep');
+    expect(bep?.login, 'een gast met alleen een voornaam krijgt ook een inlog')
+      .toBe('bep.gastentoernooi');
     expect(String(gast.uid).startsWith('gast_'), 'heeft een echte uid, geen tijdelijke').toBe(false);
 
     // Het wachtwoord staat NIET op het openbare toernooidocument.
@@ -609,6 +683,17 @@ test.describe('Toernooi — de hele route', () => {
     await punt.waitForSelector('#login-scherm', { state: 'hidden', timeout: 25000 });
     await expect(punt.locator('#page-toernooi')).toContainText('Jouw scorekaart', { timeout: 20000 });
     await punt.close();
+
+    // v5.11.7: en de gast met alleen een voornaam komt er ook in.
+    const eenNaam = await (await browser.newContext()).newPage();
+    await eenNaam.goto('/index.html');
+    await eenNaam.waitForSelector('#login-scherm', { state: 'visible' });
+    await eenNaam.fill('#login-email', 'Bep');
+    await eenNaam.fill('#login-pass', 'goyer2026');
+    await eenNaam.click('#login-scherm button.btn-primary');
+    await eenNaam.waitForSelector('#login-scherm', { state: 'hidden', timeout: 25000 });
+    await expect(eenNaam.locator('#page-toernooi')).toContainText('Jouw scorekaart', { timeout: 20000 });
+    await eenNaam.close();
 
     // En het beheerscherm toont precies dát: karel.gast, zonder toernooicode.
     await page.click('#toernooi-detail button:has-text("Spelers")');

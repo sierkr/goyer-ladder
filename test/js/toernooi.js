@@ -294,6 +294,29 @@ function markerVan(spelerUid, dag) {
   return null;
 }
 
+// v5.11.6: verdeelt de markerkring opnieuw over een flight. Nodig zodra de
+// samenstelling verandert.
+//
+// ⚠ WAT ER MIS WAS. Een speler toevoegen of verwijderen raakte `markers` niet
+// aan. De nieuwe speler had dan geen vermelding en viel terug op de kring,
+// terwijl de anderen hun opgeslagen marker hielden: één speler markeerde er
+// ineens twee en de nieuwe markeerde niemand. Niemand bleef zónder marker —
+// dat vangnet werkt — maar "ieder markeert er één" klopte niet meer, en dat is
+// juist de afspraak. Sierk vroeg ernaar voordat het in het echt misging.
+//
+// Afgesloten dagen blijven met rust: daar is de uitslag al vastgesteld, en de
+// indeling achteraf omgooien zou die geschiedenis veranderen.
+//
+// Er is (nog) geen scherm om een marker met de hand om te zetten, dus de
+// opgeslagen indeling bevat nooit iets wat de kring niet ook weet. Opnieuw
+// verdelen kan dus niets wegvagen.
+function herschikMarkers(toernooi) {
+  (toernooi?.dagen || []).forEach(dag => {
+    if (dag.afgerond) return;
+    (dag.flights || []).forEach(f => { f.markers = markerKring(f.spelerIds || []); });
+  });
+}
+
 // Haalt één laag van één dag uit een live-document.
 // `laag` is 'dagen', 'markerDagen' of 'beheerDagen'.
 function _laagVanDag(data, laag, dagNr) {
@@ -946,6 +969,8 @@ function verwijderToernooiSpelerSelectie(uid) {
 function voegGastspelerToe() {
   const naam = prompt('Naam gastspeler:');
   if (!naam?.trim()) return;
+  if (!_dubbeleGastnaamOk(naam.trim(),
+        (store._tGeselecteerdeSpelers || []).map(sp => sp.naam))) return;   // v5.11.7
   const hcpStr = prompt(`Handicap voor ${naam.trim()}:`, '10');
   if (hcpStr === null) return;
   const hcp = parseFloat(hcpStr) || 0;
@@ -1479,6 +1504,21 @@ function splitsNaam(volleNaam) {
   return { voornaam: delen[0], achternaam: delen.slice(1).join(' ') };
 }
 
+// v5.11.7: twee gasten met precies dezelfde naam krijgen allebei een eigen
+// inlog (`karel` en `karel2`) — die zijn op het scherm niet uit elkaar te
+// houden, want de namen zijn gelijk. Dan moet je het wél weten, anders geef je
+// twee mensen hetzelfde briefje. Geeft false als de coordinator afziet.
+function _dubbeleGastnaamOk(naam, bestaandeNamen) {
+  const gelijk = (bestaandeNamen || []).filter(n =>
+    String(n || '').trim().toLowerCase() === String(naam).trim().toLowerCase()).length;
+  if (gelijk === 0) return true;
+  return confirm(
+    `Er doet al iemand mee die "${naam}" heet.\n\n` +
+    `Ze krijgen allebei een eigen inlog — de tweede krijgt een cijfer erbij. ` +
+    `Op het scherm staan ze onder dezelfde naam, dus je moet zelf doorgeven ` +
+    `wie welke inlog heeft.\n\nToch toevoegen?`);
+}
+
 // De inlog (zonder @-deel) voor een gast in een toernooi.
 function gastLoginVan(volleNaam, code) {
   const { voornaam, achternaam } = splitsNaam(volleNaam);
@@ -1575,8 +1615,14 @@ async function maakGastAccount(volleNaam, code, wachtwoord, toernooiNaam) {
       uid = cred.user.uid;
     } catch (e) {
       if (e?.code === 'auth/email-already-in-use') {
-        // Zelfde naam twee keer in hetzelfde toernooi: er een cijfer achter.
-        login = `${gastLoginVan(volleNaam, code)}${poging + 1}`;
+        // Zelfde naam twee keer in hetzelfde toernooi: er een cijfer bij.
+        //
+        // ⚠ v5.11.7: het cijfer hoort IN de naam, niet achter de toernooicode.
+        // Hier stond `karel.<code>2`. Daar klopte niets van: het scherm kon de
+        // code er niet meer afhalen (je zag de hele sleutel), en intikken kon
+        // die gast hem al helemaal niet — de app plakt de code er zelf achter
+        // en komt dan op `karel2.<code>` uit. Nu is dát ook wat er staat.
+        login = gastLoginVan(`${volleNaam}${poging + 1}`, code);
       } else {
         throw e;
       }
@@ -2119,6 +2165,7 @@ async function voegBestaandeSpelerToeAanToernooi() {
       }
     });
 
+    herschikMarkers(t);   // v5.11.6
     await setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(t)));
     closeModal('modal-toernooi-spelers');
     renderToernooiActief();
@@ -2146,6 +2193,8 @@ async function voegGastspelerToeAanToernooi() {
         `losse inlog. Wil je hem als gast toevoegen?`)) return;
     }
 
+    if (!_dubbeleGastnaamOk(naam, (t.spelers || []).map(sp => sp.naam))) return;   // v5.11.7
+
     // v5.10.0: gastlogin, als dit toernooi er een wachtwoord voor heeft.
     const gastLogin = document.getElementById('toernooi-gast-inlog')?.checked === true;
     let gastId = 'gast_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8); // v4.0.0 (fix 7.7)
@@ -2171,6 +2220,7 @@ async function voegGastspelerToeAanToernooi() {
       }
     });
 
+    herschikMarkers(t);   // v5.11.6
     await setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(t)));
     closeModal('modal-toernooi-spelers');
     renderToernooiActief();
@@ -2202,6 +2252,7 @@ async function verwijderToernooiSpelerNieuw(spelerId) {
         dag.flights.forEach(f => { f.spelerIds = (f.spelerIds || []).filter(sid => sid !== spelerId); });
       }
     });
+    herschikMarkers(toernooiData);   // v5.11.6
     // v4.0.0: ruim ook het live-scoredocument van deze speler op
     try { await deleteDoc(doc(db, 'toernooien', actieveToernooiId, 'live', spelerId)); } catch(e) { /* bestond mogelijk niet */ }
     delete store._liveScores[spelerId];
