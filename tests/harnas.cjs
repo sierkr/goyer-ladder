@@ -48,6 +48,10 @@ function laadToernooiKern() {
     '_laagVanDag', 'lagenVanDag', 'scoreOordeel',
     // v5.11.8: de volgorde bij een gelijke stand in matchplay.
     'matchplayVolgorde', 'hcpVan',
+    // v5.12.0: speelwijze per dag en de dagpunten die twee speelwijzen
+    // vergelijkbaar maken.
+    'dagModus', 'heeftStrokeplayDag', 'gemengdeSpeelwijzen',
+    'dagPuntenUitSleutels', 'dagPunten', 'dagPuntenTotaal',
   ]);
   const k = knip('js/knockout.js', ['rondesNaarObj', 'objNaarRondes', 'verwerkKnockoutVoortgang']);
   const bron = `
@@ -61,6 +65,8 @@ function laadToernooiKern() {
       berekenStrokeplayTotaal, countback, getDag, actieveDag, heeftGeenScores,
       alleScoresIngevuld, berekenFlightTijd, berekenTPunten, _liveScoresVanDag,
       matchplayVolgorde, hcpVan,
+      dagModus, heeftStrokeplayDag, gemengdeSpeelwijzen,
+      dagPuntenUitSleutels, dagPunten, dagPuntenTotaal,
       rondesNaarObj, objNaarRondes, verwerkKnockoutVoortgang,
       _zetToernooi: (v) => { toernooiData = v; },
       _zetLive:     (v) => { _liveScores = v || {}; },

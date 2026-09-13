@@ -1149,6 +1149,17 @@
       <label>Aangepast aantal holes</label>
       <input type="number" id="t-dag-holes-custom" min="1" max="18" placeholder="bijv. 12" style="text-align:center">
     </div>
+    <!-- v5.12.0: de speelwijze staat per dag -->
+    <div class="form-group">
+      <label>Speelwijze</label>
+      <select id="t-dag-modus">
+        <option value="matchplay">Matchplay</option>
+        <option value="strokeplay">Strokeplay</option>
+      </select>
+      <p style="font-size:11px;color:var(--light);margin:4px 0 0">
+        ⚠ Zit er een strokeplay-dag in het toernooi, dan telt het niet mee voor de ladder.
+      </p>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div class="form-group">
         <label>Starttijd</label>

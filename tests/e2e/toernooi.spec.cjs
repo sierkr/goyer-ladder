@@ -491,6 +491,59 @@ test.describe('Toernooi — de hele route', () => {
                  geenZelf: true, alleenEchteSpelers: true });
   });
 
+  // ============================================================
+  //  v5.12.0 — DAG 1 STROKEPLAY, DAG 2 MATCHPLAY
+  // ============================================================
+  //  De speelwijze stond op het TOERNOOI: één keuze voor alle dagen. Nu staat
+  //  hij op de DAG. Deze test speelt het na: twee dagen, twee speelwijzen, en
+  //  het scherm moet per dag het juiste tonen.
+  // ============================================================
+  test('SPEELWIJZE PER DAG: dag 1 strokeplay, dag 2 matchplay', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+    const fouten = [];
+    page.on('pageerror', e => fouten.push(e.message));
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Gemengd', 2);
+
+    // Dag 1 strokeplay, dag 2 matchplay.
+    const blokken = page.locator('#t-dag-blokken .dag-blok');
+    await blokken.nth(0).locator('.t-dag-modus').selectOption('strokeplay');
+    await blokken.nth(1).locator('.t-dag-modus').selectOption('matchplay');
+
+    for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Gemengd', { timeout: 15000 });
+
+    // Het staat ook echt zo in de database.
+    const t = await haalToernooi('Gemengd');
+    expect(t.dagen.map(d => d.modus), 'de speelwijze staat per dag')
+      .toEqual(['strokeplay', 'matchplay']);
+
+    // Dag 1 is strokeplay: geen onderlinge stand.
+    await expect(page.locator('#toernooi-detail h2:has-text("Onderlinge stand")'),
+      'op een strokeplay-dag geen onderlinge stand').toHaveCount(0);
+
+    // Dag 2 is matchplay: die staat er wél.
+    await page.click('#toernooi-detail button:has-text("Dag 2")');
+    await expect(page.locator('#toernooi-detail h2:has-text("Onderlinge stand")'),
+      'op een matchplay-dag wel').toBeVisible({ timeout: 15000 });
+
+    // En terug naar dag 1 verdwijnt hij weer.
+    await page.click('#toernooi-detail button:has-text("Dag 1")');
+    await expect(page.locator('#toernooi-detail h2:has-text("Onderlinge stand")'))
+      .toHaveCount(0, { timeout: 15000 });
+
+    // ⚠ De Ladder-knop is in v5.12.0 uit het titelblok verdwenen; de laddertab
+    // staat gewoon in de navigatiebalk.
+    await expect(page.locator('#toernooi-detail button:has-text("Ladder")')).toHaveCount(0);
+
+    expect(fouten, 'geen JavaScript-fouten').toEqual([]);
+  });
+
   test('AFSLUITEN: alle scores, uitslag, dag afsluiten en weer heropenen', async ({ page }) => {
     test.setTimeout(180000);
     jaOpAlles(page);
