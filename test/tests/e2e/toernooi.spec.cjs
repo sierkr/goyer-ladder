@@ -337,6 +337,9 @@ test.describe('Toernooi — de hele route', () => {
       await naarToernooi(speler);
 
       const blok = (pagina) => pagina.locator('#toernooi-detail h2:has-text("Onderlinge stand")');
+      // v5.12.2: het klassement had geen kop en heeft die nu wel — juist dat
+      // ontbreken is waar het misverstand van v5.11.1 vandaan kwam.
+      const klassement = (pagina) => pagina.locator('#toernooi-detail h2:has-text("Klassement")');
 
       // Standaard aan: de deelnemer ziet het blok.
       await expect(blok(speler)).toBeVisible({ timeout: 15000 });
@@ -348,9 +351,46 @@ test.describe('Toernooi — de hele route', () => {
       await expect(speler.locator('#t-matrix')).toHaveCount(0);
       await expect(blok(coord), 'de coordinator ziet hem altijd').toBeVisible();
 
-      // En weer aan.
+      // ⚠ HIER GING HET MIS. De schakelaar dekte alleen het namenrooster. Het
+      // KLASSEMENT — plaats, naam, punten — verscheen bij de deelnemer zodra de
+      // dag was afgesloten, de uitslag was vrijgegeven, of het een strokeplay-dag
+      // was, en bleef daar staan hoe de schakelaar ook stond. Sierk, 13 september
+      // 2026: "de knop onderlinge stand tonen aan/uit heeft geen effect. zij
+      // blijven de stand zien, ook na refresh." En daarna: "met onderlinge stand
+      // heb ik steeds het klassement bedoeld."
+      //
+      // De uitslag wordt hier rechtstreeks in de database vrijgegeven. De knop
+      // "Uitslag dag 1" is grijs tot alle scores van alle spelers ingevuld zijn,
+      // en dit gaat niet over het invullen maar over wat er daarna zichtbaar is.
+      // De app leest gewoon de echte toestand uit de database.
+      const tDoc = (await beheerDb.collection('toernooien').get()).docs
+        .find(d => d.data().naam === 'Standblok');
+      // ⚠ `uitslagZichtbaar` staat op de DAG, niet op het toernooi. Het veld op
+      // het toernooi bestaat ook, maar het scherm leest dat van de dag.
+      const dagenUit = tDoc.data().dagen.map((d, i) =>
+        i === 0 ? { ...d, uitslagZichtbaar: true } : d);
+      await tDoc.ref.update({ dagen: dagenUit, uitslagZichtbaar: true });
+
+      // Allebei opnieuw openen: zo meet deze test wat er uit de BEWAARDE
+      // toestand wordt getekend, en niet of een scherm toevallig bijwerkt.
+      // Sierk zei er nadrukkelijk bij: "ook na refresh".
+      for (const p of [coord, speler]) {
+        await p.reload();
+        await p.waitForSelector('#login-scherm', { state: 'hidden', timeout: 25000 });
+        await naarToernooi(p);
+      }
+
+      await expect(klassement(coord), 'de coordinator ziet het klassement')
+        .toBeVisible({ timeout: 20000 });
+      await expect(klassement(speler), 'de deelnemer niet, want de schakelaar staat uit')
+        .toHaveCount(0, { timeout: 20000 });
+      await expect(speler.locator('#t-ranglijst'), 'ook de gegevens zelf niet').toHaveCount(0);
+      await expect(blok(speler), 'en het namenrooster nog steeds niet').toHaveCount(0);
+
+      // En weer aan: allebei de blokken komen terug.
       await coord.check('#t-matrix-zichtbaar-chk');
       await expect(blok(speler)).toBeVisible({ timeout: 20000 });
+      await expect(klassement(speler), 'en het klassement ook').toBeVisible({ timeout: 20000 });
     } finally {
       await ctxCoord.close(); await ctxSpeler.close();
     }
@@ -1049,6 +1089,55 @@ test.describe('Toernooi — de hele route', () => {
     await keuzes.nth(0).selectOption('matchplay');
     await expect(ranking, 'weer helemaal matchplay: de ranking-ladder mag weer').toBeVisible();
     await expect(uitleg,  'en de strokeplay-uitleg is weg').toBeHidden();
+  });
+
+  // ============================================================
+  //  v5.12.2 — OOK OP EEN STROKEPLAY-DAG
+  // ------------------------------------------------------------
+  //  Op een strokeplay-dag staat het klassement er vanaf de eerste hole, zonder
+  //  dat de dag hoeft te zijn afgesloten (v5.12.0: `dagModus === 'strokeplay'`).
+  //  Dat is precies het geval waarin de schakelaar het hardst nodig is, en het
+  //  geval waarin hij tot v5.12.1 het minst deed. Het namenrooster bestaat hier
+  //  niet — bij strokeplay speel je niet tegen elkaar — dus dit is de enige test
+  //  die het klassement helemaal alleen bewaakt.
+  // ============================================================
+  test('STAND UIT: ook het klassement van een strokeplay-dag verdwijnt', async ({ browser }) => {
+    test.setTimeout(200000);
+    const ctxCoord = await browser.newContext();
+    const ctxSpeler = await browser.newContext();
+    try {
+      const coord = await ctxCoord.newPage();
+      jaOpAlles(coord);
+      await inloggen(coord, 'coord@MPladder.stb');
+      await naarToernooi(coord);
+      await vulAanmaakformulier(coord, 'Strokestand', 1);
+      await coord.locator('#t-dag-blokken .t-dag-modus').first().selectOption('strokeplay');
+      for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(coord, n);
+      await naarFlightIndeling(coord);
+      await coord.click('#flight-modal-start-btn');
+      await expect(coord.locator('#toernooi-detail')).toContainText('Strokestand', { timeout: 20000 });
+
+      const speler = await ctxSpeler.newPage();
+      jaOpAlles(speler);
+      await inloggen(speler, 'anna@MPladder.stb');
+      await naarToernooi(speler);
+
+      const klassement = (p) => p.locator('#toernooi-detail h2:has-text("Klassement")');
+      await expect(klassement(speler), 'bij strokeplay staat het klassement er meteen')
+        .toBeVisible({ timeout: 20000 });
+      await expect(speler.locator('#toernooi-detail h2:has-text("Onderlinge stand")'),
+        'en het namenrooster juist niet — je speelt niet tegen elkaar').toHaveCount(0);
+
+      await coord.uncheck('#t-matrix-zichtbaar-chk');
+      await expect(klassement(speler), 'schakelaar uit: weg bij de deelnemer')
+        .toHaveCount(0, { timeout: 20000 });
+      await expect(klassement(coord), 'en de coordinator houdt hem').toBeVisible();
+
+      await coord.check('#t-matrix-zichtbaar-chk');
+      await expect(klassement(speler), 'en weer terug').toBeVisible({ timeout: 20000 });
+    } finally {
+      await ctxCoord.close(); await ctxSpeler.close();
+    }
   });
 
 });

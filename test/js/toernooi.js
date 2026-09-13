@@ -2072,8 +2072,9 @@ async function toggleMatrixVoorDeelnemers(aan) {
     if (idx >= 0) alleToernooien[idx].matrixVerborgen = !aan;
     await updateDoc(doc(db, 'toernooien', actieveToernooiId), { matrixVerborgen: !aan });
     renderToernooiActief();
-    toast(aan ? 'Onderlinge stand zichtbaar voor deelnemers ✓' : 'Onderlinge stand verborgen voor deelnemers');
-  } catch(e) { toernooiFout('Onderlinge stand aan/uit zetten', e); }
+    toast(aan ? 'Klassement en onderlinge stand zichtbaar voor deelnemers ✓'
+              : 'Klassement en onderlinge stand verborgen voor deelnemers');
+  } catch(e) { toernooiFout('Stand aan/uit zetten', e); }
 }
 window.toggleMatrixVoorDeelnemers = toggleMatrixVoorDeelnemers;
 
@@ -2452,8 +2453,26 @@ function renderToernooiActief() {
       </div>
     </div>`;
 
-  const ranglijstKaart = (uitslag || dagAfgerond || dagModus(t, dag) === 'strokeplay') ? `
+  // v5.12.2: het KLASSEMENT volgt dezelfde schakelaar als de onderlinge stand,
+  // en krijgt eindelijk een kop.
+  //
+  // ⚠ WAT ER MIS WAS, en waarom het zo lang duurde voor we het doorhadden.
+  // Dit blok had geen naam op het scherm. Het enige blok met een kop in de
+  // buurt heet "Onderlinge stand" — het namenrooster. Sierk vroeg in v5.11.1
+  // om "het onderlinge stand blokje dat aan/uit gezet moet worden" en bedoelde
+  // dít blok; de schakelaar is toen op het rooster ernaast gebouwd. Beiden
+  // dachten hetzelfde te bedoelen. Sierk, 13 september 2026: "met onderlinge
+  // stand heb ik steeds het klassement bedoeld."
+  //
+  // Daarom staat er nu een kop boven. Een blok zonder naam is een blok waar je
+  // niet over kunt praten.
+  const standZichtbaar = isBeheerder || !t.matrixVerborgen;
+  const ranglijstKaart = (standZichtbaar && (uitslag || dagAfgerond || dagModus(t, dag) === 'strokeplay')) ? `
     <div class="card">
+      <div class="card-header">
+        <h2>Klassement</h2>
+        ${isBeheerder && t.matrixVerborgen ? '<span style="font-size:11px;color:var(--mid)">· niet zichtbaar voor deelnemers</span>' : ''}
+      </div>
       <div style="display:flex;gap:6px;overflow-x:auto;padding:10px 12px 0;scrollbar-width:none;border-bottom:1px solid var(--border)">
         ${(t.dagen || []).map(d => `
           <button onclick="selecteerRanglijstDag(${d.dagNr})"
@@ -2485,8 +2504,11 @@ function renderToernooiActief() {
   //
   // Nu: één schakelaar met een naam (matrixVerborgen), en het pijltje is weer
   // gewoon een pijltje — alleen voor het eigen scherm, niets wordt bewaard.
-  const matrixZichtbaar = isBeheerder || !t.matrixVerborgen;
-  const matrixKaart = (dagModus(t, dag) !== 'strokeplay' && matrixZichtbaar) ? `
+  //
+  // v5.12.2: diezelfde schakelaar dekt sindsdien ook het klassement hierboven.
+  // Het veld heet nog `matrixVerborgen` en dat blijft zo: hernoemen zou elk
+  // lopend toernooi de instelling kosten. Lees het als "de stand is verborgen".
+  const matrixKaart = (dagModus(t, dag) !== 'strokeplay' && standZichtbaar) ? `
     <div class="card">
       <div class="card-header ${isBeheerder ? 'inklapbaar' : ''} ${isBeheerder && window._matrixIngeklapt ? 'ingeklapt' : ''}"
         ${isBeheerder ? 'onclick="toggleToernooiMatrix()"' : ''}>
@@ -2602,7 +2624,7 @@ function renderToernooiActief() {
             ${t.matrixVerborgen ? '' : 'checked'}
             onchange="toggleMatrixVoorDeelnemers(this.checked)"
             style="accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
-          <span><strong>Onderlinge stand tonen aan deelnemers</strong><br><span style="font-size:11px;color:var(--mid)">Uit: het blok staat alleen bij jou. Jij ziet hem altijd.</span></span>
+          <span><strong>Stand tonen aan deelnemers</strong><br><span style="font-size:11px;color:var(--mid)">Uit: het klassement én de onderlinge stand staan alleen bij jou. Jij ziet ze altijd.</span></span>
         </label>
       </div>
       <div style="padding:8px 12px;background:var(--green-pale);border-radius:8px;margin-bottom:8px;font-size:12px;color:var(--mid);border-top:1px solid var(--border)">
