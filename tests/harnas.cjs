@@ -138,6 +138,28 @@ function laadHcpKern() {
 }
 
 // ============================================================
+//  v5.12.6 — DE SCORE IN HET KNOCKOUTSCHEMA
+// ------------------------------------------------------------
+//  knockoutMatchScore() was tot v5.12.5 geen functie maar een blok midden in
+//  verwerkKnockoutUitslag(), en daardoor het enige stuk standberekening zonder
+//  test — het harnas knipt losse functies uit. Hij had bovendien zijn eigen,
+//  ingetikte slagentoekenning die alleen 'laagste SI' kende.
+//
+//  Nu leent hij slagenPerHole() en hcpInstellingen() van js/hcp.js, net als de
+//  rest van de app. Ze worden hier ingespoten in plaats van meegeknipt, zodat
+//  de test aantoont dat het ECHT dezelfde bron is en niet een tweede kopie.
+// ============================================================
+function laadKnockoutScoreKern() {
+  const hcp = laadHcpKern().app;
+  const bron = `
+    ${knip('js/knockout.js', ['knockoutMatchScore'])}
+    return { knockoutMatchScore };
+  `;
+  return new Function('slagenPerHole', 'hcpInstellingen', bron)(
+    hcp.slagenPerHole, hcp.hcpInstellingen);
+}
+
+// ============================================================
 //  v5.8.9 — DE MATCHPLAY-SCORE ('4&3')
 // ------------------------------------------------------------
 //  berekenMatchStand() bevriest de stand op het moment dat een partij beslist
@@ -237,4 +259,5 @@ function maakChecker() {
 }
 
 module.exports = { laadToernooiKern, laadLadderKern, laadHcpKern, laadScoreKern,
+                   laadKnockoutScoreKern,
                    laadNaamKern, laadMarkerKern, laadGastloginKern, maakChecker };

@@ -6,7 +6,7 @@ import { store, alleLadders, activeLadderId, _beheerPartijId, _beheerWinnaars } 
 
 // v4.2.0: zelfde Cloud Function als in ronde.js — zie de toelichting daar.
 const _verwerkPartijUitslagFnBeheer = httpsCallable(functions, 'verwerkPartijUitslag');
-import { slaActievePartijenOp, slaUitslagenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+import { slaActievePartijenOp, slaUitslagenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, meldFout, laadUitdagingen } from './auth.js';
 import { mijnPartij, kortNaam } from './partij.js';
 import { getLadderSpelers, ladderStandenGeladen } from './ladder-view.js';
 import { renderLadder } from './ladder.js';
@@ -424,7 +424,7 @@ async function bevestigBeheerUitslag() {
   // v4.2.0: standen/{uid} is al bijgewerkt door de Cloud Function hierboven.
   slaSnapshotOp(`Partij: ${p.spelers.map(s => s.naam.split(' ')[0]).join(' vs ')}`, p.ladderId);
   showLadderChanges(changes);
-  } catch(e) { console.error('bevestigBeheerUitslag mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { meldFout('Uitslag bevestigen', e); }
 }
 
 async function annuleerEigenPartij() {

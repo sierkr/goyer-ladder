@@ -3,11 +3,16 @@
 // ============================================================
 import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
 import { store, alleLadders, activeLadderId, _koLadderId, _koIndelingVolgorde, _koDragIdx, _koTouchClone, _koTouchStartY } from './store.js';
-import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, meldFout, laadUitdagingen } from './auth.js';
 import { initFirestore } from './auth.js';
 import { renderLadder, toggleLadderKaart } from './ladder.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { closeModal } from './admin.js';
+// v5.12.6: de slagentoekenning kwam hier uit een eigen, ingetikte formule die
+// alleen 'slagen op de laagste SI' kende. Nu uit hcp.js, net als het
+// partijformulier, het rondescherm, de server en watch.html. hcp.js importeert
+// zelf niets, dus dit geeft geen kring.
+import { slagenPerHole, hcpInstellingen } from './hcp.js';
 
 
 //  KNOCKOUT LADDER
@@ -165,7 +170,7 @@ async function openKnockoutIndeling(ladderId) {
 
   renderKnockoutIndelingModal();
   document.getElementById('modal-knockout-indeling').classList.add('open');
-  } catch(e) { console.error('openKnockoutIndeling mislukt:', e); toast('Er is iets misgegaan'); }
+  } catch(e) { meldFout('Knockoutindeling openen', e); }
 }
 
 function renderKnockoutIndelingModal() {
@@ -358,7 +363,7 @@ async function bevestigKnockoutIndeling() {
     closeModal('modal-knockout-indeling');
     renderLadder();
     toast('Indeling opgeslagen ✓');
-  } catch(e) { console.error('bevestigKnockoutIndeling mislukt:', e); toast('Er is iets misgegaan'); }
+  } catch(e) { meldFout('Knockoutindeling bevestigen', e); }
 }
 
 function verwerkKnockoutVoortgang(rondes, aantalSpelers) {
@@ -409,6 +414,58 @@ function verwerkKnockoutVoortgang(rondes, aantalSpelers) {
   return rondes;
 }
 
+// ============================================================
+//  DE SCORE IN HET KNOCKOUTSCHEMA  (v5.12.6)
+// ============================================================
+//  Geeft '4&3', '2 up', 'gelijkspel' of '' terug voor een knockoutpartij.
+//
+//  De slagentoekenning komt uit hcp.js — dezelfde bron als het partijformulier,
+//  het rondescherm, de server en watch.html. Hier stond tot v5.12.5 een eigen,
+//  ingetikte kopie die alleen 'slagen op de laagste SI' kende; bij een partij
+//  op 'slagen vanaf SI' week het schema daardoor af van de scorekaart.
+//
+//  Net als berekenMatchStand() in js/ronde.js BEVRIEST dit de stand op het
+//  moment dat de match beslist is: wie op hole 15 met 4 voor en 3 te gaan wint,
+//  wint 4&3, ook als er gezellig wordt doorgeteld tot 18.
+function knockoutMatchScore(partij, matchup) {
+  const holes = (partij && partij.holes) || [];
+  const scores = (partij && partij.scores) || {};
+  const scoresA = scores[matchup.spelerA.uid] || [];
+  const scoresB = scores[matchup.spelerB.uid] || [];
+  let standA = 0, gespeeld = 0;
+  let beslissingsStand = null, beslissingsGespeeld = null;
+  // Eenmalig uitrekenen; de verdeling is voor alle holes dezelfde.
+  const slagenLijst = slagenPerHole(
+    matchup.hcpSlagen, holes, hcpInstellingen(partij).plaatsing);
+  for (let i = 0; i < holes.length; i++) {
+    const sA = scoresA[i]; const sB = scoresB[i];
+    if (sA == null || sB == null) continue;
+    gespeeld++;
+    const slag = slagenLijst[i] || 0;
+    const slagA = matchup.hcpOntvanger === matchup.spelerA.uid ? slag : 0;
+    const slagB = matchup.hcpOntvanger === matchup.spelerB.uid ? slag : 0;
+    const nettoA = sA - slagA; const nettoB = sB - slagB;
+    if (nettoA < nettoB) standA++;
+    else if (nettoB < nettoA) standA--;
+    const resterendNa = holes.length - gespeeld;
+    if (beslissingsStand === null && Math.abs(standA) > resterendNa) {
+      beslissingsStand = standA; beslissingsGespeeld = gespeeld;
+    }
+  }
+  const resterend = holes.length - gespeeld;
+  const klaar = gespeeld === holes.length && holes.length > 0;
+  const beslist = beslissingsStand !== null;
+  const effectieveStand = beslist ? beslissingsStand : standA;
+  const resterendEff = beslist ? (holes.length - beslissingsGespeeld) : resterend;
+  // v5.8.9: '&0' bestaat niet in golftaal — wie op de laatste hole beslist,
+  // wint '2 up'. Zelfde notatie als in de rest van de app.
+  if (beslist) return resterendEff > 0
+    ? `${Math.abs(effectieveStand)}&${resterendEff}`
+    : `${Math.abs(effectieveStand)} up`;
+  if (klaar) return effectieveStand === 0 ? 'gelijkspel' : `${Math.abs(effectieveStand)} up`;
+  return '';
+}
+
 async function verwerkKnockoutUitslag(partij) {
   try {
     const ladderId = partij.ladderId;
@@ -435,42 +492,12 @@ async function verwerkKnockoutUitslag(partij) {
     );
     if (partijIdx === -1) return;
 
-    // Bepaal matchplay resultaat direct uit partij scores
+    // v5.12.6: de berekening stond hier ingebakken en was daardoor het enige
+    // stuk standberekening zonder test — het harnas knipt losse functies uit.
+    // Nu een eigen functie, zodat tests/knockout.test.cjs hem kan naspelen.
     let resultaat = '';
-    try {
-      const holes = partij.holes || [];
-      const scoresA = partij.scores[matchup.spelerA.uid] || [];
-      const scoresB = partij.scores[matchup.spelerB.uid] || [];
-      let standA = 0, gespeeld = 0;
-      let beslissingsStand = null, beslissingsGespeeld = null;
-      for (let i = 0; i < holes.length; i++) {
-        const sA = scoresA[i]; const sB = scoresB[i];
-        if (sA == null || sB == null) continue;
-        gespeeld++;
-        const slagA = matchup.hcpOntvanger === matchup.spelerA.uid
-          ? ((holes[i].si <= Math.min(matchup.hcpSlagen, holes.length) ? 1 : 0) + (holes[i].si <= Math.max(0, matchup.hcpSlagen - holes.length) ? 1 : 0)) : 0;
-        const slagB = matchup.hcpOntvanger === matchup.spelerB.uid
-          ? ((holes[i].si <= Math.min(matchup.hcpSlagen, holes.length) ? 1 : 0) + (holes[i].si <= Math.max(0, matchup.hcpSlagen - holes.length) ? 1 : 0)) : 0;
-        const nettoA = sA - slagA; const nettoB = sB - slagB;
-        if (nettoA < nettoB) standA++;
-        else if (nettoB < nettoA) standA--;
-        const resterendNa = holes.length - gespeeld;
-        if (beslissingsStand === null && Math.abs(standA) > resterendNa) {
-          beslissingsStand = standA; beslissingsGespeeld = gespeeld;
-        }
-      }
-      const resterend = holes.length - gespeeld;
-      const klaar = gespeeld === holes.length;
-      const beslist = beslissingsStand !== null;
-      const effectieveStand = beslist ? beslissingsStand : standA;
-      const resterendEff = beslist ? (holes.length - beslissingsGespeeld) : resterend;
-      // v5.8.9: '&0' bestaat niet in golftaal — wie op de laatste hole beslist,
-      // wint '2 up'. Zelfde notatie als in de rest van de app.
-      if (beslist) resultaat = resterendEff > 0
-        ? `${Math.abs(effectieveStand)}&${resterendEff}`
-        : `${Math.abs(effectieveStand)} up`;
-      else if (klaar) resultaat = effectieveStand === 0 ? 'gelijkspel' : `${Math.abs(effectieveStand)} up`;
-    } catch(e) { console.error('Resultaat berekening mislukt:', e); }
+    try { resultaat = knockoutMatchScore(partij, matchup); }
+    catch(e) { console.error('Resultaat berekening mislukt:', e); }
 
     // v5.12.5: hier stond dezelfde melding als in slaKnockoutWinnaarOp, dus
     // verscheen hij twee keer. Die functie wordt ook rechtstreeks vanaf de
@@ -507,7 +534,7 @@ async function slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar, resu
     toast(winnaar
       ? `${String(winnaar).split(' ')[0]} door naar volgende ronde ✓`
       : 'Winnaar teruggedraaid ✓');
-  } catch(e) { console.error('slaKnockoutWinnaarOp mislukt:', e); toast('Er is iets misgegaan'); }
+  } catch(e) { meldFout('Winnaar opslaan', e); }
 }
 
 async function nieuwKnockoutSeizoen(ladderId) {
@@ -522,7 +549,7 @@ async function nieuwKnockoutSeizoen(ladderId) {
     await openKnockoutIndeling(ladderId);
     renderLadder();
     toast('Nieuw seizoen gestart — stel ronde 1 in ✓');
-  } catch(e) { console.error('nieuwKnockoutSeizoen mislukt:', e); toast('Er is iets misgegaan'); }
+  } catch(e) { meldFout('Nieuw knockoutseizoen starten', e); }
 }
 
 function toggleAdminKaart(header) {
@@ -532,4 +559,4 @@ function toggleAdminKaart(header) {
 }
 
 
-export { rondesNaarObj, objNaarRondes, renderKnockoutLadderKaart, renderKnockoutBracket, openKnockoutIndeling, renderKnockoutIndelingModal, koDragStart, koDragOver, koDrop, koDragEnd, koTouchStart, koTouchMove, koTouchEnd, verschuifKoSpeler, bevestigKnockoutIndeling, verwerkKnockoutVoortgang, verwerkKnockoutUitslag, slaKnockoutWinnaarOp, nieuwKnockoutSeizoen, toggleAdminKaart };
+export { knockoutMatchScore, rondesNaarObj, objNaarRondes, renderKnockoutLadderKaart, renderKnockoutBracket, openKnockoutIndeling, renderKnockoutIndelingModal, koDragStart, koDragOver, koDrop, koDragEnd, koTouchStart, koTouchMove, koTouchEnd, verschuifKoSpeler, bevestigKnockoutIndeling, verwerkKnockoutVoortgang, verwerkKnockoutUitslag, slaKnockoutWinnaarOp, nieuwKnockoutSeizoen, toggleAdminKaart };

@@ -3,7 +3,7 @@
 // ============================================================
 import { db, BANEN_DOC, LADDERS_COL, DEFAULT_STATE, esc, escAttr, functions, httpsCallable, laadBanen } from './config.js';
 import { store, alleLadders, activeLadderId, alleToernooien, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
-import { slaActievePartijenOp, getLadderData, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
+import { slaActievePartijenOp, getLadderData, isBeheerderRol, isCoordinatorRol, toast, meldFout } from './auth.js';
 import { objNaarRondes } from './knockout.js';
 import { getLadderSpelers, isInLadder } from './ladder-view.js';
 // v5.0.0 (punt 4): partijen krijgen een eigen document met scores per speler.
@@ -1179,7 +1179,7 @@ async function startPartij() {
   // wordt aangepast.
   if (_bewerkPartijId) {
     try { await slaPartijInstellingenOp(); }
-    catch (e) { console.error('slaPartijInstellingenOp mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+    catch (e) { meldFout('Partijinstellingen opslaan', e); }
     return;
   }
 
@@ -1378,7 +1378,7 @@ async function startPartij() {
 
   toast('Partij gestart! ⛳');
   document.querySelectorAll('nav button')[2].click();
-  } catch(e) { console.error('startPartij mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { meldFout('Partij starten', e); }
 }
 
 // ============================================================

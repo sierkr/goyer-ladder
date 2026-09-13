@@ -1125,7 +1125,7 @@ async function genereerInviteLink() {
     document.getElementById('invite-status').textContent =
       `Geldig tot ${new Date(verloopt).toLocaleDateString('nl-NL')} · Ladder: ${ladder?.naam || ladderId} · Max ${maxGebruik} registraties`;
     toast('Uitnodigingslink aangemaakt ✓');
-  } catch(e) { console.error('genereerInviteLink mislukt:', e); toast('Er is iets misgegaan'); }
+  } catch(e) { meldFout('Uitnodigingslink maken', e); }
 }
 
 function kopieerInviteLink() {
@@ -1440,6 +1440,43 @@ function toast(msg, ms) {
 // aanroepen in plaats van een nagemaakte — inclusief het wegtikken.
 window.toast = toast;
 
+// ============================================================
+//  FOUTMELDINGEN DIE IETS ZEGGEN  (v5.12.6)
+// ============================================================
+//  In v5.9.0 is dit voor de toernooitab gebouwd, omdat dertien verschillende
+//  oorzaken daar allemaal "Er is iets misgegaan, probeer opnieuw" opleverden en
+//  de echte reden alleen in het verborgen logboek van de browser stond — op een
+//  telefoon onbereikbaar.
+//
+//  Diezelfde tekst stond nog op vijftien plekken in zes andere bestanden, onder
+//  andere bij ladder aanmaken, ladder verwijderen en spelers opslaan. Die staan
+//  hier nu op dezelfde bron. `toernooiFout()` in js/toernooi.js is een alias
+//  hierop geworden, zodat er er maar één regel bestaat.
+//
+//  Dit staat bewust in auth.js: het is het enige bestand dat alle zes al
+//  importeren (voor toast), dus er komt geen enkele nieuwe kring bij.
+//
+//  ⚠ Deze twee functies mogen zelf nooit omvallen — ze draaien per definitie op
+//  het moment dat er al iets stuk is (BOUWNORMEN, regel 3).
+function foutTekst(e) {
+  try {
+    if (!e) return 'onbekende oorzaak';
+    if (typeof e === 'string') return e.slice(0, 160);
+    const code = e.code ? String(e.code) : '';
+    const melding = e.message ? String(e.message) : '';
+    const tekst = [code, melding].filter(Boolean).join(' \u2014 ') || String(e);
+    return tekst.slice(0, 160);
+  } catch (_) { return 'onbekende oorzaak'; }
+}
+
+// `waar` is wat de gebruiker probeerde te doen, in gewone woorden:
+// meldFout('Ladder verwijderen', e)  ->  "Ladder verwijderen mislukt: ..."
+function meldFout(waar, e) {
+  try { console.error(waar + ' mislukt:', e); } catch (_) {}
+  try { toast(waar + ' mislukt: ' + foutTekst(e), 9000); }
+  catch (_) { /* zelfs de melding mag de app niet omver trekken */ }
+}
+
 function registreerNotificatieToken() {}
 
 function vraagNotificatieToestemming() {
@@ -1684,6 +1721,6 @@ export {
   genereerInviteLink, kopieerInviteLink, checkInviteLink,
   registreerSpeler, laadInviteStatus, autoAdvance,
   isCoordinatorRol, isBeheerderRol,
-  toast, registreerNotificatieToken, laadUitdagingen,
+  toast, foutTekst, meldFout, registreerNotificatieToken, laadUitdagingen,
   slaEersteLoginOp,
 };
