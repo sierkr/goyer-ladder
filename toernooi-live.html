@@ -309,6 +309,48 @@ function renderScores() {
   const scores  = dag ? getLiveScoresVoorDag(dag) : (t.scores || {});
   let html = '';
 
+// ============================================================
+//  KORTE, UNIEKE NAMEN — v5.11.9
+// ============================================================
+//  ⚠ Dit is een KOPIE van kortNaam() uit js/partij.js. Deze pagina staat
+//  bewust los van de app: importeren zou de halve app meeslepen (config,
+//  store, auth) en dat wil je niet op een scherm dat zonder inloggen open moet
+//  kunnen. De rekentest-suite "Korte unieke namen" knipt beide kanten uit de
+//  bron en legt ze naast elkaar; lopen ze uit de pas, dan valt die test om.
+//  Wijzig je hier iets, wijzig het dan ook in js/partij.js.
+// ============================================================
+function splitsNaam(volleNaam) {
+  const voorvoegsels = new Set(
+    ['van','de','den','der','het','te','ter','ten','op','in','aan','bij']);
+  const delen = String(volleNaam || '').trim().split(/\s+/);
+  const voornaam = delen[0] || '';
+  let i = 1;
+  while (i < delen.length - 1 && voorvoegsels.has(delen[i].toLowerCase())) i++;
+  return { voornaam, achternaam: delen.slice(i).join(' ') };
+}
+
+function kortNaam(speler, alleSpelers) {
+  const { voornaam, achternaam } = splitsNaam(speler.naam);
+
+  const gelijkeVoornaam = (alleSpelers || []).filter(s =>
+    s.uid !== speler.uid &&
+    splitsNaam(s.naam).voornaam.toLowerCase() === voornaam.toLowerCase());
+  if (gelijkeVoornaam.length === 0) return voornaam;
+
+  const anderen = gelijkeVoornaam.map(s => splitsNaam(s.naam).achternaam);
+  for (let i = 1; i <= achternaam.length; i++) {
+    const stuk = achternaam.slice(0, i);
+    if (!anderen.some(a => a.slice(0, i) === stuk)) return voornaam + ' ' + stuk;
+  }
+  return speler.naam;
+}
+
+function kortNaamMap(spelers) {
+  const map = {};
+  spelers.forEach(s => { map[s.uid] = kortNaam(s, spelers); });
+  return map;
+}
+
   flights.forEach(flight => {
     const flightSpelers = t.spelers.filter(s => (flight.spelerIds || []).map(String).includes(String(s.uid)));
     if (flightSpelers.length === 0) return;
@@ -318,7 +360,7 @@ function renderScores() {
       <div style="overflow-x:auto"><table>
         <thead><tr>
           <th>Hole</th>
-          ${flightSpelers.map(s => `<th>${s.naam}</th>`).join('')}
+          ${(nm => flightSpelers.map(s => `<th>${nm[s.uid]}</th>`).join(''))(kortNaamMap(flightSpelers))}
         </tr></thead>
         <tbody>`;
 

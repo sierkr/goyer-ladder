@@ -156,11 +156,19 @@ function laadScoreKern() {
 //  ECHT uit js/partij.js geknipt.
 // ============================================================
 function laadNaamKern() {
-  const bron = `
+  const app = new Function(`
     ${knip('js/partij.js', ['splitsNaam', 'kortNaam', 'kortNaamMap'])}
     return { splitsNaam, kortNaam, kortNaamMap };
-  `;
-  return new Function(bron)();
+  `)();
+  // v5.11.9: de meekijkpagina staat los van de app en heeft een eigen kopie.
+  // Die wordt hier ook geknipt, zodat de test kan bewijzen dat beide kanten
+  // hetzelfde doen. Lopen ze uit de pas, dan staan er twee namen voor dezelfde
+  // speler op twee schermen.
+  const meekijk = new Function(`
+    ${knip('toernooi-live.html', ['splitsNaam', 'kortNaam', 'kortNaamMap'])}
+    return { splitsNaam, kortNaam, kortNaamMap };
+  `)();
+  return { ...app, app, meekijk };
 }
 
 // ============================================================
