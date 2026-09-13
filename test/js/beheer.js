@@ -20,7 +20,7 @@ const _verwijderLadderFn     = httpsCallable(functions, 'verwijderLadderVolledig
 // Lokale cache van de zojuist geladen punten voor de open Spelers-modal,
 // gebruikt voor de live positie-preview terwijl je typt (geen extra reads).
 let _puntenModalScores = {}; // uid -> score
-import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen, normaliseerLadderRangen, herstelLadderIntegriteit } from './auth.js';
+import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, meldFout, laadUitdagingen, normaliseerLadderRangen, herstelLadderIntegriteit } from './auth.js';
 import { laadInviteStatus } from './auth.js';
 import { renderLadder } from './ladder.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -159,7 +159,7 @@ async function slaLadderInstellingenOp() {
 
   closeModal('modal-ladder-instellingen');
   toast('Instellingen opgeslagen ✓');
-  } catch(e) { console.error('slaLadderInstellingenOp mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { meldFout('Ladderinstellingen opslaan', e); }
 }
 
 // Helper: haal ladder data op — gebruik cache als beschikbaar, anders Firestore
@@ -196,7 +196,7 @@ async function maakNieuweLadder() {
   closeModal('modal-nieuwe-ladder');
   renderAdminLadders();
   toast(`Ladder "${naam}" aangemaakt ✓`);
-  } catch(e) { console.error('maakNieuweLadder mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { meldFout('Ladder aanmaken', e); }
 }
 
 async function verschuifLadder(idx, delta) {
@@ -237,7 +237,7 @@ async function verwijderLadder(ladderId) {
   }
   renderAdminLadders();
   toast('Ladder verwijderd');
-  } catch(e) { console.error('verwijderLadder mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { meldFout('Ladder verwijderen', e); }
 }
 
 
@@ -379,7 +379,7 @@ async function slaLadderSpelersOp() {
     closeModal('modal-ladder-spelers');
     renderAdminLadders();
     toast('Spelers bijgewerkt ✓');
-  } catch(e) { console.error('slaLadderSpelersOp mislukt:', e); toast('Er is iets misgegaan, probeer opnieuw'); }
+  } catch(e) { meldFout('Spelers van de ladder opslaan', e); }
 }
 
 async function renderAdminLadders() {

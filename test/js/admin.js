@@ -16,7 +16,7 @@ const _verwijderWeesAccountFn = httpsCallable(functions, 'verwijderWeesAccount')
 import { store, alleLadders, activeLadderId,
   huidigeBruiker, uitdagingenData } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers,
-  isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen,
+  isBeheerderRol, isCoordinatorRol, toast, meldFout, laadUitdagingen,
   normaliseerLadderRangen, ladderIntegriteitsRapport, herstelLadderIntegriteit } from './auth.js';
 
 // v3.0.0-11.103: gebruikersbeheer (aanmaken/verwijderen/wachtwoord-reset) loopt
@@ -277,7 +277,7 @@ async function voegAccountToeAlsSpeler(uid, naam) {
 
     closeModal('modal-add-player');
     renderAdmin();
-  } catch(e) { console.error('voegAccountToeAlsSpeler mislukt:', e); toast('Er is iets misgegaan'); }
+  } catch(e) { meldFout('Speler toevoegen aan de ladder', e); }
 }
 
 // Maak volledig nieuw account + speler aan (beheerder flow)
@@ -553,7 +553,7 @@ async function removePlayer(uid) {
     renderAdmin();
     renderLadder();
     toast(`${naam} verwijderd ✓ — verwijder het Firebase inlogaccount nog handmatig`);
-  } catch(e) { console.error('removePlayer mislukt:', e); toast('Er is iets misgegaan'); }
+  } catch(e) { meldFout('Speler verwijderen', e); }
 }
 
 // ============================================================

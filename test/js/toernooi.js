@@ -11,7 +11,7 @@ const _verwerkToernooiStandenFn = httpsCallable(functions, 'verwerkToernooiStand
 // al voor wees-accounts uit de bulk-import; hier hergebruikt voor gastlogins.
 const _verwijderGastAccountFn = httpsCallable(functions, 'verwijderWeesAccount');
 import { store, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tSpelersLadderIds, _tRankingLadderIds, _flights, _liveScores } from './store.js';
-import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
+import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen, foutTekst, meldFout } from './auth.js';
 import { renderHcpBlok, alleBANEN, renderHandmatigHoles, kortNaamMap } from './partij.js';
 import { renderLadder } from './ladder.js';
 import { slaSnapshotOp } from './beheer.js';
@@ -42,22 +42,12 @@ import { closeModal } from './admin.js';
 //
 //  ⚠ Deze functie mag zelf nooit omvallen — hij draait per definitie op het
 //  moment dat er al iets stuk is (BOUWNORMEN, regel 3).
-function toernooiFoutTekst(e) {
-  try {
-    if (!e) return 'onbekende oorzaak';
-    if (typeof e === 'string') return e.slice(0, 160);
-    const code = e.code ? String(e.code) : '';
-    const melding = e.message ? String(e.message) : '';
-    const tekst = [code, melding].filter(Boolean).join(' — ') || String(e);
-    return tekst.slice(0, 160);
-  } catch (_) { return 'onbekende oorzaak'; }
-}
-
-function toernooiFout(waar, e) {
-  try { console.error(waar + ' mislukt:', e); } catch (_) {}
-  try { toast(waar + ' mislukt: ' + toernooiFoutTekst(e), 9000); }
-  catch (_) { /* zelfs de melding mag de app niet omver trekken */ }
-}
+// v5.12.6: deze twee stonden hier, maar dezelfde tekst was op vijftien plekken
+// in zes andere bestanden nodig. De regel staat nu in js/auth.js — het enige
+// bestand dat ze allemaal al importeren. Dit blijven aliassen, zodat de 26
+// aanroepen hieronder ongewijzigd blijven en er toch een bron is.
+const toernooiFoutTekst = foutTekst;
+const toernooiFout = meldFout;
 
 function actieveDag(t) {
   t = t || toernooiData;
