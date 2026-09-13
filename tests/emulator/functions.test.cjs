@@ -117,6 +117,7 @@ async function main() {
   await wachtOpPoort(FN_POORT);
 
   const tokenA   = await tokenVoor(SPELER_A);
+  const tokenB   = await tokenVoor(SPELER_B);
   const tokenC   = await tokenVoor(SPELER_C);
   const tokenBui = await tokenVoor(BUITEN);
   const tokenBeh = await tokenVoor(BEHEERDER);
@@ -174,6 +175,60 @@ async function main() {
       { ladderId: 'mp', partijId: 'p1',
         matchups: [{ spelerAUid: SPELER_A, spelerBUid: SPELER_B, winnaarUid: SPELER_A }] }, tokenA));
 
+  // ══ v5.12.7 — TWEE SPELERS DIE TEGELIJK BEVESTIGEN ═════════
+  //  De controle op "al verwerkt" leest het stempel aan het BEGIN van de
+  //  functie en schrijft het pas aan het EIND weg. Daartussen zit al het echte
+  //  werk. Bevestigen twee spelers uit dezelfde flight in diezelfde seconde,
+  //  dan kwamen ze er allebei doorheen en verschoof de ladder twee keer.
+  //  Sinds v5.12.7 gaat het stempel met `create` de deur uit: dat weigert een
+  //  bestaand document en laat de hele batch mislukken.
+  //
+  //  ⚠ GEMETEN OP 13 SEPTEMBER 2026, en het viel anders uit dan gedacht.
+  //  Tien rondes tegen de OUDE server, met de responstijden erbij:
+  //      ronde 2  VERWERKT@194ms   VERWERKT@160ms
+  //      ronde 3  VERWERKT@153ms   VERWERKT@161ms
+  //  Beide aanroepen verwerkten de partij dus echt. Tegen de NIEUWE server:
+  //      ronde 2  alVerwerkt@255ms VERWERKT@222ms
+  //      ronde 3  alVerwerkt@148ms VERWERKT@135ms
+  //
+  //  Maar de LADDERSTAND was in beide gevallen gelijk: 10 van de 10 rondes
+  //  precies een verschuiving. Dat is geen toeval en het betekent niet dat de
+  //  fout onschuldig was. De rangen worden als absolute waarde weggeschreven
+  //  (`rank: publiekeRank`), niet opgeteld — beide aanroepen lezen dezelfde
+  //  begintoestand en schrijven daarna hetzelfde getal. De laatste wint, en dat
+  //  is hetzelfde getal.
+  //
+  //  ⚠ DE SCHADE ZIT DUS NIET IN DE RANG MAAR IN HET ANTWOORD. Kreeg de tweede
+  //  speler `alVerwerkt: false`, dan schreef zijn browser er alsnog een
+  //  uitslagvermelding bij (js/ronde.js, de v5.7.0-opmerking): een extra
+  //  gespeelde partij en een extra ontmoeting, waarmee de frequentie- en
+  //  diversiteitsbonus worden opgeblazen.
+  //
+  //  De controle hieronder die er echt toe doet is daarom "precies een heeft
+  //  verwerkt" — die valt op de oude server om. De rangcontroles zijn een
+  //  vangnet; die slaagden ook vóór de reparatie.
+  await zetLadderKlaar();
+  const tegelijk = await Promise.allSettled([
+    roepAan('verwerkPartijUitslag', { ladderId: 'mp', partijId: 'p1', matchups: matchup }, tokenA),
+    roepAan('verwerkPartijUitslag', { ladderId: 'mp', partijId: 'p1', matchups: matchup }, tokenB),
+  ]);
+  const gelukt = tegelijk.filter(r => r.status === 'fulfilled');
+  R.check('beide gelijktijdige aanroepen geven een net antwoord', gelukt.length, 2);
+  // ↓ DIT is de controle met tanden: op de oude server meldden er twee VERWERKT.
+  R.check('precies één ervan heeft de partij echt verwerkt',
+    gelukt.filter(r => !r.value.alVerwerkt).length, 1);
+  R.check('de ander meldt "al verwerkt"',
+    gelukt.filter(r => r.value.alVerwerkt === true).length, 1);
+  //  Vangnet: de stand hoort te zijn alsof er een keer verschoven is. Bram
+  //  stond 2e en wint (hoogStijg 1 -> 1e), Anna stond 1e en zakt twee plekken
+  //  (laagZak 2 -> 3e). Zie de uitleg hierboven: dit slaagde ook vóór de
+  //  reparatie, want de rangen zijn absolute waarden.
+  R.check('winnaar Bram staat eerste, precies één verschuiving', await rang(SPELER_B), 1);
+  R.check('verliezer Anna is twee plekken gezakt, niet vier', await rang(SPELER_A), 3);
+  R.check('Cees is één plek opgeschoven', await rang(SPELER_C), 2);
+  const stempels = await db.collection('ladders/mp/verwerkt').get();
+  R.check('er staat precies één verwerkt-stempel', stempels.size, 1);
+
   // ══ draaiPartijTerug ═══════════════════════════════════════
   await zetLadderKlaar();
   await roepAan('verwerkPartijUitslag', { ladderId: 'mp', partijId: 'p1', matchups: matchup }, tokenA);
@@ -184,6 +239,16 @@ async function main() {
     () => roepAan('draaiPartijTerug', { ladderId: 'mp', partijId: 'p1' }, tokenBeh));
   R.check('na terugdraaien staat Anna weer eerste', await rang(SPELER_A), 1);
   R.check('na terugdraaien staat Bram weer tweede', await rang(SPELER_B), 2);
+
+  //  v5.12.7: twee keer terugdraaien hoort een geruststelling te geven, geen
+  //  fout. De grendel keek naar een veld op het verwerkt-document, terwijl dat
+  //  document bij het terugdraaien juist wordt weggehaald — hij kon dus nooit
+  //  aangaan, en de tweede poging viel om op "niet als verwerkt geregistreerd".
+  const nogmaals = await roepAan('draaiPartijTerug', { ladderId: 'mp', partijId: 'p1' }, tokenBeh);
+  R.check('tweede keer terugdraaien meldt "al teruggedraaid"', nogmaals.alTeruggedraaid, true);
+  R.check('tweede keer terugdraaien verschuift niets', await rang(SPELER_A), 1);
+  await R.magNiet('een partij die nooit verwerkt is, blijft "niet gevonden"',
+    () => roepAan('draaiPartijTerug', { ladderId: 'mp', partijId: 'nooit_verwerkt' }, tokenBeh));
 
   // ══ Activiteit — mag NIET opstapelen ═══════════════════════
   await zetLadderKlaar();
