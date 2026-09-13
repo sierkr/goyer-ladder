@@ -102,6 +102,16 @@ async function openAanmaakscherm(page) {
 }
 
 // Vult het aanmaakformulier voor een toernooi van `dagen` dagen.
+// v5.13.0: elke dag heeft een eigen tabblad en alleen het gekozen tabblad is
+// zichtbaar. Alle dagblokken blijven wel in het scherm staan — daar rekent
+// startToernooi() op — maar invullen kan pas nadat je het tabblad kiest, net
+// als een coordinator dat doet.
+async function kiesSetupDag(page, dagNr) {
+  const tab = page.locator(`#t-dag-blokken button[onclick="selecteerSetupDag(${dagNr})"]`);
+  if (await tab.count()) await tab.click();
+  await expect(page.locator(`#t-dag-blokken .dag-blok[data-dagnr="${dagNr}"]`)).toBeVisible();
+}
+
 async function vulAanmaakformulier(page, naam, dagen = 1) {
   await openAanmaakscherm(page);
   await page.fill('#t-naam', naam);
@@ -109,7 +119,8 @@ async function vulAanmaakformulier(page, naam, dagen = 1) {
   const blokken = page.locator('#t-dag-blokken .dag-blok');
   await expect(blokken).toHaveCount(dagen);
   for (let i = 0; i < dagen; i++) {
-    const blok = blokken.nth(i);
+    await kiesSetupDag(page, i + 1);
+    const blok = page.locator(`#t-dag-blokken .dag-blok[data-dagnr="${i + 1}"]`);
     await blok.locator('.t-dag-datum').fill(`2026-10-0${i + 1}`);
     await blok.locator('.t-dag-baan').selectOption('De Goyer');
   }
@@ -549,9 +560,10 @@ test.describe('Toernooi — de hele route', () => {
     await vulAanmaakformulier(page, 'Gemengd', 2);
 
     // Dag 1 strokeplay, dag 2 matchplay.
-    const blokken = page.locator('#t-dag-blokken .dag-blok');
-    await blokken.nth(0).locator('.t-dag-modus').selectOption('strokeplay');
-    await blokken.nth(1).locator('.t-dag-modus').selectOption('matchplay');
+    await kiesSetupDag(page, 1);
+    await page.locator('#t-dag-blokken .dag-blok[data-dagnr="1"] .t-dag-modus').selectOption('strokeplay');
+    await kiesSetupDag(page, 2);
+    await page.locator('#t-dag-blokken .dag-blok[data-dagnr="2"] .t-dag-modus').selectOption('matchplay');
 
     for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(page, n);
     await naarFlightIndeling(page);
@@ -1080,13 +1092,16 @@ test.describe('Toernooi — de hele route', () => {
     await page.selectOption('#t-aantal-dagen', '2');
     await expect(keuzes, 'twee dagen, twee keuzes').toHaveCount(2);
     await expect(keuzes.nth(0), 'dag 1 houdt zijn keuze').toHaveValue('strokeplay');
-    await keuzes.nth(1).selectOption('matchplay');
+    // v5.13.0: dag 2 staat achter zijn eigen tabblad.
+    await kiesSetupDag(page, 2);
+    await page.locator('#t-dag-blokken .dag-blok[data-dagnr="2"] .t-dag-modus').selectOption('matchplay');
     await expect(punten,  'gemengd: de puntenvelden zijn terug voor dag 2').toBeVisible();
     await expect(uitleg,  'gemengd: de uitleg blijft voor dag 1').toBeVisible();
     await expect(ranking, 'gemengd: nog steeds geen ranking-ladder').toBeHidden();
 
     // En alles weer matchplay brengt de ranking-ladder terug.
-    await keuzes.nth(0).selectOption('matchplay');
+    await kiesSetupDag(page, 1);
+    await page.locator('#t-dag-blokken .dag-blok[data-dagnr="1"] .t-dag-modus').selectOption('matchplay');
     await expect(ranking, 'weer helemaal matchplay: de ranking-ladder mag weer').toBeVisible();
     await expect(uitleg,  'en de strokeplay-uitleg is weg').toBeHidden();
   });

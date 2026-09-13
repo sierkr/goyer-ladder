@@ -1129,53 +1129,11 @@
 <div class="modal-overlay" id="modal-nieuwe-dag">
   <div class="modal" style="max-width:420px">
     <h3 id="modal-dag-titel">Nieuwe dag toevoegen</h3>
-    <div class="form-group">
-      <label>Datum</label>
-      <input type="date" id="t-dag-datum">
-    </div>
-    <div class="form-group">
-      <label>Baan</label>
-      <select id="t-dag-baan"></select>
-    </div>
-    <div class="form-group">
-      <label>Aantal holes</label>
-      <!-- v5.12.4: deze keuzelijst had GEEN koppeling. Koos je "Aangepast...",
-           dan verscheen het invulvak eronder niet, en bij het opslaan las de app
-           dat lege vak en maakte er stilzwijgend 18 holes van. Gemeten op
-           13 september 2026: in het aanmaakscherm werkte het wel, hier nooit.
-           Sierk: "voor een dag 2 is het aantal holes niet aan te passen, het
-           invulvak verschijnt niet." -->
-      <select id="t-dag-holes" onchange="toggleDagHolesCustom()">
-        <option value="18">18 holes</option>
-        <option value="9">9 holes</option>
-        <option value="custom">Aangepast...</option>
-      </select>
-    </div>
-    <div class="form-group" id="t-dag-holes-custom-wrap" style="display:none">
-      <label>Aangepast aantal holes</label>
-      <input type="number" id="t-dag-holes-custom" min="1" max="18" placeholder="bijv. 12" style="text-align:center">
-    </div>
-    <!-- v5.12.0: de speelwijze staat per dag -->
-    <div class="form-group">
-      <label>Speelwijze</label>
-      <select id="t-dag-modus">
-        <option value="matchplay">Matchplay</option>
-        <option value="strokeplay">Strokeplay</option>
-      </select>
-      <p style="font-size:11px;color:var(--light);margin:4px 0 0">
-        ⚠ Zit er een strokeplay-dag in het toernooi, dan telt het niet mee voor de ladder.
-      </p>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div class="form-group">
-        <label>Starttijd</label>
-        <input type="time" id="t-dag-starttijd" value="09:00">
-      </div>
-      <div class="form-group">
-        <label>Interval (min)</label>
-        <input type="number" id="t-dag-interval" min="0" max="60" value="10" style="text-align:center">
-      </div>
-    </div>
+    <!-- v5.13.0: hier stond het dagformulier een tweede keer, uitgetikt en net
+         iets anders dan dat op het aanmaakscherm. Nu wordt deze container
+         gevuld door dagFormulierHtml() in js/toernooi.js — dezelfde bron als
+         het aanmaakscherm. Zie ONTWERP-TOERNOOISCHERM.md. -->
+    <div id="modal-dag-formulier" class="dag-formulier"></div>
     <p style="font-size:12px;color:var(--mid);margin:8px 0" id="modal-dag-uitleg">De flight indeling voor deze dag stel je in na het toevoegen via de Flights knop in de scorekaart.</p>
     <!-- v5.9.1: dit venster doet nu twee dingen — een dag toevoegen en een
          bestaande dag wijzigen. De knop wisselt van opschrift en handeling,
@@ -1733,16 +1691,10 @@
           </div>
         </div>
         <div id="t-dag-blokken"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-          <div class="form-group" style="margin:0">
-            <label>Starttijd</label>
-            <input type="time" id="t-starttijd" value="09:00">
-          </div>
-          <div class="form-group" style="margin:0">
-            <label>Interval (min)</label>
-            <input type="number" id="t-interval" min="0" max="60" value="10" style="text-align:center" placeholder="bijv. 10">
-          </div>
-        </div>
+        <!-- v5.13.0: hier stonden Starttijd en Interval voor het HELE toernooi.
+             Elke dag kreeg daardoor dezelfde tijd, en dat was op dit scherm niet
+             te corrigeren. Ze staan nu in het dagtabblad hierboven, samen met de
+             punten en de handicap. Zie ONTWERP-TOERNOOISCHERM.md. -->
         <!-- v5.12.1: hier stond een tweede keuze "Speelwijze" voor het hele
              toernooi. Sinds v5.12.0 kiest elke dag zijn eigen speelwijze in het
              dagblok hierboven, dus stonden er twee keuzemenu's onder elkaar die
@@ -1764,23 +1716,14 @@
         </div>
         <div class="divider"></div>
         <div id="t-matchplay-instellingen">
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;margin-top:12px">
-            <div class="form-group" style="margin:0">
-              <label>Winst</label>
-              <input type="number" id="t-pt-win" value="2" style="text-align:center">
-            </div>
-            <div class="form-group" style="margin:0">
-              <label>Gelijk</label>
-              <input type="number" id="t-pt-tie" value="0" style="text-align:center">
-            </div>
-            <div class="form-group" style="margin:0">
-              <label>Verlies</label>
-              <input type="number" id="t-pt-loss" value="-2" style="text-align:center">
-            </div>
-          </div>
-          <div class="form-group">
-            <label>HCP verrekening %</label>
-            <input type="number" id="t-hcp-pct" value="75" min="0" max="100" style="width:90px">
+          <!-- v5.13.0: hier stonden Winst/Gelijk/Verlies en het HCP-percentage
+               voor het hele toernooi. Ze staan nu per dag in het dagtabblad.
+               ⚠ Dit omhulsel BLIJFT bestaan: pasSpeelwijzeToe() toont en
+               verbergt het, en de browsertest controleert dat het bij matchplay
+               zichtbaar is en bij strokeplay niet. -->
+          <div class="note" style="margin-top:12px;font-size:12px">
+            De punten en de handicapverrekening stel je <strong>per dag</strong> in,
+            bovenaan bij het dagtabblad.
           </div>
         </div>
         <div id="t-strokeplay-instellingen" style="display:none">

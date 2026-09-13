@@ -49,6 +49,75 @@ check('gelijkspel -> T in matrix', r.matrix[0][1], 'T');
 check('gelijkspel -> marge 0', r.standen[0][1], 0);
 check('tied geteld', r.tied, [1,1]);
 
+// ============================================================
+//  v5.13.0 — DE INSTELLINGEN STAAN PER DAG
+// ------------------------------------------------------------
+//  Sierk wilde per dag kunnen kiezen: een dag met 2/0/-2 en een dag met 3/1/0
+//  in hetzelfde toernooi. Waar het om gaat is de TERUGVAL: een toernooi van
+//  vóór v5.13.0 heeft die velden niet op de dag staan en moet daardoor exact
+//  blijven rekenen zoals het altijd deed. Er draaien toernooien.
+// ============================================================
+console.log('\n══ TOERNOOI — INSTELLINGEN PER DAG ══');
+
+const P = sp('p', 10), Q = sp('q', 10);
+// Toernooibreed: 2 voor winst, 1 gelijk, 0 verlies.
+const tPd = maakT([P, Q]);
+const pWint = { p: [3, ...Array(17).fill(null)], q: [5, ...Array(17).fill(null)] };
+const gelijk = { p: [4, 4, ...Array(16).fill(null)], q: [5, 3, ...Array(16).fill(null)] };
+
+// ── 1. Zonder dagvelden: precies als vroeger ────────────────────────────────
+check('geen dagvelden -> toernooibrede punten (winst)',
+  K.berekenTPuntenVoorDag(tPd, maakDag(1, pWint)).punten, [2, 0]);
+check('geen dagvelden -> toernooibrede punten (gelijk)',
+  K.berekenTPuntenVoorDag(tPd, maakDag(1, gelijk)).punten, [1, 1]);
+
+// ── 2. Mét dagvelden: de dag wint van het toernooi ──────────────────────────
+const dagAnders = { ...maakDag(1, pWint), ptWin: 3, ptTie: 1, ptLoss: -1 };
+check('dagpunten gaan voor op de toernooipunten',
+  K.berekenTPuntenVoorDag(tPd, dagAnders).punten, [3, -1]);
+const dagGelijk = { ...maakDag(1, gelijk), ptWin: 3, ptTie: 5, ptLoss: -1 };
+check('dagpunten gelden ook bij gelijkspel',
+  K.berekenTPuntenVoorDag(tPd, dagGelijk).punten, [5, 5]);
+
+// ── 3. Twee dagen, verschillende punten, één toernooi ───────────────────────
+//  Dit is wat Sierk vroeg. Dag 1 op de toernooistandaard, dag 2 met een eigen
+//  telling — dezelfde spelers, dezelfde scores, een andere uitkomst.
+const dag1 = maakDag(1, pWint);
+const dag2 = { ...maakDag(2, pWint), ptWin: 10, ptLoss: -10 };
+check('dag 1 telt op de toernooistandaard',
+  K.berekenTPuntenVoorDag(tPd, dag1).punten, [2, 0]);
+check('dag 2 telt op zijn eigen standaard',
+  K.berekenTPuntenVoorDag(tPd, dag2).punten, [10, -10]);
+
+// ── 4. Nul is een geldige keuze, geen "niet ingevuld" ───────────────────────
+//  ⚠ Hierom staat er `??`-achtige logica in dagInstelling() en geen `||`:
+//  met `||` zou 0 als leeg gelezen worden en zou de toernooiwaarde terugkomen.
+const dagNul = { ...maakDag(1, pWint), ptWin: 0, ptLoss: 0 };
+check('0 punten voor winst is een echte keuze, geen terugval',
+  K.berekenTPuntenVoorDag(tPd, dagNul).punten, [0, 0]);
+const dagTieNul = { ...maakDag(1, gelijk), ptTie: 0 };
+check('0 punten voor gelijkspel is een echte keuze',
+  K.berekenTPuntenVoorDag(tPd, dagTieNul).punten, [0, 0]);
+
+// ── 5. De handicapverrekening per dag ───────────────────────────────────────
+//  R en S schelen 8 slagen. Op SI 6 krijgt S bij 100% wél een slag (8 >= 6) en
+//  bij 50% niet (afgerond 4 < 6). Zelfde scores, andere winnaar.
+const R = sp('r', 0), S2 = sp('s', 8);
+const tHcp = maakT([R, S2], { hcpPct: 1 });
+const holesSi6 = [{ par: 4, si: 6 }, ...holes18.slice(1)];
+const scoresGelijk = { r: [4, ...Array(17).fill(null)], s: [5, ...Array(17).fill(null)] };
+
+check('100% toernooibreed: s krijgt een slag en het is gelijk',
+  K.berekenTPuntenVoorDag(tHcp, maakDag(1, scoresGelijk, holesSi6)).punten, [1, 1]);
+const dagHalf = { ...maakDag(1, scoresGelijk, holesSi6), hcpPct: 0.5 };
+check('50% op de dag: geen slag, dus r wint',
+  K.berekenTPuntenVoorDag(tHcp, dagHalf).punten, [2, 0]);
+
+// ── 6. Een dag zonder velden naast een dag mét velden ───────────────────────
+check('de ene dag beïnvloedt de andere niet',
+  [K.berekenTPuntenVoorDag(tHcp, maakDag(1, scoresGelijk, holesSi6)).punten,
+   K.berekenTPuntenVoorDag(tHcp, dagHalf).punten], [[1, 1], [2, 0]]);
+
 console.log('\n══ TOERNOOI — HANDICAP IN DE UITSLAG ══');
 const C=sp('c',0), D=sp('d',5);
 t = maakT([C,D]);
