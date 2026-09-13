@@ -2842,13 +2842,18 @@ function renderTScorecard() {
   // heten stonden hier alle drie als "Arjan"; nu Arjan V, Arjan R, Arjan P.
   const korteNamen = kortNaamMap(spelers);
   spelers.forEach(s => {
-    const delen = s.naam.split(' ');
     const rol = rollen[s.uid];
     const merk = rol === 'marker' ? ' <span title="Jij markeert deze speler" style="color:var(--green)">✔</span>' : '';
+    // v5.11.9: op de tweede regel stond de ACHTERNAAM, en bij iemand zonder
+    // achternaam de handicap. Sierk, 13 september 2026: "de naam van een niet
+    // gast staat voluit op de scorekaart. moet zijn alleen voornaam zoals bij
+    // de gastspelers." Nu staat daar altijd de handicap — die stond er bij een
+    // gast toch al, en het is de enige plek waar de coordinator hem kan
+    // wijzigen (aantikken). Boven staat de korte unieke naam: Arjan V, Arjan R.
     html += `<th class="player-col" style="max-width:70px">
-      <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px" title="${esc(s.naam)}">${esc(korteNamen[s.uid] || delen[0])}${merk}</span>
+      <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px" title="${esc(s.naam)}">${esc(korteNamen[s.uid] || s.naam.split(' ')[0])}${merk}</span>
       <span class="hole-par" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px;${isBeheerder&&!dagAfgerond?'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)':''}" ${isBeheerder&&!dagAfgerond?`onclick="editToernooiHcp('${escAttr(s.uid)}')"`:''}>
-        ${esc(delen.slice(1).join(' ') || 'hcp '+Math.round(s.hcp))}
+        hcp ${Math.round(Number(s.hcp) || 0)}
       </span>
     </th>`;
   });

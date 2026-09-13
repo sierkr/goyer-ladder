@@ -160,7 +160,11 @@ test.describe('Inloggen en ladderstand', () => {
   });
 });
 
-test.describe('Partij en scores', () => {
+// ⚠ v5.11.9: SERIE. De tweede test hier scoort in de partij die de EERSTE
+// start; ze delen één database. Los draaien van de tweede test kan dus niet, en
+// `.serial` zegt dat hardop — bovendien slaat Playwright de rest over zodra de
+// eerste omvalt, in plaats van een tweede, verwarrende fout te tonen.
+test.describe.serial('Partij en scores', () => {
 
   test('partij starten en scores invoeren blijft bewaard na herladen', async ({ page }) => {
     await inloggen(page, 'anna');
@@ -235,18 +239,38 @@ test.describe('Partij en scores', () => {
     const invoerA = paginaA.locator('#scorecard-body input[type=number]');
     const invoerB = paginaB.locator('#scorecard-body input[type=number]');
 
-    if (await invoerA.count() > 0 && await invoerB.count() > 0) {
-      await invoerA.nth(0).fill('4');
-      await invoerB.nth(1).fill('5');
-      await paginaA.waitForTimeout(2500);
-      await paginaB.waitForTimeout(2500);
+    // v5.11.9 — ⚠ TWEE DINGEN DIE DEZE TEST WISSELVALLIG MAAKTEN.
+    //
+    // 1. Hier stond `if (await invoerA.count() > 0 && ...)`. Stond de
+    //    scorekaart nog niet op het scherm, dan deed de test NIETS en werd hij
+    //    toch groen. Een test die stiekem niets meet is erger dan geen test.
+    //    Nu wacht hij tot de kaart er echt is en valt hij om als dat niet zo is.
+    //
+    // 2. Er werd 2500 ms gewacht en daarna hard herladen. De app wacht 800 ms
+    //    voordat hij een score wegschrijft, plus de tijd van het netwerk — bij
+    //    een trage ronde was dat niet genoeg en verscheen er een lege kaart.
+    //    Nu wordt er gewacht tot het resultaat er IS, met een paar pogingen.
+    //
+    // En het is bovendien realistischer geworden: speler en marker tikken niet
+    // in dezelfde milliseconde in maar vlak na elkaar, zoals op de baan.
+    await expect(invoerA.first(),
+      'de partij uit de vorige test in deze serie moet lopen').toBeVisible({ timeout: 20000 });
+    await expect(invoerB.first()).toBeVisible({ timeout: 20000 });
+    expect(await invoerA.count(), 'de scorekaart staat er echt').toBeGreaterThan(1);
 
+    await invoerA.nth(0).fill('4');
+    await paginaA.waitForTimeout(400);      // vlak na elkaar, niet tegelijk
+    await invoerB.nth(1).fill('5');
+
+    await expect.poll(async () => {
+      await paginaA.waitForTimeout(1500);   // de opslag wacht zelf 800 ms
       await paginaA.reload();
       await paginaA.click('#nav-ronde-btn');
-      const naA = paginaA.locator('#scorecard-body input[type=number]');
-      await expect(naA.nth(0)).toHaveValue('4', { timeout: 20000 });
-      await expect(naA.nth(1)).toHaveValue('5', { timeout: 20000 });
-    }
+      const n = paginaA.locator('#scorecard-body input[type=number]');
+      await expect(n.first()).toBeVisible({ timeout: 20000 });
+      return [await n.nth(0).inputValue(), await n.nth(1).inputValue()];
+    }, { timeout: 60000, message: 'beide scores staan er na herladen nog' })
+      .toEqual(['4', '5']);
 
     await ctxA.close();
     await ctxB.close();

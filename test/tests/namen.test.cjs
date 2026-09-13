@@ -86,4 +86,37 @@ check('kortNaamMap geeft een map op uid',
 
 check('een lege lijst valt niet om', N.kortNaamMap([]), {});
 
+// ── Blok 4: de app en de meekijkpagina doen hetzelfde ────────
+// ⚠ `toernooi-live.html` staat bewust los van de app en heeft een eigen kopie
+// van deze regel — importeren zou de halve app meeslepen op een scherm dat
+// zonder inloggen open moet kunnen. Deze test is de enige bewaking dat die
+// twee gelijk blijven: anders staat dezelfde speler op het ene scherm als
+// "Arjan V" en op het andere als "Arjan".
+console.log('\n══ APP EN MEEKIJKPAGINA GELIJK ══\n');
+
+const proeven = [
+  ['Arjan van Venrooij', 'Arjan Ribbe', 'Arjan Paulussen'],
+  ['Arjan van Venrooij', 'Arjan van der Veen'],
+  ['Erik Pietersen', 'Erik Pietersma', 'Erik Hulst'],
+  ['Bart Jan van Genderen', 'Sierk Roosma'],
+  ['Jan Jansen', 'Jan Jansen'],
+  ['Test 1', 'Test 2', 'Test 3'],
+  ['Karel'],
+];
+
+let verschillen = 0, vergeleken = 0;
+proeven.forEach(namen => {
+  const lijst = namen.map((naam, i) => ({ uid: 'u' + i, naam }));
+  const a = JSON.stringify(N.app.kortNaamMap(lijst));
+  const b = JSON.stringify(N.meekijk.kortNaamMap(lijst));
+  vergeleken++;
+  if (a !== b) { verschillen++; console.log('   verschil bij', namen.join(' / '), a, b); }
+});
+check('er is daadwerkelijk vergeleken', vergeleken, proeven.length);
+check('de meekijkpagina rekent gelijk aan de app', verschillen, 0);
+
+check('en ook de naamsplitsing zelf',
+  JSON.stringify(N.meekijk.splitsNaam('Bart Jan van Genderen')),
+  JSON.stringify(N.app.splitsNaam('Bart Jan van Genderen')));
+
 module.exports = staat;
