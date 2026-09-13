@@ -2820,9 +2820,9 @@ function renderTScorecard() {
   //   beheer  de wedstrijdleiding — overal, en haar getal is beslissend
   //   speler  zijn eigen kolom
   //   marker  de kolom van de speler wiens kaart hij bijhoudt
-  //   kijker  alleen kijken, en dan zonder getal (een • zoals vroeger)
-  // Hiermee vervalt het vinkje "Scores verbergen": wie wat ziet volgt nu
-  // vanzelf uit de markerindeling, zonder knop om te vergeten.
+  //   kijker  alleen kijken — de score staat er wel, invullen kan niet
+  // Wie waar mag TYPEN volgt zo uit de markerindeling; zien doet iedereen
+  // alles binnen zijn eigen flight (v5.11.8).
   const rollen = {};
   spelers.forEach(s => { rollen[s.uid] = rolVoorKolom(s.uid, dag); });
 
@@ -2870,10 +2870,15 @@ function renderTScorecard() {
       // Vastgesteld door de wedstrijdleiding? Dan kunnen speler en marker die
       // hole niet meer wijzigen. Anders kan een gecontroleerde score weer
       // opengetrokken worden en ben je terug bij af.
-      const opSlot = dagAfgerond || (o.vast && rol !== 'beheer');
-      if (rol === 'kijker' && !dagAfgerond) {
-        html += `<td style="text-align:center;color:var(--light);font-size:14px">•</td>`;
-      } else if (opSlot) {
+      //
+      // v5.11.8: de kolom van een flightgenoot die je NIET markeert stond op
+      // puntjes. Sierk, 13 september 2026: "de scores van je flightgenoten moet
+      // je wel kunnen zien." Op de baan wil je weten hoe de anderen ervoor
+      // staan. Invullen blijft je eigen kolom en die van je marker-speler; die
+      // van de rest lees je alleen, mét kleur, zodat je ook ziet of hij al
+      // gecontroleerd is.
+      const opSlot = dagAfgerond || rol === 'kijker' || (o.vast && rol !== 'beheer');
+      if (opSlot) {
         html += `<td style="text-align:center"><span data-uid="${escAttr(s.uid)}" data-hole="${holeIdx}"
           class="${celKlasse(o.kleur, o.vast)}"
           title="${o.vast ? 'Vastgesteld door de wedstrijdleiding' : ''}">${val !== null && val !== undefined ? val : '—'}</span></td>`;
@@ -2890,14 +2895,11 @@ function renderTScorecard() {
 
   html += '<tr class="t-totaal-rij" style="background:var(--green-pale)"><td class="player-col" style="font-weight:700">Tot</td>';
   spelers.forEach(s => {
-    if (rollen[s.uid] === 'kijker' && !dagAfgerond) {
-      html += `<td data-speler-id="${s.uid}" style="text-align:center;color:var(--light)">•</td>`;
-    } else {
-      const scores = dag.scores?.[s.uid] || [];
-      const filled = scores.filter(v => v !== null && v !== undefined);
-      const tot = filled.length ? filled.reduce((a,b) => a+Number(b), 0) : null;
-      html += `<td data-speler-id="${s.uid}" style="font-family:'DM Mono',monospace;font-weight:700;text-align:center">${tot !== null ? tot : '—'}</td>`;
-    }
+    // v5.11.8: ook hier geen puntjes meer — iedereen ziet ieders totaal.
+    const scores = dag.scores?.[s.uid] || [];
+    const filled = scores.filter(v => v !== null && v !== undefined);
+    const tot = filled.length ? filled.reduce((a,b) => a+Number(b), 0) : null;
+    html += `<td data-speler-id="${s.uid}" style="font-family:'DM Mono',monospace;font-weight:700;text-align:center">${tot !== null ? tot : '—'}</td>`;
   });
   html += '</tr></tbody></table></div>';
 
@@ -3292,6 +3294,63 @@ function berekenStrokeplayTotaal(t) {
   });
 }
 
+// ============================================================
+//  MATCHPLAY — WIE STAAT BOVEN BIJ EEN GELIJKE STAND?  (v5.11.8)
+// ============================================================
+//  ⚠ WAT ER MIS WAS. De volgorde was `punten, dan aantal winsten` en daarna
+//  NIETS: bij gelijke punten én winsten besliste de volgorde waarin de spelers
+//  aan het toernooi waren toegevoegd. Dat is niet uit te leggen aan de nummer
+//  twee. Erger: de ladderstand na afloop werd nog eens apart op alleen punten
+//  gesorteerd, dus die kon een ándere volgorde krijgen dan het scherm toonde.
+//
+//  De regel nu, in deze vololgorde:
+//    1. punten
+//    2. het ONDERLINGE resultaat — heeft de een de ander verslagen, dan staat
+//       die boven. Alleen bij precies TWEE gelijk geëindigde spelers: bij drie
+//       of meer kan A van B winnen, B van C en C van A, en dan bestaat er geen
+//       volgorde die klopt. Dan meteen door naar 3.
+//    3. aantal gewonnen partijen
+//    4. de laagste handicap — Sierk, 13 september 2026
+//  Blijft het daarna nog gelijk (zelfde handicap), dan is het ECHT gelijk; die
+//  spelers worden gemerkt in plaats van willekeurig op volgorde gezet.
+//
+//  `matrix[i][j]` is het resultaat van speler i tegen speler j: W, L of T.
+// ============================================================
+function matchplayVolgorde(entries, matrix) {
+  const perPunten = new Map();
+  (entries || []).forEach(e => {
+    if (!perPunten.has(e.pt)) perPunten.set(e.pt, []);
+    perPunten.get(e.pt).push(e);
+  });
+
+  const uit = [];
+  [...perPunten.keys()].sort((a, b) => b - a).forEach(pt => {
+    const groep = perPunten.get(pt);
+
+    // Precies twee gelijk: het onderlinge resultaat beslist, als dat er is.
+    if (groep.length === 2) {
+      const res = matrix?.[groep[0].i]?.[groep[1].i];
+      if (res === 'W') { uit.push(groep[0], groep[1]); return; }
+      if (res === 'L') { uit.push(groep[1], groep[0]); return; }
+    }
+
+    const gesorteerd = [...groep].sort((a, b) =>
+      (b.w - a.w) || (hcpVan(a) - hcpVan(b)));
+    // Wie op ALLES gelijk eindigt staat echt gelijk; dat hoort zichtbaar te zijn.
+    gesorteerd.forEach(e => {
+      e.gelijk = gesorteerd.some(x => x !== e && x.w === e.w && hcpVan(x) === hcpVan(e));
+    });
+    uit.push(...gesorteerd);
+  });
+  return uit;
+}
+
+// De handicap waarmee in dit toernooi gespeeld wordt. Ontbreekt hij, dan achteraan.
+function hcpVan(entry) {
+  const h = Number(entry?.s?.hcp);
+  return Number.isFinite(h) ? h : 999;
+}
+
 function countback(a, b, sorteerOp) {
   const n = Math.max(
     (a.holeScores || []).filter(h => h !== null).length,
@@ -3410,15 +3469,15 @@ function renderTRanglijst() {
 
   // ── Matchplay ranglijst ──
   const dagNaam = rlDag === 0 ? 'Totaal' : `Dag ${rlDag}`;
-  const { punten, won, tied, lost } = berekenTPunten(rlDag);
-  const volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]}))
-    .sort((a,b) => b.pt - a.pt || b.w - a.w);
+  const { punten, won, tied, lost, matrix } = berekenTPunten(rlDag);
+  const volgorde = matchplayVolgorde(
+    t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]})), matrix);
 
   el.innerHTML = `<div style="font-size:11px;color:var(--light);padding:6px 10px;border-bottom:1px solid var(--border)"><strong>${dagNaam}</strong></div>` +
     volgorde.map((entry, rank) => `
     <div class="ladder-item">
       <div class="rank-badge ${rank < 3 ? 'top3' : ''}">${rank+1}</div>
-      <div class="player-name">${esc(entry.s.naam)}${entry.s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}</div>
+      <div class="player-name">${esc(entry.s.naam)}${entry.s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}${entry.gelijk ? ' <span title="Gelijk geëindigd: zelfde punten, zelfde winsten, zelfde handicap" style="font-size:10px;color:var(--gold);font-weight:700">= gelijk</span>' : ''}</div>
       <div style="font-size:12px;color:var(--light);text-align:right;line-height:1.6">
         ${entry.w}W ${entry.ti}T ${entry.l}L<br>
         <strong style="color:var(--dark)">${entry.pt > 0 ? '+' : ''}${entry.pt} pt</strong>
@@ -3511,9 +3570,9 @@ function openToernooiAfsluiten() {
   }
 
   // Gebruik totaalstand als meerdere dagen
-  const { punten, won, tied, lost } = berekenTPunten(0);
-  const volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]}))
-    .sort((a,b) => b.pt - a.pt || b.w - a.w);
+  const { punten, won, tied, lost, matrix } = berekenTPunten(0);
+  const volgorde = matchplayVolgorde(
+    t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]})), matrix);
 
   const rankingLadderIds = t.rankingLadderIds?.length > 0 ? t.rankingLadderIds : (t.ladderId ? [t.ladderId] : []);
   const heeftRankingLadders = rankingLadderIds.length > 0;
@@ -3579,8 +3638,8 @@ async function bevestigToernooiAfsluiten() {
 
     // Totaalstand over alle dagen
     const { punten, won, tied, lost, matrix } = berekenTPunten(0);
-    const volgorde = t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]}))
-      .sort((a,b) => b.pt - a.pt || b.w - a.w);
+    const volgorde = matchplayVolgorde(
+      t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]})), matrix);
 
     const rankingLadderIds = t.rankingLadderIds?.length > 0
       ? t.rankingLadderIds
@@ -3603,7 +3662,11 @@ async function bevestigToernooiAfsluiten() {
         if (deelnemers.length > 0) {
           // Sla prevRank op
           Object.values(standenMap).forEach(s => { s.prevRank = s.rank; });
-          const gesorteerd = [...deelnemers].sort((a, b) => b.pt - a.pt);
+          // v5.11.8: NIET opnieuw sorteren. `volgorde` is al gesorteerd met de
+          // volledige regel (punten, onderling, winsten, handicap); een tweede
+          // sortering op alleen punten gooide die weer om, en dan kreeg de
+          // ladder een andere volgorde dan het scherm liet zien.
+          const gesorteerd = deelnemers;
 
           gesorteerd.forEach(e => {
             const sp = standenMap[e.s.uid];

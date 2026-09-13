@@ -46,6 +46,8 @@ function laadToernooiKern() {
     // v5.11.0: _liveScoresVanDag lost nu de drie scorelagen op en heeft deze
     // drie nodig. Ze worden ECHT uit de app geknipt, net als de rest.
     '_laagVanDag', 'lagenVanDag', 'scoreOordeel',
+    // v5.11.8: de volgorde bij een gelijke stand in matchplay.
+    'matchplayVolgorde', 'hcpVan',
   ]);
   const k = knip('js/knockout.js', ['rondesNaarObj', 'objNaarRondes', 'verwerkKnockoutVoortgang']);
   const bron = `
@@ -58,6 +60,7 @@ function laadToernooiKern() {
       getTHcpSlagen, berekenTPuntenVoorDag, berekenStrokeplayRanglijstVoorDag,
       berekenStrokeplayTotaal, countback, getDag, actieveDag, heeftGeenScores,
       alleScoresIngevuld, berekenFlightTijd, berekenTPunten, _liveScoresVanDag,
+      matchplayVolgorde, hcpVan,
       rondesNaarObj, objNaarRondes, verwerkKnockoutVoortgang,
       _zetToernooi: (v) => { toernooiData = v; },
       _zetLive:     (v) => { _liveScores = v || {}; },

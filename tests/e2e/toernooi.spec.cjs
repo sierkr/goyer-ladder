@@ -247,6 +247,16 @@ test.describe('Toernooi — de hele route', () => {
       expect(await magTypen(speler, doorSpelerGemarkeerd), 'de kolom van zijn marker-speler ook').toBeGreaterThan(0);
       const verboden = ids.find(u => u !== uidSpeler && u !== doorSpelerGemarkeerd);
       expect(await magTypen(speler, verboden), 'de kolom van een ander niet').toBe(0);
+
+      // v5.11.8: maar ZIEN doet hij die kolom wel. Daar stonden puntjes.
+      // Sierk: "de scores van je flightgenoten moet je wel kunnen zien."
+      await coord.evaluate(({ uid }) => window.updateTScore(uid, 2, 7), { uid: verboden });
+      await expect.poll(() => speler.evaluate(({ uid }) =>
+        document.querySelector(`#t-scorecard-wrap [data-uid="${uid}"][data-hole="2"]`)?.textContent?.trim(),
+        { uid: verboden }), { timeout: 20000, message: 'de score van een flightgenoot is te zien' })
+        .toBe('7');
+      expect(await speler.locator(`#t-scorecard-wrap [data-uid="${verboden}"]`).count(),
+        'de hele kolom staat er, niet als puntjes').toBeGreaterThan(1);
       expect(await magTypen(coord, uidDerde), 'de wedstrijdleiding mag overal').toBeGreaterThan(0);
 
       // ── 4. De speler vult in: oranje, want de marker moet nog ──
