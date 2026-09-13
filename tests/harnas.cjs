@@ -52,6 +52,10 @@ function laadToernooiKern() {
     // vergelijkbaar maken.
     'dagModus', 'heeftStrokeplayDag', 'gemengdeSpeelwijzen',
     'dagPuntenUitSleutels', 'dagPunten', 'dagPuntenTotaal',
+    // v5.12.1: de toernooibrede keuze Matchplay/Strokeplay is uit het
+    // aanmaakformulier verdwenen. Deze twee nemen die beslissing nu over uit
+    // de dagblokken.
+    'toernooiModusVanSpeelwijzen', 'zichtbaarheidVanSpeelwijzen',
   ]);
   const k = knip('js/knockout.js', ['rondesNaarObj', 'objNaarRondes', 'verwerkKnockoutVoortgang']);
   const bron = `
@@ -67,6 +71,7 @@ function laadToernooiKern() {
       matchplayVolgorde, hcpVan,
       dagModus, heeftStrokeplayDag, gemengdeSpeelwijzen,
       dagPuntenUitSleutels, dagPunten, dagPuntenTotaal,
+      toernooiModusVanSpeelwijzen, zichtbaarheidVanSpeelwijzen,
       rondesNaarObj, objNaarRondes, verwerkKnockoutVoortgang,
       _zetToernooi: (v) => { toernooiData = v; },
       _zetLive:     (v) => { _liveScores = v || {}; },

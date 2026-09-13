@@ -94,6 +94,21 @@ function renderToernooi() {
   const isBeheerder = isCoordinatorRol();
   const uid = huidigeBruiker?.uid;
 
+  // v5.12.1: de melding "Geen actief toernooi" ALTIJD eerst weghalen.
+  //
+  // WAT ER MIS WAS. Dat blok wordt onderaan deze functie aan de toernooipagina
+  // geplakt voor een speler zonder lopend toernooi — maar het werd alleen
+  // opgeruimd in diezelfde tak, vlak voordat het opnieuw werd neergezet. Kwam
+  // er daarna wél weer een toernooi, dan keek niemand meer naar dat blok.
+  //
+  // Gemeten met een browsertest op 13 september 2026: annuleert de coordinator
+  // terwijl een speler is ingelogd, dan krijgt die speler de melding. Herstelt
+  // de coordinator het toernooi, dan komt de scorekaart er wel bij, maar de
+  // melding blijft eronder staan tot de speler de app opnieuw opent. Sierk:
+  // "ik heb een geannuleerd toernooi opnieuw gestart maar een speler die inlogt
+  // krijgt scherm, geen actief toernooi."
+  document.getElementById('toernooi-leeg-melding')?.remove();
+
   const mijnToernooien = isBeheerder
     ? alleToernooien
     : alleToernooien.filter(t =>
@@ -148,9 +163,9 @@ function renderToernooi() {
       window._toonNieuwToernooiFormulier = false;
       initToernooiSetup();
     } else {
-      // v3.0.0-11.73: wachtmelding voor spelers zonder actief toernooi
-      const bestaand = document.getElementById('toernooi-leeg-melding');
-      if (bestaand) bestaand.remove();
+      // v3.0.0-11.73: wachtmelding voor spelers zonder actief toernooi.
+      // v5.12.1: het weghalen staat nu bovenaan deze functie, zodat het ook
+      // gebeurt als er wél weer een toernooi is.
       const emptyDiv = document.createElement('div');
       emptyDiv.id = 'toernooi-leeg-melding';
       emptyDiv.className = 'card';
@@ -656,7 +671,7 @@ function slaToernooiConceptOp() {
         ptTie:       document.getElementById('t-pt-tie')?.value || '',
         ptLoss:      document.getElementById('t-pt-loss')?.value || '',
         hcpPct:      document.getElementById('t-hcp-pct')?.value || '',
-        modus:       document.querySelector('input[name="t-modus"]:checked')?.value || 'matchplay',
+        modus:       toernooiModusUitFormulier(),   // v5.12.1: afgeleid uit de dagen
         dagen,
         spelers:        store._tGeselecteerdeSpelers || [],
         spelersLadders: [...(_tSpelersLadderIds || [])],
@@ -703,8 +718,9 @@ function herstelToernooiConcept() {
     zet('t-pt-tie', c.ptTie);
     zet('t-pt-loss', c.ptLoss);
     zet('t-hcp-pct', c.hcpPct);
-    const modusRadio = document.querySelector(`input[name="t-modus"][value="${c.modus}"]`);
-    if (modusRadio) { modusRadio.checked = true; toernooiModusWissel(c.modus); }
+    // v5.12.1: de speelwijze staat in de dagblokken, niet meer in een radio
+    // hier. pasConceptDagenToe() zet ze terug; daarna beslist pasSpeelwijzeToe()
+    // wat er zichtbaar is.
 
     store._tGeselecteerdeSpelers = c.spelers || [];
     store._tSpelersLadderIds = new Set(c.spelersLadders || []);
@@ -750,6 +766,7 @@ function pasConceptDagenToe() {
     const modusEl = blok.querySelector('.t-dag-modus');            // v5.12.0
     if (modusEl && c.modus) modusEl.value = c.modus;
   });
+  pasSpeelwijzeToe();   // v5.12.1
 }
 
 // Autosave: één gedelegeerde listener op het hele setup-formulier
@@ -775,6 +792,7 @@ function initToernooiSetup() {
   renderDagBlokken();
   pasConceptDagenToe();     // v4.0.0 (fix 7.1)
   koppelConceptAutosave();  // v4.0.0 (fix 7.1)
+  pasSpeelwijzeToe();       // v5.12.1
 
   const spelersLaddersEl = document.getElementById('t-spelers-ladders');
   if (spelersLaddersEl) {
@@ -822,7 +840,9 @@ function renderDagBlokken() {
 
   // v5.12.0: de speelwijze staat per DAG. De keuze bovenaan het formulier is de
   // standaard voor een nieuwe dag; per dag kun je ervan afwijken.
-  const toernooiModus = document.querySelector('input[name="t-modus"]:checked')?.value || 'matchplay';
+  // v5.12.1: een nieuwe dag volgt de speelwijze van dag 1; is die er nog niet,
+  // dan matchplay. Voorheen kwam dit uit de toernooibrede keuze die nu weg is.
+  const toernooiModus = document.querySelector('#t-dag-blokken .t-dag-modus')?.value || 'matchplay';
 
   let html = '';
   for (let d = 1; d <= aantalDagen; d++) {
@@ -867,7 +887,7 @@ function renderDagBlokken() {
       </div>
       <div class="form-group" style="margin-bottom:0">
         <label>Speelwijze</label>
-        <select class="t-dag-modus">
+        <select class="t-dag-modus" onchange="pasSpeelwijzeToe()">
           <option value="matchplay"  ${dagModusKeuze==='matchplay' ?'selected':''}>Matchplay</option>
           <option value="strokeplay" ${dagModusKeuze==='strokeplay'?'selected':''}>Strokeplay</option>
         </select>
@@ -901,6 +921,10 @@ function renderDagBlokken() {
       }
     }
   });
+
+  // v5.12.1: de dagblokken bepalen wat er onderin het formulier zichtbaar is.
+  // Wisselt het aantal dagen, dan kan dat veranderen.
+  pasSpeelwijzeToe();
 }
 window.renderDagBlokken = renderDagBlokken;
 
@@ -1239,7 +1263,7 @@ async function startToernooi() {
     const _rankingSet = _tRankingLadderIds.size > 0 ? _tRankingLadderIds : _tSpelersLadderIds;
     const rankingLadderIds = [..._rankingSet];
     const ladderId = rankingLadderIds[0] || null;
-    const modus    = document.querySelector('input[name="t-modus"]:checked')?.value || 'matchplay';
+    const modus    = toernooiModusUitFormulier();   // v5.12.1
     const starttijd = document.getElementById('t-starttijd')?.value || '09:00';
     const interval  = parseInt(document.getElementById('t-interval')?.value) || 0;
     // v5.10.0: leeg laten mag — dan krijgen gastspelers geen inlog.
@@ -4030,8 +4054,8 @@ function _herstelSetupVanuitToernooi(t) {
   if (naamEl) naamEl.value = t.naam || '';
 
   // Modus
-  const modusRadio = document.querySelector(`input[name="t-modus"][value="${t.modus || 'matchplay'}"]`);
-  if (modusRadio) { modusRadio.checked = true; toernooiModusWissel(t.modus || 'matchplay'); }
+  // v5.12.1: de speelwijze komt uit de dagblokken. Die worden even verderop
+  // gevuld vanuit t.dagen; pasSpeelwijzeToe() draait daarna.
 
   // Punt-instellingen
   if (t.ptWin  !== undefined) { const el = document.getElementById('t-pt-win');  if (el) el.value = t.ptWin; }
@@ -4110,10 +4134,22 @@ async function annuleerToernooi() {
   try {
     // v4.0.0 (fix 7.2): eerlijke tekst — annuleren is herstelbaar via de
     // sectie "Geannuleerde toernooien" onderaan de toernooipagina.
-    if (!confirm("Toernooi annuleren?\n\nHet toernooi verdwijnt uit beeld, maar kan via 'Geannuleerde toernooien' worden hersteld of definitief verwijderd.")) return;
-    // v5.10.0: eerst de gastlogins aanbieden om op te ruimen, zolang het
-    // toernooi-object nog compleet in beeld is.
-    try { await ruimGastloginsOp(toernooiData); } catch(e) { console.warn('gastlogins opruimen:', e); }
+    if (!confirm("Toernooi annuleren?\n\nHet toernooi verdwijnt uit beeld, maar kan via 'Geannuleerde toernooien' worden hersteld of definitief verwijderd.\n\nDe gastlogins blijven werken.")) return;
+    // v5.12.1: annuleren raakt de gastlogins NIET meer aan.
+    //
+    // WAT ER MIS WAS. Tot v5.12.0 bood deze functie hier aan de gastaccounts te
+    // verwijderen (ruimGastloginsOp). Zei je daar ja, dan was het account écht
+    // weg — en herstellen bracht het niet terug. De gast kreeg bij inloggen
+    // "Je hebt geen toegang", terwijl zijn inlognaam nog gewoon in het toernooi
+    // stond. Gemeten op 13 september 2026 met een browsertest. Er was ook geen
+    // weg terug: opnieuw toevoegen geeft een nieuwe uid, waardoor zijn eerder
+    // ingevoerde scores in live/{uid} losraken van de speler.
+    //
+    // Het was bovendien innerlijk tegenstrijdig: het venster hierboven belooft
+    // dat annuleren herstelbaar is, en vroeg meteen daarna of de logins
+    // definitief weg mochten. Opruimen hoort bij handelingen die NIET
+    // herstelbaar zijn — definitief verwijderen en toernooi afsluiten — en daar
+    // gebeurt het ook.
     if (actieveToernooiId) await setDoc(doc(db, 'toernooien', actieveToernooiId), { ...toernooiData, status: 'geannuleerd' });
     store.alleToernooien = alleToernooien.filter(t => t.id !== actieveToernooiId);
     store.toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
@@ -4229,6 +4265,7 @@ async function herstelGeannuleerdToernooi(id) {
     if (!confirm('Dit toernooi herstellen? Het wordt weer actief, inclusief alle eerder ingevoerde scores.')) return;
     await updateDoc(doc(db, 'toernooien', id), { status: 'actief' });
     await herlaadToernooien();
+    await meldGastenZonderAccount(id);   // v5.12.1
     store.actieveToernooiId = id;
     store.toernooiData = alleToernooien.find(t => t.id === id) || null;
     window._bekijkDagNr = null;
@@ -4239,9 +4276,48 @@ async function herstelGeannuleerdToernooi(id) {
   } catch(e) { console.error('herstelGeannuleerdToernooi mislukt:', e); toast('Herstellen mislukt, probeer opnieuw'); }
 }
 
+// ============================================================
+//  v5.12.1 — STAAT ER EEN GAST IN ZONDER WERKEND ACCOUNT?
+// ------------------------------------------------------------
+//  Een toernooi bewaart van elke gast zijn inlognaam en zijn uid. Het account
+//  zelf staat ergens anders: het profiel in spelers/{uid} en de inlog in
+//  Firebase Auth. Die kunnen los van elkaar verdwijnen — door een opruiming
+//  bij een eerder afgesloten toernooi, of doordat iemand het profiel weghaalt.
+//  Dan staat de inlognaam nog keurig op het briefje, maar komt de gast er niet
+//  in. Dat merk je anders pas op de eerste tee.
+//
+//  Deze controle draait na het herstellen van een geannuleerd toernooi en zegt
+//  het meteen, met de naam erbij.
+async function meldGastenZonderAccount(id) {
+  try {
+    const t = alleToernooien.find(x => x.id === id);
+    const gasten = (t?.spelers || []).filter(sp => sp.gast && sp.login && sp.uid);
+    if (gasten.length === 0) return [];
+    const ontbreekt = [];
+    for (const g of gasten) {
+      try {
+        const snap = await getDoc(doc(db, 'spelers', g.uid));
+        if (!snap.exists()) ontbreekt.push(g.naam);
+      } catch (e) { console.warn('gastprofiel lezen mislukt voor', g.naam, e?.code); }
+    }
+    if (ontbreekt.length > 0) {
+      toast(`⚠ Geen werkende inlog meer voor: ${ontbreekt.join(', ')}. ` +
+            `Verwijder die speler en voeg hem opnieuw toe om hem weer een login te geven.`, 12000);
+    }
+    return ontbreekt;
+  } catch (e) { console.warn('gastcontrole mislukt:', e); return []; }
+}
+window.meldGastenZonderAccount = meldGastenZonderAccount;
+
 async function verwijderGeannuleerdToernooi(id, naam) {
   try {
     if (!confirm(`"${naam || 'Dit toernooi'}" DEFINITIEF verwijderen?\n\nDit kan niet ongedaan worden gemaakt — alle scores verdwijnen voorgoed.`)) return;
+    // v5.12.1: hier hoort de gastopruiming thuis, niet bij annuleren. Dit is de
+    // handeling die niet meer terug te draaien is, dus mogen de accounts mee.
+    try {
+      const snap = await getDoc(doc(db, 'toernooien', id));
+      if (snap.exists()) await ruimGastloginsOp({ id, ...snap.data() });
+    } catch(e) { console.warn('gastlogins opruimen:', e); }
     try {
       const liveDocs = await getDocs(collection(db, 'toernooien', id, 'live'));
       await Promise.all(liveDocs.docs.map(d => deleteDoc(d.ref)));
@@ -4258,13 +4334,66 @@ window.verwijderGeannuleerdToernooi = verwijderGeannuleerdToernooi;
 // ============================================================
 //  MODUS / RANGLIJST WISSEL
 // ============================================================
-function toernooiModusWissel(modus) {
-  const matchplay  = document.getElementById('t-matchplay-instellingen');
-  const strokeplay = document.getElementById('t-strokeplay-instellingen');
+// ============================================================
+//  v5.12.1 — DE SPEELWIJZE KOMT UIT DE DAGBLOKKEN
+// ------------------------------------------------------------
+//  Tot v5.12.0 stond er onder de dagblokken nóg een keuze Matchplay/Strokeplay
+//  voor het hele toernooi. Die stuurde drie dingen aan: de puntenvelden met het
+//  HCP-percentage, het uitlegblok bij strokeplay, en de ranking-ladders. Sinds
+//  v5.12.0 kiest elke dag zijn eigen speelwijze, en dan is een tweede keuze
+//  erboven niet alleen dubbel maar ook misleidend — kies je daar strokeplay
+//  terwijl dag 2 matchplay is, dan verdwenen de puntenvelden die dag 2 nodig
+//  heeft.
+//
+//  Daarom leest deze functie de dagblokken en beslist daaruit:
+//    - minstens één matchplay-dag  -> punten en HCP-percentage zichtbaar
+//    - minstens één strokeplay-dag -> de uitleg brutto/netto/stableford
+//    - minstens één strokeplay-dag -> GEEN ranking-ladders. Sierk,
+//      13 september 2026: "als er strokeplay gespeeld wordt dan kan het
+//      toernooi niet meetellen voor de ladder." Dan hoef je hem ook niet te
+//      kunnen kiezen.
+//  Bij een gemengd toernooi staan de puntenvelden en de uitleg dus samen in
+//  beeld — allebei terecht, want allebei worden ze gebruikt.
+
+// De gekozen speelwijzen van alle dagblokken in het aanmaakformulier.
+function speelwijzenUitFormulier() {
+  return Array.from(document.querySelectorAll('#t-dag-blokken .t-dag-modus'))
+    .map(sel => sel.value || 'matchplay');
+}
+
+// De speelwijze die als toernooibreed veld (`t.modus`) wordt opgeslagen. Die
+// blijft bestaan als terugval voor oude toernooien waarvan de dagen nog geen
+// eigen `modus` dragen — zie dagModus().
+//
+// Deze twee rekenen alleen met een lijstje speelwijzen en raken het scherm
+// niet aan, zodat de tests de regel rechtstreeks kunnen natellen.
+function toernooiModusVanSpeelwijzen(w) {
+  return (w.length > 0 && w.every(m => m === 'strokeplay')) ? 'strokeplay' : 'matchplay';
+}
+
+// Wat er onderin het aanmaakformulier zichtbaar hoort te zijn.
+// Een leeg lijstje (nog geen dagblokken) telt als matchplay, anders klapt het
+// hele onderste deel van het formulier dicht.
+function zichtbaarheidVanSpeelwijzen(w) {
+  return {
+    punten:  w.length === 0 || w.some(m => m === 'matchplay'),
+    uitleg:  w.some(m => m === 'strokeplay'),
+    ranking: !w.some(m => m === 'strokeplay'),
+  };
+}
+
+function toernooiModusUitFormulier() {
+  return toernooiModusVanSpeelwijzen(speelwijzenUitFormulier());
+}
+
+function pasSpeelwijzeToe() {
+  const zicht = zichtbaarheidVanSpeelwijzen(speelwijzenUitFormulier());
+  const matchplay   = document.getElementById('t-matchplay-instellingen');
+  const strokeplay  = document.getElementById('t-strokeplay-instellingen');
   const rankingWrap = document.getElementById('t-ranking-ladders-wrap');
-  if (matchplay)   matchplay.style.display   = modus === 'matchplay'  ? '' : 'none';
-  if (strokeplay)  strokeplay.style.display  = modus === 'strokeplay' ? '' : 'none';
-  if (rankingWrap) rankingWrap.style.display = modus === 'matchplay'  ? '' : 'none';
+  if (matchplay)   matchplay.style.display   = zicht.punten  ? '' : 'none';
+  if (strokeplay)  strokeplay.style.display  = zicht.uitleg  ? '' : 'none';
+  if (rankingWrap) rankingWrap.style.display = zicht.ranking ? '' : 'none';
 }
 
 async function wisselRanglijstModus(modus) {
@@ -4278,7 +4407,7 @@ async function wisselRanglijstModus(modus) {
   }
 }
 window.wisselRanglijstModus = wisselRanglijstModus;
-window.toernooiModusWissel = toernooiModusWissel;
+window.pasSpeelwijzeToe = pasSpeelwijzeToe;
 
 // ============================================================
 //  LIVE LINK

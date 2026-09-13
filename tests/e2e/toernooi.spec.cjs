@@ -865,4 +865,190 @@ test.describe('Toernooi — de hele route', () => {
     expect(t.dagen[0].flights.length, 'dag 1 is wel ingedeeld').toBeGreaterThan(0);
     expect(t.dagen[1].flights.length, 'dag 2 begint zonder indeling').toBe(0);
   });
+
+  // ============================================================
+  //  v5.12.1 — EEN GEANNULEERD TOERNOOI WEER OPSTARTEN
+  // ------------------------------------------------------------
+  //  Sierk, 13 september 2026: "ik heb een geannuleerd toernooi opnieuw gestart
+  //  maar een speler die inlogt krijgt scherm, geen actief toernooi."
+  //
+  //  Vier varianten nagespeeld; twee ervan waren stuk. Ze staan hieronder elk
+  //  als eigen test, want het zijn twee losse oorzaken.
+  // ============================================================
+
+  // Hulpje: annuleren en daarna weer herstellen, als coordinator.
+  async function annuleerEnHerstel(page, naam) {
+    await page.click('#toernooi-detail button:has-text("Toernooi annuleren")');
+    await expect.poll(async () =>
+      (await beheerDb.collection('toernooien').get()).docs.map(d => d.data().status),
+      { timeout: 20000, message: 'het toernooi staat op geannuleerd' }).toEqual(['geannuleerd']);
+    await page.click('button:has-text("Eerdere toernooien tonen")');
+    await expect(page.locator('#toernooi-geannuleerd-lijst')).toContainText(naam, { timeout: 20000 });
+    await page.click('#toernooi-geannuleerd-lijst button:has-text("Herstellen")');
+    await expect.poll(async () =>
+      (await beheerDb.collection('toernooien').get()).docs.map(d => d.data().status),
+      { timeout: 20000, message: 'het toernooi staat weer op actief' }).toEqual(['actief']);
+  }
+
+  test('HERSTELLEN: de melding "Geen actief toernooi" verdwijnt weer', async ({ page, browser }) => {
+    test.setTimeout(240000);
+    jaOpAlles(page);
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Herstart', 1);
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Herstart', { timeout: 20000 });
+
+    // De speler zit erbij en blijft ingelogd — dat is het geval dat stukging.
+    const speler = await (await browser.newContext()).newPage();
+    await inloggen(speler, 'anna@MPladder.stb');
+    await speler.click('nav button:has-text("Toernooi")');
+    await expect(speler.locator('#page-toernooi')).toContainText('Jouw scorekaart', { timeout: 25000 });
+
+    await annuleerEnHerstel(page, 'Herstart');
+
+    // ⚠ HIER GING HET MIS tot v5.12.0. Het blok "Geen actief toernooi" wordt
+    // aan de toernooipagina geplakt zodra er niets loopt, maar werd alleen
+    // opgeruimd in dezelfde tak die het ook neerzet. Kwam er weer een toernooi,
+    // dan bleef het eronder staan — voor altijd, tot de speler de app opnieuw
+    // opende. Wie niet naar beneden scrolde, zag alleen die melding.
+    await expect(speler.locator('#page-toernooi'), 'de scorekaart is terug')
+      .toContainText('Jouw scorekaart', { timeout: 30000 });
+    await expect(speler.locator('#toernooi-leeg-melding'),
+      'en de melding "Geen actief toernooi" staat er niet meer onder').toHaveCount(0);
+    await speler.close();
+  });
+
+  test('ANNULEREN: de gastlogin blijft werken en komt na herstel weer binnen', async ({ page, browser }) => {
+    test.setTimeout(300000);
+    const gevraagd = [];
+    const antwoorden = ['Karel Gast', '15'];
+    page.on('dialog', async d => {
+      gevraagd.push(d.message());
+      if (d.type() === 'prompt') return d.accept(antwoorden.shift() ?? '');
+      return d.accept();
+    });
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Herstartgast', 1);
+    await kiesSpeler(page, 'Anna Speler');
+    await page.fill('#t-gast-wachtwoord', 'goyer2026');
+    await page.click('#toernooi-setup-wrap button:has-text("Gastspeler toevoegen")');
+    await expect(page.locator('#t-geselecteerde-spelers')).toContainText('Karel Gast');
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Herstartgast', { timeout: 20000 });
+    await expect.poll(async () => {
+      const x = await haalToernooi('Herstartgast');
+      return (x.spelers || []).filter(sp => sp.gast && sp.login).length;
+    }, { timeout: 40000, message: 'de gast heeft een inlog' }).toBe(1);
+    const uidVoor = (await haalToernooi('Herstartgast')).spelers.find(s => s.naam === 'Karel Gast').uid;
+
+    gevraagd.length = 0;
+    await annuleerEnHerstel(page, 'Herstartgast');
+
+    // ⚠ HIER GING HET MIS tot v5.12.0. Annuleren bood aan de gastaccounts te
+    // verwijderen. Zei je ja — en deze test zegt overal ja — dan was het account
+    // écht weg, en herstellen bracht het niet terug: de gast kreeg bij inloggen
+    // "Je hebt geen toegang", terwijl zijn inlognaam nog gewoon in het toernooi
+    // stond. Er was ook geen weg terug, want opnieuw toevoegen geeft een nieuwe
+    // uid en maakt zijn eerdere scores los. Opruimen hoort bij handelingen die
+    // NIET herstelbaar zijn: definitief verwijderen en afsluiten.
+    // (Het annuleervenster noemt de gastlogins nog wél — maar om te zeggen dat
+    //  ze blijven werken. De vraag OF ze weg mogen, is wat verdwenen is.)
+    expect(gevraagd.filter(m => /gastlogin/i.test(m) && /verwijderen\?/i.test(m)),
+      'annuleren vraagt niet meer of de gastlogins weg mogen').toEqual([]);
+    expect(gevraagd.some(m => /gastlogins blijven werken/i.test(m)),
+      'en het zegt er meteen bij dat ze blijven werken').toBe(true);
+
+    const na = await haalToernooi('Herstartgast');
+    expect(na.spelers.find(s => s.naam === 'Karel Gast').uid,
+      'de gast houdt zijn eigen uid, dus zijn scores blijven van hem').toBe(uidVoor);
+    const profiel = await beheerDb.doc('spelers/' + uidVoor).get();
+    expect(profiel.exists, 'en zijn profiel staat er nog').toBe(true);
+
+    const gast = await (await browser.newContext()).newPage();
+    await gast.goto('/index.html');
+    await gast.waitForSelector('#login-scherm', { state: 'visible' });
+    await gast.fill('#login-email', 'Karel Gast');
+    await gast.fill('#login-pass', 'goyer2026');
+    await gast.click('#login-scherm button.btn-primary');
+    await gast.waitForSelector('#login-scherm', { state: 'hidden', timeout: 25000 });
+    await expect(gast.locator('#page-toernooi'), 'de gast komt er na het herstel gewoon weer in')
+      .toContainText('Jouw scorekaart', { timeout: 25000 });
+    await gast.close();
+
+    // En het opruimen is niet verdwenen, alleen verhuisd: bij DEFINITIEF
+    // verwijderen gaat het gastaccount alsnog mee. Dat is de handeling die niet
+    // meer terug te draaien is, dus daar hoort het.
+    await page.click('#toernooi-detail button:has-text("Toernooi annuleren")');
+    await expect.poll(async () =>
+      (await beheerDb.collection('toernooien').get()).docs.map(d => d.data().status),
+      { timeout: 20000 }).toEqual(['geannuleerd']);
+    await page.click('button:has-text("Eerdere toernooien tonen")');
+    await expect(page.locator('#toernooi-geannuleerd-lijst')).toContainText('Herstartgast', { timeout: 20000 });
+    await page.click('#toernooi-geannuleerd-lijst button:has-text("🗑")');
+    await expect.poll(async () => (await beheerDb.doc('spelers/' + uidVoor).get()).exists,
+      { timeout: 30000, message: 'het gastprofiel is bij het definitief verwijderen opgeruimd' }).toBe(false);
+  });
+
+  // ============================================================
+  //  v5.12.1 — NOG ÉÉN KEUZE "SPEELWIJZE"
+  // ------------------------------------------------------------
+  //  Sierk, 13 september 2026: "bij aanmaken toernooi staat nu 2x speelwijze
+  //  selectie. de onderste moet weg. als er voor stroke play gekozen wordt
+  //  verberg dan de ranking ladder mogelijkheid."
+  //
+  //  De onderste keuze was geen doublure: hij stuurde de puntenvelden, het
+  //  HCP-percentage, de uitleg bij strokeplay en de ranking-ladders aan. Die
+  //  aansturing zit nu in de dagblokken. Deze test bewaakt allebei: dat er nog
+  //  één keuze per dag staat, en dat wat eronder hoorde te gebeuren ook gebeurt.
+  // ============================================================
+  test('SPEELWIJZE: één keuze per dag, en die stuurt de rest van het formulier', async ({ page }) => {
+    test.setTimeout(150000);
+    jaOpAlles(page);
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await openAanmaakscherm(page);
+
+    const keuzes = page.locator('#toernooi-setup-wrap .t-dag-modus');
+    const oudeRadio = page.locator('#toernooi-setup-wrap input[name="t-modus"]');
+    const punten  = page.locator('#t-matchplay-instellingen');
+    const uitleg  = page.locator('#t-strokeplay-instellingen');
+    const ranking = page.locator('#t-ranking-ladders-wrap');
+
+    // Eén dag, dus één keuze — en de oude toernooibrede keuze bestaat niet meer.
+    await expect(keuzes, 'één speelwijze-keuze bij één dag').toHaveCount(1);
+    await expect(oudeRadio, 'de tweede keuze is weg').toHaveCount(0);
+    await expect(punten,  'matchplay: de puntenvelden staan er').toBeVisible();
+    await expect(uitleg,  'matchplay: geen strokeplay-uitleg').toBeHidden();
+    await expect(ranking, 'matchplay: de ranking-ladder mag').toBeVisible();
+
+    // Strokeplay: geen punten, wel uitleg, en GEEN ranking-ladder — want een
+    // strokeplay-toernooi telt niet mee voor de ladder.
+    await keuzes.first().selectOption('strokeplay');
+    await expect(ranking, 'strokeplay: de ranking-ladder is weg').toBeHidden();
+    await expect(punten,  'strokeplay: geen puntenvelden').toBeHidden();
+    await expect(uitleg,  'strokeplay: wel de uitleg brutto/netto/stableford').toBeVisible();
+
+    // Twee dagen, gemengd. Dít is wat met de oude keuze niet kon: de
+    // puntenvelden horen erbij vanwege dag 2, de uitleg vanwege dag 1, en de
+    // ranking-ladder blijft weg vanwege dag 1.
+    await page.selectOption('#t-aantal-dagen', '2');
+    await expect(keuzes, 'twee dagen, twee keuzes').toHaveCount(2);
+    await expect(keuzes.nth(0), 'dag 1 houdt zijn keuze').toHaveValue('strokeplay');
+    await keuzes.nth(1).selectOption('matchplay');
+    await expect(punten,  'gemengd: de puntenvelden zijn terug voor dag 2').toBeVisible();
+    await expect(uitleg,  'gemengd: de uitleg blijft voor dag 1').toBeVisible();
+    await expect(ranking, 'gemengd: nog steeds geen ranking-ladder').toBeHidden();
+
+    // En alles weer matchplay brengt de ranking-ladder terug.
+    await keuzes.nth(0).selectOption('matchplay');
+    await expect(ranking, 'weer helemaal matchplay: de ranking-ladder mag weer').toBeVisible();
+    await expect(uitleg,  'en de strokeplay-uitleg is weg').toBeHidden();
+  });
+
 });
