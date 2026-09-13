@@ -969,6 +969,8 @@ function verwijderToernooiSpelerSelectie(uid) {
 function voegGastspelerToe() {
   const naam = prompt('Naam gastspeler:');
   if (!naam?.trim()) return;
+  if (!_dubbeleGastnaamOk(naam.trim(),
+        (store._tGeselecteerdeSpelers || []).map(sp => sp.naam))) return;   // v5.11.7
   const hcpStr = prompt(`Handicap voor ${naam.trim()}:`, '10');
   if (hcpStr === null) return;
   const hcp = parseFloat(hcpStr) || 0;
@@ -1502,6 +1504,21 @@ function splitsNaam(volleNaam) {
   return { voornaam: delen[0], achternaam: delen.slice(1).join(' ') };
 }
 
+// v5.11.7: twee gasten met precies dezelfde naam krijgen allebei een eigen
+// inlog (`karel` en `karel2`) — die zijn op het scherm niet uit elkaar te
+// houden, want de namen zijn gelijk. Dan moet je het wél weten, anders geef je
+// twee mensen hetzelfde briefje. Geeft false als de coordinator afziet.
+function _dubbeleGastnaamOk(naam, bestaandeNamen) {
+  const gelijk = (bestaandeNamen || []).filter(n =>
+    String(n || '').trim().toLowerCase() === String(naam).trim().toLowerCase()).length;
+  if (gelijk === 0) return true;
+  return confirm(
+    `Er doet al iemand mee die "${naam}" heet.\n\n` +
+    `Ze krijgen allebei een eigen inlog — de tweede krijgt een cijfer erbij. ` +
+    `Op het scherm staan ze onder dezelfde naam, dus je moet zelf doorgeven ` +
+    `wie welke inlog heeft.\n\nToch toevoegen?`);
+}
+
 // De inlog (zonder @-deel) voor een gast in een toernooi.
 function gastLoginVan(volleNaam, code) {
   const { voornaam, achternaam } = splitsNaam(volleNaam);
@@ -1598,8 +1615,14 @@ async function maakGastAccount(volleNaam, code, wachtwoord, toernooiNaam) {
       uid = cred.user.uid;
     } catch (e) {
       if (e?.code === 'auth/email-already-in-use') {
-        // Zelfde naam twee keer in hetzelfde toernooi: er een cijfer achter.
-        login = `${gastLoginVan(volleNaam, code)}${poging + 1}`;
+        // Zelfde naam twee keer in hetzelfde toernooi: er een cijfer bij.
+        //
+        // ⚠ v5.11.7: het cijfer hoort IN de naam, niet achter de toernooicode.
+        // Hier stond `karel.<code>2`. Daar klopte niets van: het scherm kon de
+        // code er niet meer afhalen (je zag de hele sleutel), en intikken kon
+        // die gast hem al helemaal niet — de app plakt de code er zelf achter
+        // en komt dan op `karel2.<code>` uit. Nu is dát ook wat er staat.
+        login = gastLoginVan(`${volleNaam}${poging + 1}`, code);
       } else {
         throw e;
       }
@@ -2169,6 +2192,8 @@ async function voegGastspelerToeAanToernooi() {
         `Als gastspeler telt hij NIET mee voor de ladderstand en krijgt hij een ` +
         `losse inlog. Wil je hem als gast toevoegen?`)) return;
     }
+
+    if (!_dubbeleGastnaamOk(naam, (t.spelers || []).map(sp => sp.naam))) return;   // v5.11.7
 
     // v5.10.0: gastlogin, als dit toernooi er een wachtwoord voor heeft.
     const gastLogin = document.getElementById('toernooi-gast-inlog')?.checked === true;

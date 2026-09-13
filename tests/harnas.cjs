@@ -175,6 +175,28 @@ function laadMarkerKern() {
   return new Function(bron)();
 }
 
+// ============================================================
+//  v5.11.7 — DE GASTLOGIN, VAN BEIDE KANTEN
+// ------------------------------------------------------------
+//  Twee bestanden moeten hier precies hetzelfde doen:
+//    js/toernooi.js  gastLoginVan()  maakt het account aan
+//    js/auth.js      gastKernVan()   herkent wat de gast intikt
+//  Lopen ze uit de pas, dan bestaat het account wel maar komt de gast er niet
+//  in — en dat merk je pas op de eerste tee. Beide worden hier ECHT uit de app
+//  geknipt en in de test tegen elkaar gelegd.
+// ============================================================
+function laadGastloginKern() {
+  const maak = new Function(`
+    ${knip('js/toernooi.js', ['splitsNaam', 'gastLoginVan', 'toernooiCodeVan'])}
+    return { splitsNaam, gastLoginVan, toernooiCodeVan };
+  `)();
+  const herken = new Function(`
+    ${knip('js/auth.js', ['gastKernVan'])}
+    return { gastKernVan };
+  `)();
+  return { ...maak, ...herken };
+}
+
 // ─── Kleine assertie-helper ──────────────────────────────────
 function maakChecker() {
   const staat = { ok: 0, fout: 0, bevindingen: [] };
@@ -187,4 +209,4 @@ function maakChecker() {
 }
 
 module.exports = { laadToernooiKern, laadLadderKern, laadHcpKern, laadScoreKern,
-                   laadNaamKern, laadMarkerKern, maakChecker };
+                   laadNaamKern, laadMarkerKern, laadGastloginKern, maakChecker };
