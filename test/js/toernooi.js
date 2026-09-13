@@ -1275,7 +1275,18 @@ async function startToernooi() {
       return;
     }
     if (gastWachtwoord && _gastBeheerGeblokkeerdInTest()) return;
-    const gastCode = toernooiCodeVan(naam);
+    // v5.12.3: de code moet uniek zijn onder ALLE toernooien die er nog zijn,
+    // niet alleen de actieve — ook een afgerond toernooi heeft zijn gastaccounts
+    // nog, en die bezetten de inlognamen.
+    let gastCode = toernooiCodeVan(naam);
+    if (gastWachtwoord) {
+      try {
+        const alle = await getDocs(TOERNOOIEN_COL);
+        gastCode = uniekeGastCode(naam, alle.docs.map(d => d.data().gastCode));
+      } catch (e) {
+        console.warn('gastcodes lezen mislukt, val terug op de naam:', e?.code);
+      }
+    }
 
     // v5.9.0: nooit twee actieve toernooien naast elkaar. Dat kon tot en met
     // v5.8.9 omdat het aanmaakformulier boven een lopend toernooi bleef staan.
@@ -1545,6 +1556,35 @@ function toernooiCodeVan(naam) {
   return kaal.slice(0, 16) || 'toernooi';
 }
 
+// ============================================================
+//  v5.12.3 — DE GASTCODE MOET UNIEK ZIJN
+// ------------------------------------------------------------
+//  De code hierboven kapt af op 16 letters. Twee toernooien die pas ná die 16
+//  letters verschillen komen dus op dezelfde code uit — gemeten op 13 september
+//  2026:
+//
+//      Clubkampioenschap heren  ->  clubkampioenscha
+//      Clubkampioenschap dames  ->  clubkampioenscha
+//
+//  En dan delen ze hun inlognamen. Harry bij de dames wordt `harry2`, en het
+//  inlogscherm stuurt hem naar `harry` — bij de heren. Dat is niet te zien: de
+//  namen van de toernooien verschillen immers wél.
+//
+//  Deze functie zet er een cijfer achter zolang de code al bezet is. `bezet` is
+//  de lijst codes van toernooien die er al zijn; een toernooi dat definitief is
+//  verwijderd telt niet meer mee, want dan zijn zijn accounts ook weg.
+function uniekeGastCode(naam, bezet) {
+  const basis = toernooiCodeVan(naam);
+  const gebruikt = new Set((bezet || []).filter(Boolean));
+  if (!gebruikt.has(basis)) return basis;
+  for (let n = 2; n < 100; n++) {
+    // Afkappen op 16 gebeurt vóór het cijfer, zodat het cijfer nooit wegvalt.
+    const poging = `${basis.slice(0, 15)}${n}`;
+    if (!gebruikt.has(poging)) return poging;
+  }
+  return `${basis.slice(0, 10)}${Date.now().toString(36).slice(-5)}`;
+}
+
 // Splitst "Jan de Vries" op dezelfde manier als genereerEmail() verwacht:
 // eerste woord is de voornaam, de rest de achternaam. Aan beide kanten van de
 // inlog moet dit gelijk gebeuren, anders vindt de gast zijn eigen account niet.
@@ -1634,6 +1674,48 @@ function _vervangSpelerUid(toernooi, oudeUid, nieuweUid) {
   });
 }
 
+// ============================================================
+//  v5.12.3 — IS DIT EEN WEESACCOUNT?
+// ------------------------------------------------------------
+//  Firebase weigert een tweede account met dezelfde inlog, en dan zette de app
+//  er een cijfer bij: `sierk` werd `sierk2`. Sierk, 13 september 2026: "waarom
+//  maakt de app van sierk loginnaam sierk2? er was maar 1 speler in het
+//  toernooi die zo heet."
+//
+//  Er stond dan nog een account van een eerdere ronde met dezelfde
+//  toernooinaam. De knop "Toernooi opnieuw instellen" laat die staan (gemeten:
+//  eerste keer `sierk`, tweede keer `sierk2`, derde keer `sierk3`).
+//
+//  Deze controle kijkt of het bezette account een WEES is en dus mag wijken.
+//  ⚠ DRIE GRENDELS, net als bij het opruimen na afloop — dit verwijdert
+//  accounts van mensen:
+//    1. het profiel moet `toernooiGast: true` dragen (een clublid nooit);
+//    2. de uid mag in GEEN ENKEL toernooi meer voorkomen dat er nog is;
+//    3. de uid mag in geen enkele ladder staan.
+//  Valt er één om, dan blijft het account staan en komt het cijfer terug.
+async function _gastAccountIsWees(email) {
+  try {
+    const gevonden = await getDocs(query(collection(db, 'spelers'), where('email', '==', email)));
+    // Géén profiel = al een wees. Dat gebeurt bij een opruiming die halverwege
+    // is blijven steken: het profiel weg, het Auth-account nog niet. De uid is
+    // dan vanaf hier niet te vinden — de Cloud Function zoekt hem op adres op.
+    if (gevonden.empty) return { opAdres: true };
+    const d = gevonden.docs[0];
+    const data = d.data();
+    if (data.toernooiGast !== true) return null;           // grendel 1
+    const alle = await getDocs(TOERNOOIEN_COL);
+    const inGebruik = alle.docs.some(t =>
+      (t.data().spelers || []).some(sp => sp.uid === d.id));
+    if (inGebruik) return null;                            // grendel 2
+    const ladderUids = new Set((alleLadders || []).flatMap(l => l.spelerIds || []));
+    if (ladderUids.has(d.id)) return null;                 // grendel 3
+    return { uid: d.id };
+  } catch (e) {
+    console.warn('weescontrole mislukt voor', email, e?.code || e?.message);
+    return null;
+  }
+}
+
 // Maakt één Auth-account plus het profiel. Geeft { uid, login } terug.
 //
 // Het account wordt aangemaakt in een APART Firebase-venster. Anders logt
@@ -1648,6 +1730,9 @@ async function maakGastAccount(volleNaam, code, wachtwoord, toernooiNaam) {
   let tijdApp = null;
   let uid = null;
   let poging = 0;
+  // v5.12.3: per inlognaam hooguit ÉÉN weespoging. Zonder deze rem zou een
+  // opruiming die wel lukt maar niet doorwerkt de lus eindeloos laten draaien.
+  const weesGeprobeerd = new Set();
 
   while (uid === null && poging < 5) {
     poging++;
@@ -1666,6 +1751,27 @@ async function maakGastAccount(volleNaam, code, wachtwoord, toernooiNaam) {
       uid = cred.user.uid;
     } catch (e) {
       if (e?.code === 'auth/email-already-in-use') {
+        // v5.12.3: eerst kijken of het bezette account een wees is van een
+        // eerdere ronde. Zo ja, dan ruimen we hem op en houdt deze speler
+        // gewoon zijn eigen naam — geen cijfer voor iets waar hij niets mee
+        // te maken heeft.
+        const wees = weesGeprobeerd.has(email) ? null : await _gastAccountIsWees(email);
+        if (wees) {
+          weesGeprobeerd.add(email);
+          try {
+            if (wees.opAdres) {
+              await _verwijderGastAccountFn({ targetEmail: email, isTest: IS_TEST });
+            } else {
+              await deleteDoc(doc(db, 'spelers', wees.uid));
+              await _verwijderGastAccountFn({ targetUid: wees.uid, isTest: IS_TEST });
+            }
+            poging--;              // dezelfde inlognaam opnieuw proberen
+            continue;
+          } catch (opruimFout) {
+            console.warn('weesaccount opruimen mislukt, val terug op een cijfer:',
+              opruimFout?.code || opruimFout?.message);
+          }
+        }
         // Zelfde naam twee keer in hetzelfde toernooi: er een cijfer bij.
         //
         // ⚠ v5.11.7: het cijfer hoort IN de naam, niet achter de toernooicode.
@@ -4036,6 +4142,16 @@ async function bewerkToernooi() {
       }
     } catch(e) { console.warn('Live-scores verifiëren mislukt:', e); }
 
+    // v5.12.3: de gastaccounts horen hier mee weg.
+    //
+    // WAAROM. Deze knop gooit het toernooi weg en zet je terug in het
+    // aanmaakscherm. Start je daarna opnieuw met dezelfde naam, dan zijn de
+    // oude inlognamen nog bezet en krijgt iedereen een cijfer: `sierk2`,
+    // daarna `sierk3`. Er zijn per definitie nog geen scores — dat is hierboven
+    // al gecontroleerd — dus er gaat niets verloren.
+    try { await ruimGastloginsOp(t, { stil: true }); }
+    catch (e) { console.warn('gastlogins opruimen bij opnieuw instellen:', e); }
+
     // Verwijder uit Firestore
     await deleteDoc(doc(db, 'toernooien', actieveToernooiId));
 
@@ -4284,6 +4400,20 @@ async function laadGeannuleerdeToernooien() {
 
 async function herstelGeannuleerdToernooi(id) {
   try {
+    // v5.12.3: ⚠ dezelfde grendel als bij het aanmaken.
+    //
+    // WAT ER MIS WAS. Bij het AANMAKEN weigert de app sinds v5.9.0 een tweede
+    // actief toernooi. Bij het HERSTELLEN controleerde niets dat. Gemeten op
+    // 13 september 2026: na herstellen stonden er twee actieve toernooien
+    // naast elkaar. Daarna is het willekeurig welk toernooi een speler te zien
+    // krijgt — op meerdere plekken wordt `alleToernooien[0]` gebruikt uit een
+    // zoekopdracht zonder sorteervolgorde. Dit is de derde manier om op
+    // "Geen actief toernooi" uit te komen.
+    const lopend = (alleToernooien || []).find(t => t.id !== id);
+    if (lopend) {
+      toast(`"${lopend.naam || 'Een toernooi'}" loopt nog. Sluit dat eerst af of annuleer het.`, 9000);
+      return;
+    }
     if (!confirm('Dit toernooi herstellen? Het wordt weer actief, inclusief alle eerder ingevoerde scores.')) return;
     await updateDoc(doc(db, 'toernooien', id), { status: 'actief' });
     await herlaadToernooien();
@@ -4492,6 +4622,19 @@ window.zetToernooiOpenbaar = zetToernooiOpenbaar;
 // ⚠ Dit toont een wachtwoord op het scherm. Dat is precies de bedoeling — het
 // is een weggooiwachtwoord voor één toernooi — maar het is bewust een aparte
 // handeling en het staat nergens standaard in beeld.
+// v5.12.3: de tekst die je doorstuurt. Los van het scherm, zodat de rekentest
+// hem kan natellen — dit is het briefje dat de spelers in handen krijgen.
+function gastloginTekst({ adres, wachtwoord, regels }) {
+  const breedte = Math.max(0, ...(regels || []).map(r => String(r.naam || '').length));
+  const lijst = (regels || [])
+    .map(r => `${String(r.naam).padEnd(breedte)}  —  inlog: ${r.inlog}`)
+    .join('\n');
+  return `Inloggen op ${adres}\n`
+    + `Wachtwoord: ${wachtwoord}\n\n`
+    + lijst
+    + `\n\nTip: de speler tikt zijn eigen voor- en achternaam in, plus het wachtwoord.`;
+}
+
 async function toonGastlogins() {
   try {
     const t = toernooiData;
@@ -4505,10 +4648,17 @@ async function toonGastlogins() {
     // lijst die je doorstuurt. Zonder toernooicode: die hoort in de database,
     // niet op papier.
     const inlogVan = (g) => zonderToernooiCode(g.login, t.gastCode) || g.naam;
-    const regels = gasten.map(g => `${g.naam}  —  inlog: ${inlogVan(g)}  ·  wachtwoord: ${ww}`);
-    const tekst = `Inloggen op ${window.location.origin}${window.location.pathname}\n\n`
-      + regels.join('\n')
-      + `\n\nTip: de gast tikt zijn eigen voor- en achternaam in, plus dit wachtwoord.`;
+    // v5.12.3: het wachtwoord één keer bovenaan in plaats van achter elke naam.
+    // Sierk, 13 september 2026: "als ik het plak zie ik bij iedere speler
+    // hetzelfde wachtwoord. zet dat wachtwoord er een keer in." En "gast" werd
+    // "speler" — het briefje gaat naar de mensen zelf, en die noemen zich geen
+    // gast. Het blok hierboven wordt door `gastloginTekst()` gemaakt, zodat de
+    // rekentest de opmaak kan natellen.
+    const tekst = gastloginTekst({
+      adres: `${window.location.origin}${window.location.pathname}`,
+      wachtwoord: ww,
+      regels: gasten.map(g => ({ naam: g.naam, inlog: inlogVan(g) })),
+    });
 
     const html = `
       <p style="font-size:13px;color:var(--mid);margin-bottom:10px">
@@ -4557,12 +4707,16 @@ window.kopieerGastlogins = kopieerGastlogins;
 //    3. de uid mag in GEEN ENKELE ladder voorkomen.
 //  Valt er ook maar één controle om, dan wordt die speler overgeslagen en
 //  gemeld. Liever een account te veel blijven staan dan een clublid kwijt.
-async function ruimGastloginsOp(toernooi) {
+// v5.12.3: `opties.stil` slaat de bevestigingsvraag over. Dat is alleen voor
+// "Toernooi opnieuw instellen": daar heeft de coordinator al bevestigd dat het
+// toernooi weggaat, en de accounts worden een tel later opnieuw aangemaakt.
+// Overal anders blijft de vraag staan — dit verwijdert accounts van mensen.
+async function ruimGastloginsOp(toernooi, opties) {
   const t = toernooi || toernooiData;
   const gasten = (t?.spelers || []).filter(sp => sp.gast && sp.login && sp.uid);
   if (gasten.length === 0) return { verwijderd: 0, overgeslagen: [] };
 
-  if (!confirm(
+  if (!opties?.stil && !confirm(
     `Er horen ${gasten.length} gastlogin(s) bij dit toernooi.\n\n` +
     `Verwijderen? De spelers blijven in de uitslag staan; alleen hun inlog verdwijnt.`
   )) return { verwijderd: 0, overgeslagen: [], afgezien: true };
@@ -4588,9 +4742,12 @@ async function ruimGastloginsOp(toernooi) {
     }
   }
 
+  // v5.12.3: in de stille variant geen melding als alles goed ging — de
+  // coordinator is dan bezig met "opnieuw instellen" en krijgt daar zijn eigen
+  // bevestiging. Gaat er iets MIS, dan hoort hij dat altijd.
   if (overgeslagen.length > 0) {
     toast(`${verwijderd} inlog(s) weg. Overgeslagen: ${overgeslagen.join(', ')}`, 9000);
-  } else {
+  } else if (!opties?.stil) {
     toast(`${verwijderd} gastlogin(s) verwijderd ✓`);
   }
   return { verwijderd, overgeslagen };

@@ -2030,18 +2030,46 @@ exports.verwijderLadderVolledig = onCall(
 exports.verwijderWeesAccount = onCall(
   { region: 'europe-west1' },
   async (request) => {
+    // v5.12.3 — TWEE WIJZIGINGEN, allebei omdat het opruimen half bleef steken.
+    //
+    // 1. Ook een COORDINATOR mag dit. Gemeten op 13 september 2026: de
+    //    coordinator ruimt de gastlogins op, het PROFIEL verdwijnt (dat doet de
+    //    app zelf), maar deze functie weigerde en het Auth-account bleef staan.
+    //    Daarmee bleef de inlognaam bezet, en kreeg dezelfde speler bij het
+    //    volgende toernooi `sierk2`. Een coordinator maakt die gastaccounts ook
+    //    zelf aan; ze weer kunnen weghalen hoort daarbij.
+    //
+    // 2. `targetEmail` mag in plaats van `targetUid`. Een account waarvan het
+    //    profiel al weg is, is vanaf de app niet meer te vinden — je kent zijn
+    //    uid niet. Via het e-mailadres wel. Zo zijn ook de wezen op te ruimen
+    //    die er al stonden.
+    //
+    // ⚠ De veiligheidsklep blijft ongewijzigd en is de echte grendel: alleen
+    // accounts ZONDER profiel mogen weg. Een clublid heeft altijd een profiel.
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
-    const targetUid = data?.targetUid;
+    const targetEmail = typeof data?.targetEmail === 'string' ? data.targetEmail.trim() : '';
+    let targetUid = data?.targetUid;
     const isTest    = data?.isTest === true;
-    if (!targetUid || typeof targetUid !== 'string') {
-      throw new HttpsError('invalid-argument', 'targetUid ontbreekt.');
+    if ((!targetUid || typeof targetUid !== 'string') && !targetEmail) {
+      throw new HttpsError('invalid-argument', 'targetUid of targetEmail ontbreekt.');
     }
 
     const fs = fsVoor(isTest);
     const callerSnap = await fs.collection('spelers').doc(auth.uid).get();
-    if (!callerSnap.exists || callerSnap.data().rol !== 'beheerder') {
-      throw new HttpsError('permission-denied', 'Alleen een beheerder mag dit.');
+    const rol = callerSnap.exists ? callerSnap.data().rol : null;
+    if (rol !== 'beheerder' && rol !== 'coordinator') {
+      throw new HttpsError('permission-denied', 'Alleen een beheerder of coordinator mag dit.');
+    }
+
+    if (!targetUid) {
+      try {
+        const viaMail = await admin.auth().getUserByEmail(targetEmail);
+        targetUid = viaMail.uid;
+      } catch (e) {
+        if (e?.errorInfo?.code === 'auth/user-not-found') return { success: true, alWeg: true };
+        throw new HttpsError('internal', 'Opzoeken mislukt: ' + e.message);
+      }
     }
 
     // Veiligheidsklep: alleen accounts zonder profiel mogen weg.
@@ -2056,7 +2084,7 @@ exports.verwijderWeesAccount = onCall(
       if (e?.errorInfo?.code === 'auth/user-not-found') return { success: true, alWeg: true };
       throw new HttpsError('internal', 'Verwijderen mislukt: ' + e.message);
     }
-    return { success: true };
+    return { success: true, uid: targetUid };
   }
 );
 
