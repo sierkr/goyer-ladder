@@ -1139,7 +1139,13 @@
     </div>
     <div class="form-group">
       <label>Aantal holes</label>
-      <select id="t-dag-holes">
+      <!-- v5.12.4: deze keuzelijst had GEEN koppeling. Koos je "Aangepast...",
+           dan verscheen het invulvak eronder niet, en bij het opslaan las de app
+           dat lege vak en maakte er stilzwijgend 18 holes van. Gemeten op
+           13 september 2026: in het aanmaakscherm werkte het wel, hier nooit.
+           Sierk: "voor een dag 2 is het aantal holes niet aan te passen, het
+           invulvak verschijnt niet." -->
+      <select id="t-dag-holes" onchange="toggleDagHolesCustom()">
         <option value="18">18 holes</option>
         <option value="9">9 holes</option>
         <option value="custom">Aangepast...</option>
