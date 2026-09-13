@@ -287,4 +287,60 @@ check('iedereen komt precies één keer terug',
   K.matchplayVolgorde([e(0, 4, 2, 10), e(1, 4, 2, 10), e(2, 4, 1, 10)], []).length, 3);
 check('een lege lijst valt niet om', K.matchplayVolgorde([], []), []);
 
+// ============================================================
+//  v5.12.0 — SPEELWIJZE PER DAG EN DAGPUNTEN
+// ============================================================
+//  Dag 1 strokeplay en dag 2 matchplay moet kunnen. Optellen kan dan niet:
+//  een dag stableford levert ~36 punten op, een dag matchplay ~2. De
+//  gemeenschappelijke munt is de PLAATS van die dag:
+//      punten = aantal spelers dat meedeed − plaats + 1
+//  Gelijk geëindigd? Dan delen ze het gemiddelde van die plaatsen.
+// ============================================================
+console.log('\n══ SPEELWIJZE PER DAG ══\n');
+
+check('de dag wint van het toernooi',
+  K.dagModus({ modus: 'matchplay' }, { modus: 'strokeplay' }), 'strokeplay');
+check('staat er niets op de dag, dan die van het toernooi',
+  K.dagModus({ modus: 'strokeplay' }, { dagNr: 1 }), 'strokeplay');
+check('en anders matchplay',
+  K.dagModus({}, {}), 'matchplay');
+
+const gemengd  = { modus: 'matchplay', dagen: [{ modus: 'strokeplay' }, { modus: 'matchplay' }] };
+const zuiverMP = { modus: 'matchplay', dagen: [{}, {}] };
+check('één strokeplay-dag is genoeg om de ladder eraf te houden',
+  K.heeftStrokeplayDag(gemengd), true);
+check('een toernooi zonder strokeplay-dag houdt de ladder',
+  K.heeftStrokeplayDag(zuiverMP), false);
+check('gemengd wordt herkend', K.gemengdeSpeelwijzen(gemengd), true);
+check('en één speelwijze niet',   K.gemengdeSpeelwijzen(zuiverMP), false);
+
+console.log('\n══ DAGPUNTEN ══\n');
+
+// Vier spelers, geen gelijke standen: 4, 3, 2, 1.
+check('de winnaar krijgt er zoveel als er spelers meededen',
+  K.dagPuntenUitSleutels([-10, -8, -6, -4]), [4, 3, 2, 1]);
+check('de volgorde van de lijst doet er niet toe',
+  K.dagPuntenUitSleutels([-4, -10, -6, -8]), [1, 4, 2, 3]);
+
+// ⚠ Wie niet meedeed (null) krijgt 0 en telt NIET mee voor het aantal spelers.
+check('wie niet meedeed krijgt niets en telt niet mee',
+  K.dagPuntenUitSleutels([-10, null, -6]), [2, 0, 1]);
+check('een dag waarop niemand speelde geeft nul',
+  K.dagPuntenUitSleutels([null, null]), [0, 0]);
+check('een lege lijst valt niet om', K.dagPuntenUitSleutels([]), []);
+
+// Gelijk geëindigd: samen de plaatsen 1 en 2, dus allebei (3+2)/2 = 2,5.
+check('twee gelijk bovenaan delen de punten van plaats 1 en 2',
+  K.dagPuntenUitSleutels([-10, -10, -6]), [2.5, 2.5, 1]);
+check('drie gelijk delen alles',
+  K.dagPuntenUitSleutels([-5, -5, -5]), [2, 2, 2]);
+check('gelijk onderaan',
+  K.dagPuntenUitSleutels([-10, -6, -6]), [3, 1.5, 1.5]);
+
+// De som blijft gelijk, hoe de plaatsen ook gedeeld worden: 4+3+2+1 = 10.
+const som = (a) => a.reduce((x, y) => x + y, 0);
+check('delen verandert het totaal niet',
+  [som(K.dagPuntenUitSleutels([-4,-3,-2,-1])), som(K.dagPuntenUitSleutels([-4,-4,-2,-2]))],
+  [10, 10]);
+
 module.exports = staat;

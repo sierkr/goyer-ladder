@@ -568,7 +568,7 @@ alleToernooien.forEach(t => {
         if (isBeheerder) {
           store.toernooiData = nieuweData;
           const dagUitslag = dag?.afgerond || nieuweData.uitslagZichtbaar;
-          if (dagUitslag || nieuweData.modus === 'strokeplay') renderTRanglijst();
+          if (dagUitslag || dagModus(nieuweData, dag) === 'strokeplay') renderTRanglijst();
         } else {
           const oudeMatrixVerborgen  = toernooiData?.matrixVerborgen;
           const oudeUitslagZichtbaar = toernooiData?.uitslagZichtbaar;
@@ -644,7 +644,8 @@ function slaToernooiConceptOp() {
         datum:       b.querySelector('.t-dag-datum')?.value || '',
         baan:        b.querySelector('.t-dag-baan')?.value || '',
         holes:       b.querySelector('.t-dag-holes')?.value || '18',
-        holesCustom: b.querySelector('.t-dag-holes-custom')?.value || ''
+        holesCustom: b.querySelector('.t-dag-holes-custom')?.value || '',
+        modus:       b.querySelector('.t-dag-modus')?.value || ''   // v5.12.0
       }));
       const concept = {
         naam:        document.getElementById('t-naam')?.value || '',
@@ -746,6 +747,8 @@ function pasConceptDagenToe() {
     if (baanEl && c.baan)   baanEl.value = c.baan;
     if (holesEl && c.holes) holesEl.value = c.holes;
     if (custEl && c.holesCustom) custEl.value = c.holesCustom;
+    const modusEl = blok.querySelector('.t-dag-modus');            // v5.12.0
+    if (modusEl && c.modus) modusEl.value = c.modus;
   });
 }
 
@@ -813,8 +816,13 @@ function renderDagBlokken() {
     datum:  blok.querySelector('.t-dag-datum')?.value  || '',
     baan:   blok.querySelector('.t-dag-baan')?.value   || '',
     holes:  blok.querySelector('.t-dag-holes')?.value  || '18',
-    hcust:  blok.querySelector('.t-dag-holes-custom')?.value || ''
+    hcust:  blok.querySelector('.t-dag-holes-custom')?.value || '',
+    modus:  blok.querySelector('.t-dag-modus')?.value  || ''
   }));
+
+  // v5.12.0: de speelwijze staat per DAG. De keuze bovenaan het formulier is de
+  // standaard voor een nieuwe dag; per dag kun je ervan afwijken.
+  const toernooiModus = document.querySelector('input[name="t-modus"]:checked')?.value || 'matchplay';
 
   let html = '';
   for (let d = 1; d <= aantalDagen; d++) {
@@ -824,6 +832,7 @@ function renderDagBlokken() {
     const dagBaan   = prev.baan  || '';
     const dagHoles  = prev.holes || '18';
     const dagHcust  = prev.hcust || '';
+    const dagModusKeuze = prev.modus || toernooiModus;
     const showCust  = dagHoles === 'custom' ? '' : 'display:none';
 
     html += `
@@ -855,6 +864,16 @@ function renderDagBlokken() {
           <input type="number" class="t-dag-holes-custom" min="1" max="18"
             placeholder="bijv. 12" style="text-align:center;width:80px" value="${esc(dagHcust)}">
         </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>Speelwijze</label>
+        <select class="t-dag-modus">
+          <option value="matchplay"  ${dagModusKeuze==='matchplay' ?'selected':''}>Matchplay</option>
+          <option value="strokeplay" ${dagModusKeuze==='strokeplay'?'selected':''}>Strokeplay</option>
+        </select>
+        <p style="font-size:11px;color:var(--light);margin:4px 0 0">
+          ⚠ Zit er een strokeplay-dag in het toernooi, dan telt het niet mee voor de ladder.
+        </p>
       </div>
     </div>`;
   }
@@ -1264,7 +1283,11 @@ async function startToernooi() {
       if (banen[baanNaam]?.holes) holes = banen[baanNaam].holes.slice(0, holesCount);
       if (!holes.length) { toast(`Baan heeft geen holes geconfigureerd (dag ${i+1})`); return; }
 
-      dagenConfig.push({ dagNr: i + 1, datum, baan: baanNaam, holes, starttijd, interval });
+      // v5.12.0: de speelwijze van DEZE dag. Staat er niets, dan die van het
+      // toernooi — zo blijft een bestaand toernooi zich gedragen als altijd.
+      const dagModusKeuze = blok.querySelector('.t-dag-modus')?.value || modus;
+      dagenConfig.push({ dagNr: i + 1, datum, baan: baanNaam, holes, starttijd, interval,
+                         modus: dagModusKeuze });
     }
 
     // Spelers uit flights
@@ -1313,6 +1336,7 @@ async function startToernooi() {
         holes:    cfg.holes,
         starttijd: cfg.starttijd,
         interval:  cfg.interval,
+        modus:     cfg.modus,      // v5.12.0
         flights,
         scores,
         afgerond: false
@@ -1450,6 +1474,9 @@ function openNieuweDagModal() {
       .join('');
     if (vorigeDag?.baan && banen[vorigeDag.baan]) baanEl.value = vorigeDag.baan;
   }
+  // v5.12.0: speelwijze — standaard die van de vorige dag.
+  const modusEl = document.getElementById('t-dag-modus');
+  if (modusEl) modusEl.value = dagModus(t, vorigeDag);
   // v5.9.1: het venster doet nu twee dingen. Hier expliciet in de stand
   // "toevoegen" zetten, zodat een eerdere wijzig-sessie niet blijft hangen.
   _zetDagModalStand(null);
@@ -1700,6 +1727,9 @@ function openDagBewerkenModal() {
   const datumEl = document.getElementById('t-dag-datum');
   if (datumEl) datumEl.value = dag.datum || '';
 
+  const modusEl = document.getElementById('t-dag-modus');   // v5.12.0
+  if (modusEl) modusEl.value = dagModus(t, dag);
+
   const baanEl = document.getElementById('t-dag-baan');
   if (baanEl) {
     const banen = alleBANEN();
@@ -1760,6 +1790,7 @@ async function slaDagWijzigingOp() {
     dag.datum     = datum;
     dag.baan      = baanNaam;
     dag.holes     = holes;
+    dag.modus     = document.getElementById('t-dag-modus')?.value || dagModus(t, dag);  // v5.12.0
     dag.starttijd = document.getElementById('t-dag-starttijd')?.value || dag.starttijd || '09:00';
     const intVal  = parseInt(document.getElementById('t-dag-interval')?.value);
     dag.interval  = Number.isFinite(intVal) ? intVal : (dag.interval || 0);
@@ -1839,6 +1870,7 @@ async function voegDagToe() {
       holes,
       starttijd,
       interval,
+      modus:    document.getElementById('t-dag-modus')?.value || dagModus(t, null),  // v5.12.0
       flights:  [],  // leeg — beheerder deelt in via flight modal
       scores,
       afgerond: false
@@ -2310,13 +2342,6 @@ function alleScoresIngevuld(t, dag) {
 // ============================================================
 //  NAVIGATIE HELPERS
 // ============================================================
-function gaNaarLadderTab() {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-  document.getElementById('page-ladder').classList.add('active');
-  document.querySelector('nav button').classList.add('active');
-  renderLadder();
-}
 
 function gaNaarToernooiOverzicht() {
   store.actieveToernooiId = null;
@@ -2394,7 +2419,6 @@ function renderToernooiActief() {
         <h2>${esc(t.naam)}</h2>
         <div style="display:flex;align-items:center;gap:8px">
           <span class="badge badge-gold">${dagAfgerond ? 'Dag afgesloten' : uitslag ? 'Uitslag' : 'Bezig'}</span>
-          <button class="btn btn-sm btn-ghost" onclick="gaNaarLadderTab()" style="font-size:12px">← Ladder</button>
         </div>
       </div>
       <div class="card-body" style="padding:10px 16px;font-size:13px;color:var(--mid)">
@@ -2404,7 +2428,7 @@ function renderToernooiActief() {
       </div>
     </div>`;
 
-  const ranglijstKaart = (uitslag || dagAfgerond || t.modus === 'strokeplay') ? `
+  const ranglijstKaart = (uitslag || dagAfgerond || dagModus(t, dag) === 'strokeplay') ? `
     <div class="card">
       <div style="display:flex;gap:6px;overflow-x:auto;padding:10px 12px 0;scrollbar-width:none;border-bottom:1px solid var(--border)">
         ${(t.dagen || []).map(d => `
@@ -2438,7 +2462,7 @@ function renderToernooiActief() {
   // Nu: één schakelaar met een naam (matrixVerborgen), en het pijltje is weer
   // gewoon een pijltje — alleen voor het eigen scherm, niets wordt bewaard.
   const matrixZichtbaar = isBeheerder || !t.matrixVerborgen;
-  const matrixKaart = (t.modus !== 'strokeplay' && matrixZichtbaar) ? `
+  const matrixKaart = (dagModus(t, dag) !== 'strokeplay' && matrixZichtbaar) ? `
     <div class="card">
       <div class="card-header ${isBeheerder ? 'inklapbaar' : ''} ${isBeheerder && window._matrixIngeklapt ? 'ingeklapt' : ''}"
         ${isBeheerder ? 'onclick="toggleToernooiMatrix()"' : ''}>
@@ -2523,9 +2547,15 @@ function renderToernooiActief() {
         ↩ Dag ${dagNr} heropenen
       </button>
       ` : ''}
+      ${heeftStrokeplayDag(t) && (t.rankingLadderIds?.length > 0 || t.ladderId) ? `
+      <div style="padding:8px 12px;background:var(--gold-pale);border-radius:8px;margin-bottom:8px;font-size:12px;color:var(--gold)">
+        ⚠ Er zit een <strong>strokeplay-dag</strong> in dit toernooi. De ladderstand
+        wordt daarom niet bijgewerkt bij het afsluiten.
+      </div>
+      ` : ''}
       ${dagAfgerond && (t.dagen || []).every(d => d.afgerond) ? `
       <button class="btn btn-gold btn-block" onclick="openToernooiAfsluiten()" style="margin-bottom:8px">
-        🏅 Toernooi afsluiten${t.modus !== 'strokeplay' && (t.rankingLadderIds?.length > 0 || t.ladderId) ? ' & ladder bijwerken' : ''}
+        🏅 Toernooi afsluiten${!heeftStrokeplayDag(t) && (t.rankingLadderIds?.length > 0 || t.ladderId) ? ' & ladder bijwerken' : ''}
       </button>
       ` : ''}
       <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border);margin-bottom:8px">
@@ -2574,7 +2604,7 @@ function renderToernooiActief() {
   renderTScorecard();
 
   // Toon ranglijst op actieve dag als dag afgerond of uitslag zichtbaar
-  if (uitslag || dagAfgerond || t.modus === 'strokeplay') {
+  if (uitslag || dagAfgerond || dagModus(t, dag) === 'strokeplay') {
     selecteerRanglijstDag(dagNr);
   }
   renderTMatrix();
@@ -2917,7 +2947,7 @@ function refreshToernooiScorekaart() {
   if (btn) btn.style.display = 'none';
   renderTScorecard();
   renderTMatrix();
-  if (actieveDag()?.uitslagZichtbaar || toernooiData?.modus === 'strokeplay') renderTRanglijst();
+  if (actieveDag()?.uitslagZichtbaar || dagModus(toernooiData, actieveDag()) === 'strokeplay') renderTRanglijst();
   // v5.11.0: één plek voor de uitslagknop — zie verversUitslagKnop().
   verversUitslagKnop();
 }
@@ -3190,6 +3220,95 @@ function berekenTPuntenVoorDag(t, dag) {
 }
 
 // berekenTPunten: voor matrix/ranglijst — gebruikt actieve dag of totaal
+// ============================================================
+//  SPEELWIJZE PER DAG EN DAGPUNTEN — v5.12.0
+// ============================================================
+//  Tot v5.11.9 stond de speelwijze op het TOERNOOI: één keuze matchplay of
+//  strokeplay voor alle dagen. Sierk wilde dag 1 strokeplay en dag 2 matchplay.
+//  Nu staat `modus` op de DAG; staat hij daar niet (elk bestaand toernooi), dan
+//  geldt die van het toernooi. Zo verandert er aan lopende toernooien niets.
+//
+//  ⚠ Twee speelwijzen zijn niet zomaar op te tellen. Een dag stableford levert
+//  ~36 punten op, een dag matchplay ~2. De gemeenschappelijke munt is de PLAATS
+//  van die dag:
+//
+//      punten = aantal spelers dat die dag meedeed − plaats + 1
+//
+//  Bij 9 spelers krijgt de winnaar er 9 en de laatste 1. Wie gelijk eindigt
+//  deelt het gemiddelde van die plaatsen. De prijs: binnen een dag verdwijnt de
+//  marge — vijf partijen winnen of drie geeft allebei "eerste plaats". Dat is
+//  wat vergelijkbaar maken bétekent; elke andere keuze laat één speelwijze
+//  zwaarder wegen.
+// ============================================================
+function dagModus(t, dag) {
+  return (dag && dag.modus) || t?.modus || 'matchplay';
+}
+
+function heeftStrokeplayDag(t) {
+  return (t?.dagen || []).some(d => dagModus(t, d) === 'strokeplay');
+}
+
+function gemengdeSpeelwijzen(t) {
+  return new Set((t?.dagen || []).map(d => dagModus(t, d))).size > 1;
+}
+
+// Zet één dagklassement om in dagpunten. `sleutels` is per speler een getal
+// waarbij LAGER beter is, of null voor wie die dag niet meedeed.
+function dagPuntenUitSleutels(sleutels) {
+  const uit = new Array((sleutels || []).length).fill(0);
+  const mee = (sleutels || []).map((sl, i) => ({ i, sl }))
+    .filter(x => x.sl !== null && x.sl !== undefined && Number.isFinite(x.sl));
+  const n = mee.length;
+  if (n === 0) return uit;
+
+  mee.sort((a, b) => a.sl - b.sl);
+  let plaats = 1;
+  for (let k = 0; k < mee.length; ) {
+    let m = k;
+    while (m + 1 < mee.length && mee[m + 1].sl === mee[k].sl) m++;
+    const groep = mee.slice(k, m + 1);
+    let som = 0;
+    for (let p = plaats; p < plaats + groep.length; p++) som += n - p + 1;
+    const gedeeld = som / groep.length;
+    groep.forEach(x => { uit[x.i] = gedeeld; });
+    plaats += groep.length;
+    k = m + 1;
+  }
+  return uit;
+}
+
+// De dagpunten van één dag, volgens de speelwijze van díé dag.
+//
+// ⚠ Bij strokeplay telt STABLEFORD, ook als het scherm op bruto of netto staat.
+// Anders zou het eindklassement veranderen zodra iemand een knop omzet, en
+// stableford is de enige telling die handicaps eerlijk meeweegt.
+function dagPunten(t, dag) {
+  if (!t || !dag) return new Array((t?.spelers || []).length).fill(0);
+  if (dagModus(t, dag) === 'strokeplay') {
+    const res = berekenStrokeplayRanglijstVoorDag(t, dag);
+    return dagPuntenUitSleutels((t.spelers || []).map((s, i) => {
+      const r = res[i];
+      return (r && r.holes > 0) ? -(r.stableford ?? 0) : null;
+    }));
+  }
+  const res = berekenTPuntenVoorDag(t, dag);
+  return dagPuntenUitSleutels((t.spelers || []).map((s, i) =>
+    (res.won[i] + res.tied[i] + res.lost[i]) > 0 ? -res.punten[i] : null));
+}
+
+// Dagpunten van alle dagen, plus het totaal per speler.
+function dagPuntenTotaal(t) {
+  const n = (t?.spelers || []).length;
+  const totaal = new Array(n).fill(0);
+  const perDag = [];
+  (t?.dagen || []).forEach(dag => {
+    const p = dagPunten(t, dag);
+    perDag.push(p);
+    for (let i = 0; i < n; i++) totaal[i] += p[i];
+  });
+  return { totaal, perDag };
+}
+
 function berekenTPunten(dagNrOverride) {
   const t = toernooiData;
   const rlDag = dagNrOverride !== undefined ? dagNrOverride : (window._ranglijstDagNr ?? (t.actiefDagNr || 1));
@@ -3385,6 +3504,38 @@ function countback(a, b, sorteerOp) {
 // ============================================================
 //  RANGLIJST RENDER
 // ============================================================
+
+// v5.12.0: het eindklassement als de dagen niet dezelfde speelwijze hebben.
+// Per dag de dagpunten, en het totaal daarvan — zie de uitleg bij dagPunten().
+// De dagkolommen staan erbij zodat de uitslag na te rekenen is; een totaal dat
+// je niet kunt narekenen wordt niet vertrouwd, en terecht.
+function renderTDagpuntenRanglijst(t, el) {
+  const { totaal, perDag } = dagPuntenTotaal(t);
+  const dagen = t.dagen || [];
+  const volgorde = (t.spelers || [])
+    .map((s, i) => ({ s, i, pt: totaal[i] }))
+    .sort((a, b) => b.pt - a.pt || hcpVan(a) - hcpVan(b));
+
+  const getal = (v) => Number.isInteger(v) ? String(v) : v.toFixed(1).replace('.', ',');
+
+  el.innerHTML =
+    `<div style="font-size:11px;color:var(--light);padding:6px 10px;border-bottom:1px solid var(--border)">
+       <strong>Totaal · dagpunten</strong> — per dag: aantal spelers − plaats + 1
+     </div>` +
+    volgorde.map((entry, rank) => `
+      <div class="ladder-item">
+        <div class="rank-badge ${rank < 3 ? 'top3' : ''}">${rank + 1}</div>
+        <div class="player-name">${esc(entry.s.naam)}${entry.s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}
+          <br><span style="font-size:11px;color:var(--light)">${
+            dagen.map((d, di) => `d${d.dagNr} ${getal(perDag[di][entry.i])}`).join(' · ')
+          }</span>
+        </div>
+        <div style="font-size:12px;color:var(--light);text-align:right;line-height:1.6">
+          <strong style="color:var(--dark);font-size:14px">${getal(entry.pt)}</strong><br>punten
+        </div>
+      </div>`).join('');
+}
+
 function renderTRanglijst() {
   const el = document.getElementById('t-ranglijst');
   if (!el) return;
@@ -3392,10 +3543,20 @@ function renderTRanglijst() {
   if (!t) return;
 
   const rlDag = window._ranglijstDagNr ?? (t.actiefDagNr || 1);
-  const modusBar = document.getElementById('t-ranglijst-modus');
-  if (modusBar) modusBar.style.display = t.modus === 'strokeplay' ? '' : 'none';
 
-  if (t.modus === 'strokeplay') {
+  // v5.12.0: de ranglijst volgt de speelwijze van de DAG die je bekijkt. Bij
+  // "Totaal" met verschillende speelwijzen is geen van beide tellingen bruikbaar
+  // — dan de dagpunten.
+  const rlModus = rlDag === 0
+    ? (gemengdeSpeelwijzen(t) ? 'gemengd' : dagModus(t, (t.dagen || [])[0]))
+    : dagModus(t, getDag(t, rlDag) || actieveDag(t));
+
+  const modusBar = document.getElementById('t-ranglijst-modus');
+  if (modusBar) modusBar.style.display = rlModus === 'strokeplay' ? '' : 'none';
+
+  if (rlModus === 'gemengd') { renderTDagpuntenRanglijst(t, el); return; }
+
+  if (rlModus === 'strokeplay') {
     const sorteerOp = t._ranglijstModus || 'brutto';
     const dagNaam = rlDag === 0 ? 'Totaal' : `Dag ${rlDag}`;
     let resultaten;
@@ -3496,7 +3657,7 @@ function renderTRanglijst() {
 //  MATRIX
 // ============================================================
 function renderTMatrix() {
-  if (toernooiData?.modus && toernooiData.modus !== 'matchplay') {
+  if (dagModus(toernooiData, actieveDag()) !== 'matchplay') {
     const el = document.getElementById('t-matrix');
     if (el) el.innerHTML = '';
     return;
@@ -3565,7 +3726,8 @@ function renderTMatrix() {
 function openToernooiAfsluiten() {
   const t = toernooiData;
   if (!t) return;
-  const isStrokeplay = t.modus === 'strokeplay';
+  // v5.12.0: één strokeplay-dag is genoeg — dan blijft de ladder eraf.
+  const isStrokeplay = heeftStrokeplayDag(t);
 
   if (isStrokeplay) {
     if (confirm('Toernooi afsluiten? De ladderstand wordt niet aangepast.')) {
@@ -3612,7 +3774,8 @@ async function bevestigToernooiAfsluiten() {
     // v5.10.0: gastlogins mogen na afloop weg.
     try { await ruimGastloginsOp(t); } catch(e) { console.warn('gastlogins opruimen:', e); }
 
-    if (t.modus === 'strokeplay') {
+    // v5.12.0: één strokeplay-dag is genoeg om de ladder eraf te houden.
+    if (heeftStrokeplayDag(t)) {
       t.status = 'afgerond';
       const idx = alleToernooien.findIndex(x => x.id === actieveToernooiId);
       if (idx >= 0) alleToernooien[idx].status = 'afgerond';
@@ -3910,6 +4073,8 @@ function _herstelSetupVanuitToernooi(t) {
         if (custWrap) custWrap.style.display = 'block';
       }
     }
+    const modusEl = blok.querySelector('.t-dag-modus');            // v5.12.0
+    if (modusEl) modusEl.value = dagModus(t, dag);
   });
 
   // Spelers — herstel uit t.spelers
@@ -4305,4 +4470,4 @@ export function getActiefToernooiMetModus() {
 }
 
 
-export { alleScoresIngevuld, annuleerToernooi, behoudLiveScores, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarLadderTab, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, herlaadToernooiListeners, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, toggleTRankingLadder, toggleTScorecard, toggleTSpeler, toggleTSpelersLadder, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
+export { alleScoresIngevuld, annuleerToernooi, behoudLiveScores, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, herlaadToernooiListeners, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, toggleTRankingLadder, toggleTScorecard, toggleTSpeler, toggleTSpelersLadder, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
