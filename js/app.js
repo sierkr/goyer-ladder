@@ -52,7 +52,7 @@ import { renderToernooi, herlaadToernooien, selecteerToernooi, gaNaarToernooiOve
   refreshToernooiScorekaart, selecteerFlightTab,
   updateTScoreAndAdvance, updateTScore, editToernooiHcp,
   toggleTScorecard, openToernooiAfsluiten, bevestigToernooiAfsluiten,
-  annuleerToernooi, toggleTSpelersLadder, toggleTRankingLadder,
+  annuleerToernooi, kiesTRankingLadder,
   selecteerDag, openNieuweDagModal, voegDagToe, sluitDagAf, renderDagBlokken } from './toernooi.js';
 import { openLadderInstellingen, slaLadderInstellingenOp,
   openNieuweLadderModal, maakNieuweLadder, verschuifLadder,
@@ -227,7 +227,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v5.12.7';
+  const VERSION = 'v5.12.8';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -263,8 +263,7 @@ window.annuleerEigenPartij = annuleerEigenPartij;
 window.verwijderActievePartij = verwijderActievePartij;
 
 
-window.toggleTSpelersLadder = toggleTSpelersLadder;
-window.toggleTRankingLadder = toggleTRankingLadder;
+window.kiesTRankingLadder = kiesTRankingLadder;
 
 // ─── Versie-check & auto-update ──────────────────────────────
 // v3.0.0-11.33: Vergelijk periodiek de ingebakken versie met version.json op de server.
@@ -272,7 +271,7 @@ window.toggleTRankingLadder = toggleTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v5.12.7';
+  const LOKALE_VERSIE = 'v5.12.8';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 
