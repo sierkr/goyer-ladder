@@ -210,4 +210,81 @@ check('9 holes, verschil 12, SI 1 -> 2 slagen',
 check('9 holes: uitslag gebruikt dezelfde slagen -> gelijkspel',
   K.berekenTPuntenVoorDag(t9, d9).punten, [1,1]);
 
+// ============================================================
+//  v5.11.8 — WIE STAAT BOVEN BIJ EEN GELIJKE STAND (MATCHPLAY)
+// ============================================================
+//  ⚠ De volgorde was `punten, dan winsten` en daarna niets: bij gelijke punten
+//  én winsten besliste de volgorde waarin de spelers waren toegevoegd. Niet uit
+//  te leggen aan de nummer twee.
+//
+//  De regel nu: punten → onderling resultaat (alleen bij precies twee gelijk)
+//  → winsten → laagste handicap. Blijft het dan gelijk, dan is het ook ECHT
+//  gelijk en wordt dat gemerkt in plaats van willekeurig geordend.
+// ============================================================
+console.log('\n══ GELIJKE STAND BIJ MATCHPLAY ══\n');
+
+// e(i, punten, winsten, handicap)
+const e = (i, pt, w, hcp) => ({ i, pt, w, s: { naam: 'S' + i, hcp } });
+const namenVan = (lijst) => lijst.map(x => x.s.naam);
+
+// Een matrix waarin speler i van j wint: zet ['i_j'] = 'W'.
+const matrixVan = (paren) => {
+  const m = [[], [], [], []].map(() => []);
+  Object.entries(paren).forEach(([sleutel, res]) => {
+    const [i, j] = sleutel.split('_').map(Number);
+    m[i][j] = res;
+    m[j][i] = res === 'W' ? 'L' : (res === 'L' ? 'W' : res);
+  });
+  return m;
+};
+
+check('punten gaan voor alles',
+  namenVan(K.matchplayVolgorde([e(0, 2, 1, 10), e(1, 6, 3, 30), e(2, 4, 2, 5)], [])),
+  ['S1', 'S2', 'S0']);
+
+// Twee gelijk op punten: het onderlinge resultaat beslist, ook als de ander
+// meer partijen won.
+check('de winnaar van het onderlinge duel staat boven',
+  namenVan(K.matchplayVolgorde([e(0, 4, 2, 20), e(1, 4, 2, 10)], matrixVan({ '0_1': 'W' }))),
+  ['S0', 'S1']);
+check('en andersom ook',
+  namenVan(K.matchplayVolgorde([e(0, 4, 2, 10), e(1, 4, 2, 20)], matrixVan({ '0_1': 'L' }))),
+  ['S1', 'S0']);
+check('het onderlinge resultaat gaat vóór het aantal winsten',
+  namenVan(K.matchplayVolgorde([e(0, 4, 1, 20), e(1, 4, 3, 10)], matrixVan({ '0_1': 'W' }))),
+  ['S0', 'S1']);
+
+check('gelijkspel onderling: dan telt het aantal winsten',
+  namenVan(K.matchplayVolgorde([e(0, 4, 1, 5), e(1, 4, 3, 30)], matrixVan({ '0_1': 'T' }))),
+  ['S1', 'S0']);
+check('speelden ze niet tegen elkaar: ook winsten',
+  namenVan(K.matchplayVolgorde([e(0, 4, 1, 5), e(1, 4, 3, 30)], [])),
+  ['S1', 'S0']);
+
+// ⚠ Bij DRIE gelijk kan A van B winnen, B van C en C van A. Dan bestaat er geen
+// volgorde die klopt, dus gaat het onderlinge resultaat niet mee.
+check('drie gelijk: geen onderling resultaat, maar winsten en handicap',
+  namenVan(K.matchplayVolgorde(
+    [e(0, 4, 2, 30), e(1, 4, 2, 10), e(2, 4, 3, 20)],
+    matrixVan({ '0_1': 'W', '1_2': 'W', '2_0': 'W' }))),
+  ['S2', 'S1', 'S0']);
+
+check('alles gelijk: de laagste handicap staat boven',
+  namenVan(K.matchplayVolgorde([e(0, 4, 2, 22.4), e(1, 4, 2, 8.1)], [])),
+  ['S1', 'S0']);
+check('ontbrekende handicap staat achteraan',
+  namenVan(K.matchplayVolgorde([e(0, 4, 2, undefined), e(1, 4, 2, 30)], [])),
+  ['S1', 'S0']);
+
+// Echt gelijk: zelfde punten, winsten én handicap. Dat hoort zichtbaar te zijn.
+const echtGelijk = K.matchplayVolgorde([e(0, 4, 2, 12), e(1, 4, 2, 12), e(2, 9, 4, 20)], []);
+check('wie op alles gelijk eindigt wordt gemerkt',
+  echtGelijk.filter(x => x.gelijk).map(x => x.s.naam), ['S0', 'S1']);
+check('en wie alleen staat niet',
+  echtGelijk.find(x => x.s.naam === 'S2').gelijk, false);
+
+check('iedereen komt precies één keer terug',
+  K.matchplayVolgorde([e(0, 4, 2, 10), e(1, 4, 2, 10), e(2, 4, 1, 10)], []).length, 3);
+check('een lege lijst valt niet om', K.matchplayVolgorde([], []), []);
+
 module.exports = staat;
