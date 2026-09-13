@@ -1737,17 +1737,13 @@
             <input type="number" id="t-interval" min="0" max="60" value="10" style="text-align:center" placeholder="bijv. 10">
           </div>
         </div>
-        <div class="form-group">
-          <label>Speelwijze</label>
-          <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
-            <label style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">
-              <input type="radio" name="t-modus" value="matchplay" checked onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green);width:16px;height:16px"> Matchplay
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">
-              <input type="radio" name="t-modus" value="strokeplay" onchange="toernooiModusWissel(this.value)" style="accent-color:var(--green);width:16px;height:16px"> Strokeplay
-            </label>
-          </div>
-        </div>
+        <!-- v5.12.1: hier stond een tweede keuze "Speelwijze" voor het hele
+             toernooi. Sinds v5.12.0 kiest elke dag zijn eigen speelwijze in het
+             dagblok hierboven, dus stonden er twee keuzemenu's onder elkaar die
+             hetzelfde leken te vragen. Sierk, 13 september 2026: "de onderste
+             moet weg." Wat eraan hing — de puntenvelden, het HCP-percentage, de
+             uitleg bij strokeplay en de ranking-ladders — wordt nu aangestuurd
+             door de dagkeuzes zelf; zie pasSpeelwijzeToe() in js/toernooi.js. -->
         <div class="form-group">
           <label>Spelers ladder(s)</label>
           <div id="t-spelers-ladders" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div>

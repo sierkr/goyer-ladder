@@ -343,4 +343,49 @@ check('delen verandert het totaal niet',
   [som(K.dagPuntenUitSleutels([-4,-3,-2,-1])), som(K.dagPuntenUitSleutels([-4,-4,-2,-2]))],
   [10, 10]);
 
+// ============================================================
+//  v5.12.1 — DE SPEELWIJZE KOMT UIT DE DAGBLOKKEN
+// ------------------------------------------------------------
+//  Tot v5.12.0 stond er in het aanmaakformulier onder de dagblokken nog een
+//  tweede keuze Matchplay/Strokeplay voor het hele toernooi. Sierk,
+//  13 september 2026: "bij aanmaken toernooi staat nu 2x speelwijze selectie.
+//  de onderste moet weg. als er voor stroke play gekozen wordt verberg dan de
+//  ranking ladder mogelijkheid."
+//
+//  Die onderste keuze was geen doublure: hij bepaalde ook wat eronder zichtbaar
+//  was. Deze twee functies nemen dat over uit de dagblokken. Het gemengde geval
+//  is waar het misging: met de oude keuze verdwenen de puntenvelden zodra je
+//  strokeplay koos, ook als dag 2 gewoon matchplay was.
+// ============================================================
+console.log('\n══ SPEELWIJZE UIT DE DAGBLOKKEN ══\n');
+
+check('alleen matchplay-dagen -> matchplay',
+  K.toernooiModusVanSpeelwijzen(['matchplay', 'matchplay']), 'matchplay');
+check('alleen strokeplay-dagen -> strokeplay',
+  K.toernooiModusVanSpeelwijzen(['strokeplay', 'strokeplay']), 'strokeplay');
+check('gemengd telt als matchplay — de punten worden dan gebruikt',
+  K.toernooiModusVanSpeelwijzen(['strokeplay', 'matchplay']), 'matchplay');
+check('geen dagen -> matchplay',
+  K.toernooiModusVanSpeelwijzen([]), 'matchplay');
+
+check('matchplay: punten zichtbaar, geen uitleg, ranking-ladder mag',
+  K.zichtbaarheidVanSpeelwijzen(['matchplay']),
+  { punten: true, uitleg: false, ranking: true });
+check('strokeplay: geen punten, wel uitleg, GEEN ranking-ladder',
+  K.zichtbaarheidVanSpeelwijzen(['strokeplay']),
+  { punten: false, uitleg: true, ranking: false });
+check('gemengd: punten en uitleg samen, en nog steeds geen ranking-ladder',
+  K.zichtbaarheidVanSpeelwijzen(['strokeplay', 'matchplay']),
+  { punten: true, uitleg: true, ranking: false });
+check('een leeg formulier klapt niet dicht',
+  K.zichtbaarheidVanSpeelwijzen([]),
+  { punten: true, uitleg: false, ranking: true });
+
+// De regel achter het verbergen: één strokeplay-dag en het toernooi telt niet
+// meer mee voor de ladder. Dat is dezelfde regel als heeftStrokeplayDag().
+const gemengdToernooi = { dagen: [{ modus: 'strokeplay' }, { modus: 'matchplay' }] };
+check('zichtbaarheid en heeftStrokeplayDag zijn het eens',
+  K.zichtbaarheidVanSpeelwijzen(['strokeplay', 'matchplay']).ranking,
+  !K.heeftStrokeplayDag(gemengdToernooi));
+
 module.exports = staat;
