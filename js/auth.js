@@ -568,7 +568,11 @@ function uitloggen() {
 
 function openWachtwoordVergeten() {
   // v3.0.0-11: geen reset-email meer, speler moet contact opnemen met beheerder.
-  alert('Wachtwoord vergeten? Neem contact op met de beheerder.\n\nDe beheerder kan je wachtwoord resetten naar ' + store.initieelWachtwoord + ', waarna je bij eerstvolgende inlog een nieuw wachtwoord kiest.');
+  // v5.12.5: hier stond het initiele wachtwoord letterlijk in de tekst.
+  // Voor een gewone speler las dat als 'null' — hij mag ladder/config niet
+  // lezen, dus store.initieelWachtwoord is bij hem leeg. En bij een beheerder
+  // kwam het gedeelde wachtwoord wel echt in beeld. Geen van beide hoort hier.
+  alert('Wachtwoord vergeten?\n\nNeem contact op met de beheerder. Die kan je wachtwoord terugzetten, waarna je bij de eerstvolgende inlog zelf een nieuw wachtwoord kiest.');
 }
 function sluitResetWrap() {
   // v3.0.0-11: placeholder — reset-UI wordt niet meer gebruikt
@@ -587,12 +591,13 @@ function openWachtwoordWijzigen() {
   document.getElementById('modal-wachtwoord-wijzigen').classList.add('open');
 }
 async function wijzigWachtwoord() {
-  alert('wijzigWachtwoord aangeroepen');
   const huidig   = document.getElementById('huidig-wachtwoord').value;
   const nieuw    = document.getElementById('nieuw-wachtwoord').value;
   const bevestig = document.getElementById('bevestig-wachtwoord').value;
   if (!huidig)            { toast('Voer je huidige wachtwoord in'); return; }
-  if (nieuw.length < 4)   { toast('Nieuw wachtwoord minimaal 4 tekens'); return; }
+  // v5.12.5: was 4. Firebase weigert alles onder de 6, dus de app beloofde
+  // iets wat daarna alsnog werd geweigerd met een onbegrijpelijke foutcode.
+  if (nieuw.length < 6)   { toast('Nieuw wachtwoord minimaal 6 tekens'); return; }
   if (nieuw !== bevestig) { toast('Wachtwoorden komen niet overeen'); return; }
   if (nieuw === huidig)   { toast('Nieuw wachtwoord moet anders zijn'); return; }
   toast('Bezig...');

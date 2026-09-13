@@ -1,5 +1,5 @@
 // Goyer Golf MP Ladder — Service Worker
-const CACHE_VERSION = 'v264'; // v5.12.4
+const CACHE_VERSION = 'v265'; // v5.12.5
 // v3.0.0-11.33: detecteer test-omgeving via SW-scope URL.
 // Service worker draaiend onder /test/* → aparte cache, voorkomt conflict met productie.
 const IS_TEST_ENV = self.registration && self.registration.scope.includes('/test/');
@@ -24,6 +24,10 @@ const STATIC_ASSETS = [
   './js/beheer.js',
   './js/knockout.js',
   './js/scores.js',
+  // v5.12.5: hcp.js stond hier niet, terwijl partij.js en ronde.js hem
+  // nodig hebben. Hij belandde alleen in de cache als je toevallig een
+  // partij had geopend voordat je offline ging.
+  './js/hcp.js',
   './handleiding-partij-ronde.html',
   './toernooi-live.html',
   './icon-180.png',

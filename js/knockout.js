@@ -472,8 +472,11 @@ async function verwerkKnockoutUitslag(partij) {
       else if (klaar) resultaat = effectieveStand === 0 ? 'gelijkspel' : `${Math.abs(effectieveStand)} up`;
     } catch(e) { console.error('Resultaat berekening mislukt:', e); }
 
+    // v5.12.5: hier stond dezelfde melding als in slaKnockoutWinnaarOp, dus
+    // verscheen hij twee keer. Die functie wordt ook rechtstreeks vanaf de
+    // knoppen in het schema aangeroepen; daar is zijn melding de enige
+    // terugkoppeling. Hij blijft daar staan, deze gaat weg.
     await slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar, resultaat);
-    toast(`${winnaar.split(' ')[0]} door naar volgende ronde ✓`);
   } catch(e) { console.error('verwerkKnockoutUitslag mislukt:', e); }
 }
 
@@ -499,7 +502,11 @@ async function slaKnockoutWinnaarOp(ladderId, rondeIdx, partijIdx, winnaar, resu
     // rondes zitten in alleLadders[idx].data — al bijgewerkt via onSnapshot
 
     renderLadder();
-    toast(`${winnaar} door naar volgende ronde ✓`);
+    // v5.12.5: de ↩-knop draait een winnaar terug en geeft een lege naam
+    // mee. Dan stond hier ' door naar volgende ronde ✓' met een gat ervoor.
+    toast(winnaar
+      ? `${String(winnaar).split(' ')[0]} door naar volgende ronde ✓`
+      : 'Winnaar teruggedraaid ✓');
   } catch(e) { console.error('slaKnockoutWinnaarOp mislukt:', e); toast('Er is iets misgegaan'); }
 }
 

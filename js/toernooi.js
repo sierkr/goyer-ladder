@@ -4704,12 +4704,19 @@ async function maakOntbrekendeGastlogins() {
   try {
     const t = toernooiData;
     if (!t || !actieveToernooiId) return;
+    // v5.12.5: het toernooinummer EEN keer vastpakken en daarna niet meer uit
+    // het geheugen lezen. Accounts aanmaken duurt seconden, en `actieveToernooiId`
+    // is een levende verwijzing die daar tussendoor door een meeluisteraar of
+    // door "terug naar overzicht" op null gezet kan worden. Elke doc()-aanroep
+    // hieronder gebruikte hem opnieuw; eentje met null erin laat Firestore
+    // struikelen op iets dat niets met deze knop te maken heeft.
+    const toernooiId = actieveToernooiId;
     if (_gastBeheerGeblokkeerdInTest()) return;
 
     const zonder = (t.spelers || []).filter(sp => sp.gast && !sp.login);
     if (zonder.length === 0) { toast('Alle gastspelers hebben al een inlog'); return; }
 
-    const geheim = await _leesGastWachtwoord(actieveToernooiId);
+    const geheim = await _leesGastWachtwoord(toernooiId);
     let wachtwoord = geheim?.wachtwoord || '';
     if (!wachtwoord) {
       wachtwoord = (prompt(
@@ -4736,7 +4743,7 @@ async function maakOntbrekendeGastlogins() {
       `\n\nHun ingevulde scores blijven staan. Doorgaan?`)) return;
 
     try {
-      await setDoc(doc(db, 'toernooien', actieveToernooiId, 'beheer', 'gastlogin'),
+      await setDoc(doc(db, 'toernooien', toernooiId, 'beheer', 'gastlogin'),
         { wachtwoord, code });
     } catch (e) {
       console.error('gastwachtwoord opslaan mislukt:', e);
@@ -4752,13 +4759,16 @@ async function maakOntbrekendeGastlogins() {
     // met de browsertest hieronder.
     const mislukt = [];
     const wissels = [];
+    const scoresNietVerhuisd = [];
     for (const sp of zonder) {
       try {
         const { uid, login } = await maakGastAccount(sp.naam, code, wachtwoord, t.naam);
         wissels.push({ oudeUid: sp.uid, uid, login, naam: sp.naam });
       } catch (e) {
         console.error('gastlogin alsnog aanmaken mislukt voor', sp.naam, e);
-        mislukt.push(sp.naam);
+        // v5.12.5: de reden erbij. Stond alleen in het verborgen logboek, en
+        // daar kom je op een telefoon niet bij.
+        mislukt.push({ naam: sp.naam, reden: toernooiFoutTekst(e) });
       }
     }
 
@@ -4768,12 +4778,18 @@ async function maakOntbrekendeGastlogins() {
     // netwerktijd — en daarna mag er niets meer tussenkomen.
     for (const w of wissels) {
       try {
-        const oudLive = await getDoc(doc(db, 'toernooien', actieveToernooiId, 'live', w.oudeUid));
+        const oudLive = await getDoc(doc(db, 'toernooien', toernooiId, 'live', w.oudeUid));
         if (oudLive.exists()) {
-          await setDoc(doc(db, 'toernooien', actieveToernooiId, 'live', w.uid), oudLive.data());
-          await deleteDoc(doc(db, 'toernooien', actieveToernooiId, 'live', w.oudeUid));
+          await setDoc(doc(db, 'toernooien', toernooiId, 'live', w.uid), oudLive.data());
+          await deleteDoc(doc(db, 'toernooien', toernooiId, 'live', w.oudeUid));
         }
-      } catch (e) { console.warn('live-scores verhuizen mislukt voor', w.naam, e?.code); }
+      } catch (e) {
+        // v5.12.5: dit ging alleen naar het verborgen logboek. Verhuizen de
+        // scores niet mee, dan lijken ze verdwenen — dat moet je op het scherm
+        // te zien krijgen, niet pas achteraf.
+        console.warn('live-scores verhuizen mislukt voor', w.naam, e?.code);
+        scoresNietVerhuisd.push(w.naam);
+      }
     }
 
     // ⚠ En nu pas omschrijven, op de kopie die op DIT moment de actieve is, in
@@ -4798,15 +4814,23 @@ async function maakOntbrekendeGastlogins() {
 
     doelwit.gastCode = code;
     store.toernooiData = doelwit;
-    const idx = alleToernooien.findIndex(x => x.id === actieveToernooiId);
+    const idx = alleToernooien.findIndex(x => x.id === toernooiId);
     if (idx >= 0) alleToernooien[idx] = doelwit;
-    await setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(doelwit)));
+    await setDoc(doc(db, 'toernooien', toernooiId), JSON.parse(JSON.stringify(doelwit)));
     renderToernooiActief();
 
+    // v5.12.5: zes verschillende mislukkingen gingen hier stil naar het
+    // verborgen logboek en de melding zei alleen dat er iets klaar was. Nu
+    // staat er wat er niet lukte en waarom.
     if (mislukt.length > 0) {
-      toast(`${gelukt} inlog(s) klaar. Niet gelukt voor: ${mislukt.join(', ')}`, 9000);
+      const uitleg = mislukt.map(m => `${m.naam} (${m.reden})`).join('; ');
+      toast(`${gelukt} inlog(s) klaar. Niet gelukt voor: ${uitleg}`, 12000);
     } else {
       toast(`${gelukt} gastlogin(s) aangemaakt ✓ — bekijk ze met "Gastlogins tonen"`, 7000);
+    }
+    if (scoresNietVerhuisd.length > 0) {
+      toast(`Let op: de al ingevulde scores van ${scoresNietVerhuisd.join(', ')} zijn `
+          + `niet meeverhuisd naar de nieuwe inlog. Controleer hun scorekaart.`, 12000);
     }
   } catch(e) { toernooiFout('Gastlogins aanmaken', e); }
 }

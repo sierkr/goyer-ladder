@@ -925,7 +925,10 @@ async function slaInitieelWachtwoordOp() {
   const inp = document.getElementById('admin-nieuw-wachtwoord');
   if (!inp) return;
   const nieuw = inp.value.trim();
-  if (nieuw.length < 4) { toast('Wachtwoord moet minimaal 4 tekens zijn'); return; }
+  // v5.12.5: was 4. Dit wachtwoord wordt gebruikt om nieuwe accounts mee aan
+  // te maken en Firebase weigert alles onder de 6. Stond hier iets korters,
+  // dan mislukte daarna elk nieuw account.
+  if (nieuw.length < 6) { toast('Wachtwoord moet minimaal 6 tekens zijn'); return; }
 
   try {
     const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
