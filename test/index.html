@@ -1139,7 +1139,13 @@
     </div>
     <div class="form-group">
       <label>Aantal holes</label>
-      <select id="t-dag-holes">
+      <!-- v5.12.4: deze keuzelijst had GEEN koppeling. Koos je "Aangepast...",
+           dan verscheen het invulvak eronder niet, en bij het opslaan las de app
+           dat lege vak en maakte er stilzwijgend 18 holes van. Gemeten op
+           13 september 2026: in het aanmaakscherm werkte het wel, hier nooit.
+           Sierk: "voor een dag 2 is het aantal holes niet aan te passen, het
+           invulvak verschijnt niet." -->
+      <select id="t-dag-holes" onchange="toggleDagHolesCustom()">
         <option value="18">18 holes</option>
         <option value="9">9 holes</option>
         <option value="custom">Aangepast...</option>
@@ -1272,7 +1278,7 @@
     </div>
     <div class="form-group">
       <label>Nieuw wachtwoord</label>
-      <input type="password" id="nieuw-wachtwoord" placeholder="minimaal 4 tekens">
+      <input type="password" id="nieuw-wachtwoord" placeholder="minimaal 6 tekens">
     </div>
     <div class="form-group">
       <label>Bevestig nieuw wachtwoord</label>
@@ -1357,7 +1363,7 @@
     </div>
     <div class="form-group">
       <label>Nieuw wachtwoord <span style="color:var(--light);font-weight:400">(leeg = ongewijzigd)</span></label>
-      <input type="password" id="edit-user-pass" placeholder="minimaal 4 tekens">
+      <input type="password" id="edit-user-pass" placeholder="minimaal 6 tekens">
     </div>
     <div class="form-group">
       <label>Rol</label>
@@ -1385,7 +1391,7 @@
     </div>
     <div class="form-group">
       <label>Wachtwoord</label>
-      <input type="password" id="new-user-pass" placeholder="minimaal 4 tekens">
+      <input type="password" id="new-user-pass" placeholder="minimaal 6 tekens">
     </div>
     <div class="form-group">
       <label>Rol</label>
@@ -1979,7 +1985,7 @@
         <button class="btn btn-secondary btn-block" onclick="toggleWachtwoordBeheer()">🔑 Wachtwoord wijzigen</button>
         <div id="admin-wachtwoord-wrap" style="display:none;margin-top:14px">
           <label style="font-size:13px;color:var(--mid);display:block;margin-bottom:6px">Nieuw initieel wachtwoord</label>
-          <input id="admin-nieuw-wachtwoord" type="text" class="input" placeholder="minimaal 4 tekens"
+          <input id="admin-nieuw-wachtwoord" type="text" class="input" placeholder="minimaal 6 tekens"
             style="margin-bottom:10px;font-family:'DM Mono',monospace;letter-spacing:1px">
           <button class="btn btn-primary btn-block" onclick="slaInitieelWachtwoordOp()">✓ Opslaan</button>
         </div>

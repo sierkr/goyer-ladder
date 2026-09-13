@@ -1285,4 +1285,161 @@ test.describe('Toernooi — de hele route', () => {
     expect(actief, 'er blijft precies één toernooi actief').toEqual(['Nieuwtje']);
   });
 
+  // ============================================================
+  //  v5.12.4 — EEN GAST ZONDER INLOG IS EEN SPELER DIE BUITEN STAAT
+  // ------------------------------------------------------------
+  //  Sierk, 13 september 2026: "omdat er geen inlognamen zijn kunnen spelers
+  //  ook niet inloggen." Het gastwachtwoord staat alleen in één invulveld en
+  //  wordt nergens onthouden; was het leeg, dan sloeg de app het aanmaken van
+  //  inlogs stilzwijgend over. Geen melding, geen inlognamen, geen knop.
+  // ============================================================
+
+  test('GASTWACHTWOORD: starten zonder wachtwoord gaat niet stilletjes', async ({ page }) => {
+    test.setTimeout(200000);
+    const gevraagd = [];
+    const antwoorden = ['Karel Gast', '15'];
+    page.on('dialog', async d => {
+      gevraagd.push(d.message());
+      if (d.type() === 'prompt') return d.accept(antwoorden.shift() ?? '');
+      return d.accept();
+    });
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Zonderww', 1);
+    await kiesSpeler(page, 'Anna Speler');
+    // Met opzet GEEN wachtwoord invullen.
+    await page.click('#toernooi-setup-wrap button:has-text("Gastspeler toevoegen")');
+    await expect(page.locator('#t-geselecteerde-spelers')).toContainText('Karel Gast');
+    await naarFlightIndeling(page);
+    gevraagd.length = 0;
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Zonderww', { timeout: 25000 });
+
+    expect(gevraagd.some(m => /geen wachtwoord ingevuld/i.test(m)),
+      'de app waarschuwt dat de gast dan niet kan inloggen').toBe(true);
+
+    // En dan staat de reparatieknop klaar — de enige uitweg was tot v5.12.3 de
+    // gast verwijderen en opnieuw toevoegen, en dan raakt hij zijn scores kwijt.
+    await expect(page.locator('#toernooi-detail button:has-text("Gastlogins aanmaken")'),
+      'met de knop om het alsnog te doen').toBeVisible({ timeout: 15000 });
+  });
+
+  test('GASTWACHTWOORD: de reparatieknop geeft alsnog een inlog, scores blijven', async ({ page, browser }) => {
+    test.setTimeout(300000);
+    const antwoorden = ['Karel Gast', '15', 'goyer2026'];
+    page.on('dialog', async d => {
+      if (d.type() === 'prompt') return d.accept(antwoorden.shift() ?? '');
+      return d.accept();
+    });
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Reparatie', 1);
+    await kiesSpeler(page, 'Anna Speler');
+    await page.click('#toernooi-setup-wrap button:has-text("Gastspeler toevoegen")');
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Reparatie', { timeout: 25000 });
+
+    // De wedstrijdleiding vult alvast een score in voor de gast. Die moet de
+    // sleutelwissel overleven — dat is het hele punt van deze knop.
+    const voor = await haalToernooi('Reparatie');
+    const gastVoor = voor.spelers.find(sp => sp.gast);
+    expect(gastVoor.login, 'de gast heeft nog geen inlog').toBeFalsy();
+
+    const vak = page.locator(`#t-scorecard-wrap input[data-uid="${gastVoor.uid}"][data-hole="1"]`);
+    await vak.waitFor({ state: 'visible', timeout: 15000 });
+    await vak.fill('5');
+    await vak.blur();
+    await page.waitForTimeout(2500);
+
+    await page.click('#toernooi-detail button:has-text("Gastlogins aanmaken")');
+    await expect.poll(async () => {
+      const x = await haalToernooi('Reparatie');
+      return (x.spelers || []).filter(sp => sp.gast && sp.login).length;
+    }, { timeout: 60000, message: 'de gast heeft alsnog een inlog' }).toBe(1);
+
+    const na = await haalToernooi('Reparatie');
+    const gastNa = na.spelers.find(sp => sp.gast);
+    expect(gastNa.uid, 'hij heeft een echte sleutel gekregen').not.toBe(gastVoor.uid);
+    expect(String(gastNa.uid).startsWith('gast_'), 'geen tijdelijke sleutel meer').toBe(false);
+
+    // Zijn oude sleutel mag nergens meer staan — flights, markers en scores
+    // moeten allemaal zijn omgeschreven.
+    // ⚠ Deze ene regel ving een echte fout: de sleutelwissel gebeurde ONDERWEG,
+    // tussen twee netwerkaanroepen door, en de meeluisteraar zette de oude
+    // sleutel daarna gewoon weer terug in `dagen[].scores`.
+    expect(JSON.stringify(na).includes(gastVoor.uid),
+      'de oude sleutel staat nergens meer in het toernooi').toBe(false);
+    const flightIds = (na.dagen[0].flights || []).flatMap(f => f.spelerIds || []);
+    expect(flightIds.includes(gastNa.uid), 'hij zit nog gewoon in zijn flight').toBe(true);
+
+    // En de gast komt binnen met zijn eigen naam.
+    const gast = await (await browser.newContext()).newPage();
+    await gast.goto('/index.html');
+    await gast.waitForSelector('#login-scherm', { state: 'visible' });
+    await gast.fill('#login-email', 'Karel Gast');
+    await gast.fill('#login-pass', 'goyer2026');
+    await gast.click('#login-scherm button.btn-primary');
+    await gast.waitForSelector('#login-scherm', { state: 'hidden', timeout: 25000 });
+    await expect(gast.locator('#page-toernooi')).toContainText('Jouw scorekaart', { timeout: 25000 });
+    await gast.close();
+  });
+
+  // ============================================================
+  //  v5.12.4 — AANGEPAST AANTAL HOLES IN HET DAGVENSTER
+  // ------------------------------------------------------------
+  //  Sierk: "voor een dag 2 is het aantal holes niet aan te passen, het
+  //  invulvak verschijnt niet." De keuzelijst in "Dag toevoegen" / "Dag
+  //  wijzigen" had geen koppeling: het vak bleef verborgen en bij het opslaan
+  //  las de app dat lege vak en maakte er stilzwijgend 18 holes van. In het
+  //  aanmaakscherm werkte het wél — daar staat de koppeling op het dagblok.
+  // ============================================================
+  test('HOLES: een aangepast aantal is in beide schermen in te stellen', async ({ page }) => {
+    test.setTimeout(200000);
+    jaOpAlles(page);
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Holes', 1);
+
+    // Eerst het aanmaakscherm — dat werkte al en moet blijven werken.
+    const blok = page.locator('#t-dag-blokken .dag-blok').first();
+    await blok.locator('.t-dag-holes').selectOption('custom');
+    await expect(blok.locator('.t-dag-holes-custom-wrap'),
+      'aanmaakscherm: het vak verschijnt').toBeVisible();
+    await blok.locator('.t-dag-holes').selectOption('18');
+
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Holes', { timeout: 25000 });
+
+    // En nu het dagvenster, waar het niet werkte.
+    await page.click('#toernooi-detail button:has-text("Dag toevoegen")');
+    await page.waitForSelector('#modal-nieuwe-dag.open', { timeout: 15000 });
+    await page.selectOption('#t-dag-holes', 'custom');
+    await expect(page.locator('#t-dag-holes-custom-wrap'),
+      'dagvenster: het vak verschijnt nu ook').toBeVisible({ timeout: 5000 });
+
+    await page.fill('#t-dag-datum', '2026-10-02');
+    await page.selectOption('#t-dag-baan', 'De Goyer');
+    await page.fill('#t-dag-holes-custom', '12');
+    await page.click('#modal-dag-opslaan-btn');
+    await expect.poll(async () => {
+      const x = await haalToernooi('Holes');
+      return (x.dagen || []).length === 2 ? x.dagen[1].holes.length : 0;
+    }, { timeout: 25000, message: 'dag 2 krijgt echt 12 holes' }).toBe(12);
+
+    // ⚠ En een leeg vak mag geen stille 18 meer opleveren.
+    await page.click('#toernooi-detail button:has-text("Dag toevoegen")');
+    await page.waitForSelector('#modal-nieuwe-dag.open', { timeout: 15000 });
+    await page.selectOption('#t-dag-holes', 'custom');
+    await page.fill('#t-dag-holes-custom', '');
+    await page.fill('#t-dag-datum', '2026-10-03');
+    await page.selectOption('#t-dag-baan', 'De Goyer');
+    await page.click('#modal-dag-opslaan-btn');
+    await page.waitForTimeout(2500);
+    const na = await haalToernooi('Holes');
+    expect((na.dagen || []).length, 'de dag wordt niet stilletjes toegevoegd').toBe(2);
+  });
+
 });

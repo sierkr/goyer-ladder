@@ -1051,6 +1051,27 @@ function toggleTSpeler(id) {
 // ============================================================
 //  FLIGHT INDELING
 // ============================================================
+// v5.12.4: het aangepaste aantal holes in het venster "Dag toevoegen" /
+// "Dag wijzigen". De tegenhanger in het aanmaakscherm staat inline op het
+// dagblok (zie renderDagBlokken); hier ontbrak hij helemaal.
+function toggleDagHolesCustom() {
+  const sel  = document.getElementById('t-dag-holes');
+  const wrap = document.getElementById('t-dag-holes-custom-wrap');
+  if (wrap) wrap.style.display = sel?.value === 'custom' ? 'block' : 'none';
+}
+window.toggleDagHolesCustom = toggleDagHolesCustom;
+
+// Leest het aantal holes uit het dagvenster. Geeft null als de coordinator
+// "Aangepast" koos maar geen bruikbaar getal invulde — dan hoort het opslaan te
+// stoppen met een melding, niet stilletjes 18 te pakken.
+function dagHolesUitVenster() {
+  const keuze = document.getElementById('t-dag-holes')?.value || '18';
+  if (keuze !== 'custom') return parseInt(keuze) || 18;
+  const ruw = document.getElementById('t-dag-holes-custom')?.value;
+  const n = parseInt(ruw);
+  return (Number.isFinite(n) && n >= 1 && n <= 18) ? n : null;
+}
+
 function toggleHolesCustom() {
   const sel = document.getElementById('t-holes');
   const wrap = document.getElementById('t-holes-custom-wrap');
@@ -1270,6 +1291,23 @@ async function startToernooi() {
     const gastWachtwoord = document.getElementById('t-gast-wachtwoord')?.value.trim() || '';
 
     if (!naam) { toast('Voer een naam in'); return; }
+
+    // v5.12.4: ⚠ NOOIT STIL STARTEN ZONDER WACHTWOORD.
+    //
+    // WAT ER MIS WAS. Het gastwachtwoord staat alleen in dit ene invulveld en
+    // wordt nergens onthouden. Was het leeg — na een herlaad, of na "Toernooi
+    // opnieuw instellen" — dan sloeg de app het aanmaken van inlogs gewoon
+    // over. Geen melding, geen inlognamen, geen knop "Gastlogins tonen", en de
+    // gasten konden niet inloggen. Sierk, 13 september 2026: "omdat er geen
+    // inlognamen zijn kunnen spelers ook niet inloggen."
+    const gastenZonderWw = _tGeselecteerdeSpelers.filter(sp => sp.gast).length;
+    if (!gastWachtwoord && gastenZonderWw > 0 && !IS_TEST) {
+      if (!confirm(
+        `Er ${gastenZonderWw === 1 ? 'zit 1 gastspeler' : `zitten ${gastenZonderWw} gastspelers`} in dit ` +
+        `toernooi, maar er is geen wachtwoord ingevuld.\n\n` +
+        `Zonder wachtwoord krijgen zij GEEN inlog en kunnen ze niet meedoen op hun eigen telefoon.\n\n` +
+        `Toch starten?`)) return;
+    }
     if (gastWachtwoord && gastWachtwoord.length < 6) {
       toast('Het gastwachtwoord moet minstens 6 tekens hebben');
       return;
@@ -1904,10 +1942,12 @@ async function slaDagWijzigingOp() {
 
     const datum    = document.getElementById('t-dag-datum')?.value;
     const baanNaam = document.getElementById('t-dag-baan')?.value;
-    const holesVal = document.getElementById('t-dag-holes')?.value || '18';
-    const holesCount = holesVal === 'custom'
-      ? parseInt(document.getElementById('t-dag-holes-custom')?.value) || 18
-      : parseInt(holesVal);
+    const aantalHoles = dagHolesUitVenster();   // v5.12.4
+    if (aantalHoles === null) {
+      toast('Vul een aangepast aantal holes in tussen 1 en 18');
+      return;
+    }
+    const holesCount = aantalHoles;
 
     if (!datum)    { toast('Voer een datum in'); return; }
     if (!baanNaam) { toast('Selecteer een baan'); return; }
@@ -1972,10 +2012,12 @@ async function voegDagToe() {
 
     const datum    = document.getElementById('t-dag-datum')?.value;
     const baanNaam = document.getElementById('t-dag-baan')?.value;
-    const holesVal = document.getElementById('t-dag-holes')?.value || '18';
-    const holesCount = holesVal === 'custom'
-      ? parseInt(document.getElementById('t-dag-holes-custom')?.value) || 18
-      : parseInt(holesVal);
+    const aantalHoles = dagHolesUitVenster();   // v5.12.4
+    if (aantalHoles === null) {
+      toast('Vul een aangepast aantal holes in tussen 1 en 18');
+      return;
+    }
+    const holesCount = aantalHoles;
 
     if (!datum)    { toast('Voer een datum in'); return; }
     if (!baanNaam) { toast('Selecteer een baan'); return; }
@@ -2666,6 +2708,11 @@ function renderToernooiActief() {
       ${!dagHeeftScores(dag) ? `
       <button class="btn btn-ghost btn-block" onclick="openDagBewerkenModal()" style="margin-bottom:8px">
         ✏️ Dag ${dagNr} wijzigen (datum, baan, holes)
+      </button>
+      ` : ''}
+      ${(t.spelers || []).some(sp => sp.gast && !sp.login) && !IS_TEST ? `
+      <button class="btn btn-secondary btn-block" onclick="maakOntbrekendeGastlogins()" style="margin-bottom:8px">
+        ⌨ Gastlogins aanmaken (${(t.spelers || []).filter(sp => sp.gast && !sp.login).length} zonder inlog)
       </button>
       ` : ''}
       ${(t.spelers || []).some(sp => sp.login) ? `
@@ -4142,15 +4189,32 @@ async function bewerkToernooi() {
       }
     } catch(e) { console.warn('Live-scores verifiëren mislukt:', e); }
 
-    // v5.12.3: de gastaccounts horen hier mee weg.
+    // v5.12.3: de gastaccounts horen hier mee weg, zodat de inlognamen vrij
+    // komen en niemand onnodig een cijfer krijgt (`sierk2`, `sierk3`). Er zijn
+    // per definitie nog geen scores — dat is hierboven al gecontroleerd.
     //
-    // WAAROM. Deze knop gooit het toernooi weg en zet je terug in het
-    // aanmaakscherm. Start je daarna opnieuw met dezelfde naam, dan zijn de
-    // oude inlognamen nog bezet en krijgt iedereen een cijfer: `sierk2`,
-    // daarna `sierk3`. Er zijn per definitie nog geen scores — dat is hierboven
-    // al gecontroleerd — dus er gaat niets verloren.
-    try { await ruimGastloginsOp(t, { stil: true }); }
-    catch (e) { console.warn('gastlogins opruimen bij opnieuw instellen:', e); }
+    // v5.12.4: ⚠ maar ALLEEN als we het wachtwoord in handen hebben.
+    //
+    // WAT ER MIS GING. Het wachtwoord staat alleen in het invulveld en wordt
+    // nergens onthouden; na een herlaad is het leeg. Dan werden hier de oude
+    // accounts weggegooid, startte de coordinator opnieuw zonder wachtwoord, en
+    // kregen de gasten dus GEEN nieuwe inlog. Ze konden nergens meer in.
+    // Liever een oud account te veel dan een speler die buiten staat.
+    //
+    // Het wachtwoord komt uit het toernooi zelf en gaat terug in het formulier,
+    // zodat opnieuw starten vanzelf weer werkt.
+    const geheim = await _leesGastWachtwoord(actieveToernooiId);
+    const wwVeld = document.getElementById('t-gast-wachtwoord');
+    if (geheim?.wachtwoord && wwVeld && !wwVeld.value.trim()) {
+      wwVeld.value = geheim.wachtwoord;
+    }
+    const wwInHanden = (wwVeld?.value || '').trim() || geheim?.wachtwoord || '';
+    if (wwInHanden) {
+      try { await ruimGastloginsOp(t, { stil: true }); }
+      catch (e) { console.warn('gastlogins opruimen bij opnieuw instellen:', e); }
+    } else if ((t.spelers || []).some(sp => sp.gast && sp.login)) {
+      console.warn('gastwachtwoord onbekend — de oude gastaccounts blijven staan');
+    }
 
     // Verwijder uit Firestore
     await deleteDoc(doc(db, 'toernooien', actieveToernooiId));
@@ -4622,6 +4686,156 @@ window.zetToernooiOpenbaar = zetToernooiOpenbaar;
 // ⚠ Dit toont een wachtwoord op het scherm. Dat is precies de bedoeling — het
 // is een weggooiwachtwoord voor één toernooi — maar het is bewust een aparte
 // handeling en het staat nergens standaard in beeld.
+// ============================================================
+//  v5.12.4 — ALSNOG EEN INLOG VOOR GASTEN DIE ER GEEN HEBBEN
+// ------------------------------------------------------------
+//  WAAROM DIT BESTAAT. Tot v5.12.3 kon een toernooi beginnen met gastspelers
+//  zonder inlog, zonder dat iets dat zei: het wachtwoordveld was leeg en de app
+//  sloeg het aanmaken stil over. Sierk stond op 13 september 2026 met een
+//  lopend toernooi waarin niemand kon inloggen, en de enige uitweg was elke
+//  gast verwijderen en opnieuw toevoegen — en dan raakt hij zijn scores kwijt,
+//  want die hangen aan zijn sleutel.
+//
+//  Deze knop geeft ze alsnog een account. De sleutelwissel loopt via
+//  _vervangSpelerUid(), dezelfde weg als bij het starten: flights, markers en
+//  ingevulde scores verhuizen mee. Een eventueel live-scoredocument gaat er
+//  achteraan, want dat staat buiten het toernooidocument.
+async function maakOntbrekendeGastlogins() {
+  try {
+    const t = toernooiData;
+    if (!t || !actieveToernooiId) return;
+    // v5.12.5: het toernooinummer EEN keer vastpakken en daarna niet meer uit
+    // het geheugen lezen. Accounts aanmaken duurt seconden, en `actieveToernooiId`
+    // is een levende verwijzing die daar tussendoor door een meeluisteraar of
+    // door "terug naar overzicht" op null gezet kan worden. Elke doc()-aanroep
+    // hieronder gebruikte hem opnieuw; eentje met null erin laat Firestore
+    // struikelen op iets dat niets met deze knop te maken heeft.
+    const toernooiId = actieveToernooiId;
+    if (_gastBeheerGeblokkeerdInTest()) return;
+
+    const zonder = (t.spelers || []).filter(sp => sp.gast && !sp.login);
+    if (zonder.length === 0) { toast('Alle gastspelers hebben al een inlog'); return; }
+
+    const geheim = await _leesGastWachtwoord(toernooiId);
+    let wachtwoord = geheim?.wachtwoord || '';
+    if (!wachtwoord) {
+      wachtwoord = (prompt(
+        `Wachtwoord voor de gastspelers (minstens 6 tekens).\n\n` +
+        `Dit is één wachtwoord voor iedereen; ze loggen in met hun eigen naam.`) || '').trim();
+      if (!wachtwoord) return;
+      if (wachtwoord.length < 6) { toast('Het gastwachtwoord moet minstens 6 tekens hebben'); return; }
+    }
+
+    // Zonder gastcode is er nog nooit een inlog uitgegeven voor dit toernooi.
+    let code = t.gastCode;
+    if (!code) {
+      try {
+        const alle = await getDocs(TOERNOOIEN_COL);
+        code = uniekeGastCode(t.naam, alle.docs.map(d => d.data().gastCode));
+      } catch (e) {
+        code = toernooiCodeVan(t.naam);
+      }
+    }
+
+    if (!confirm(
+      `${zonder.length} gastspeler(s) krijgen nu een inlog:\n\n` +
+      zonder.map(sp => '• ' + sp.naam).join('\n') +
+      `\n\nHun ingevulde scores blijven staan. Doorgaan?`)) return;
+
+    try {
+      await setDoc(doc(db, 'toernooien', toernooiId, 'beheer', 'gastlogin'),
+        { wachtwoord, code });
+    } catch (e) {
+      console.error('gastwachtwoord opslaan mislukt:', e);
+      toast('Let op: het wachtwoord kon niet worden bewaard — ' + toernooiFoutTekst(e), 9000);
+    }
+
+    // ⚠ EERST alle accounts aanmaken, PAS DAARNA het toernooi omschrijven.
+    //
+    // Een account aanmaken duurt seconden, en ondertussen kan de meeluisteraar
+    // `toernooiData` vervangen door een verse serverkopie. Schreven we de
+    // sleutels onderweg om, dan deden we dat in een object dat daarna werd
+    // weggegooid — en dook de oude sleutel weer op in `dagen[].scores`. Gemeten
+    // met de browsertest hieronder.
+    const mislukt = [];
+    const wissels = [];
+    const scoresNietVerhuisd = [];
+    for (const sp of zonder) {
+      try {
+        const { uid, login } = await maakGastAccount(sp.naam, code, wachtwoord, t.naam);
+        wissels.push({ oudeUid: sp.uid, uid, login, naam: sp.naam });
+      } catch (e) {
+        console.error('gastlogin alsnog aanmaken mislukt voor', sp.naam, e);
+        // v5.12.5: de reden erbij. Stond alleen in het verborgen logboek, en
+        // daar kom je op een telefoon niet bij.
+        mislukt.push({ naam: sp.naam, reden: toernooiFoutTekst(e) });
+      }
+    }
+
+    // Het live-scoredocument staat BUITEN het toernooi en verhuist niet vanzelf
+    // mee. Heeft de wedstrijdleiding al scores ingevoerd, dan zouden die zonder
+    // dit stuk aan de oude sleutel blijven hangen. Dit eerst, want het kost
+    // netwerktijd — en daarna mag er niets meer tussenkomen.
+    for (const w of wissels) {
+      try {
+        const oudLive = await getDoc(doc(db, 'toernooien', toernooiId, 'live', w.oudeUid));
+        if (oudLive.exists()) {
+          await setDoc(doc(db, 'toernooien', toernooiId, 'live', w.uid), oudLive.data());
+          await deleteDoc(doc(db, 'toernooien', toernooiId, 'live', w.oudeUid));
+        }
+      } catch (e) {
+        // v5.12.5: dit ging alleen naar het verborgen logboek. Verhuizen de
+        // scores niet mee, dan lijken ze verdwenen — dat moet je op het scherm
+        // te zien krijgen, niet pas achteraf.
+        console.warn('live-scores verhuizen mislukt voor', w.naam, e?.code);
+        scoresNietVerhuisd.push(w.naam);
+      }
+    }
+
+    // ⚠ En nu pas omschrijven, op de kopie die op DIT moment de actieve is, in
+    // één ruk zonder tussenliggend wachten. Deed je dit ertussendoor, dan kon
+    // de meeluisteraar `toernooiData` vervangen door een verse serverkopie en
+    // zette behoudLiveScores() de oude sleutel gewoon weer terug in
+    // `dagen[].scores`. Dat is precies wat de browsertest hieronder ving.
+    const doelwit = toernooiData || t;
+    for (const w of wissels) {
+      _vervangSpelerUid(doelwit, w.oudeUid, w.uid);
+      const speler = (doelwit.spelers || []).find(sp => sp.uid === w.uid);
+      if (speler) speler.login = w.login;
+      // De ingevoerde scores van deze ronde staan ook in het geheugen, op de
+      // oude sleutel. Blijven die staan, dan komen ze bij de eerstvolgende
+      // verversing gewoon weer terug.
+      if (store._liveScores && store._liveScores[w.oudeUid]) {
+        store._liveScores[w.uid] = store._liveScores[w.oudeUid];
+        delete store._liveScores[w.oudeUid];
+      }
+    }
+    const gelukt = wissels.length;
+
+    doelwit.gastCode = code;
+    store.toernooiData = doelwit;
+    const idx = alleToernooien.findIndex(x => x.id === toernooiId);
+    if (idx >= 0) alleToernooien[idx] = doelwit;
+    await setDoc(doc(db, 'toernooien', toernooiId), JSON.parse(JSON.stringify(doelwit)));
+    renderToernooiActief();
+
+    // v5.12.5: zes verschillende mislukkingen gingen hier stil naar het
+    // verborgen logboek en de melding zei alleen dat er iets klaar was. Nu
+    // staat er wat er niet lukte en waarom.
+    if (mislukt.length > 0) {
+      const uitleg = mislukt.map(m => `${m.naam} (${m.reden})`).join('; ');
+      toast(`${gelukt} inlog(s) klaar. Niet gelukt voor: ${uitleg}`, 12000);
+    } else {
+      toast(`${gelukt} gastlogin(s) aangemaakt ✓ — bekijk ze met "Gastlogins tonen"`, 7000);
+    }
+    if (scoresNietVerhuisd.length > 0) {
+      toast(`Let op: de al ingevulde scores van ${scoresNietVerhuisd.join(', ')} zijn `
+          + `niet meeverhuisd naar de nieuwe inlog. Controleer hun scorekaart.`, 12000);
+    }
+  } catch(e) { toernooiFout('Gastlogins aanmaken', e); }
+}
+window.maakOntbrekendeGastlogins = maakOntbrekendeGastlogins;
+
 // v5.12.3: de tekst die je doorstuurt. Los van het scherm, zodat de rekentest
 // hem kan natellen — dit is het briefje dat de spelers in handen krijgen.
 function gastloginTekst({ adres, wachtwoord, regels }) {
