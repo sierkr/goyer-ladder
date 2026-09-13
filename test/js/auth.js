@@ -1361,6 +1361,11 @@ function spelersDocNaarUserFormaat(data) {
     rol:            data.rol            || 'speler',
     hcp:            data.hcp            ?? null,
     eersteLogin:    data.eersteLogin,   // v3.0.0-11.11: nodig voor admin-weergave
+    // v5.12.8: gastaccounts van toernooien moeten uit de spelerslijst te houden
+    // zijn. Tot nu toe deed het ladderfilter dat toevallig — een gast zit in
+    // geen enkele ladder — maar dat filter verdwijnt. Zonder dit veld zou elke
+    // gast van elk vorig toernooi in de keuzelijst opduiken.
+    toernooiGast:   data.toernooiGast === true,
     spelerId:       null,   // verdwijnt in fase 3
   };
 }

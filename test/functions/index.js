@@ -274,9 +274,22 @@ const DEFAULT_LADDER_CONFIG = {
 };
 
 // Kiest de juiste Firestore-database — (default) voor productie, named
-// database 'test' voor de testomgeving. De client stuurt isTest mee (zelfde
-// vlag als IS_TEST in js/config.js) zodat een aanroep vanuit /test/ nooit
-// per ongeluk productiedata raakt (en andersom).
+// database 'test' voor de testomgeving. De client stuurt `isTest` mee, dezelfde
+// vlag als IS_TEST in js/config.js.
+//
+// ⚠ v5.12.7 — WAT HIER STOND EN NIET KLOPTE. De opmerking beloofde dat een
+// aanroep vanuit /test/ "nooit per ongeluk productiedata raakt". Dat is de
+// bedoeling, niet wat de code afdwingt: de vlag komt van de browser en wordt
+// hier niet gecontroleerd. Wie hem omzet, kiest de andere database.
+//
+// Wat de schade wél beperkt: elke functie leest zijn rollen en zijn
+// deelnemerslijst uit DEZELFDE database. Iemand die niet in de live-ladder
+// staat, krijgt daar dus permission-denied. Let op de uitzondering: een
+// coordinator of beheerder is van de deelnemerscontrole vrijgesteld, dus voor
+// die twee rollen is de vlag het enige dat de omgevingen scheidt.
+//
+// Dit is bewust niet gerepareerd: een echte scheiding vraagt twee Firebase-
+// projecten, en dat raakt ook de inlogaccounts. Zie OPENSTAAND.md.
 function fsVoor(isTest) {
   return getFirestore(admin.app(), isTest ? 'test' : '(default)');
 }
@@ -1212,7 +1225,21 @@ exports.verwerkPartijUitslag = onCall(
     // (d) Verwerkings-stempel. Dit document is tegelijk de idempotency-sleutel
     // (een tweede aanroep met hetzelfde partijId doet niets meer) én de
     // momentopname waarmee de coordinator de partij kan terugdraaien.
-    batch.set(verwerktRef, {
+    //
+    // ⚠ v5.12.7 — WAAROM `create` EN NIET `set`.
+    // De controle bovenaan (d) leest het stempel aan het BEGIN, en dit schrijft
+    // het pas honderden regels later weg. Daartussen zit al het echte werk:
+    // partij zoeken, scores lezen, standen en punten lezen. Dat duurt.
+    // Bevestigen twee spelers uit dezelfde flight in diezelfde seconde, dan zien
+    // beide aanroepen "nog niet verwerkt" en verschoof de ladder TWEE keer —
+    // `set` overschrijft het stempel immers zonder klagen. Het geval "na elkaar"
+    // was in v5.7.0 al afgevangen; "tegelijk" niet.
+    //
+    // `create` weigert als het document er al is, en dan mislukt de HELE batch
+    // — dus ook de standen- en puntenschrijfacties hierboven. Dat is precies de
+    // bedoeling: de tweede aanroep schrijft niets. De opvang bij commit() zet
+    // die weigering om in hetzelfde "al verwerkt"-antwoord als de tak bovenaan.
+    batch.create(verwerktRef, {
       partijId,
       verwerktOp: Date.now(),
       gerapporteerdDoor: auth.uid,
@@ -1234,7 +1261,21 @@ exports.verwerkPartijUitslag = onCall(
       teruggedraaid: false,
     });
 
-    await batch.commit();
+    try {
+      await batch.commit();
+    } catch (e) {
+      // Firestore geeft ALREADY_EXISTS (grpc-code 6) als create() een bestaand
+      // document tegenkomt. Dan was een gelijktijdige aanroep ons voor; die
+      // heeft de ladder al verschoven en zijn antwoord staat in het stempel.
+      // Geef hetzelfde terug als de controle bovenaan zou hebben gedaan.
+      const alBezet = e && (e.code === 6 || e.code === 'already-exists'
+                        || /ALREADY_EXISTS/i.test(String(e.message || '')));
+      if (!alBezet) throw e;
+      const bestaand = await verwerktRef.get();
+      const d = bestaand.exists ? bestaand.data() : {};
+      return { success: true, alVerwerkt: true,
+               changes: d.changes || [], spelerRegels: d.spelerRegels || [] };
+    }
 
     return { success: true, changes, spelerRegels };
   }
@@ -1275,12 +1316,21 @@ exports.draaiPartijTerug = onCall(
 
     const ladderRef   = fs.collection('ladders').doc(ladderId);
     const verwerktRef = ladderRef.collection('verwerkt').doc(partijId);
+    const teruggedraaidRef = ladderRef.collection('teruggedraaid').doc(partijId);
     const snap = await verwerktRef.get();
-    if (!snap.exists) throw new HttpsError('not-found', 'Deze partij is niet als verwerkt geregistreerd.');
-    const rec = snap.data() || {};
-    if (rec.teruggedraaid === true) {
-      return { success: true, alTeruggedraaid: true };
+    // ⚠ v5.12.7 — HIER STOND EEN GRENDEL DIE NOOIT AANGING.
+    // De controle keek naar `rec.teruggedraaid === true` op het verwerkt-
+    // document, maar dat document wordt hieronder juist VERWIJDERD bij het
+    // terugdraaien. Het veld kon dus nooit gelezen worden. Twee keer
+    // terugdraaien gaf daardoor "niet als verwerkt geregistreerd" — een
+    // foutmelding op de plek waar een geruststelling hoort.
+    // Nu wordt gekeken waar het stempel na een terugdraaiing wél ligt.
+    if (!snap.exists) {
+      const eerder = await teruggedraaidRef.get();
+      if (eerder.exists) return { success: true, alTeruggedraaid: true };
+      throw new HttpsError('not-found', 'Deze partij is niet als verwerkt geregistreerd.');
     }
+    const rec = snap.data() || {};
 
     const batch = fs.batch();
     for (const [uid, st] of Object.entries(rec.voorStanden || {})) {
@@ -1300,11 +1350,14 @@ exports.draaiPartijTerug = onCall(
       if (pt.activiteitVerschuiving != null) payload.activiteitVerschuiving = pt.activiteitVerschuiving;
       batch.set(ladderRef.collection('punten').doc(uid), payload, { merge: true });
     }
-    // Stempel bewaren maar markeren als teruggedraaid: zo blijft zichtbaar dát
-    // er iets is teruggedraaid, én kan dezelfde partij opnieuw worden verwerkt
-    // (de idempotency-check kijkt op bestaan, dus we verwijderen hem).
+    // v5.12.7: de opmerking hier sprak zichzelf tegen — hij zei "stempel
+    // bewaren" terwijl de regel eronder hem weggooit. Wat er echt gebeurt: het
+    // stempel VERHUIST naar de collectie `teruggedraaid`. Zo blijft zichtbaar
+    // dát er iets is teruggedraaid, én kan dezelfde partij opnieuw worden
+    // verwerkt — de idempotency-grendel in verwerkPartijUitslag kijkt of
+    // `verwerkt/{partijId}` bestaat, en die is er dan niet meer.
     batch.delete(verwerktRef);
-    batch.set(ladderRef.collection('teruggedraaid').doc(partijId), {
+    batch.set(teruggedraaidRef, {
       ...rec, teruggedraaid: true,
       teruggedraaidOp: Date.now(), teruggedraaidDoor: auth.uid,
     });

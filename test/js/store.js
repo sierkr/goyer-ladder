@@ -29,6 +29,8 @@ function _syncAlleSpelersDataFromUsers() {
         hcp:   u.hcp   ?? 0,
         email: u.email || '',
         rol:   u.rol   || 'speler',
+        // v5.12.8: zie spelersDocNaarUserFormaat() in js/auth.js.
+        toernooiGast: u.toernooiGast === true,
       });
     }
   }
@@ -61,7 +63,6 @@ export let _liveScores = {};
 
 // ─── Toernooi setup ──────────────────────────────────────────
 export let _tGeselecteerdeSpelers = [];
-export let _tSpelersLadderIds = new Set();
 export let _tRankingLadderIds = new Set();
 export let _flights = [];
 export let _toernooiSpelerToevoegen = null;
@@ -148,8 +149,6 @@ export const store = {
   get actieveToernooiId() { return actieveToernooiId; },
   set _tGeselecteerdeSpelers(v) { _tGeselecteerdeSpelers = v; },
   get _tGeselecteerdeSpelers() { return _tGeselecteerdeSpelers; },
-  set _tSpelersLadderIds(v) { _tSpelersLadderIds = v; },
-  get _tSpelersLadderIds() { return _tSpelersLadderIds; },
   set _tRankingLadderIds(v) { _tRankingLadderIds = v; },
   get _tRankingLadderIds() { return _tRankingLadderIds; },
   set _flights(v) { _flights = v; },

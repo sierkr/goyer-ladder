@@ -1750,13 +1750,17 @@
              moet weg." Wat eraan hing — de puntenvelden, het HCP-percentage, de
              uitleg bij strokeplay en de ranking-ladders — wordt nu aangestuurd
              door de dagkeuzes zelf; zie pasSpeelwijzeToe() in js/toernooi.js. -->
-        <div class="form-group">
-          <label>Spelers ladder(s)</label>
-          <div id="t-spelers-ladders" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div>
-        </div>
+        <!-- v5.12.8: hier stond "Spelers ladder(s)", een rij vakjes om de
+             spelerslijst voor te filteren op een of meer ladders. Sierk:
+             "het kiezen van meerdere ladders komt nooit voor" en "kan weg en
+             standaard kan je alle spelers die in de goyer-ladder app zitten
+             selecteren". Weg; je zoekt spelers op naam in het zoekveld.
+             De ranking-ladder is een keuzelijst geworden — ook daar is er maar
+             één. De id t-ranking-ladders-wrap blijft: pasSpeelwijzeToe() en de
+             browsertest verbergen en tonen dit blok bij strokeplay. -->
         <div class="form-group" id="t-ranking-ladders-wrap">
-          <label>Ranking ladder(s)</label>
-          <div id="t-ranking-ladders" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div>
+          <label>Ranking ladder</label>
+          <div id="t-ranking-ladders" style="margin-top:4px"></div>
         </div>
         <div class="divider"></div>
         <div id="t-matchplay-instellingen">

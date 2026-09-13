@@ -10,7 +10,7 @@ const _verwerkToernooiStandenFn = httpsCallable(functions, 'verwerkToernooiStand
 // v5.10.0: verwijdert een Auth-account waarvan het profiel al weg is. Bestond
 // al voor wees-accounts uit de bulk-import; hier hergebruikt voor gastlogins.
 const _verwijderGastAccountFn = httpsCallable(functions, 'verwijderWeesAccount');
-import { store, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tSpelersLadderIds, _tRankingLadderIds, _flights, _liveScores } from './store.js';
+import { store, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tRankingLadderIds, _flights, _liveScores } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen, foutTekst, meldFout } from './auth.js';
 import { renderHcpBlok, alleBANEN, renderHandmatigHoles, kortNaamMap } from './partij.js';
 import { renderLadder } from './ladder.js';
@@ -664,7 +664,6 @@ function slaToernooiConceptOp() {
         modus:       toernooiModusUitFormulier(),   // v5.12.1: afgeleid uit de dagen
         dagen,
         spelers:        store._tGeselecteerdeSpelers || [],
-        spelersLadders: [...(_tSpelersLadderIds || [])],
         rankingLadders: [...(_tRankingLadderIds || [])],
         // v5.11.3: ⚠ de flightindeling hoorde hier vanaf het begin in te staan.
         // Alles van het aanmaakformulier werd bewaard behalve dít, en juist dit
@@ -713,7 +712,6 @@ function herstelToernooiConcept() {
     // wat er zichtbaar is.
 
     store._tGeselecteerdeSpelers = c.spelers || [];
-    store._tSpelersLadderIds = new Set(c.spelersLadders || []);
     store._tRankingLadderIds = new Set(c.rankingLadders || []);
     store._flights = (c.flights || []).map(f => ({
       id: f.id, naam: f.naam, starthole: f.starthole, starttijd: f.starttijd,
@@ -784,24 +782,23 @@ function initToernooiSetup() {
   koppelConceptAutosave();  // v4.0.0 (fix 7.1)
   pasSpeelwijzeToe();       // v5.12.1
 
-  const spelersLaddersEl = document.getElementById('t-spelers-ladders');
-  if (spelersLaddersEl) {
-    spelersLaddersEl.innerHTML = alleLadders.map(l => `
-      <label style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 12px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;user-select:none;min-width:56px;text-align:center">
-        <span>${esc(l.naam)}</span>
-        <input type="checkbox" value="${escAttr(l.id)}" ${_tSpelersLadderIds.has(l.id) ? 'checked' : ''} onchange="toggleTSpelersLadder('${escAttr(l.id)}', this.checked)" style="accent-color:var(--green);width:18px;height:18px">
-      </label>
-    `).join('');
-  }
-
+  // v5.12.8: het blok "Spelers ladder(s)" stond hier. Weg — de spelerslijst is
+  // nu iedereen uit de app; zie getToernooiSpelersPool().
+  //
+  // De ranking-ladder is een keuzelijst geworden in plaats van een rij vakjes.
+  // Sierk: "ranking ladder sowieso slechts 1 keuze". Intern blijft het een
+  // verzameling met nul of één ladder, zodat het opslaan, "Toernooi opnieuw
+  // instellen" en het afsluiten ongewijzigd blijven werken.
   const rankingLaddersEl = document.getElementById('t-ranking-ladders');
   if (rankingLaddersEl) {
-    rankingLaddersEl.innerHTML = alleLadders.map(l => `
-      <label style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 12px;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;font-size:13px;user-select:none;min-width:56px;text-align:center">
-        <span>${esc(l.naam)}</span>
-        <input type="checkbox" value="${escAttr(l.id)}" ${_tRankingLadderIds.has(l.id) ? 'checked' : ''} onchange="toggleTRankingLadder('${escAttr(l.id)}', this.checked)" style="accent-color:var(--green);width:18px;height:18px">
-      </label>
-    `).join('');
+    const gekozen = [..._tRankingLadderIds][0] || '';
+    rankingLaddersEl.innerHTML = `
+      <select class="input" onchange="kiesTRankingLadder(this.value)" style="width:100%">
+        <option value=""${gekozen ? '' : ' selected'}>Geen — telt niet voor een ladder</option>
+        ${alleLadders.map(l => `
+          <option value="${escAttr(l.id)}"${l.id === gekozen ? ' selected' : ''}>${esc(l.naam)}</option>
+        `).join('')}
+      </select>`;
   }
 
   renderTGeselecteerdeSpelers();
@@ -918,36 +915,44 @@ function renderDagBlokken() {
 }
 window.renderDagBlokken = renderDagBlokken;
 
-function toggleTSpelersLadder(ladderId, checked) {
-  if (checked) _tSpelersLadderIds.add(ladderId);
-  else _tSpelersLadderIds.delete(ladderId);
-  if (_tSpelersLadderIds.size > 0) {
-    const geldigeUids = new Set(
-      alleLadders.filter(l => _tSpelersLadderIds.has(l.id))
-        .flatMap(l => l.spelerIds || [])
-    );
-    store._tGeselecteerdeSpelers = _tGeselecteerdeSpelers.filter(s => s.gast || geldigeUids.has(s.uid));
-  }
-  renderTGeselecteerdeSpelers();
+// v5.12.8: toggleTSpelersLadder() is vervallen met het blok "Spelers
+// ladder(s)". Hij snoeide ook de al gekozen spelers weg die niet in de
+// aangevinkte ladder zaten; dat hoeft niet meer, want er wordt niet meer
+// voorgefilterd.
+//
+// toggleTRankingLadder(id, checked) is kiesTRankingLadder(id) geworden: één
+// keuze in plaats van vakjes. Een lege waarde betekent "telt niet voor een
+// ladder" — precies wat er vóór v5.12.8 gebeurde als je niets aanvinkte.
+function kiesTRankingLadder(ladderId) {
+  store._tRankingLadderIds = new Set(ladderId ? [ladderId] : []);
 }
 
-function toggleTRankingLadder(ladderId, checked) {
-  if (checked) _tRankingLadderIds.add(ladderId);
-  else _tRankingLadderIds.delete(ladderId);
-}
-
+// ============================================================
+//  WIE KUN JE IN EEN TOERNOOI ZETTEN?  (v5.12.8)
+// ============================================================
+//  Alle vaste spelers uit de app, behalve de gastaccounts van toernooien.
+//
+//  WAT ER WAS. Hierboven stond het blok "Spelers ladder(s)": een rij vakjes
+//  waarmee je de lijst kon voorfilteren op een of meer ladders. Sierk,
+//  13 september 2026: "het kiezen van meerdere ladders komt nooit voor" en
+//  "kan weg en standaard kan je alle spelers die in de goyer-ladder app zitten
+//  selecteren". Dat blok is weg; je zoekt spelers op naam in het zoekveld.
+//
+//  ⚠ EEN VASTE SPELER ZONDER LADDER STAAT ER NU OOK IN. Dat kon eerder niet:
+//  het ladderfilter bouwde de lijst uit `spelerIds` van de ladders, dus wie in
+//  geen enkele ladder zat viel buiten de boot. Dat is nu met opzet anders.
+//
+//  ⚠ EN DAAROM MOETEN DE GASTEN ER EXPLICIET UIT. Datzelfde ladderfilter hield
+//  ze toevallig buiten de deur — een toernooigast zit in geen enkele ladder.
+//  Zonder de controle hieronder zou elke gast van elk vorig toernooi in de
+//  lijst opduiken, inclusief de genummerde (`sierk2`). Het veld komt uit
+//  spelersDocNaarUserFormaat() in js/auth.js.
 function getToernooiSpelersPool() {
-  // Gebruik alleSpelersData (uid-based) als bron, gefilterd op geselecteerde ladders
   const gezien = new Set();
   const spelers = [];
-  const ladders = _tSpelersLadderIds.size > 0
-    ? alleLadders.filter(l => _tSpelersLadderIds.has(l.id))
-    : alleLadders;
-  // Verzamel uids die in de geselecteerde ladders zitten
-  const toegestaneUids = new Set(ladders.flatMap(l => l.spelerIds || []));
   alleSpelersData.forEach(s => {
     if (!s.uid || gezien.has(s.uid)) return;
-    if (toegestaneUids.size > 0 && !toegestaneUids.has(s.uid)) return;
+    if (s.toernooiGast === true) return;
     gezien.add(s.uid);
     spelers.push({ uid: s.uid, naam: s.naam, hcp: s.hcp ?? 0 });
   });
@@ -1271,7 +1276,12 @@ async function startToernooi() {
     // zodat een toernooi altijd de ladder bijwerkt waar de deelnemers vandaan komen.
     // Voorkomt dat de ranking leeg blijft (o.a. na het per ongeluk uitzetten van het vinkje
     // of de reset na 'start'), waardoor de ladder-update niet draaide.
-    const _rankingSet = _tRankingLadderIds.size > 0 ? _tRankingLadderIds : _tSpelersLadderIds;
+    // v5.12.8: hier stond een terugval op de spelers-ladders — koos je geen
+    // ranking-ladder maar vinkte je er wel een aan bij "Spelers ladder(s)", dan
+    // werd die stilzwijgend de ranking-ladder. Dat blok bestaat niet meer, en
+    // die achterdeur dus ook niet. Een toernooi telt voortaan alleen mee voor
+    // de ladder die je expliciet in de keuzelijst kiest.
+    const _rankingSet = _tRankingLadderIds;
     const rankingLadderIds = [..._rankingSet];
     const ladderId = rankingLadderIds[0] || null;
     const modus    = toernooiModusUitFormulier();   // v5.12.1
@@ -1477,11 +1487,12 @@ async function startToernooi() {
     closeModal('modal-flight-indeling');
     store._flights = [];
     store._tGeselecteerdeSpelers = [];
-    store._tSpelersLadderIds = new Set();
     store._tRankingLadderIds = new Set();
     document.getElementById('t-naam').value = '';
     document.getElementById('t-aantal-dagen').value = '1';
-    document.querySelectorAll('#t-spelers-ladders input, #t-ranking-ladders input').forEach(cb => cb.checked = false);
+    // v5.12.8: waren vakjes, is nu een keuzelijst. Terug naar "Geen".
+    const _rankKeuze = document.querySelector('#t-ranking-ladders select');
+    if (_rankKeuze) _rankKeuze.value = '';
     renderTGeselecteerdeSpelers();
     renderDagBlokken();
     const setupHeader = document.querySelector('#toernooi-setup-wrap .card-header.inklapbaar');
@@ -2317,7 +2328,10 @@ function zoekToernooiSpelerModal(zoek) {
   const t = toernooiData;
   const huidigeIds = new Set(t.spelers.map(s => s.uid));
   const term = zoek.toLowerCase().trim();
-  const pool = alleSpelersData.filter(s => !huidigeIds.has(s.uid))
+  // v5.12.8: hier stond geen gastfilter, en deze lijst is nooit door het
+  // ladderfilter gegaan — de gasten van vorige toernooien stonden er dus al
+  // tussen. In dezelfde moeite recht gezet.
+  const pool = alleSpelersData.filter(s => !huidigeIds.has(s.uid) && s.toernooiGast !== true)
     .filter(s => !term || s.naam.toLowerCase().includes(term))
     .sort((a,b) => a.naam.localeCompare(b.naam, 'nl'));
 
@@ -4299,10 +4313,11 @@ function _herstelSetupVanuitToernooi(t) {
   }));
   renderTGeselecteerdeSpelers();
 
-  // Ladder-checkboxes (spelers + ranking) — herstel via rankingLadderIds
-  store._tRankingLadderIds = new Set(t.rankingLadderIds || (t.ladderId ? [t.ladderId] : []));
-  store._tSpelersLadderIds = new Set(t.rankingLadderIds || (t.ladderId ? [t.ladderId] : []));
-  initToernooiSetup(); // herlaadt checkbox-states
+  // De ranking-ladder terugzetten. v5.12.8: er is nog maar één keuze, dus als
+  // een ouder toernooi er meer had, wint de eerste.
+  const _herstelRanking = t.rankingLadderIds || (t.ladderId ? [t.ladderId] : []);
+  store._tRankingLadderIds = new Set(_herstelRanking.slice(0, 1));
+  initToernooiSetup(); // herlaadt de keuzelijst
 
   // Flights — herstel uit dag 1 flights
   const dag1Flights = (t.dagen?.[0]?.flights || []);
@@ -4982,4 +4997,4 @@ export function getActiefToernooiMetModus() {
 }
 
 
-export { alleScoresIngevuld, annuleerToernooi, behoudLiveScores, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, herlaadToernooiListeners, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, toggleTRankingLadder, toggleTScorecard, toggleTSpeler, toggleTSpelersLadder, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
+export { alleScoresIngevuld, annuleerToernooi, behoudLiveScores, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, herlaadToernooiListeners, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, kiesTRankingLadder, toggleTScorecard, toggleTSpeler, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
