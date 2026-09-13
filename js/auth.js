@@ -403,7 +403,16 @@ async function loginSubmit() {
     // Alleen ACTIEVE toernooien tellen mee. Daarmee vervalt de gastinlog
     // vanzelf zodra het toernooi is afgesloten, nog vóór de accounts worden
     // opgeruimd. De uitslag blijft daarna gewoon zichtbaar via de meekijklink.
-    if (await _probeerGastLogin(invoer, wachtwoord)) return;
+    const gast = await _probeerGastLogin(invoer, wachtwoord);
+    if (gast === true) return;
+    // v5.12.3: het vangnet. De inlog bestond en het wachtwoord klopte, maar het
+    // account doet in geen enkel lopend toernooi mee — een overblijfsel van een
+    // eerder toernooi. Tot v5.12.2 kwam zo iemand gewoon binnen en las hij
+    // "Geen actief toernooi", zonder enige aanwijzing wat er aan de hand was.
+    if (gast === 'ouder-toernooi') {
+      toonLoginFout('Deze inlog hoort bij een ouder toernooi — vraag de wedstrijdleiding om je inlognaam.');
+      return;
+    }
 
     const berichten = {
       'auth/user-not-found':    'Geen account gevonden',
@@ -439,6 +448,40 @@ function gastKernVan(invoer) {
     : `${schoon(delen[0])}.${schoon(delen.slice(1).join(' '))}`;
 }
 
+// ============================================================
+//  v5.12.3 — WELKE INLOG HOORT BIJ DEZE NAAM?
+// ------------------------------------------------------------
+//  Het toernooi bewaart bij elke gast zijn ECHTE inlognaam (`speler.login`) —
+//  dat is ook wat het beheerscherm en het briefje tonen. Deze functie zoekt
+//  daarin de speler die bij de ingetikte naam hoort.
+//
+//  ⚠ WAT ER MIS WAS. Tot v5.12.2 rekende het inlogscherm de inlognaam zélf uit:
+//  `<naamkern>.<toernooicode>`. Dat gaat mis zodra die naam al bezet was door
+//  een ouder toernooi met dezelfde (afgekapte) code — dan heet de speler in
+//  werkelijkheid `harry2.<code>`, maar het inlogscherm probeert `harry.<code>`
+//  en komt uit bij het OUDE account. Klopt het wachtwoord ook nog, dan is hij
+//  binnen in een toernooi dat niet meer loopt en leest hij "Geen actief
+//  toernooi". Gemeten op 13 september 2026.
+//
+//  Nu wordt er niets meer uitgerekend maar opgezocht. `codes` zijn alle
+//  schrijfwijzen waarmee een speler zichzelf mag aankondigen: zijn opgeslagen
+//  inlog zonder de toernooicode ("harry2"), of gewoon zijn naam ("harry").
+function gastLoginUitToernooi(toernooi, invoer) {
+  const kern = gastKernVan(invoer);
+  if (!kern) return null;
+  const code = toernooi?.gastCode;
+  const zonderCode = (login) => {
+    if (!login || !code) return login || '';
+    const staart = '.' + String(code).toLowerCase();
+    return login.toLowerCase().endsWith(staart) ? login.slice(0, -staart.length) : login;
+  };
+  const treffer = (toernooi?.spelers || []).find(sp => {
+    if (!sp.login) return false;
+    return zonderCode(sp.login) === kern || gastKernVan(sp.naam) === kern;
+  });
+  return treffer ? treffer.login : null;
+}
+
 async function _probeerGastLogin(invoer, wachtwoord) {
   try {
     if (!invoer || invoer.includes('@')) return false;
@@ -455,11 +498,33 @@ async function _probeerGastLogin(invoer, wachtwoord) {
     if (!kern) return false;
 
     const snap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
-    const codes = snap.docs.map(d => d.data().gastCode).filter(Boolean);
-    for (const code of codes) {
+    const toernooien = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // v5.12.3: eerst de opgeslagen inlognaam van het LOPENDE toernooi. Die is
+    // de waarheid; een zelf uitgerekende naam is een gok.
+    for (const t of toernooien) {
+      const login = gastLoginUitToernooi(t, invoer);
+      if (!login) continue;
+      try {
+        await signInWithEmailAndPassword(auth, `${login}${EMAIL_SUFFIX}`, wachtwoord);
+        return true;
+      } catch (_) { /* volgende toernooi proberen */ }
+    }
+
+    // Terugval voor toernooien van vóór v5.10.0, waar de spelers nog geen
+    // `login` dragen: dan alsnog de oude, uitgerekende schrijfwijze.
+    for (const code of toernooien.map(t => t.gastCode).filter(Boolean)) {
       try {
         await signInWithEmailAndPassword(auth, `${kern}.${code}${EMAIL_SUFFIX}`, wachtwoord);
-        return true;
+        // ⚠ De terugval rekent de naam uit en kan daarmee op het account van een
+        // OUDER toernooi uitkomen. Hoort deze uid nergens bij, dan meteen weer
+        // uitloggen — anders staat hij binnen te kijken naar een leeg scherm.
+        const uid = auth.currentUser?.uid;
+        const hoortErbij = toernooien.some(t =>
+          (t.spelers || []).some(sp => sp.uid === uid));
+        if (hoortErbij) return true;
+        await signOut(auth);
+        return 'ouder-toernooi';
       } catch (_) { /* volgende toernooi proberen */ }
     }
     return false;

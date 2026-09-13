@@ -60,4 +60,96 @@ const tweedeVol = G.gastLoginVan('Karel Gast2', CODE);
 check('ook met een achternaam', tweedeVol, 'karel.gast2.gastentoernooi');
 check('en ook die is in te tikken', komtUit('karel.gast2', 'Karel Gast2'), true);
 
+// ============================================================
+//  v5.12.3 — DE INLOGNAAM WORDT OPGEZOCHT, NIET UITGEREKEND
+// ------------------------------------------------------------
+//  Sierk, 13 september 2026: "en waarom maakt de app van sierk loginnaam
+//  sierk2? er was maar 1 speler in het toernooi die zo heet."
+//
+//  Omdat er nog een account van een eerdere ronde stond. Het toernooi bewaart
+//  de ECHTE inlognaam bij de speler; tot v5.12.2 rekende het inlogscherm hem
+//  zelf uit en kwam daarmee op het oude account uit — met het goede wachtwoord
+//  erbij kwam de speler dus binnen in een toernooi dat niet meer liep.
+// ============================================================
+console.log('\n══ DE INLOGNAAM WORDT OPGEZOCHT ══\n');
+
+const toernooiMetHarry2 = {
+  gastCode: 'clubkampioenscha',
+  spelers: [
+    { uid: 'u1', naam: 'Anna Speler' },                                  // clublid, geen login
+    { uid: 'u2', naam: 'Harry', gast: true, login: 'harry2.clubkampioenscha' },
+  ],
+};
+
+check('"Harry" vindt zijn ECHTE inlog, met cijfer en al',
+  G.gastLoginUitToernooi(toernooiMetHarry2, 'Harry'), 'harry2.clubkampioenscha');
+check('en niet de uitgerekende naam zonder cijfer',
+  G.gastLoginUitToernooi(toernooiMetHarry2, 'Harry') === 'harry.clubkampioenscha', false);
+check('hij mag ook intikken wat op zijn briefje staat',
+  G.gastLoginUitToernooi(toernooiMetHarry2, 'harry2'), 'harry2.clubkampioenscha');
+check('hoofdletters en punten maken niet uit',
+  G.gastLoginUitToernooi(toernooiMetHarry2, 'HARRY'), 'harry2.clubkampioenscha');
+check('iemand die niet meedoet vindt niets',
+  G.gastLoginUitToernooi(toernooiMetHarry2, 'Piet'), null);
+check('een clublid zonder eigen gastinlog ook niet',
+  G.gastLoginUitToernooi(toernooiMetHarry2, 'Anna Speler'), null);
+check('een leeg toernooi valt niet om',
+  G.gastLoginUitToernooi({}, 'Harry'), null);
+
+// De gewone gang van zaken: wat gastLoginVan schrijft, moet hier terugkomen.
+const gewoon = {
+  gastCode: 'zomercup',
+  spelers: ['Karel Gast', 'Bep'].map((naam, i) => ({
+    uid: 'g' + i, naam, gast: true, login: G.gastLoginVan(naam, 'zomercup'),
+  })),
+};
+check('wat de ene kant schrijft, vindt de andere kant terug',
+  ['Karel Gast', 'Karel.Gast', 'Bep'].map(n => G.gastLoginUitToernooi(gewoon, n)),
+  ['karel.gast.zomercup', 'karel.gast.zomercup', 'bep.zomercup']);
+
+// ── De gastcode moet uniek zijn ──────────────────────────────
+//  De code wordt afgekapt op 16 letters, dus twee toernooien die pas daarna
+//  verschillen kwamen op dezelfde code uit — en deelden daarmee hun inlognamen.
+console.log('\n══ DE GASTCODE IS UNIEK ══\n');
+
+check('twee lange namen kwamen op dezelfde code uit',
+  [G.toernooiCodeVan('Clubkampioenschap heren'), G.toernooiCodeVan('Clubkampioenschap dames')],
+  ['clubkampioenscha', 'clubkampioenscha']);
+check('een vrije code blijft gewoon zoals hij was',
+  G.uniekeGastCode('Zomercup', ['herfstcup']), 'zomercup');
+check('een bezette code krijgt een cijfer',
+  G.uniekeGastCode('Clubkampioenschap dames', ['clubkampioenscha']), 'clubkampioensch2');
+check('en blijft doortellen',
+  G.uniekeGastCode('Clubkampioenschap junioren',
+    ['clubkampioenscha', 'clubkampioensch2']), 'clubkampioensch3');
+check('nooit langer dan 16 tekens',
+  G.uniekeGastCode('Clubkampioenschap dames', ['clubkampioenscha']).length <= 16, true);
+check('een lege lijst is geen probleem', G.uniekeGastCode('Zomercup', []), 'zomercup');
+check('een naamloos toernooi houdt zijn terugval',
+  G.uniekeGastCode('', []), 'toernooi');
+
+// ── Het briefje voor de spelers ──────────────────────────────
+console.log('\n══ HET BRIEFJE ══\n');
+
+const briefje = G.gastloginTekst({
+  adres: 'https://sierkr.github.io/goyer-ladder/',
+  wachtwoord: 'goyer2026',
+  regels: [{ naam: 'Harry Jansen', inlog: 'harry' }, { naam: 'Karel Gast', inlog: 'karel.gast' }],
+});
+
+check('het wachtwoord staat er precies ÉÉN keer in',
+  (briefje.match(/goyer2026/g) || []).length, 1);
+check('en niet meer achter elke naam',
+  briefje.includes('wachtwoord: goyer2026'), false);
+check('beide spelers staan erop',
+  ['Harry Jansen', 'Karel Gast'].every(n => briefje.includes(n)), true);
+check('met hun inlognaam',
+  ['inlog: harry', 'inlog: karel.gast'].every(t => briefje.includes(t)), true);
+check('de tip spreekt over de SPELER, niet over de gast',
+  briefje.includes('de speler tikt'), true);
+check('het woord "gast" staat niet meer in de tip',
+  briefje.includes('de gast tikt'), false);
+check('een lijst zonder spelers valt niet om',
+  typeof G.gastloginTekst({ adres: 'x', wachtwoord: 'y', regels: [] }), 'string');
+
 module.exports = staat;

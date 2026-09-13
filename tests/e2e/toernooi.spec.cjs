@@ -337,6 +337,9 @@ test.describe('Toernooi — de hele route', () => {
       await naarToernooi(speler);
 
       const blok = (pagina) => pagina.locator('#toernooi-detail h2:has-text("Onderlinge stand")');
+      // v5.12.2: het klassement had geen kop en heeft die nu wel — juist dat
+      // ontbreken is waar het misverstand van v5.11.1 vandaan kwam.
+      const klassement = (pagina) => pagina.locator('#toernooi-detail h2:has-text("Klassement")');
 
       // Standaard aan: de deelnemer ziet het blok.
       await expect(blok(speler)).toBeVisible({ timeout: 15000 });
@@ -348,9 +351,46 @@ test.describe('Toernooi — de hele route', () => {
       await expect(speler.locator('#t-matrix')).toHaveCount(0);
       await expect(blok(coord), 'de coordinator ziet hem altijd').toBeVisible();
 
-      // En weer aan.
+      // ⚠ HIER GING HET MIS. De schakelaar dekte alleen het namenrooster. Het
+      // KLASSEMENT — plaats, naam, punten — verscheen bij de deelnemer zodra de
+      // dag was afgesloten, de uitslag was vrijgegeven, of het een strokeplay-dag
+      // was, en bleef daar staan hoe de schakelaar ook stond. Sierk, 13 september
+      // 2026: "de knop onderlinge stand tonen aan/uit heeft geen effect. zij
+      // blijven de stand zien, ook na refresh." En daarna: "met onderlinge stand
+      // heb ik steeds het klassement bedoeld."
+      //
+      // De uitslag wordt hier rechtstreeks in de database vrijgegeven. De knop
+      // "Uitslag dag 1" is grijs tot alle scores van alle spelers ingevuld zijn,
+      // en dit gaat niet over het invullen maar over wat er daarna zichtbaar is.
+      // De app leest gewoon de echte toestand uit de database.
+      const tDoc = (await beheerDb.collection('toernooien').get()).docs
+        .find(d => d.data().naam === 'Standblok');
+      // ⚠ `uitslagZichtbaar` staat op de DAG, niet op het toernooi. Het veld op
+      // het toernooi bestaat ook, maar het scherm leest dat van de dag.
+      const dagenUit = tDoc.data().dagen.map((d, i) =>
+        i === 0 ? { ...d, uitslagZichtbaar: true } : d);
+      await tDoc.ref.update({ dagen: dagenUit, uitslagZichtbaar: true });
+
+      // Allebei opnieuw openen: zo meet deze test wat er uit de BEWAARDE
+      // toestand wordt getekend, en niet of een scherm toevallig bijwerkt.
+      // Sierk zei er nadrukkelijk bij: "ook na refresh".
+      for (const p of [coord, speler]) {
+        await p.reload();
+        await p.waitForSelector('#login-scherm', { state: 'hidden', timeout: 25000 });
+        await naarToernooi(p);
+      }
+
+      await expect(klassement(coord), 'de coordinator ziet het klassement')
+        .toBeVisible({ timeout: 20000 });
+      await expect(klassement(speler), 'de deelnemer niet, want de schakelaar staat uit')
+        .toHaveCount(0, { timeout: 20000 });
+      await expect(speler.locator('#t-ranglijst'), 'ook de gegevens zelf niet').toHaveCount(0);
+      await expect(blok(speler), 'en het namenrooster nog steeds niet').toHaveCount(0);
+
+      // En weer aan: allebei de blokken komen terug.
       await coord.check('#t-matrix-zichtbaar-chk');
       await expect(blok(speler)).toBeVisible({ timeout: 20000 });
+      await expect(klassement(speler), 'en het klassement ook').toBeVisible({ timeout: 20000 });
     } finally {
       await ctxCoord.close(); await ctxSpeler.close();
     }
@@ -1049,6 +1089,200 @@ test.describe('Toernooi — de hele route', () => {
     await keuzes.nth(0).selectOption('matchplay');
     await expect(ranking, 'weer helemaal matchplay: de ranking-ladder mag weer').toBeVisible();
     await expect(uitleg,  'en de strokeplay-uitleg is weg').toBeHidden();
+  });
+
+  // ============================================================
+  //  v5.12.2 — OOK OP EEN STROKEPLAY-DAG
+  // ------------------------------------------------------------
+  //  Op een strokeplay-dag staat het klassement er vanaf de eerste hole, zonder
+  //  dat de dag hoeft te zijn afgesloten (v5.12.0: `dagModus === 'strokeplay'`).
+  //  Dat is precies het geval waarin de schakelaar het hardst nodig is, en het
+  //  geval waarin hij tot v5.12.1 het minst deed. Het namenrooster bestaat hier
+  //  niet — bij strokeplay speel je niet tegen elkaar — dus dit is de enige test
+  //  die het klassement helemaal alleen bewaakt.
+  // ============================================================
+  test('STAND UIT: ook het klassement van een strokeplay-dag verdwijnt', async ({ browser }) => {
+    test.setTimeout(200000);
+    const ctxCoord = await browser.newContext();
+    const ctxSpeler = await browser.newContext();
+    try {
+      const coord = await ctxCoord.newPage();
+      jaOpAlles(coord);
+      await inloggen(coord, 'coord@MPladder.stb');
+      await naarToernooi(coord);
+      await vulAanmaakformulier(coord, 'Strokestand', 1);
+      await coord.locator('#t-dag-blokken .t-dag-modus').first().selectOption('strokeplay');
+      for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(coord, n);
+      await naarFlightIndeling(coord);
+      await coord.click('#flight-modal-start-btn');
+      await expect(coord.locator('#toernooi-detail')).toContainText('Strokestand', { timeout: 20000 });
+
+      const speler = await ctxSpeler.newPage();
+      jaOpAlles(speler);
+      await inloggen(speler, 'anna@MPladder.stb');
+      await naarToernooi(speler);
+
+      const klassement = (p) => p.locator('#toernooi-detail h2:has-text("Klassement")');
+      await expect(klassement(speler), 'bij strokeplay staat het klassement er meteen')
+        .toBeVisible({ timeout: 20000 });
+      await expect(speler.locator('#toernooi-detail h2:has-text("Onderlinge stand")'),
+        'en het namenrooster juist niet — je speelt niet tegen elkaar').toHaveCount(0);
+
+      await coord.uncheck('#t-matrix-zichtbaar-chk');
+      await expect(klassement(speler), 'schakelaar uit: weg bij de deelnemer')
+        .toHaveCount(0, { timeout: 20000 });
+      await expect(klassement(coord), 'en de coordinator houdt hem').toBeVisible();
+
+      await coord.check('#t-matrix-zichtbaar-chk');
+      await expect(klassement(speler), 'en weer terug').toBeVisible({ timeout: 20000 });
+    } finally {
+      await ctxCoord.close(); await ctxSpeler.close();
+    }
+  });
+
+  // ============================================================
+  //  v5.12.3 — DE GASTINLOG WIJST NAAR HET JUISTE TOERNOOI
+  // ------------------------------------------------------------
+  //  Sierk, 13 september 2026: "een wachtwoord maakt toch dat spelers aan het
+  //  juiste toernooi gekoppeld worden?" Nee — het WACHTWOORD opent alleen het
+  //  account; de koppeling loopt via de toernooicode in de inlognaam. En daar
+  //  zaten drie gaten in, alle drie hier nagespeeld.
+  // ============================================================
+
+  // Maakt een toernooi met één gast, via het echte aanmaakscherm.
+  async function toernooiMetGast(pagina, toernooinaam, gastnaam, wachtwoord) {
+    await naarToernooi(pagina);
+    await vulAanmaakformulier(pagina, toernooinaam, 1);
+    await kiesSpeler(pagina, 'Anna Speler');
+    await pagina.fill('#t-gast-wachtwoord', wachtwoord);
+    await pagina.click('#toernooi-setup-wrap button:has-text("Gastspeler toevoegen")');
+    await expect(pagina.locator('#t-geselecteerde-spelers')).toContainText(gastnaam.split(' ')[0]);
+    await naarFlightIndeling(pagina);
+    await pagina.click('#flight-modal-start-btn');
+    await expect(pagina.locator('#toernooi-detail')).toContainText(toernooinaam, { timeout: 25000 });
+    await expect.poll(async () => {
+      const a = (await beheerDb.collection('toernooien').get()).docs
+        .map(d => d.data()).filter(d => d.status === 'actief');
+      return a.length === 1 ? (a[0].spelers || []).filter(sp => sp.gast && sp.login).length : 0;
+    }, { timeout: 45000, message: 'de gast heeft een inlog gekregen' }).toBe(1);
+    return (await beheerDb.collection('toernooien').get()).docs
+      .map(d => ({ id: d.id, ...d.data() })).find(d => d.status === 'actief');
+  }
+
+  async function annuleerLopend(pagina) {
+    await pagina.click('#toernooi-detail button:has-text("Toernooi annuleren")');
+    await expect.poll(async () =>
+      (await beheerDb.collection('toernooien').get()).docs
+        .filter(d => d.data().status === 'actief').length,
+      { timeout: 20000 }).toBe(0);
+  }
+
+  test('GASTINLOG: twee toernooien met dezelfde naam wijzen niet naar elkaar', async ({ page, browser }) => {
+    test.setTimeout(300000);
+    const antwoorden = ['Harry', '12', 'Harry', '12'];
+    page.on('dialog', async d => {
+      if (d.type() === 'prompt') return d.accept(antwoorden.shift() ?? '');
+      return d.accept();
+    });
+    await inloggen(page, 'coord@MPladder.stb');
+
+    // Vorig jaar Clubkampioenschap, dit jaar weer — zelfde naam, zelfde
+    // wachtwoord. Het oude toernooi wordt geannuleerd, niet verwijderd, dus het
+    // oude account van Harry blijft bestaan.
+    const t1 = await toernooiMetGast(page, 'Clubkampioenschap', 'Harry', 'goyer2026');
+    const uid1 = t1.spelers.find(sp => sp.gast).uid;
+    await annuleerLopend(page);
+    const t2 = await toernooiMetGast(page, 'Clubkampioenschap', 'Harry', 'goyer2026');
+    const gast2 = t2.spelers.find(sp => sp.gast);
+    expect(gast2.uid, 'de nieuwe Harry is een ander account').not.toBe(uid1);
+
+    // ⚠ HIER GING HET MIS tot v5.12.2. Het inlogscherm rekende zijn inlognaam
+    // uit (`harry.<code>`) in plaats van hem op te zoeken. Die naam was bezet
+    // door het OUDE toernooi, dus kwam Harry daar binnen — met het juiste
+    // wachtwoord, dus zonder één waarschuwing — en las "Geen actief toernooi".
+    const harry = await (await browser.newContext()).newPage();
+    await harry.goto('/index.html');
+    await harry.waitForSelector('#login-scherm', { state: 'visible' });
+    await harry.fill('#login-email', 'Harry');
+    await harry.fill('#login-pass', 'goyer2026');
+    await harry.click('#login-scherm button.btn-primary');
+    await harry.waitForSelector('#login-scherm', { state: 'hidden', timeout: 25000 });
+    await expect(harry.locator('#page-toernooi'), 'Harry komt in het LOPENDE toernooi')
+      .toContainText('Jouw scorekaart', { timeout: 25000 });
+    await expect(harry.locator('#page-toernooi')).not.toContainText('Geen actief toernooi');
+    await harry.close();
+  });
+
+  test('GASTINLOG: opnieuw instellen levert geen sierk2 op', async ({ page }) => {
+    test.setTimeout(240000);
+    const antwoorden = ['Sierk', '10'];
+    page.on('dialog', async d => {
+      if (d.type() === 'prompt') return d.accept(antwoorden.shift() ?? '');
+      return d.accept();
+    });
+    await inloggen(page, 'coord@MPladder.stb');
+
+    const t1 = await toernooiMetGast(page, 'Voorjaarscup', 'Sierk', 'goyer2026');
+    expect(t1.spelers.find(sp => sp.gast).login, 'de eerste keer gewoon zijn naam')
+      .toBe('sierk.voorjaarscup');
+
+    // ⚠ HIER GING HET MIS. "Toernooi opnieuw instellen" gooit het toernooi weg
+    // maar liet de gastaccounts staan. Opnieuw starten met dezelfde naam gaf
+    // `sierk2`, en nog een keer `sierk3` — terwijl er maar één Sierk meedeed.
+    // Sierk, 13 september 2026: "er was maar 1 speler in het toernooi die zo
+    // heet."
+    await page.click('#toernooi-detail button:has-text("Toernooi opnieuw instellen")');
+    await expect(page.locator('#toernooi-setup-wrap')).toBeVisible({ timeout: 20000 });
+    await expect.poll(async () =>
+      (await beheerDb.collection('toernooien').get()).docs.length, { timeout: 25000 }).toBe(0);
+
+    await page.fill('#t-gast-wachtwoord', 'goyer2026');
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect.poll(async () => {
+      const a = (await beheerDb.collection('toernooien').get()).docs
+        .map(d => d.data()).filter(d => d.status === 'actief');
+      return a.length === 1 ? (a[0].spelers || []).filter(sp => sp.gast && sp.login).length : 0;
+    }, { timeout: 45000 }).toBe(1);
+
+    const t2 = (await beheerDb.collection('toernooien').get()).docs
+      .map(d => d.data()).find(d => d.status === 'actief');
+    expect(t2.spelers.filter(sp => sp.naam === 'Sierk').length, 'er doet één Sierk mee').toBe(1);
+    expect(t2.spelers.find(sp => sp.gast).login, 'dus geen cijfer achter zijn naam')
+      .toBe('sierk.voorjaarscup');
+  });
+
+  test('HERSTELLEN: kan niet zolang er een toernooi loopt', async ({ page }) => {
+    test.setTimeout(240000);
+    jaOpAlles(page);
+
+    // Een geannuleerd toernooi klaarzetten, zoals er een in de database staat
+    // nadat de coordinator er een heeft geannuleerd.
+    const oud = await beheerDb.collection('toernooien').add({
+      status: 'geannuleerd', naam: 'Oudje', modus: 'matchplay', spelers: [],
+      dagen: [{ dagNr: 1, datum: '2026-10-01', baan: 'De Goyer', holes: [],
+        flights: [], scores: {}, afgerond: false }],
+      actiefDagNr: 1, timestamp: Date.now(),
+    });
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Nieuwtje', 1);
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Nieuwtje', { timeout: 25000 });
+
+    // ⚠ HIER GING HET MIS. Bij het AANMAKEN weigert de app sinds v5.9.0 een
+    // tweede actief toernooi; bij het HERSTELLEN controleerde niets dat. Er
+    // stonden dan twee actieve toernooien naast elkaar, en welke een speler te
+    // zien kreeg was willekeurig — `alleToernooien[0]` uit een zoekopdracht
+    // zonder sorteervolgorde.
+    await page.evaluate((id) => window.herstelGeannuleerdToernooi(id), oud.id);
+    await page.waitForTimeout(4000);
+    const actief = (await beheerDb.collection('toernooien').get()).docs
+      .filter(d => d.data().status === 'actief').map(d => d.data().naam);
+    expect(actief, 'er blijft precies één toernooi actief').toEqual(['Nieuwtje']);
   });
 
 });

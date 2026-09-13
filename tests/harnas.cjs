@@ -209,12 +209,18 @@ function laadMarkerKern() {
 // ============================================================
 function laadGastloginKern() {
   const maak = new Function(`
-    ${knip('js/toernooi.js', ['splitsNaam', 'gastLoginVan', 'toernooiCodeVan'])}
-    return { splitsNaam, gastLoginVan, toernooiCodeVan };
+    ${knip('js/toernooi.js', ['splitsNaam', 'gastLoginVan', 'toernooiCodeVan',
+      // v5.12.3: de gastcode moet uniek zijn, en het briefje dat de spelers
+      // krijgen wordt hier opgemaakt.
+      'uniekeGastCode', 'gastloginTekst'])}
+    return { splitsNaam, gastLoginVan, toernooiCodeVan, uniekeGastCode, gastloginTekst };
   `)();
+  // v5.12.3: gastLoginUitToernooi zoekt de ECHTE inlognaam op in het toernooi,
+  // in plaats van hem uit te rekenen. Het is de tegenhanger van gastLoginVan:
+  // wat de ene schrijft, moet de andere terugvinden.
   const herken = new Function(`
-    ${knip('js/auth.js', ['gastKernVan'])}
-    return { gastKernVan };
+    ${knip('js/auth.js', ['gastKernVan', 'gastLoginUitToernooi'])}
+    return { gastKernVan, gastLoginUitToernooi };
   `)();
   return { ...maak, ...herken };
 }
