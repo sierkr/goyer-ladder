@@ -105,64 +105,70 @@ function renderToernooi() {
         uid && (t.spelers || []).some(s => s.uid === uid)
       );
 
-  const wrap = document.getElementById('toernooi-actief-wrap');
+  const wrap  = document.getElementById('toernooi-actief-wrap');
   const setup = document.getElementById('toernooi-setup-wrap');
+  const startWrap = document.getElementById('toernooi-start-wrap');
 
-  // v5.9.0: het aanmaakformulier verdwijnt zodra er een toernooi loopt.
+  // ============================================================
+  //  HET TABBLAD TOERNOOI HEEFT EEN STARTSCHERM  (v5.24.0)
+  // ------------------------------------------------------------
+  //  Sierk, 14 september 2026: "de toernooi tab zelf moet een beginscherm
+  //  hebben. met daarin nieuw toernooi, concept en oud."
   //
-  // WAT ER MIS WAS: hier stond `setup.style.display = isBeheerder ? 'block' : 'none'`
-  // zonder te kijken of er al een toernooi draait. Boven een vol lopend toernooi
-  // stond dus "Nog geen deelnemers geselecteerd" — Sierk las dat als een leeg
-  // toernooi terwijl er eronder negen spelers in vier flights zaten. Erger: je
-  // kon er een TWEEDE actief toernooi mee starten, en herlaadToernooien() pakte
-  // dan `alleToernooien[0]` uit een query zonder sorteervolgorde. Welk toernooi
-  // je te zien kreeg was dan willekeurig.
+  //  ⚠ WAT ER MIS WAS. Er wás geen overzicht. Je viel meteen IN een toernooi,
+  //  en alles wat daar niet in paste was er los omheen gebouwd: een rij
+  //  naamknoppen bovenaan, een aanmaakscherm dat half zichtbaar boven een lopend
+  //  toernooi hing, een knop "+ Nieuw toernooi aanmaken" om dat weer op te
+  //  bergen, en onderaan "🗂 Eerdere toernooien tonen". Vier losse oplossingen
+  //  voor één ontbrekend scherm.
   //
-  // Het formulier is niet weg, alleen opgeborgen achter één knop.
-  const heeftLopendToernooi = mijnToernooien.length > 0;
-  const toonFormulier = isBeheerder && (!heeftLopendToernooi || window._toonNieuwToernooiFormulier === true);
-  setup.style.display = toonFormulier ? 'block' : 'none';
-  if (toonFormulier) initToernooiSetup();
-  renderGeannuleerdeKnop(isBeheerder && toonFormulier); // v4.0.0 (fix 7.2)
-  renderNieuwToernooiKnop(isBeheerder && heeftLopendToernooi && !toonFormulier); // v5.9.0
+  //  Drie schermen nu, met `_toernooiScherm` als schakelaar:
+  //    start   ➕ Nieuw toernooi · Loopt nu · Concept · Oud
+  //    nieuw   het aanmaakscherm
+  //    detail  het toernooi zelf, met "← Toernooien" terug
+  //
+  //  ⚠ Voor een DEELNEMER bestaat het startscherm niet: die heeft niets te
+  //  kiezen en komt meteen in het lopende toernooi, precies zoals voorheen.
+  const scherm = !isBeheerder ? 'detail' : (window._toernooiScherm || 'start');
+  const heeftGeldigeKeuze = !!actieveToernooiId && mijnToernooien.some(t => t.id === actieveToernooiId);
+
+  if (isBeheerder && scherm === 'nieuw') {
+    startWrap.style.display = 'none';
+    wrap.style.display = 'none';
+    setup.style.display = 'block';
+    initToernooiSetup();
+    return;
+  }
+
+  if (isBeheerder && (scherm === 'start' || !heeftGeldigeKeuze)) {
+    window._toernooiScherm = 'start';
+    setup.style.display = 'none';
+    wrap.style.display = 'none';
+    startWrap.style.display = 'block';
+    renderToernooiStart(mijnToernooien);
+    return;
+  }
+
+  // ── Het toernooi zelf ──────────────────────────────────────
+  setup.style.display = 'none';
+  startWrap.style.display = 'none';
 
   if (mijnToernooien.length > 0) {
     wrap.style.display = 'block';
 
-    let html = '';
-    if (isBeheerder && mijnToernooien.length > 1) {
-      html += `<div style="display:flex;gap:8px;overflow-x:auto;padding:12px 16px;border-bottom:1px solid var(--border);scrollbar-width:none">`;
-      // v5.22.0: de toestand erachter. Twee toernooien met dezelfde naam waren
-      // op deze knoppen niet uit elkaar te houden — en die komen voor, zoals de
-      // dubbele "Cie on tour 2026" op live liet zien.
-      mijnToernooien.forEach(t => {
-        const actief = t.id === actieveToernooiId;
-        // v5.23.0: dezelfde woorden als bij een dag — concept of bezig — plus de
-        // datum van dag 1. Twee toernooien met dezelfde naam zijn anders niet uit
-        // elkaar te houden, en die kwamen op live echt voor.
-        const staat = toernooiIsConcept(t) ? 'concept' : 'bezig';
-        const datum = (t.dagen || [])[0]?.datum || '';
-        html += `<button onclick="selecteerToernooi('${escAttr(t.id)}')" style="flex-shrink:0;padding:6px 14px;border-radius:20px;border:1.5px solid ${actief ? 'var(--green)' : 'var(--border)'};background:${actief ? 'var(--green)' : 'white'};color:${actief ? 'white' : 'var(--dark)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">${esc(t.naam)} <span style="opacity:.75;font-size:11px">· ${staat}${datum ? ' · ' + esc(datum) : ''}</span></button>`;
-      });
-      html += '</div>';
-    }
-    wrap.innerHTML = html + '<div id="toernooi-detail"></div>';
+    // v5.24.0: de rij naamknoppen is weg — kiezen doe je op het startscherm.
+    // Hier staat alleen nog de weg terug.
+    const terug = isBeheerder ? `
+      <div style="padding:10px 16px 0">
+        <button class="btn btn-ghost btn-sm" onclick="toonToernooiStart()" style="font-size:13px">← Toernooien</button>
+      </div>` : '';
+    wrap.innerHTML = terug + '<div id="toernooi-detail"></div>';
 
-    // ============================================================
-    //  WELK TOERNOOI KRIJG JE TE ZIEN  (v5.22.0)
-    // ------------------------------------------------------------
-    //  ⚠ WAT ER MIS WAS, gemeten op live. Hier stond `mijnToernooien[0]` —
-    //  het eerste uit een zoekopdracht ZONDER sorteervolgorde. Zolang er maar
-    //  één toernooi kon bestaan was dat onschuldig. Sinds v5.21.0 kun je een
-    //  volgend toernooi vooruit klaarzetten, en toen werd het willekeur: een
-    //  speler die inlogde kreeg "Dag 1 is nog niet gestart" te zien terwijl het
-    //  toernooi waar hij in meespeelt gewoon liep. Sierk: "een speler die
-    //  inlogt krijgt bericht dat dag 1 nog niet is gestart terwijl dat wel zo
-    //  is."
-    //
-    //  Nu: het toernooi dat LOOPT wint. Wacht er niets en loopt er niets, dan
-    //  valt hij terug op de eerste — er moet iets op het scherm staan.
-    if (!actieveToernooiId || !mijnToernooien.find(t => t.id === actieveToernooiId)) {
+    //  ⚠ v5.22.0: hier stond `mijnToernooien[0]` — het eerste uit een
+    //  zoekopdracht ZONDER sorteervolgorde. Een speler die inlogde kreeg
+    //  "Dag 1 is nog niet gestart" terwijl zijn toernooi liep. Het toernooi dat
+    //  LOOPT wint; is er geen, dan de eerste.
+    if (!heeftGeldigeKeuze) {
       const kies = mijnToernooien.find(toernooiLoopt) || mijnToernooien[0];
       store.actieveToernooiId = kies.id;
       store.toernooiData = kies;
@@ -170,28 +176,116 @@ function renderToernooi() {
     renderToernooiActief();
   } else {
     wrap.style.display = 'none';
-    // Setup formulier alleen voor beheerder — gewone spelers zien nooit het aanmaakscherm
-    setup.style.display = isBeheerder ? 'block' : 'none';
-    if (isBeheerder) {
-      window._toonNieuwToernooiFormulier = false;
-      initToernooiSetup();
-    } else {
-      // v3.0.0-11.73: wachtmelding voor spelers zonder actief toernooi.
-      // v5.12.1: het weghalen staat nu bovenaan deze functie, zodat het ook
-      // gebeurt als er wél weer een toernooi is.
-      const emptyDiv = document.createElement('div');
-      emptyDiv.id = 'toernooi-leeg-melding';
-      emptyDiv.className = 'card';
-      emptyDiv.innerHTML = '<div class="empty" style="padding:32px 20px">' +
-        '<div class="empty-icon">🏌️</div>' +
-        '<p style="font-size:15px;font-weight:600;margin-bottom:8px">Geen actief toernooi</p>' +
-        '<p style="font-size:13px;color:var(--mid)">Op dit moment is er geen toernooi actief, wacht hier totdat het toernooi begint.</p>' +
-        '</div>';
-      const pageEl = document.getElementById('page-toernooi');
-      if (pageEl) pageEl.appendChild(emptyDiv);
-    }
+    // v3.0.0-11.73: wachtmelding voor spelers zonder actief toernooi.
+    // v5.12.1: het weghalen staat bovenaan deze functie, zodat het ook gebeurt
+    // als er wél weer een toernooi is.
+    const emptyDiv = document.createElement('div');
+    emptyDiv.id = 'toernooi-leeg-melding';
+    emptyDiv.className = 'card';
+    emptyDiv.innerHTML = '<div class="empty" style="padding:32px 20px">' +
+      '<div class="empty-icon">🏌️</div>' +
+      '<p style="font-size:15px;font-weight:600;margin-bottom:8px">Geen actief toernooi</p>' +
+      '<p style="font-size:13px;color:var(--mid)">Op dit moment is er geen toernooi actief, wacht hier totdat het toernooi begint.</p>' +
+      '</div>';
+    const pageEl = document.getElementById('page-toernooi');
+    if (pageEl) pageEl.appendChild(emptyDiv);
   }
 }
+
+// ============================================================
+//  HET STARTSCHERM  (v5.24.0)
+// ------------------------------------------------------------
+//  Vier blokken, in de volgorde waarin je ze nodig hebt.
+// ============================================================
+function renderToernooiStart(lijst) {
+  const el = document.getElementById('toernooi-start-wrap');
+  if (!el) return;
+
+  const loopt   = (lijst || []).filter(toernooiLoopt);
+  const concept = (lijst || []).filter(toernooiIsConcept);
+
+  const regel = (t, knoppen) => {
+    const datum = (t.dagen || [])[0]?.datum || '';
+    return `
+    <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0;cursor:pointer" onclick="openToernooiUitStart('${escAttr(t.id)}')">
+        <div style="font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.naam || 'Naamloos')}</div>
+        <div style="font-size:11px;color:var(--light)">
+          ${datum ? esc(datum) + ' · ' : ''}${(t.dagen || []).length} dag(en) · ${(t.spelers || []).length} spelers
+        </div>
+      </div>
+      ${knoppen || ''}
+      <button class="btn btn-sm btn-ghost" onclick="openToernooiUitStart('${escAttr(t.id)}')" style="flex-shrink:0">Openen →</button>
+    </div>`;
+  };
+
+  el.innerHTML = `
+    <div style="padding:0 0 12px">
+      <button class="btn btn-primary btn-block" onclick="openNieuwToernooi()">➕ Nieuw toernooi</button>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2>Loopt nu</h2></div>
+      <div class="card-body" style="padding:0">
+        ${loopt.length === 0
+          ? '<p style="font-size:13px;color:var(--light);padding:12px 14px">Er wordt op dit moment niet gespeeld.</p>'
+          : loopt.map(t => regel(t)).join('')}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>Concept</h2>
+        <span style="font-size:12px;color:var(--mid)">${concept.length}</span>
+      </div>
+      <div class="card-body" style="padding:0">
+        ${concept.length === 0
+          ? '<p style="font-size:13px;color:var(--light);padding:12px 14px">Niets klaargezet.</p>'
+          : concept.map(t => regel(t, heeftGeenScores(t)
+              ? `<button class="btn btn-sm btn-ghost" style="color:var(--red);flex-shrink:0" title="Verwijderen"
+                   onclick="event.stopPropagation();verwijderConceptUitStart('${escAttr(t.id)}')">🗑</button>`
+              : '')).join('')}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2>Oud</h2></div>
+      <div id="toernooi-geannuleerd-lijst"></div>
+    </div>`;
+
+  // Afgeronde en geannuleerde toernooien komen uit een eigen zoekopdracht —
+  // `alleToernooien` bevat alleen wat actief is.
+  laadGeannuleerdeToernooien();
+}
+
+function toonToernooiStart() {
+  window._toernooiScherm = 'start';
+  window._tTabblad = null;
+  renderToernooi();
+}
+window.toonToernooiStart = toonToernooiStart;
+
+function openNieuwToernooi() {
+  window._toernooiScherm = 'nieuw';
+  window._tSetupTab = 'toernooi';
+  renderToernooi();
+}
+window.openNieuwToernooi = openNieuwToernooi;
+
+function openToernooiUitStart(id) {
+  window._toernooiScherm = 'detail';
+  selecteerToernooi(id);
+}
+window.openToernooiUitStart = openToernooiUitStart;
+
+// Verwijderen kan ook rechtstreeks vanaf het startscherm — dat is precies waar
+// je een vergeten concept tegenkomt.
+async function verwijderConceptUitStart(id) {
+  window._toernooiScherm = 'detail';
+  selecteerToernooi(id);
+  await verwijderConceptToernooi();
+}
+window.verwijderConceptUitStart = verwijderConceptUitStart;
 
 // ============================================================
 //  SPELER LIVE SCORE OPSLAAN — v3.0.0-11.73
@@ -2098,6 +2192,7 @@ async function startToernooi() {
     store.alleToernooien = [nieuweToernooi, ...alleToernooien];
     store.toernooiData = nieuweToernooi;
     store.actieveToernooiId = newRef.id;
+    window._toernooiScherm = 'detail';   // v5.24.0: meteen het nieuwe toernooi in
 
     const unsub = onSnapshot(doc(db, 'toernooien', newRef.id), (snap) => {
       if (!snap.exists()) return;
@@ -3557,9 +3652,12 @@ function alleScoresIngevuld(t, dag) {
 //  NAVIGATIE HELPERS
 // ============================================================
 
+// v5.24.0: "het overzicht" is sinds deze versie een echt scherm — het
+// startscherm met Nieuw toernooi, Loopt nu, Concept en Oud.
 function gaNaarToernooiOverzicht() {
   store.actieveToernooiId = null;
   store.toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
+  window._toernooiScherm = 'start';
   renderToernooi();
 }
 
@@ -5659,6 +5757,7 @@ async function verwijderConceptToernooi() {
     store.actieveToernooiId = toernooiData?.id || null;
     window._bekijkDagNr = null;
     window._tTabblad = null;
+    window._toernooiScherm = 'start';   // v5.24.0
     renderToernooi();
     toast('Toernooi verwijderd');
   } catch(e) { toernooiFout('Toernooi verwijderen', e); }
@@ -5714,8 +5813,9 @@ async function annuleerToernooi() {
     store.toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
     store.actieveToernooiId = toernooiData?.id || null;
     window._bekijkDagNr = null;
+    window._toernooiScherm = 'start';   // v5.24.0: terug naar het overzicht
     renderToernooi();
-    toast('Toernooi geannuleerd — herstelbaar via Geannuleerde toernooien');
+    toast('Toernooi geannuleerd — staat nu onder Oud');
   } catch(e) { toernooiFout('Toernooi annuleren', e); }
 }
 
@@ -5726,45 +5826,15 @@ async function annuleerToernooi() {
 // Deze sectie maakt ze zichtbaar voor de beheerder, met de keuze om te
 // herstellen (status terug naar actief) of definitief te verwijderen.
 
-// v5.9.0: zolang er een toernooi loopt is het aanmaakformulier opgeborgen.
-// Deze knop haalt het terug — bewust één extra handeling, zodat niemand per
-// ongeluk een tweede toernooi naast het lopende begint.
-function renderNieuwToernooiKnop(toon) {
-  let sectie = document.getElementById('toernooi-nieuw-sectie');
-  if (!toon) { if (sectie) sectie.remove(); return; }
-  if (sectie) return;
-  sectie = document.createElement('div');
-  sectie.id = 'toernooi-nieuw-sectie';
-  sectie.innerHTML = `
-    <button class="btn btn-ghost btn-block" style="font-size:13px;color:var(--mid);margin-top:4px" onclick="toonNieuwToernooiFormulier()">
-      ➕ Nieuw toernooi aanmaken
-    </button>`;
-  const pageEl = document.getElementById('page-toernooi');
-  if (pageEl) pageEl.appendChild(sectie);
-}
-
-function toonNieuwToernooiFormulier() {
-  window._toonNieuwToernooiFormulier = true;
-  renderToernooi();
-  const setup = document.getElementById('toernooi-setup-wrap');
-  if (setup) setup.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-window.toonNieuwToernooiFormulier = toonNieuwToernooiFormulier;
-
-function renderGeannuleerdeKnop(isBeheerder) {
-  let sectie = document.getElementById('toernooi-geannuleerd-sectie');
-  if (!isBeheerder) { if (sectie) sectie.remove(); return; }
-  if (sectie) return;
-  sectie = document.createElement('div');
-  sectie.id = 'toernooi-geannuleerd-sectie';
-  sectie.innerHTML = `
-    <button class="btn btn-ghost btn-block" style="font-size:13px;color:var(--mid);margin-top:4px" onclick="laadGeannuleerdeToernooien()">
-      🗂 Eerdere toernooien tonen
-    </button>
-    <div id="toernooi-geannuleerd-lijst"></div>`;
-  const pageEl = document.getElementById('page-toernooi');
-  if (pageEl) pageEl.appendChild(sectie);
-}
+// v5.24.0: hier stonden renderNieuwToernooiKnop(), toonNieuwToernooiFormulier()
+// en renderGeannuleerdeKnop() — drie losse knoppen die onderaan de pagina werden
+// geplakt: "➕ Nieuw toernooi aanmaken" om het aanmaakscherm terug te halen, en
+// "🗂 Eerdere toernooien tonen" om de oude toernooien te laten zien.
+//
+// Alle drie waren een oplossing voor het ontbreken van een overzicht. Dat
+// overzicht bestaat nu (renderToernooiStart), met Nieuw toernooi, Loopt nu,
+// Concept en Oud als vaste blokken. laadGeannuleerdeToernooien() hieronder
+// vult daar het blok "Oud" — die functie blijft, alleen de knop eromheen is weg.
 
 async function laadGeannuleerdeToernooien() {
   const lijst = document.getElementById('toernooi-geannuleerd-lijst');
@@ -5844,8 +5914,7 @@ async function herstelGeannuleerdToernooi(id) {
     store.actieveToernooiId = id;
     store.toernooiData = alleToernooien.find(t => t.id === id) || null;
     window._bekijkDagNr = null;
-    const lijst = document.getElementById('toernooi-geannuleerd-lijst');
-    if (lijst) lijst.innerHTML = '';
+    window._toernooiScherm = 'detail';   // v5.24.0: het herstelde toernooi meteen open
     renderToernooi();
     toast('Toernooi hersteld ✓');
   } catch(e) { console.error('herstelGeannuleerdToernooi mislukt:', e); toast('Herstellen mislukt, probeer opnieuw'); }

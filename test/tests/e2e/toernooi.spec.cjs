@@ -138,11 +138,23 @@ async function naarFlightIndeling(page) {
 
 // De kaart "Nieuw Toernooi" staat standaard dichtgeklapt. Een mens klikt hem
 // open; zolang dat niet gebeurt onderschept de kop alle klikken eronder.
+// v5.24.0: het tabblad TOERNOOI opent op een STARTSCHERM (Nieuw toernooi ·
+// Loopt nu · Concept · Oud). Het aanmaakscherm zit achter "➕ Nieuw toernooi" —
+// precies zoals een coordinator het doet.
 async function openAanmaakscherm(page) {
+  const nieuwKnop = page.locator('#toernooi-start-wrap button:has-text("Nieuw toernooi")');
+  if (await nieuwKnop.count()) await nieuwKnop.click();
   const kop = page.locator('#toernooi-setup-wrap .card-header.inklapbaar').first();
   await kop.waitFor({ state: 'visible', timeout: 10000 });
   if (await kop.evaluate(el => el.classList.contains('ingeklapt'))) await kop.click();
   await expect(kop).not.toHaveClass(/ingeklapt/);
+}
+
+// Terug naar het startscherm vanuit een geopend toernooi.
+async function naarToernooiStart(page) {
+  const terug = page.locator('#toernooi-actief-wrap button:has-text("← Toernooien")');
+  if (await terug.count()) await terug.click();
+  await expect(page.locator('#toernooi-start-wrap')).toBeVisible({ timeout: 10000 });
 }
 
 // Vult het aanmaakformulier voor een toernooi van `dagen` dagen.
@@ -264,9 +276,15 @@ test.describe('Toernooi — de hele route', () => {
     // AANMAAKFORMULIER OPGEBORGEN (fout 3 van 11-9-2026): naast een lopend
     // toernooi hoort geen leeg aanmaakformulier met "Nog geen deelnemers
     // geselecteerd" — Sierk las dat als een leeg toernooi.
+    // v5.24.0: dat is nu een gevolg van de schermindeling: je bent IN een
+    // toernooi, en het aanmaakscherm woont achter "➕ Nieuw toernooi" op het
+    // startscherm. De drie losse knoppen die dit vroeger regelden bestaan niet
+    // meer.
     await expect(page.locator('#toernooi-setup-wrap')).toBeHidden();
-    await expect(page.locator('#toernooi-nieuw-sectie')).toBeVisible();
-    await expect(page.locator('#toernooi-geannuleerd-sectie')).toHaveCount(0);
+    await expect(page.locator('#toernooi-start-wrap')).toBeHidden();
+    await naarToernooiStart(page);
+    await expect(page.locator('#toernooi-start-wrap'),
+      'het startscherm toont het lopende toernooi').toContainText('Loopt nu');
 
     expect(fouten, 'geen JavaScript-fouten tijdens de hele route').toEqual([]);
   });
@@ -546,6 +564,9 @@ test.describe('Toernooi — de hele route', () => {
     await page.reload();
     await page.waitForSelector('#login-scherm', { state: 'hidden', timeout: 20000 });
     await naarToernooi(page);
+    // v5.24.0: je landt op het startscherm; het halfafgemaakte formulier zit
+    // achter "➕ Nieuw toernooi", waar je het ook zelf zou zoeken.
+    await openAanmaakscherm(page);
 
     // Het formulier is hersteld…
     await expect(page.locator('#t-naam')).toHaveValue('Concept', { timeout: 15000 });
@@ -1209,9 +1230,8 @@ test.describe('Toernooi — de hele route', () => {
     await slaOpEnStart(page);   // deze gaat écht lopen
     await expect(page.locator('#toernooi-detail')).toContainText('Eerste', { timeout: 15000 });
 
-    // Een tweede klaarzetten MAG nu. Formulier weer tevoorschijn halen.
-    await page.click('#toernooi-nieuw-sectie button');
-    await expect(page.locator('#toernooi-setup-wrap')).toBeVisible();
+    // Een tweede klaarzetten MAG nu. v5.24.0: via het startscherm.
+    await naarToernooiStart(page);
     await vulAanmaakformulier(page, 'Tweede', 1);
     for (const n of ['Cees Speler', 'Nina Nieuw']) await kiesSpeler(page, n);
     await naarFlightIndeling(page);
@@ -1222,7 +1242,10 @@ test.describe('Toernooi — de hele route', () => {
       .toEqual(['Eerste', 'Tweede']);
 
     // Maar starten gaat niet zolang "Eerste" loopt.
-    await page.click(`#toernooi-actief-wrap button:has-text("Tweede")`);
+    // v5.24.0: kiezen doe je op het startscherm, niet meer op een naamknop
+    // boven het toernooi.
+    await naarToernooiStart(page);
+    await page.click('#toernooi-start-wrap div:has-text("Tweede") >> button:has-text("Openen")');
     await naarDagTab(page, 1);
     await page.click('#toernooi-detail button:has-text("Dag 1 starten")');
     await expect(page.locator('#toast')).toContainText('loopt nog', { timeout: 10000 });
@@ -1428,7 +1451,8 @@ test.describe('Toernooi — de hele route', () => {
     await expect.poll(async () =>
       (await beheerDb.collection('toernooien').get()).docs.map(d => d.data().status),
       { timeout: 20000, message: 'het toernooi staat op geannuleerd' }).toEqual(['geannuleerd']);
-    await page.click('button:has-text("Eerdere toernooien tonen")');
+    // v5.24.0: "Eerdere toernooien tonen" is weg — het blok Oud staat vast op
+    // het startscherm en vult zichzelf.
     await expect(page.locator('#toernooi-geannuleerd-lijst')).toContainText(naam, { timeout: 20000 });
     await page.click('#toernooi-geannuleerd-lijst button:has-text("Herstellen")');
     await expect.poll(async () =>
@@ -1535,7 +1559,6 @@ test.describe('Toernooi — de hele route', () => {
     await expect.poll(async () =>
       (await beheerDb.collection('toernooien').get()).docs.map(d => d.data().status),
       { timeout: 20000 }).toEqual(['geannuleerd']);
-    await page.click('button:has-text("Eerdere toernooien tonen")');
     await expect(page.locator('#toernooi-geannuleerd-lijst')).toContainText('Herstartgast', { timeout: 20000 });
     await page.click('#toernooi-geannuleerd-lijst button:has-text("🗑")');
     await expect.poll(async () => (await beheerDb.doc('spelers/' + uidVoor).get()).exists,
