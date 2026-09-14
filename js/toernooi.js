@@ -1592,6 +1592,10 @@ async function startToernooi() {
         hcpPct:    cfg.hcpPct,
         flights,
         scores,
+        // v5.14.0: dag 1 start meteen — je hebt hem net op het aanmaakscherm
+        // ingesteld, dus die twee keer laten bevestigen is onzin. Dag 2 en
+        // verder beginnen als concept en zet je aan als je er bent.
+        gestart:  cfg.dagNr === 1,
         afgerond: false
       };
     });
@@ -2056,6 +2060,35 @@ async function maakGastAccount(volleNaam, code, wachtwoord, toernooiNaam) {
 //  ⚠ De grendel: wijzigen en verwijderen kan alleen zolang er voor die dag
 //  GEEN scores zijn. Een dag met scores aanpassen zou stilletjes andermans
 //  ronde veranderen — en bij een ander aantal holes zelfs scores afknippen.
+// ============================================================
+//  DE LEVENSLOOP VAN EEN DAG  (v5.14.0)
+// ============================================================
+//  Drie toestanden: CONCEPT -> GESTART -> AFGESLOTEN, en terug kan altijd.
+//
+//    concept     alles aanpasbaar, dag verwijderbaar, nog geen scorekaart
+//    gestart     scorekaart open, instellingen op slot
+//    afgesloten  scores vast, uitslag geteld
+//
+//  WAAROM. Tot v5.13.1 was de grens "de dag heeft scores" — een BIJWERKING.
+//  Zodra iemand één cijfer intikte kon de coordinator de baan of het aantal
+//  holes niet meer wijzigen, zonder dat daar een handeling aan vooraf ging.
+//  Sierk, 14 september 2026: *"Totdat de dag gestart is kan ik dan de dag
+//  aanpassen. En dan als de dag gestart is een dag annuleren om aanpassingen te
+//  doen. Ik wil maximale vrijheid."* Nu is de grens een knop.
+//
+//  ⚠ Een afgesloten dag geldt altijd als gestart. Anders zou een dag die al is
+//  afgerekend als "concept" op het scherm komen, en dat is een onzintoestand.
+//
+//  ⚠ GEEN TERUGVAL VOOR OUDE TOERNOOIEN — dat is een bewuste keuze van Sierk op
+//  14 september 2026 ("je hoeft geen rekening te houden met oude toernooien").
+//  Gevolg: een toernooi dat al liep toen v5.14.0 kwam heeft geen `gestart` op
+//  zijn dagen staan en toont die als concept. Eén keer op "Dag starten" drukken
+//  zet dat recht; er gaat geen score verloren.
+function dagIsGestart(dag) {
+  if (!dag) return false;
+  return dag.gestart === true || dag.afgerond === true;
+}
+
 function dagHeeftScores(dag) {
   if (!dag) return false;
   if (dag.afgerond) return true;
@@ -2088,8 +2121,8 @@ function openDagBewerkenModal() {
   const t = toernooiData;
   const dag = actieveDag(t);
   if (!dag) { toast('Geen dag gevonden'); return; }
-  if (dagHeeftScores(dag)) {
-    toast(`Dag ${dag.dagNr} heeft al scores — wijzigen kan niet meer`);
+  if (dagIsGestart(dag)) {
+    toast(`Dag ${dag.dagNr} is gestart — zet hem eerst terug naar concept om te wijzigen`);
     return;
   }
   // v5.13.0: uit dezelfde bron als het aanmaakscherm. Hiervoor werd elk veld
@@ -2120,7 +2153,8 @@ async function slaDagWijzigingOp() {
     const dagNr = window._dagBewerkenNr;
     const dag = (t?.dagen || []).find(d => d.dagNr === dagNr);
     if (!dag) { toast('Geen dag gevonden'); return; }
-    if (dagHeeftScores(dag)) { toast(`Dag ${dagNr} heeft al scores — wijzigen kan niet meer`); return; }
+    // v5.14.0: de grens is nu de startknop, niet het eerste cijfer.
+    if (dagIsGestart(dag)) { toast(`Dag ${dagNr} is gestart — zet hem eerst terug naar concept`); return; }
 
     const datum    = document.getElementById('t-dag-datum')?.value;
     const baanNaam = document.getElementById('t-dag-baan')?.value;
@@ -2153,9 +2187,20 @@ async function slaDagWijzigingOp() {
     dag.ptLoss    = dv.ptLoss;
     dag.hcpPct    = (dv.hcpPctHeel ?? 75) / 100;
 
-    // Bij een ander aantal holes moeten de (lege) scorerijen mee. Er zijn hier
-    // per definitie geen ingevulde scores, dus er gaat niets verloren.
+    // Bij een ander aantal holes moeten de scorerijen mee.
+    //
+    // ⚠ v5.14.0 — DEZE AANNAME KLOPT NIET MEER. Hier stond "er zijn hier per
+    // definitie geen ingevulde scores, dus er gaat niets verloren". Dat gold
+    // toen de grens `dagHeeftScores()` was: met scores kwam je hier nooit. Sinds
+    // een dag terug naar concept kan mét zijn scores erin, kan dat wél. Zonder
+    // deze waarschuwing raak je een halve speeldag kwijt met één keuzelijst.
     if (anderAantal) {
+      const aantalScores = Object.values(dag.scores || {})
+        .reduce((n, rij) => n + (rij || []).filter(v => v !== null && v !== undefined && v !== '').length, 0);
+      if (aantalScores > 0 && !confirm(
+            `Je wijzigt dag ${dagNr} van ${(dag.holes || []).length} naar ${holes.length} holes.\n\n` +
+            `⚠ De ${aantalScores} al ingevulde scores van deze dag gaan daarbij VERLOREN. ` +
+            `Dit is niet terug te draaien.\n\nDoorgaan?`)) return;
       dag.scores = {};
       (t.spelers || []).forEach(sp => { dag.scores[sp.uid] = Array(holes.length).fill(null); });
     }
@@ -2176,7 +2221,7 @@ async function verwijderDag() {
     const dag = dagen.find(d => d.dagNr === dagNr);
     if (!dag) { toast('Geen dag gevonden'); return; }
     if (dagen.length <= 1) { toast('Een toernooi moet minstens één dag houden'); return; }
-    if (dagHeeftScores(dag)) { toast(`Dag ${dagNr} heeft al scores — verwijderen kan niet meer`); return; }
+    if (dagIsGestart(dag)) { toast(`Dag ${dagNr} is gestart — zet hem eerst terug naar concept`); return; }
     if (!confirm(`Dag ${dagNr} verwijderen?\n\nDe overige dagen worden opnieuw genummerd.`)) return;
 
     t.dagen = dagen.filter(d => d.dagNr !== dagNr);
@@ -2240,6 +2285,7 @@ async function voegDagToe() {
       hcpPct:    (dv.hcpPctHeel ?? 75) / 100,
       flights:  [],  // leeg — beheerder deelt in via flight modal
       scores,
+      gestart:  false,   // v5.14.0: eerst indelen en instellen, dan starten
       afgerond: false
     };
 
@@ -2374,6 +2420,59 @@ async function sluitDagAf() {
 // van de dagen. Er was letterlijk geen weg terug.
 //
 // De uitslag blijft zichtbaar; alleen het slot gaat eraf.
+// ▶ De dag openzetten voor scores. Vanaf dat moment liggen de instellingen
+// vast — datum, baan, holes, speelwijze, tijd, punten en handicap.
+async function startDag() {
+  try {
+    const t   = toernooiData;
+    const dag = actieveDag(t);
+    if (!dag) { toast('Geen dag gevonden om te starten'); return; }
+    if (dagIsGestart(dag)) { toast(`Dag ${dag.dagNr} is al gestart`); return; }
+    if (!(dag.flights || []).some(f => (f.spelerIds || []).length > 0)) {
+      // Zonder indeling toont de scorekaart holes zonder spelerskolommen —
+      // precies het beeld "er is geen indeling" uit de meting van 11 september.
+      if (!confirm(`Dag ${dag.dagNr} heeft nog geen flightindeling.\n\n` +
+                   `De scorekaart blijft dan leeg. Toch starten?`)) return;
+    }
+    dag.gestart = true;
+    await slaToernooiOp();
+    toast(`Dag ${dag.dagNr} gestart — de scorekaart staat open`);
+    renderToernooiActief();
+  } catch(e) { toernooiFout('Dag starten', e); }
+}
+window.startDag = startDag;
+
+// ↩ Terug naar concept, zodat de dag weer aanpasbaar wordt. Dit is wat Sierk
+// "dag annuleren" noemt: niet weggooien, maar op slot af.
+//
+// ⚠ De scores blijven staan. Ze verdwijnen pas als je daarna het AANTAL HOLES
+// wijzigt — daar waarschuwt slaDagWijzigingOp() apart voor.
+async function zetDagTerugNaarConcept() {
+  try {
+    const t   = toernooiData;
+    const dag = actieveDag(t);
+    if (!dag) { toast('Geen dag gevonden'); return; }
+    if (dag.afgerond) { toast(`Dag ${dag.dagNr} is afgesloten — heropen hem eerst`); return; }
+    if (!dagIsGestart(dag)) { toast(`Dag ${dag.dagNr} staat al op concept`); return; }
+
+    const aantalScores = Object.values(dag.scores || {})
+      .reduce((n, rij) => n + (rij || []).filter(v => v !== null && v !== undefined && v !== '').length, 0);
+    const waarschuwing = aantalScores > 0
+      ? `\n\n⚠ Er staan al ${aantalScores} ingevulde scores. Die blijven bewaard, ` +
+        `maar als je daarna het AANTAL HOLES wijzigt gaan ze verloren.`
+      : '';
+    if (!confirm(`Dag ${dag.dagNr} terugzetten naar concept?\n\n` +
+                 `De instellingen worden weer aanpasbaar en de scorekaart gaat dicht.` +
+                 waarschuwing)) return;
+
+    dag.gestart = false;
+    await slaToernooiOp();
+    toast(`Dag ${dag.dagNr} staat weer op concept`);
+    renderToernooiActief();
+  } catch(e) { toernooiFout('Dag terugzetten', e); }
+}
+window.zetDagTerugNaarConcept = zetDagTerugNaarConcept;
+
 async function heropenDag() {
   try {
     const t   = toernooiData;
@@ -2875,7 +2974,42 @@ function renderToernooiActief() {
       ? `⛳ Jouw scorekaart · ${esc(mijnFlight.naam)}`
       : '⛳ Jouw scorekaart';
 
-  const scorecardKaart = `
+  // ============================================================
+  //  GEEN SCOREKAART ZOLANG DE DAG CONCEPT IS  (v5.14.0)
+  // ------------------------------------------------------------
+  //  ⚠ De afscherming zit HIER, in het samenstellen — niet in de scorekaart
+  //  zelf. renderTScorecard() heeft een eigen uitgang als zijn container
+  //  ontbreekt (`if (!scorecardWrap) return;`), dus die functie en de negen
+  //  andere van de speler/marker/coordinator-logica blijven onaangeraakt.
+  //  Zie ONTWERP-TOERNOOISCHERM.md, hoofdstuk 5.
+  const gestart = dagIsGestart(dag);
+  const nogNietGestartKaart = `
+    <div class="card">
+      <div class="card-header"><h2>Dag ${dagNr} is nog niet gestart</h2></div>
+      <div class="card-body" style="font-size:13px;color:var(--mid)">
+        ${esc(dag.datum)} · ${esc(dag.baan)} · ${dag.holes.length} holes · ${t.spelers.length} spelers
+        <br><br>
+        De scorekaart gaat open zodra je de dag start. Tot dat moment kun je
+        datum, baan, holes, speelwijze, tijd, punten en handicap nog wijzigen.
+        ${isBeheerder ? '' : '<br><br>De wedstrijdleiding start de dag.'}
+      </div>
+      ${isBeheerder && flights.length === 0 ? `
+      <!-- v5.9.1: een dag zonder indeling moet dat ZEGGEN, anders is het niet te
+           onderscheiden van een storing. v5.14.0: die melding hoort nu ook hier,
+           want een concept-dag toont geen scorekaart waar hij eerst in stond. -->
+      <div style="background:var(--gold-pale);border-radius:8px;padding:10px 12px;margin:0 16px 12px;font-size:12px;color:var(--gold);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="flex:1;min-width:180px">⚑ Dag ${dagNr} is nog niet in flights ingedeeld.</span>
+        <button class="btn btn-sm btn-ghost" onclick="openFlightIndelingDag()">✈ Nu indelen</button>
+      </div>` : ''}
+      ${isBeheerder ? `
+      <div style="padding:0 16px 16px">
+        <button class="btn btn-primary btn-block" onclick="startDag()">
+          ▶ Dag ${dagNr} starten
+        </button>
+      </div>` : ''}
+    </div>`;
+
+  const echteScorecardKaart = `
     <div class="card">
       <div class="card-header inklapbaar ${dagAfgerond ? 'ingeklapt' : ''}" onclick="toggleAdminKaart(this)">
         <h2>${scorecardTitel}</h2>
@@ -2909,14 +3043,27 @@ function renderToernooiActief() {
   //  Ze stonden in één lijst door elkaar: "Dag 2 wijzigen" naast "Toernooi
   //  afsluiten". Nu staat elke knop op het tabblad waar hij hoort. De inhoud
   //  van elke knop is LETTERLIJK overgenomen — alleen de groepering is nieuw.
+  // v5.14.0: zolang de dag concept is staat de startknop in het blok hierboven;
+  // de scorekaart komt daarvoor in de plaats.
+  const scorecardKaart = gestart ? echteScorecardKaart : nogNietGestartKaart;
+
   const dagKnoppen = isBeheerder ? `
     <div style="padding:0 0 16px">
-      ${!dagHeeftScores(dag) ? `
+      ${gestart && !dagAfgerond ? `
+      <button class="btn btn-ghost btn-block" onclick="zetDagTerugNaarConcept()" style="margin-bottom:8px">
+        ↩ Dag ${dagNr} terugzetten naar concept
+      </button>
+      <p style="font-size:11px;color:var(--light);margin:-4px 0 10px">
+        De instellingen worden weer aanpasbaar en de scorekaart gaat dicht.
+        Ingevulde scores blijven bewaard.
+      </p>
+      ` : ''}
+      ${!dagIsGestart(dag) ? `
       <button class="btn btn-ghost btn-block" onclick="openDagBewerkenModal()" style="margin-bottom:8px">
         ✏️ Dag ${dagNr} wijzigen (datum, baan, holes)
       </button>
       ` : ''}
-      ${!dagAfgerond && !uitslag ? `
+      ${gestart && !dagAfgerond && !uitslag ? `
       <button id="t-uitslag-btn" class="btn btn-primary btn-block"
         style="margin-bottom:8px;${!allesIngevuld ? 'opacity:0.5;cursor:not-allowed' : ''}"
         ${!allesIngevuld ? 'disabled' : ''}>
