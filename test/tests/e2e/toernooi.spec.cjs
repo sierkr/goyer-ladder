@@ -548,6 +548,61 @@ test.describe('Toernooi — de hele route', () => {
   });
 
   // ============================================================
+  //  v5.18.0 — GASTEN PLAKKEN
+  // ============================================================
+  //  De vervanger van de bulk-import. Die maakte clubaccounts aan; dit zet
+  //  gastspelers in het toernooidocument en verder niets. Sierk: "ze hoeven
+  //  niet bewaard te blijven buiten het toernooi."
+  // ============================================================
+  test('GASTEN PLAKKEN: een lijst uit Excel wordt in één keer toegevoegd', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Plaklijst', 1);
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Plaklijst', { timeout: 15000 });
+
+    await naarSpelersTab(page);
+    await page.click('#toernooi-detail button[onclick="openGastenPlakken()"]');
+
+    // Vier regels, vier vormen: tab, alleen een voornaam, een Nederlandse
+    // komma in de handicap, en een naam die al meedoet.
+    await page.fill('#gasten-plak-tekst',
+      'Karel Jansen\t12\nKarel\nAnna de Wit\t8,4\nAnna Speler\t10');
+
+    // De telling zegt vóór het toevoegen al wat hij ervan maakt.
+    await expect(page.locator('#gasten-plak-telling'),
+      'drie spelers, en de dubbele naam wordt gemeld').toContainText('3 spelers', { timeout: 10000 });
+    await expect(page.locator('#gasten-plak-telling')).toContainText('Anna Speler');
+
+    await page.click('#gasten-plak-knop');
+
+    const t = await haalToernooi('Plaklijst', 20,
+      (x) => (x.spelers || []).length === 5);
+    const gasten = (t.spelers || []).filter(sp => sp.gast);
+    expect(gasten.map(sp => sp.naam).sort(),
+      'de drie gasten staan erin, Anna Speler niet dubbel')
+      .toEqual(['Anna de Wit', 'Karel', 'Karel Jansen']);
+    expect(gasten.find(sp => sp.naam === 'Anna de Wit').hcp,
+      'de komma-handicap is goed gelezen').toBe(8.4);
+    expect(gasten.find(sp => sp.naam === 'Karel').hcp,
+      'zonder handicap wordt 0').toBe(0);
+
+    // ⚠ Geen accounts: dit venster maakt geen inlogs aan.
+    expect(gasten.every(sp => !sp.login),
+      'niemand heeft een inlog gekregen').toBe(true);
+
+    // En ze staan in een flight, dus op de scorekaart.
+    const inFlights = (t.dagen[0].flights || []).flatMap(f => f.spelerIds || []);
+    expect(gasten.every(sp => inFlights.includes(sp.uid)),
+      'alle drie zijn ingedeeld').toBe(true);
+  });
+
+  // ============================================================
   //  v5.11.6 — DE MARKERKRING NA EEN SPELER ERBIJ
   // ============================================================
   //  Een speler toevoegen aan een lopend toernooi raakte `markers` niet aan.

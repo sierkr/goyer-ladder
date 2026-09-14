@@ -3060,6 +3060,149 @@ async function voegGastspelerToeAanToernooi() {
   } catch(e) { toernooiFout('Gastspeler toevoegen', e); }
 }
 
+// ============================================================
+//  GASTEN PLAKKEN  (v5.18.0)
+// ------------------------------------------------------------
+//  De vervanger van de bulk-import uit js/admin.js. Sierk, 14 september 2026:
+//  "het gaat er om om uitsluitend gast spelers te importeren en dat mag per
+//  toernooi en ze hoeven niet bewaard te blijven buiten het toernooi."
+//
+//  Dat is precies wat een gastspeler al is: een regel in het toernooidocument
+//  met een naam, een handicap en `gast: true`. Geen account, geen profiel,
+//  niets daarbuiten. Deze functie is dus niets anders dan
+//  voegGastspelerToeAanToernooi() in één keer voor een hele lijst.
+//
+//  ⚠ Dit venster maakt GEEN inlogs aan. Dat blijft de knop "Gastlogins
+//  aanmaken" op hetzelfde tabblad: die meldt per speler wat er misging, en dat
+//  hoeft niet op twee plekken te bestaan.
+// ============================================================
+
+// Leest de geplakte tekst. Pure functie — geen scherm, geen database — zodat de
+// rekentest hem kan natellen. Eén speler per regel, in wat Excel ervan maakt:
+//
+//    Karel Jansen<TAB>12        Karel<TAB>12        Karel Jansen 12
+//    Karel;Jansen;12            Karel Jansen        Karel Jansen,12
+//
+// ⚠ Een gast met ALLEEN een voornaam is geldig — daar ging v5.17.0 over. En de
+// handicap mag met een komma ("12,4"), want dat is wat een Nederlandse Excel
+// oplevert.
+function gastenUitTekst(tekst, bestaandeNamen = []) {
+  const bekend = new Set((bestaandeNamen || [])
+    .map(n => String(n || '').trim().toLowerCase()).filter(Boolean));
+  const spelers = [];
+  const dubbel = [];
+  let leeg = 0;
+
+  const alsGetal = (v) => {
+    const s = String(v ?? '').trim().replace(',', '.');
+    if (!/^[+-]?\d+(\.\d+)?$/.test(s)) return null;
+    return parseFloat(s);
+  };
+
+  String(tekst || '').split(/\r?\n/).forEach(regel => {
+    const r = regel.trim();
+    if (!r) { leeg++; return; }
+
+    // Eerst op tab of puntkomma — dat is wat Excel maakt. Levert dat één veld
+    // op, dan is het een gewone regel en kan een getal aan het eind de handicap
+    // zijn, met of zonder komma ervoor.
+    //
+    // ⚠ De KOMMA is met opzet geen scheidingsteken hier. Een Nederlandse Excel
+    // schrijft "8,4" en dan werd "Anna de Wit<TAB>8,4" drie velden: de naam
+    // werd "Anna de Wit 8" en de handicap 4. Een komma tussen naam en handicap
+    // vangt de regel hieronder op.
+    let velden = r.split(/[\t;]/).map(v => v.trim()).filter(v => v !== '');
+    let hcp = null;
+    if (velden.length > 1) {
+      const laatste = alsGetal(velden[velden.length - 1]);
+      if (laatste !== null) { hcp = laatste; velden = velden.slice(0, -1); }
+    } else {
+      const m = r.match(/^(.*?)[\s,]*([+-]?\d+(?:[.,]\d+)?)$/);
+      if (m) { velden = [m[1]]; hcp = alsGetal(m[2]); }
+    }
+
+    const naam = velden.join(' ').replace(/\s+/g, ' ').trim();
+    if (!naam) { leeg++; return; }
+
+    const sleutel = naam.toLowerCase();
+    if (bekend.has(sleutel)) { dubbel.push(naam); return; }
+    bekend.add(sleutel);
+    spelers.push({ naam, hcp: hcp === null ? 0 : hcp });
+  });
+
+  return { spelers, dubbel, leeg };
+}
+
+// De flightkeuze van dit venster. Dezelfde lijst als bij één gast toevoegen.
+function _vulGastenPlakFlights() {
+  const t = toernooiData;
+  const dag = actieveDag(t);
+  const flights = (dag?.flights) || (t?.dagen?.[0]?.flights) || [{ naam: 'Flight 1' }];
+  const sel = document.getElementById('gasten-plak-flight-sel');
+  if (sel) sel.innerHTML = flights.map((f, i) => `<option value="${i}">${esc(f.naam)}</option>`).join('');
+}
+
+function openGastenPlakken() {
+  if (!toernooiData) return;
+  const vak = document.getElementById('gasten-plak-tekst');
+  if (vak) vak.value = '';
+  _vulGastenPlakFlights();
+  toonGastenPlakTelling();
+  document.getElementById('modal-gasten-plakken').classList.add('open');
+}
+window.openGastenPlakken = openGastenPlakken;
+
+// Wat hij van je lijst maakt, terwijl je plakt. Zonder deze regel weet je pas
+// ná het toevoegen dat er vier namen niet meetelden.
+function toonGastenPlakTelling() {
+  const uit = document.getElementById('gasten-plak-telling');
+  if (!uit) return;
+  const tekst = document.getElementById('gasten-plak-tekst')?.value || '';
+  const { spelers, dubbel } = gastenUitTekst(tekst, (toernooiData?.spelers || []).map(sp => sp.naam));
+  if (!tekst.trim()) { uit.textContent = 'Plak hierboven je lijst.'; return; }
+  const delen = [`${spelers.length} speler${spelers.length === 1 ? '' : 's'}`];
+  if (dubbel.length) delen.push(`${dubbel.length} dubbel, wordt overgeslagen (${dubbel.join(', ')})`);
+  uit.textContent = delen.join(' · ');
+}
+window.toonGastenPlakTelling = toonGastenPlakTelling;
+
+async function startGastenPlakken() {
+  try {
+    const t = toernooiData;
+    if (!t || !actieveToernooiId) return;
+    const tekst = document.getElementById('gasten-plak-tekst')?.value || '';
+    const { spelers, dubbel } = gastenUitTekst(tekst, (t.spelers || []).map(sp => sp.naam));
+    if (spelers.length === 0) {
+      toast(dubbel.length ? 'Deze namen doen al mee' : 'Geen spelers herkend in wat je plakte');
+      return;
+    }
+    const fi = parseInt(document.getElementById('gasten-plak-flight-sel')?.value) || 0;
+
+    // ⚠ Eén schrijfactie voor de hele lijst. Per speler wegschrijven zou bij
+    // veertig gasten veertig keer het hele toernooidocument overschrijven, en
+    // dan wint de laatste die klaar is — precies de fout uit v5.12.4.
+    spelers.forEach(({ naam, hcp }) => {
+      const gastId = 'gast_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+      t.spelers.push({ uid: gastId, naam, hcp, gast: true });
+      (t.dagen || []).forEach(dag => {
+        dag.scores[gastId] = Array(dag.holes.length).fill(null);
+        if (dag.flights?.[fi]) {
+          dag.flights[fi].spelerIds = [...(dag.flights[fi].spelerIds || []), gastId];
+        }
+      });
+    });
+
+    herschikMarkers(t);
+    await setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(t)));
+    closeModal('modal-gasten-plakken');
+    renderToernooiActief();
+    toast(`${spelers.length} gastspeler(s) toegevoegd ✓`
+      + (dubbel.length ? ` — ${dubbel.length} dubbele naam overgeslagen` : '')
+      + ' — geef ze een inlog met "Gastlogins aanmaken"', 8000);
+  } catch(e) { toernooiFout('Gasten plakken', e); }
+}
+window.startGastenPlakken = startGastenPlakken;
+
 async function verwijderToernooiSpelerNieuw(spelerId) {
   try {
     if (!toernooiData || !actieveToernooiId) return;
@@ -3436,6 +3579,8 @@ function renderToernooiActief() {
         <div id="t-spelers-lijst">${spelerRijenHtml(t)}</div>
         <button class="btn btn-primary btn-block" style="margin-top:12px"
           onclick="openToernooiSpelersBeheer()">+ Speler toevoegen of verwijderen</button>
+        <button class="btn btn-ghost btn-block" style="margin-top:8px"
+          onclick="openGastenPlakken()">⬆ Gasten plakken (lijst uit Excel)</button>
       </div>
     </div>
     <div style="padding:0 0 16px">

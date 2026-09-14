@@ -253,8 +253,10 @@ function laadGastloginKern() {
     ${knip('js/toernooi.js', ['splitsNaam', 'gastLoginVan', 'toernooiCodeVan',
       // v5.12.3: de gastcode moet uniek zijn, en het briefje dat de spelers
       // krijgen wordt hier opgemaakt.
-      'uniekeGastCode', 'gastloginTekst'])}
-    return { splitsNaam, gastLoginVan, toernooiCodeVan, uniekeGastCode, gastloginTekst };
+      'uniekeGastCode', 'gastloginTekst',
+      // v5.18.0: het uitlezen van een geplakte gastenlijst.
+      'gastenUitTekst'])}
+    return { splitsNaam, gastLoginVan, toernooiCodeVan, uniekeGastCode, gastloginTekst, gastenUitTekst };
   `)();
   // v5.12.3: gastLoginUitToernooi zoekt de ECHTE inlognaam op in het toernooi,
   // in plaats van hem uit te rekenen. Het is de tegenhanger van gastLoginVan:
