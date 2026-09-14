@@ -1723,19 +1723,11 @@
               Bij <strong>Brutto</strong> telt de ruwe score. Bij <strong>Netto</strong> wordt de playing handicap afgetrokken van het totaal. Bij <strong>Stableford</strong> worden punten per hole berekend (netto): eagle=4, birdie=3, par=2, bogey=1, dubbel bogey+=0.
             </div>
           </div>
-          <!-- v5.10.0: gastlogins. Laat je dit leeg, dan krijgen gastspelers geen
-               inlog en werkt alles zoals voorheen. -->
-          <div class="divider"></div>
-          <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px">Inlog voor gastspelers (optioneel)</label>
-          <div class="form-group" style="margin-bottom:6px">
-            <input type="text" id="t-gast-wachtwoord" placeholder="Wachtwoord voor dit toernooi" autocomplete="off">
-          </div>
-          <p style="font-size:11px;color:var(--light);margin:0 0 12px">
-            Vul je dit in, dan krijgt elke gastspeler een inlog voor dit ene toernooi.
-            Ze loggen in met hun eigen <strong>inlognaam</strong> plus dit wachtwoord, en
-            hoeven niets te wijzigen. De inlognamen staan straks onder "Gastlogins tonen".
-            Na afloop van het toernooi werkt de inlog niet meer.
-          </p>
+          <!-- v5.21.1: "Inlog voor gastspelers" stond hier, op het tabblad
+               Toernooi. Dat was een indelingsfout: het gaat over de inlog van je
+               GASTSPELERS, dus je moest voor één handeling twee keer van
+               tabblad wisselen. Het blok staat nu op het tabblad Spelers, onder
+               de knoppen waarmee je die gasten toevoegt. -->
         </div>
 
         <div id="t-setup-paneel-spelers" class="t-setup-paneel" style="display:none">
@@ -1751,6 +1743,21 @@
           <!-- v5.21.0: plakken kon alleen bij een opgeslagen toernooi. Juist bij
                het aanmaken heb je die lijst uit Excel bij de hand. -->
           <button class="btn btn-ghost btn-sm btn-block" onclick="openGastenPlakken('setup')" style="margin-bottom:12px">⬆ Gasten plakken (lijst uit Excel)</button>
+          <!-- v5.10.0: gastlogins. Laat je dit leeg, dan krijgen gastspelers geen
+               inlog en werkt alles zoals voorheen.
+               v5.21.1: verhuisd van het tabblad Toernooi naar hier — het hoort
+               bij de gasten die je hierboven toevoegt. -->
+          <div class="divider"></div>
+          <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px">Inlog voor gastspelers (optioneel)</label>
+          <div class="form-group" style="margin-bottom:6px">
+            <input type="text" id="t-gast-wachtwoord" placeholder="Wachtwoord voor dit toernooi" autocomplete="off">
+          </div>
+          <p style="font-size:11px;color:var(--light);margin:0 0 12px">
+            Vul je dit in, dan krijgt elke gastspeler een inlog voor dit ene toernooi.
+            Ze loggen in met hun eigen <strong>inlognaam</strong> plus dit wachtwoord, en
+            hoeven niets te wijzigen. De inlognamen staan straks onder "Gastlogins tonen".
+            Na afloop van het toernooi werkt de inlog niet meer.
+          </p>
         </div>
 
         <div id="t-setup-paneel-dagen" class="t-setup-paneel" style="display:none">

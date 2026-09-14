@@ -1478,16 +1478,23 @@ test.describe('Toernooi — de hele route', () => {
     const uitleg  = page.locator('#t-strokeplay-instellingen');
     const ranking = page.locator('#t-ranking-ladders-wrap');
 
-    // Eén dag, dus één keuze — en de oude toernooibrede keuze bestaat niet meer.
-    await expect(keuzes, 'één speelwijze-keuze bij één dag').toHaveCount(1);
+    // ⚠ v5.21.1: de speelwijze-KEUZE staat op het dagtabblad, en wat die keuze
+    //  aanstuurt (puntenvelden, uitleg, ranking-ladder) staat op het tabblad
+    //  Toernooi. Ze zijn dus nooit tegelijk in beeld: kiezen op de dag, kijken
+    //  op Toernooi. Deze test wisselt daarom net als een mens.
+    await naarSetupTab(page, 'toernooi');
     await expect(oudeRadio, 'de tweede keuze is weg').toHaveCount(0);
     await expect(punten,  'matchplay: de puntenvelden staan er').toBeVisible();
     await expect(uitleg,  'matchplay: geen strokeplay-uitleg').toBeHidden();
     await expect(ranking, 'matchplay: de ranking-ladder mag').toBeVisible();
 
+    await kiesSetupDag(page, 1);
+    await expect(keuzes, 'één speelwijze-keuze bij één dag').toHaveCount(1);
+
     // Strokeplay: geen punten, wel uitleg, en GEEN ranking-ladder — want een
     // strokeplay-toernooi telt niet mee voor de ladder.
     await keuzes.first().selectOption('strokeplay');
+    await naarSetupTab(page, 'toernooi');
     await expect(ranking, 'strokeplay: de ranking-ladder is weg').toBeHidden();
     await expect(punten,  'strokeplay: geen puntenvelden').toBeHidden();
     await expect(uitleg,  'strokeplay: wel de uitleg brutto/netto/stableford').toBeVisible();
@@ -1495,12 +1502,13 @@ test.describe('Toernooi — de hele route', () => {
     // Twee dagen, gemengd. Dít is wat met de oude keuze niet kon: de
     // puntenvelden horen erbij vanwege dag 2, de uitleg vanwege dag 1, en de
     // ranking-ladder blijft weg vanwege dag 1.
-    await page.selectOption('#t-aantal-dagen', '2');
+    // v5.21.0: een dag erbij doe je met + Dag toevoegen; "Aantal dagen" is weg.
+    await page.click('#t-setup-tabs button[onclick="voegSetupDagToe()"]');
     await expect(keuzes, 'twee dagen, twee keuzes').toHaveCount(2);
     await expect(keuzes.nth(0), 'dag 1 houdt zijn keuze').toHaveValue('strokeplay');
-    // v5.13.0: dag 2 staat achter zijn eigen tabblad.
     await kiesSetupDag(page, 2);
     await page.locator('#t-dag-blokken .dag-blok[data-dagnr="2"] .t-dag-modus').selectOption('matchplay');
+    await naarSetupTab(page, 'toernooi');
     await expect(punten,  'gemengd: de puntenvelden zijn terug voor dag 2').toBeVisible();
     await expect(uitleg,  'gemengd: de uitleg blijft voor dag 1').toBeVisible();
     await expect(ranking, 'gemengd: nog steeds geen ranking-ladder').toBeHidden();
@@ -1508,6 +1516,7 @@ test.describe('Toernooi — de hele route', () => {
     // En alles weer matchplay brengt de ranking-ladder terug.
     await kiesSetupDag(page, 1);
     await page.locator('#t-dag-blokken .dag-blok[data-dagnr="1"] .t-dag-modus').selectOption('matchplay');
+    await naarSetupTab(page, 'toernooi');
     await expect(ranking, 'weer helemaal matchplay: de ranking-ladder mag weer').toBeVisible();
     await expect(uitleg,  'en de strokeplay-uitleg is weg').toBeHidden();
   });
@@ -1663,6 +1672,9 @@ test.describe('Toernooi — de hele route', () => {
     await expect.poll(async () =>
       (await beheerDb.collection('toernooien').get()).docs.length, { timeout: 25000 }).toBe(0);
 
+    // v5.21.1: het gastwachtwoord staat op het tabblad Spelers, en na "opnieuw
+    // instellen" komt het scherm terug op Toernooi.
+    await naarSetupTab(page, 'spelers');
     await page.fill('#t-gast-wachtwoord', 'goyer2026');
     await naarFlightIndeling(page);
     await page.click('#flight-modal-start-btn');
