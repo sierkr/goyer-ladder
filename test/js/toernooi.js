@@ -3560,7 +3560,11 @@ function renderToernooiActief() {
         <div style="display:flex;gap:6px" onclick="event.stopPropagation()">
           ${isBeheerder ? `
             <button id="t-refresh-btn" class="btn btn-sm btn-ghost" onclick="refreshToernooiScorekaart()" style="display:none;background:var(--gold);color:white;border-color:var(--gold)">↺ Nieuw</button>
-            ${!dagAfgerond ? `<button class="btn btn-sm btn-ghost" onclick="openFlightIndelingDag()">✈ Flights</button>` : ''}
+            <!-- v5.20.0: hier zat "✈ Flights". Deze kop bestaat alleen als de
+                 dag GESTART is, dus op een conceptdag was de knop er niet en
+                 kon je niet indelen. Sierk, 14 september 2026: "maak het
+                 eenduidig." Hij staat nu bij de dagknoppen, op elke dag op
+                 dezelfde plek. -->
             <!-- v5.17.0: hier zat "👥 Spelers". Die knop is verhuisd naar het
                  tabblad Spelers — zie selecteerSpelersTab(). Hier was hij pas
                  bereikbaar zodra de dag gestart was, en dat is precies te laat. -->
@@ -3595,6 +3599,23 @@ function renderToernooiActief() {
 
   const dagKnoppen = isBeheerder ? `
     <div style="padding:0 0 16px">
+      <!-- ============================================================
+           ✈ FLIGHTS — ÉÉN PLEK  (v5.20.0)
+           ------------------------------------------------------------
+           Eén regel: indelen hoort bij de dag en de knop staat er altijd,
+           concept of gestart. Daarvoor zat hij in de kop van de scorekaart —
+           die bestaat alleen bij een gestarte dag, dus op een dag die je later
+           toevoegde kwam je er niet bij.
+
+           ⚠ De enige uitzondering is een AFGESLOTEN dag. De uitslag is dan
+           gepubliceerd; de indeling omgooien zou die met terugwerkende kracht
+           veranderen. Diezelfde grens gold al.
+           ============================================================ -->
+      ${!dagAfgerond ? `
+      <button id="t-flights-btn" class="btn btn-ghost btn-block" onclick="openFlightIndelingDag()" style="margin-bottom:8px">
+        ✈ Flights van dag ${dagNr} indelen
+      </button>
+      ` : ''}
       ${gestart && !dagAfgerond ? `
       <button class="btn btn-ghost btn-block" onclick="zetDagTerugNaarConcept()" style="margin-bottom:8px">
         ↩ Dag ${dagNr} terugzetten naar concept

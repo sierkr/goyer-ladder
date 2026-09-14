@@ -604,7 +604,7 @@ test.describe('Toernooi — de hele route', () => {
 
     // ── En dan op de dag: de pool staat in beeld en loopt leeg ──
     await naarDagTab(page, 1);
-    await page.click('#toernooi-detail button[onclick="openFlightIndelingDag()"]');
+    await page.click('#t-flights-btn');
     const indeling = page.locator('#flight-lijst');
     await expect(indeling, 'de pool toont de drie gasten').toContainText('Spelerspool (3)', { timeout: 10000 });
     await expect(indeling).toContainText('Karel Jansen');
@@ -679,7 +679,7 @@ test.describe('Toernooi — de hele route', () => {
       'Nina staat nog in de pool, niet in de flight').toBe(3);
 
     await naarDagTab(page, 1);
-    await page.click('#toernooi-detail button[onclick="openFlightIndelingDag()"]');
+    await page.click('#t-flights-btn');
     await expect(page.locator('#flight-lijst'), 'Nina staat in de pool')
       .toContainText('Spelerspool (1)', { timeout: 10000 });
     await page.click('#flight-lijst button:has-text("Verdelen")');
@@ -689,6 +689,43 @@ test.describe('Toernooi — de hele route', () => {
       { timeout: 15000, message: 'de kring is opnieuw verdeeld' })
       .toEqual({ aantal: 4, iedereenHeeftEr1: true, iedereenMarkeertEr1: true,
                  geenZelf: true, alleenEchteSpelers: true });
+  });
+
+  // ============================================================
+  //  v5.20.0 — ✈ FLIGHTS STAAT ER ALTIJD
+  // ============================================================
+  //  De knop zat in de kop van de scorekaart, en die kop bestaat alleen als de
+  //  dag GESTART is. Op een dag die nog concept was kon je dus niet indelen —
+  //  precies wanneer je dat wilt. Sierk: "maak het eenduidig."
+  //  Eén regel: bij de dagknoppen, op elke dag, behalve een afgesloten dag.
+  // ============================================================
+  test('FLIGHTKNOP: ✈ Flights staat er op een gestarte én op een conceptdag', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Flightknop', 1);
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Flightknop', { timeout: 15000 });
+
+    await naarDagTab(page, 1);
+    await expect(page.locator('#t-flights-btn'),
+      'op een gestarte dag').toBeVisible({ timeout: 15000 });
+
+    // ⚠ Dit is het geval waar het om ging: terug naar concept, en de knop moet
+    // blijven staan. Voorheen verdween hij hier met de scorekaart mee.
+    await page.click('#toernooi-detail button:has-text("terugzetten naar concept")');
+    await expect(page.locator('#toernooi-detail button:has-text("starten")'))
+      .toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#t-flights-btn'),
+      'en op een conceptdag ook').toBeVisible({ timeout: 15000 });
+
+    // En hij doet het daar ook echt.
+    await page.click('#t-flights-btn');
+    await expect(page.locator('#flight-lijst')).toContainText('Spelerspool', { timeout: 10000 });
   });
 
   // ============================================================
@@ -785,6 +822,12 @@ test.describe('Toernooi — de hele route', () => {
 
     // De dag staat op slot: de scores staan er als tekst, niet meer als invoer.
     await expect(page.locator('#toernooi-detail button:has-text("heropenen")')).toBeVisible({ timeout: 15000 });
+
+    // v5.20.0: en dit is de énige dag zonder ✈ Flights. De uitslag is
+    // gepubliceerd; de indeling omgooien zou die met terugwerkende kracht
+    // veranderen.
+    await expect(page.locator('#t-flights-btn'),
+      'een afgesloten dag heeft geen flightknop').toHaveCount(0);
 
     // DAG HEROPENEN (fout 5 van 11-9-2026): tot en met v5.8.9 was een
     // afgesloten dag voorgoed op slot — `dag.afgerond` werd nergens
