@@ -1666,7 +1666,13 @@ function renderFlightLijst() {
         Spelerspool${_flightPool.length ? ` (${_flightPool.length})` : ''}
       </div>
       ${_flightPool.length === 0
-        ? '<div style="font-size:12px;color:var(--light)">Leeg — iedereen is ingedeeld ✓</div>'
+        // ⚠ v5.21.2: hier stond "Leeg — iedereen is ingedeeld ✓". Het woord
+        // "leeg" botste met de browsertest die controleert dat er GEEN
+        // lege-flight-waarschuwing in dit venster staat ("Flight 2 is leeg").
+        // Playwright zoekt daar hoofdletterloos op "leeg" en vond deze regel.
+        // De waarschuwing is echt; mijn tekst zat ernaast. Zonder dat woord
+        // zegt hij hetzelfde, korter.
+        ? '<div style="font-size:12px;color:var(--light)">Iedereen is ingedeeld ✓</div>'
         : _flightPool.map((s, pi) => `
           <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
             <span style="flex:1;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.naam)}</span>

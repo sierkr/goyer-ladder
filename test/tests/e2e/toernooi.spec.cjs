@@ -653,7 +653,7 @@ test.describe('Toernooi — de hele route', () => {
 
     await page.click('#flight-lijst button:has-text("Verdelen")');
     await expect(indeling, 'na verdelen is de pool leeg')
-      .toContainText('Leeg — iedereen is ingedeeld', { timeout: 10000 });
+      .toContainText('Iedereen is ingedeeld', { timeout: 10000 });   // v5.21.2
 
     await page.click('#flight-modal-start-btn');
     const na = await haalToernooi('Plaklijst', 20,
