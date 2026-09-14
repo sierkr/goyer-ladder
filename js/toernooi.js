@@ -1310,12 +1310,232 @@ function openFlightIndeling() {
 // met de hand worden verplaatst — bij negen spelers over vier flights is dat
 // negen keuzemenu's, en wie flight 1 helemaal leegmaakt houdt een lege flight
 // over die de app gewoon opsloeg. Zie de toelichting in CLAUDE.md.
-function verdeelSpelersOverFlights() {
+// ============================================================
+//  VIJF MANIEREN OM IN TE DELEN  (v5.16.0)
+// ============================================================
+//  Tot v5.15.0 deed de knop één ding: de spelers om de beurt over de flights,
+//  in de volgorde waarin ze toevallig stonden. Sierk, 14 september 2026 vroeg om
+//  vier manieren erbij.
+//
+//  ⚠ Het zijn met opzet PURE functies: spelerslijst en aantal flights erin, een
+//  indeling eruit. Geen scherm, geen database. Daardoor zijn ze volledig te
+//  testen, en dat is nodig — een verkeerde indeling merk je pas op de baan.
+//
+//  Alle vijf verdelen zo gelijk mogelijk: flights schelen hooguit één speler en
+//  iedereen komt precies één keer voor. Dat is per manier getest.
+
+// Hoeveel spelers krijgt elke flight? De eerste flights krijgen er één extra
+// als het niet gelijk opgaat.
+function flightGroottes(aantalSpelers, aantalFlights) {
+  if (aantalFlights <= 0) return [];
+  const basis = Math.floor(aantalSpelers / aantalFlights);
+  const rest  = aantalSpelers % aantalFlights;
+  return Array.from({ length: aantalFlights }, (_, i) => basis + (i < rest ? 1 : 0));
+}
+
+// Knipt een gesorteerde lijst in opeenvolgende blokken — "banden".
+function knipInBanden(lijst, aantalFlights) {
+  const groottes = flightGroottes(lijst.length, aantalFlights);
+  const uit = []; let k = 0;
+  groottes.forEach(g => { uit.push(lijst.slice(k, k + g)); k += g; });
+  return uit;
+}
+
+// 1. OM DE BEURT — wat de knop altijd al deed. Blijft de standaard.
+function verdeelOmBeurten(spelers, aantalFlights) {
+  const uit = Array.from({ length: aantalFlights }, () => []);
+  (spelers || []).forEach((sp, i) => uit[i % aantalFlights].push(sp));
+  return uit;
+}
+
+// 2. WILLEKEURIG — ook de terugval voor de twee manieren die op dag 1 geen
+//    gegevens hebben. `rnd` is injecteerbaar zodat een test hem kan vastzetten.
+function verdeelWillekeurig(spelers, aantalFlights, rnd) {
+  const kans = typeof rnd === 'function' ? rnd : Math.random;
+  const lijst = [...(spelers || [])];
+  for (let i = lijst.length - 1; i > 0; i--) {
+    const j = Math.floor(kans() * (i + 1));
+    [lijst[i], lijst[j]] = [lijst[j], lijst[i]];
+  }
+  return verdeelOmBeurten(lijst, aantalFlights);
+}
+
+// 3. OP PLEK, BESTE LAATST — `volgorde` is een lijst uid's van BEST naar
+//    slechtst. De besten komen in de LAATSTE flight, die het laatst weggaat.
+//    Sierk, 14 september 2026: "Altijd toernooi, eerste dag random indelen" —
+//    die keuze zit in de aanroeper, niet hier.
+function verdeelOpStand(spelers, aantalFlights, volgorde) {
+  const rang = new Map((volgorde || []).map((uid, i) => [uid, i]));
+  // Wie niet in de stand voorkomt (een gast, een nieuwe speler) telt als
+  // slechtste en start dus vooraan. Stabiel bij gelijke rang.
+  const gesorteerd = [...(spelers || [])]
+    .map((sp, i) => ({ sp, i, r: rang.has(sp.uid) ? rang.get(sp.uid) : Number.MAX_SAFE_INTEGER }))
+    .sort((a, b) => (b.r - a.r) || (a.i - b.i))
+    .map(x => x.sp);
+  return knipInBanden(gesorteerd, aantalFlights);
+}
+
+// 4. OP INDIVIDUELE HANDICAP — laagste handicaps bij elkaar, in banden.
+function verdeelOpHandicapBanden(spelers, aantalFlights) {
+  const gesorteerd = [...(spelers || [])]
+    .map((sp, i) => ({ sp, i, h: Number(sp?.hcp) }))
+    .sort((a, b) => {
+      const ah = Number.isFinite(a.h) ? a.h : Number.MAX_SAFE_INTEGER;
+      const bh = Number.isFinite(b.h) ? b.h : Number.MAX_SAFE_INTEGER;
+      return (ah - bh) || (a.i - b.i);
+    })
+    .map(x => x.sp);
+  return knipInBanden(gesorteerd, aantalFlights);
+}
+
+// 5. OP FLIGHT HANDICAP — juist spreiden, zodat elke flight ongeveer even sterk
+//    is. Slangsgewijs: 1-2-3-4, dan 4-3-2-1, enzovoort.
+function verdeelOpFlightHandicap(spelers, aantalFlights) {
+  const gesorteerd = [...(spelers || [])]
+    .map((sp, i) => ({ sp, i, h: Number(sp?.hcp) }))
+    .sort((a, b) => {
+      const ah = Number.isFinite(a.h) ? a.h : Number.MAX_SAFE_INTEGER;
+      const bh = Number.isFinite(b.h) ? b.h : Number.MAX_SAFE_INTEGER;
+      return (ah - bh) || (a.i - b.i);
+    })
+    .map(x => x.sp);
+  const uit = Array.from({ length: aantalFlights }, () => []);
+  const groottes = flightGroottes(gesorteerd.length, aantalFlights);
+  let idx = 0, heen = true;
+  while (idx < gesorteerd.length) {
+    const volgorde = heen
+      ? [...Array(aantalFlights).keys()]
+      : [...Array(aantalFlights).keys()].reverse();
+    let gezet = false;
+    for (const f of volgorde) {
+      if (idx >= gesorteerd.length) break;
+      if (uit[f].length >= groottes[f]) continue;
+      uit[f].push(gesorteerd[idx++]); gezet = true;
+    }
+    if (!gezet) break;   // alles vol — kan niet, maar nooit oneindig draaien
+    heen = !heen;
+  }
+  return uit;
+}
+
+// 6. NOG NIET MET ELKAAR GESPEELD — zoveel mogelijk nieuwe tegenstanders.
+//    `eerdereFlights` is een lijst indelingen van eerdere dagen, elk een lijst
+//    flights met uid's.
+//
+//    ⚠ Dit kan niet toveren. Bij weinig flights en veel dagen is een herhaling
+//    onvermijdelijk; dan kiest hij de indeling met de minste herhalingen. De
+//    test legt dat verschil ook vast.
+function verdeelNieuweTegenstanders(spelers, aantalFlights, eerdereFlights) {
+  const lijst = [...(spelers || [])];
+  if (lijst.length === 0 || aantalFlights <= 0) {
+    return Array.from({ length: Math.max(0, aantalFlights) }, () => []);
+  }
+  // Hoe vaak zat dit paar al samen?
+  const samen = new Map();
+  const sleutel = (a, b) => (a < b ? a + '|' + b : b + '|' + a);
+  (eerdereFlights || []).forEach(dag => {
+    (dag || []).forEach(flight => {
+      const ids = (flight || []).filter(Boolean);
+      for (let i = 0; i < ids.length; i++) {
+        for (let j = i + 1; j < ids.length; j++) {
+          const k = sleutel(ids[i], ids[j]);
+          samen.set(k, (samen.get(k) || 0) + 1);
+        }
+      }
+    });
+  });
+
+  const groottes = flightGroottes(lijst.length, aantalFlights);
+  const uit = Array.from({ length: aantalFlights }, () => []);
+  // Wie het meest "vastzit" (de meeste eerdere ontmoetingen) eerst plaatsen:
+  // die heeft de minste ruimte en moet de eerste keus hebben.
+  const drukte = (sp) => lijst.reduce((n, ander) =>
+    ander === sp ? n : n + (samen.get(sleutel(sp.uid, ander.uid)) || 0), 0);
+  const volgorde = lijst
+    .map((sp, i) => ({ sp, i, d: drukte(sp) }))
+    .sort((a, b) => (b.d - a.d) || (a.i - b.i))
+    .map(x => x.sp);
+
+  volgorde.forEach(sp => {
+    let besteF = -1, besteScore = Infinity;
+    for (let f = 0; f < aantalFlights; f++) {
+      if (uit[f].length >= groottes[f]) continue;
+      const botsingen = uit[f].reduce((n, ander) =>
+        n + (samen.get(sleutel(sp.uid, ander.uid)) || 0), 0);
+      // Bij gelijke botsingen: de leegste flight, daarna de laagste index.
+      // Zo is de uitkomst voorspelbaar en dus te testen.
+      const score = botsingen * 1000 + uit[f].length;
+      if (score < besteScore) { besteScore = score; besteF = f; }
+    }
+    if (besteF < 0) besteF = uit.findIndex((f, i) => f.length < groottes[i]);
+    if (besteF < 0) besteF = 0;
+    uit[besteF].push(sp);
+  });
+  return uit;
+}
+
+function verdeelSpelersOverFlights(soort) {
   const alle = _flights.flatMap(f => f.spelers);
   if (alle.length === 0 || _flights.length === 0) return;
-  _flights.forEach(f => { f.spelers = []; });
-  alle.forEach((sp, i) => { _flights[i % _flights.length].spelers.push(sp); });
+  const keuze = soort || document.getElementById('t-verdeel-soort')?.value || 'beurt';
+  const n = _flights.length;
+  let indeling, melding = '';
+
+  if (keuze === 'stand') {
+    const volgorde = _standVolgordeVoorIndeling();
+    if (volgorde && volgorde.length > 0) {
+      indeling = verdeelOpStand(alle, n, volgorde);
+      melding = 'Ingedeeld op de toernooistand — de besten starten als laatste';
+    } else {
+      // Sierk: "eerste dag random indelen".
+      indeling = verdeelWillekeurig(alle, n);
+      melding = 'Nog geen toernooistand — willekeurig ingedeeld';
+    }
+  } else if (keuze === 'nieuw') {
+    const eerder = _eerdereIndelingen();
+    indeling = eerder.length > 0
+      ? verdeelNieuweTegenstanders(alle, n, eerder)
+      : verdeelWillekeurig(alle, n);
+    melding = eerder.length > 0
+      ? 'Ingedeeld op zo min mogelijk herhaalde tegenstanders'
+      : 'Nog geen eerdere dagen — willekeurig ingedeeld';
+  } else if (keuze === 'hcp') {
+    indeling = verdeelOpHandicapBanden(alle, n);
+    melding = 'Ingedeeld op handicap — gelijke spelers bij elkaar';
+  } else if (keuze === 'flighthcp') {
+    indeling = verdeelOpFlightHandicap(alle, n);
+    melding = 'Ingedeeld zodat elke flight ongeveer even sterk is';
+  } else {
+    indeling = verdeelOmBeurten(alle, n);
+    melding = 'Gelijk verdeeld over de flights';
+  }
+
+  _flights.forEach((f, i) => { f.spelers = indeling[i] || []; });
   renderFlightLijst();
+  if (melding) toast(melding, 4000);
+}
+
+// De toernooistand tot nu toe, van best naar slechtst. Leeg als er nog geen
+// toernooi of nog geen gespeelde dag is — dan deelt de aanroeper willekeurig in.
+function _standVolgordeVoorIndeling() {
+  const t = toernooiData;
+  if (!t || !(t.dagen || []).length) return [];
+  const heeftGespeeld = (t.dagen || []).some(d => dagHeeftScores(d));
+  if (!heeftGespeeld) return [];
+  const { totaal } = dagPuntenTotaal(t);
+  return (t.spelers || [])
+    .map((sp, i) => ({ uid: sp.uid, p: totaal[i] ?? 0 }))
+    .sort((a, b) => b.p - a.p)
+    .map(x => x.uid);
+}
+
+// De flightindelingen van de dagen die al gespeeld zijn.
+function _eerdereIndelingen() {
+  const t = toernooiData;
+  if (!t) return [];
+  return (t.dagen || [])
+    .filter(d => dagHeeftScores(d))
+    .map(d => (d.flights || []).map(f => [...(f.spelerIds || [])]));
 }
 window.verdeelSpelersOverFlights = verdeelSpelersOverFlights;
 
@@ -1371,7 +1591,14 @@ function renderFlightLijst() {
   const kop = `
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       <span style="font-size:13px;color:var(--mid)">${ingedeeld.size} speler(s) · ${_flights.length} flight(s)</span>
-      <button class="btn btn-sm btn-ghost" onclick="verdeelSpelersOverFlights()" style="margin-left:auto">⇄ Gelijk verdelen</button>
+      <select id="t-verdeel-soort" class="input" style="margin-left:auto;width:auto;font-size:12px;padding:4px 8px">
+        <option value="beurt">Om de beurt</option>
+        <option value="stand">Op plek, beste laatst</option>
+        <option value="nieuw">Nog niet met elkaar gespeeld</option>
+        <option value="hcp">Op individuele handicap</option>
+        <option value="flighthcp">Op flight handicap</option>
+      </select>
+      <button class="btn btn-sm btn-ghost" onclick="verdeelSpelersOverFlights()">⇄ Verdelen</button>
     </div>
     ${leeg.length > 0 ? `
     <div style="background:var(--gold-pale);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--gold)">
@@ -1411,7 +1638,7 @@ function renderFlightLijst() {
             </select>` : ''}
           </div>
         `).join('')}
-        ${f.spelers.length === 0 ? '<p style="font-size:12px;color:var(--gold);padding:8px 0">Nog geen spelers. Gebruik ⇄ Gelijk verdelen, of verplaats iemand hierheen met het keuzemenu achter zijn naam.</p>' : ''}
+        ${f.spelers.length === 0 ? '<p style="font-size:12px;color:var(--gold);padding:8px 0">Nog geen spelers. Gebruik ⇄ Verdelen, of verplaats iemand hierheen met het keuzemenu achter zijn naam.</p>' : ''}
       </div>
     </div>
   `).join('');

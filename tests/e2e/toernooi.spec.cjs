@@ -181,7 +181,9 @@ test.describe('Toernooi — de hele route', () => {
 
     // ── 2. Indelen: twee flights, gelijk verdelen ────────────
     await page.click('button:has-text("+ Flight toevoegen")');
-    await page.click('button:has-text("Gelijk verdelen")');
+    // v5.16.0: de knop heet nu "⇄ Verdelen" — hij verdeelt zoals je in de
+    // keuzelijst ernaast kiest, en "gelijk" is daar maar één van.
+    await page.click('button:has-text("Verdelen")');
 
     // GEEN LEGE FLIGHT (fout 1 van 11-9-2026): na verdelen zit in elke flight
     // iemand. Voorheen bleef flight 1 leeg achter en toonde de scorekaart
@@ -464,7 +466,9 @@ test.describe('Toernooi — de hele route', () => {
     }
     await naarFlightIndeling(page);
     await page.click('button:has-text("+ Flight toevoegen")');
-    await page.click('button:has-text("Gelijk verdelen")');
+    // v5.16.0: de knop heet nu "⇄ Verdelen" — hij verdeelt zoals je in de
+    // keuzelijst ernaast kiest, en "gelijk" is daar maar één van.
+    await page.click('button:has-text("Verdelen")');
     await page.fill('#flight-lijst input[type="text"]', 'Ochtendflight');
     await page.locator('#flight-lijst input[type="text"]').first().dispatchEvent('input');
 
@@ -1055,6 +1059,52 @@ test.describe('Toernooi — de hele route', () => {
     const t = await haalToernooi('Plaatspunten');
     expect(t.dagen[0].plaatsPunten, 'de tabel staat in de database').toBe('10, 7, 5');
     expect(t.dagen[0].modus, 'en de dag is strokeplay').toBe('strokeplay');
+  });
+
+  // ============================================================
+  //  v5.16.0 — VIJF MANIEREN OM IN TE DELEN
+  // ------------------------------------------------------------
+  //  De vijf rekenregels zelf zijn met 28 rekentests vastgelegd. Deze test doet
+  //  het andere stuk: staat de keuzelijst er, en doet de knop wat je kiest?
+  // ============================================================
+  test('INDELEN: de keuzelijst staat er en de knop volgt de keuze', async ({ page }) => {
+    test.setTimeout(150000);
+    jaOpAlles(page);
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Indelen', 1);
+    for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+
+    const keuze = page.locator('#t-verdeel-soort');
+    await expect(keuze, 'de keuzelijst staat naast de knop').toBeVisible();
+    await expect(keuze.locator('option'), 'vijf manieren').toHaveCount(5);
+
+    // Twee flights erbij, zodat er iets te verdelen valt.
+    await page.click('#modal-flight-indeling button:has-text("Flight toevoegen")');
+    await expect(page.locator('#flight-lijst'), 'er zijn nu twee flights')
+      .toContainText('2 flight(s)', { timeout: 10000 });
+
+    // Elke keuze moet zonder fout verdelen en dat ook melden.
+    for (const [waarde, tekst] of [
+      ['hcp', 'op handicap'],
+      ['flighthcp', 'even sterk'],
+      ['stand', 'willekeurig'],        // dag 1: er is nog geen toernooistand
+      ['nieuw', 'willekeurig'],        // en nog geen eerdere dagen
+      ['beurt', 'Gelijk verdeeld'],
+    ]) {
+      await keuze.selectOption(waarde);
+      await page.click('#modal-flight-indeling button:has-text("Verdelen")');
+      await expect(page.locator('#toast'), `melding bij "${waarde}"`)
+        .toContainText(tekst, { timeout: 10000 });
+    }
+
+    // En iedereen zit nog steeds precies één keer in een flight.
+    const lijst = await page.locator('#flight-lijst').innerText();
+    for (const n of ['Anna', 'Bram', 'Cees']) {
+      const keer = lijst.split(n).length - 1;
+      expect(keer, `${n} staat precies één keer ingedeeld`).toBe(1);
+    }
   });
 
   // ============================================================
