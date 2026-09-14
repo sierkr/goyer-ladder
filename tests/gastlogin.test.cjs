@@ -145,11 +145,67 @@ check('beide spelers staan erop',
   ['Harry Jansen', 'Karel Gast'].every(n => briefje.includes(n)), true);
 check('met hun inlognaam',
   ['inlog: harry', 'inlog: karel.gast'].every(t => briefje.includes(t)), true);
-check('de tip spreekt over de SPELER, niet over de gast',
-  briefje.includes('de speler tikt'), true);
-check('het woord "gast" staat niet meer in de tip',
-  briefje.includes('de gast tikt'), false);
+// v5.17.0: de tip onderaan is weg. Hij zei "tik je voor- en achternaam in" en
+// dat is onwaar voor een gast met alleen een voornaam — die logt in met `karel`.
+// Deze twee controles bewaken dat hij niet terugkomt.
+check('er staat geen tip meer onder de lijst',
+  /voor- en achternaam/.test(briefje), false);
+check('en het briefje eindigt met de laatste speler',
+  briefje.trim().endsWith('inlog: karel.gast'), true);
 check('een lijst zonder spelers valt niet om',
   typeof G.gastloginTekst({ adres: 'x', wachtwoord: 'y', regels: [] }), 'string');
+
+// ── v5.18.0: een geplakte gastenlijst uitlezen ───────────────
+//  De vervanger van de bulk-import. Wat Sierk plakt komt uit Excel, en Excel
+//  levert per land en per kolomindeling iets anders op. Alles wat hij redelijk
+//  kan tegenkomen staat hier vast.
+console.log('\n══ EEN GEPLAKTE GASTENLIJST ══\n');
+
+const namen = (t, bestaand) => G.gastenUitTekst(t, bestaand).spelers;
+
+check('twee kolommen met een tab',
+  namen('Karel Jansen\t12'), [{ naam: 'Karel Jansen', hcp: 12 }]);
+check('drie kolommen (voornaam, achternaam, hcp)',
+  namen('Karel;Jansen;12'), [{ naam: 'Karel Jansen', hcp: 12 }]);
+check('komma als scheidingsteken',
+  namen('Karel Jansen,12'), [{ naam: 'Karel Jansen', hcp: 12 }]);
+check('gewoon een regel met de handicap erachter',
+  namen('Karel Jansen 12'), [{ naam: 'Karel Jansen', hcp: 12 }]);
+// ⚠ Dit ging de eerste keer mis: de komma was óók een scheidingsteken, dus
+// "8,4" werd twee velden en de naam werd "Anna de Wit 8".
+check('een Nederlandse komma in de handicap',
+  namen('Anna de Wit\t8,4'), [{ naam: 'Anna de Wit', hcp: 8.4 }]);
+check('en dezelfde regel met een komma als scheiding',
+  namen('Anna de Wit,8,4'), [{ naam: 'Anna de Wit', hcp: 8.4 }]);
+check('een plusnul-handicap',
+  namen('Bram Best\t+2'), [{ naam: 'Bram Best', hcp: 2 }]);
+check('een negatieve handicap blijft negatief',
+  namen('Bram Best\t-2'), [{ naam: 'Bram Best', hcp: -2 }]);
+
+// ⚠ Dit is waar v5.17.0 over ging: alleen een voornaam is geldig.
+check('alleen een voornaam mag',
+  namen('Karel'), [{ naam: 'Karel', hcp: 0 }]);
+check('alleen een voornaam met handicap',
+  namen('Karel 18'), [{ naam: 'Karel', hcp: 18 }]);
+check('geen handicap wordt 0',
+  namen('Karel Jansen'), [{ naam: 'Karel Jansen', hcp: 0 }]);
+
+check('lege regels en losse spaties tellen niet mee',
+  namen('Karel\n\n   \nAnna\n'), [{ naam: 'Karel', hcp: 0 }, { naam: 'Anna', hcp: 0 }]);
+check('dubbele spaties in een naam worden er één',
+  namen('Jan   de   Vries\t9'), [{ naam: 'Jan de Vries', hcp: 9 }]);
+
+check('een naam die al meedoet wordt overgeslagen',
+  namen('Karel Jansen\t12\nAnna de Wit\t8', ['karel jansen']),
+  [{ naam: 'Anna de Wit', hcp: 8 }]);
+check('en dezelfde naam twee keer in je eigen lijst ook',
+  namen('Karel\nkarel'), [{ naam: 'Karel', hcp: 0 }]);
+check('de overgeslagen namen worden teruggemeld',
+  G.gastenUitTekst('Karel\nKarel').dubbel, ['Karel']);
+
+check('lege invoer valt niet om',
+  G.gastenUitTekst(''), { spelers: [], dubbel: [], leeg: 1 });
+check('niets doorgeven valt ook niet om',
+  G.gastenUitTekst(null).spelers, []);
 
 module.exports = staat;

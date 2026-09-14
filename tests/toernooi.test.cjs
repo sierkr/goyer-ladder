@@ -398,6 +398,19 @@ check('een gat -> niet ingevuld', K.alleScoresIngevuld(t, t.dagen[0]), false);
 t = maakT([A,B], {dagen:[maakDag(1,{a:[3,4]}, holes2)]});
 check('speler zonder scores -> niet ingevuld', K.alleScoresIngevuld(t, t.dagen[0]), false);
 
+// v5.19.0: de spelerspool. Wie op deze dag in geen enkele flight staat, speelt
+// niet mee en mag de uitslag dus niet tegenhouden.
+const metFlights = (dag, spelerIds) => ({ ...dag, flights: [{ id:1, naam:'Flight 1', spelerIds }] });
+t = maakT([A,B], {dagen:[metFlights(maakDag(1,{a:[3,4]}, holes2), ['a'])]});
+check('een speler in de pool houdt de uitslag niet tegen',
+  K.alleScoresIngevuld(t, t.dagen[0]), true);
+t = maakT([A,B], {dagen:[metFlights(maakDag(1,{a:[3,null]}, holes2), ['a'])]});
+check('maar een gat bij wie WEL speelt nog steeds wel',
+  K.alleScoresIngevuld(t, t.dagen[0]), false);
+t = maakT([A,B], {dagen:[metFlights(maakDag(1,{a:[3,4], b:[4,4]}, holes2), [])]});
+check('staat er niemand in een flight, dan tellen alle spelers (zoals voorheen)',
+  K.alleScoresIngevuld(t, t.dagen[0]), true);
+
 console.log('\n══ TOERNOOI — FLIGHTTIJDEN ══');
 check('flight 0 = basistijd', K.berekenFlightTijd('09:00', 10, 0), '09:00');
 check('flight 2 bij 10 min', K.berekenFlightTijd('09:00', 10, 2), '09:20');

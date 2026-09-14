@@ -145,6 +145,25 @@ async function naarDagTab(p, dagNr = 1) {
   if (await tab.count()) await tab.click();
 }
 
+// v5.17.0: het venster "Spelers beheren" zat achter een knop in de kop van de
+// scorekaart. Die knop is weg; het venster gaat nu open vanaf het tabblad
+// Spelers. Twee klikken in plaats van één — precies wat een coordinator nu ook
+// doet.
+//
+// ⚠ Niet zoeken op tekst: sinds dit tabblad bestaat staat het woord "Spelers"
+// op DRIE knoppen (het tabblad, de knop naar het venster, en de kop van de
+// kaart). Playwright weigert dan te klikken. Daarom op `onclick`, net als
+// naarToernooiTab() en naarDagTab() hierboven.
+async function naarSpelersTab(p) {
+  const tab = p.locator('#toernooi-detail button[onclick="selecteerSpelersTab()"]');
+  if (await tab.count()) await tab.click();
+}
+
+async function openSpelersBeheer(p) {
+  await naarSpelersTab(p);
+  await p.click('#toernooi-detail button[onclick="openToernooiSpelersBeheer()"]');
+}
+
 async function vulAanmaakformulier(page, naam, dagen = 1) {
   await openAanmaakscherm(page);
   await page.fill('#t-naam', naam);
@@ -519,13 +538,87 @@ test.describe('Toernooi — de hele route', () => {
     await page.click('#flight-modal-start-btn');
     await expect(page.locator('#toernooi-detail')).toContainText('Inlognaam', { timeout: 15000 });
 
-    await page.click('#toernooi-detail button:has-text("Spelers")');
+    await openSpelersBeheer(page);
     const lijst = page.locator('#toernooi-speler-verwijder-lijst');
     await expect(lijst).toBeVisible({ timeout: 10000 });
     await expect(lijst, 'de inlognaam van Anna staat erbij').toContainText('anna');
     await expect(lijst, 'en die van Bram ook').toContainText('bram');
     // Geen lege regel meer voor wie er geen heeft.
     await expect(lijst).not.toContainText('undefined');
+  });
+
+  // ============================================================
+  //  v5.18.0 — GASTEN PLAKKEN
+  // ============================================================
+  //  De vervanger van de bulk-import. Die maakte clubaccounts aan; dit zet
+  //  gastspelers in het toernooidocument en verder niets. Sierk: "ze hoeven
+  //  niet bewaard te blijven buiten het toernooi."
+  // ============================================================
+  test('GASTEN PLAKKEN: een lijst uit Excel wordt in één keer toegevoegd', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Plaklijst', 1);
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Plaklijst', { timeout: 15000 });
+
+    await naarSpelersTab(page);
+    await page.click('#toernooi-detail button[onclick="openGastenPlakken()"]');
+
+    // Vier regels, vier vormen: tab, alleen een voornaam, een Nederlandse
+    // komma in de handicap, en een naam die al meedoet.
+    await page.fill('#gasten-plak-tekst',
+      'Karel Jansen\t12\nKarel\nAnna de Wit\t8,4\nAnna Speler\t10');
+
+    // De telling zegt vóór het toevoegen al wat hij ervan maakt.
+    await expect(page.locator('#gasten-plak-telling'),
+      'drie spelers, en de dubbele naam wordt gemeld').toContainText('3 spelers', { timeout: 10000 });
+    await expect(page.locator('#gasten-plak-telling')).toContainText('Anna Speler');
+
+    await page.click('#gasten-plak-knop');
+
+    const t = await haalToernooi('Plaklijst', 20,
+      (x) => (x.spelers || []).length === 5);
+    const gasten = (t.spelers || []).filter(sp => sp.gast);
+    expect(gasten.map(sp => sp.naam).sort(),
+      'de drie gasten staan erin, Anna Speler niet dubbel')
+      .toEqual(['Anna de Wit', 'Karel', 'Karel Jansen']);
+    expect(gasten.find(sp => sp.naam === 'Anna de Wit').hcp,
+      'de komma-handicap is goed gelezen').toBe(8.4);
+    expect(gasten.find(sp => sp.naam === 'Karel').hcp,
+      'zonder handicap wordt 0').toBe(0);
+
+    // ⚠ Geen accounts: dit venster maakt geen inlogs aan.
+    expect(gasten.every(sp => !sp.login),
+      'niemand heeft een inlog gekregen').toBe(true);
+
+    // ⚠ v5.19.0: en ze staan in GEEN ENKELE flight. Dat is de spelerspool:
+    // meedoen en nog niet ingedeeld. Indelen hoort bij de dag.
+    const inFlights = (t.dagen[0].flights || []).flatMap(f => f.spelerIds || []);
+    expect(gasten.some(sp => inFlights.includes(sp.uid)),
+      'niemand is al ingedeeld — ze staan in de pool').toBe(false);
+
+    // ── En dan op de dag: de pool staat in beeld en loopt leeg ──
+    await naarDagTab(page, 1);
+    await page.click('#t-flights-btn');
+    const indeling = page.locator('#flight-lijst');
+    await expect(indeling, 'de pool toont de drie gasten').toContainText('Spelerspool (3)', { timeout: 10000 });
+    await expect(indeling).toContainText('Karel Jansen');
+
+    await page.click('#flight-lijst button:has-text("Verdelen")');
+    await expect(indeling, 'na verdelen is de pool leeg')
+      .toContainText('Leeg — iedereen is ingedeeld', { timeout: 10000 });
+
+    await page.click('#flight-modal-start-btn');
+    const na = await haalToernooi('Plaklijst', 20,
+      (x) => ((x.dagen?.[0]?.flights) || []).flatMap(f => f.spelerIds || []).length === 5);
+    const naFlights = (na.dagen[0].flights || []).flatMap(f => f.spelerIds || []);
+    expect(naFlights.length, 'alle vijf staan nu in een flight').toBe(5);
+    expect(new Set(naFlights).size, 'en niemand dubbel').toBe(5);
   });
 
   // ============================================================
@@ -569,7 +662,7 @@ test.describe('Toernooi — de hele route', () => {
                  geenZelf: true, alleenEchteSpelers: true });
 
     // ── Een vierde speler erbij, via Spelers beheren ──────────
-    await page.click('#toernooi-detail button:has-text("Spelers")');
+    await openSpelersBeheer(page);
     await page.fill('#toernooi-speler-zoek', 'Nina');
     const regel = page.locator('#toernooi-speler-zoek-lijst >> text=Nina Nieuw').first();
     await regel.waitFor({ state: 'visible', timeout: 5000 });
@@ -577,10 +670,62 @@ test.describe('Toernooi — de hele route', () => {
     await page.click('#modal-toernooi-spelers button:has-text("+ Toevoegen")');
     await expect(page.locator('#toernooi-detail')).toContainText('4 spelers', { timeout: 15000 });
 
+    // ⚠ v5.19.0: hier stond direct de controle op een kring van vier. Dat kan
+    // niet meer, en dat is met opzet: wie je op het tabblad Spelers toevoegt
+    // komt in de SPELERSPOOL, nog in geen enkele flight. Indelen hoort bij de
+    // dag. Nina moet dus eerst ingedeeld worden — en pas dán hoort de kring
+    // opnieuw verdeeld te zijn. Dat laatste is waar deze test over gaat.
+    expect(kringKlopt(await haalToernooi('Kring')).aantal,
+      'Nina staat nog in de pool, niet in de flight').toBe(3);
+
+    await naarDagTab(page, 1);
+    await page.click('#t-flights-btn');
+    await expect(page.locator('#flight-lijst'), 'Nina staat in de pool')
+      .toContainText('Spelerspool (1)', { timeout: 10000 });
+    await page.click('#flight-lijst button:has-text("Verdelen")');
+    await page.click('#flight-modal-start-btn');
+
     await expect.poll(async () => kringKlopt(await haalToernooi('Kring')),
       { timeout: 15000, message: 'de kring is opnieuw verdeeld' })
       .toEqual({ aantal: 4, iedereenHeeftEr1: true, iedereenMarkeertEr1: true,
                  geenZelf: true, alleenEchteSpelers: true });
+  });
+
+  // ============================================================
+  //  v5.20.0 — ✈ FLIGHTS STAAT ER ALTIJD
+  // ============================================================
+  //  De knop zat in de kop van de scorekaart, en die kop bestaat alleen als de
+  //  dag GESTART is. Op een dag die nog concept was kon je dus niet indelen —
+  //  precies wanneer je dat wilt. Sierk: "maak het eenduidig."
+  //  Eén regel: bij de dagknoppen, op elke dag, behalve een afgesloten dag.
+  // ============================================================
+  test('FLIGHTKNOP: ✈ Flights staat er op een gestarte én op een conceptdag', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Flightknop', 1);
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Flightknop', { timeout: 15000 });
+
+    await naarDagTab(page, 1);
+    await expect(page.locator('#t-flights-btn'),
+      'op een gestarte dag').toBeVisible({ timeout: 15000 });
+
+    // ⚠ Dit is het geval waar het om ging: terug naar concept, en de knop moet
+    // blijven staan. Voorheen verdween hij hier met de scorekaart mee.
+    await page.click('#toernooi-detail button:has-text("terugzetten naar concept")');
+    await expect(page.locator('#toernooi-detail button:has-text("starten")'))
+      .toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#t-flights-btn'),
+      'en op een conceptdag ook').toBeVisible({ timeout: 15000 });
+
+    // En hij doet het daar ook echt.
+    await page.click('#t-flights-btn');
+    await expect(page.locator('#flight-lijst')).toContainText('Spelerspool', { timeout: 10000 });
   });
 
   // ============================================================
@@ -677,6 +822,12 @@ test.describe('Toernooi — de hele route', () => {
 
     // De dag staat op slot: de scores staan er als tekst, niet meer als invoer.
     await expect(page.locator('#toernooi-detail button:has-text("heropenen")')).toBeVisible({ timeout: 15000 });
+
+    // v5.20.0: en dit is de énige dag zonder ✈ Flights. De uitslag is
+    // gepubliceerd; de indeling omgooien zou die met terugwerkende kracht
+    // veranderen.
+    await expect(page.locator('#t-flights-btn'),
+      'een afgesloten dag heeft geen flightknop').toHaveCount(0);
 
     // DAG HEROPENEN (fout 5 van 11-9-2026): tot en met v5.8.9 was een
     // afgesloten dag voorgoed op slot — `dag.afgerond` werd nergens
@@ -852,7 +1003,7 @@ test.describe('Toernooi — de hele route', () => {
     await eenNaam.close();
 
     // En het beheerscherm toont precies dát: karel.gast, zonder toernooicode.
-    await page.click('#toernooi-detail button:has-text("Spelers")');
+    await openSpelersBeheer(page);
     const lijst = page.locator('#toernooi-speler-verwijder-lijst');
     await expect(lijst).toBeVisible({ timeout: 10000 });
     await expect(lijst, 'de inlognaam zoals de gast hem intikt').toContainText('karel.gast');
@@ -863,7 +1014,9 @@ test.describe('Toernooi — de hele route', () => {
     // v5.11.5: hetzelfde in het lijstje achter "Gastlogins tonen" — dat is het
     // briefje dat je aan je gasten doorgeeft, dus daar mag de code al helemaal
     // niet op staan.
-    await naarToernooiTab(page);
+    // v5.17.0: de gastloginknoppen staan op het tabblad Spelers, niet meer op
+    // Toernooi — ze gaan over mensen, niet over het toernooi als geheel.
+    await naarSpelersTab(page);
     await page.click('#toernooi-detail button:has-text("Gastlogins tonen")');
     const briefje = page.locator('#archief-detail-inhoud');
     await expect(briefje).toBeVisible({ timeout: 10000 });
@@ -1532,7 +1685,7 @@ test.describe('Toernooi — de hele route', () => {
 
     // En dan staat de reparatieknop klaar — de enige uitweg was tot v5.12.3 de
     // gast verwijderen en opnieuw toevoegen, en dan raakt hij zijn scores kwijt.
-    await naarToernooiTab(page);
+    await naarSpelersTab(page);   // v5.17.0: gastloginknoppen staan op Spelers
     await expect(page.locator('#toernooi-detail button:has-text("Gastlogins aanmaken")'),
       'met de knop om het alsnog te doen').toBeVisible({ timeout: 15000 });
   });
@@ -1565,7 +1718,7 @@ test.describe('Toernooi — de hele route', () => {
     await vak.blur();
     await page.waitForTimeout(2500);
 
-    await naarToernooiTab(page);
+    await naarSpelersTab(page);   // v5.17.0: gastloginknoppen staan op Spelers
     await page.click('#toernooi-detail button:has-text("Gastlogins aanmaken")');
     await expect.poll(async () => {
       const x = await haalToernooi('Reparatie');

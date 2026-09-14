@@ -883,10 +883,14 @@
     <div class="form-group">
       <label>Login</label>
       <input type="text" id="login-email" placeholder="voornaam.achternaam" autocomplete="username" inputmode="email">
-      <!-- v5.10.0: gasten van een toernooi tikken hier hun gewone naam in -->
+      <!-- v5.10.0: gasten van een toernooi tikken hier hun gewone naam in.
+           v5.17.0: "voor- en achternaam" klopte niet voor een gast die met
+           alleen een voornaam is aangemaakt — die logt in met "karel". De
+           inlognaam staat bij de gastloginlijst van de wedstrijdleiding, dus
+           daar verwijzen we naar in plaats van de naam na te vertellen. -->
       <p style="font-size:11px;color:var(--light);margin:4px 0 0">
-        Doe je als gast mee aan een toernooi? Vul dan je voor- en achternaam in,
-        met het wachtwoord dat je van de organisatie hebt gekregen.
+        Doe je als gast mee aan een toernooi? Vul dan de inlognaam in die je van
+        de organisatie hebt gekregen, met het bijbehorende wachtwoord.
       </p>
     </div>
     <div class="form-group">
@@ -920,10 +924,6 @@
         onblur="setTimeout(sluitToernooiSpelerModal, 150)">
       <div id="toernooi-speler-zoek-lijst" style="position:absolute;top:100%;left:0;right:0;background:var(--card-bg);color:var(--dark);border:1.5px solid var(--green);border-radius:8px;max-height:160px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,0.1);display:none;margin-top:2px"></div>
     </div>
-    <div class="form-group" style="margin-bottom:8px">
-      <label>Flight</label>
-      <select id="toernooi-speler-flight-sel"></select>
-    </div>
     <button class="btn btn-primary btn-block btn-sm" onclick="voegBestaandeSpelerToeAanToernooi()" style="margin-bottom:16px">+ Toevoegen</button>
 
     <div class="divider"></div>
@@ -934,15 +934,13 @@
       <input type="text" id="toernooi-gast-naam" placeholder="Naam gastspeler">
       <input type="number" id="toernooi-gast-hcp" placeholder="hcp" style="text-align:center">
     </div>
-    <div class="form-group" style="margin-bottom:8px">
-      <label>Flight</label>
-      <select id="toernooi-gast-flight-sel"></select>
-    </div>
     <!-- v5.10.0: alleen zinvol als dit toernooi een gastwachtwoord heeft.
          renderToernooiGastInlogKeuze() zet dit blok aan of uit. -->
     <label id="toernooi-gast-inlog-wrap" style="display:none;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--dark);margin-bottom:8px">
       <input type="checkbox" id="toernooi-gast-inlog" style="accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
-      <span>Met eigen inlog<br><span style="font-size:11px;color:var(--mid)">Logt in met voor- en achternaam plus het toernooiwachtwoord</span></span>
+      <!-- v5.17.0: zie index.html bij het inlogscherm — een gast met alleen een
+           voornaam logt in met "karel", niet met voor- en achternaam. -->
+      <span>Met eigen inlog<br><span style="font-size:11px;color:var(--mid)">Krijgt een eigen inlognaam plus het toernooiwachtwoord</span></span>
     </label>
     <button class="btn btn-primary btn-block btn-sm" onclick="voegGastspelerToeAanToernooi()" style="margin-bottom:8px">+ Gastspeler toevoegen</button>
 
@@ -1751,8 +1749,9 @@
         </div>
         <p style="font-size:11px;color:var(--light);margin:0 0 12px">
           Vul je dit in, dan krijgt elke gastspeler een inlog voor dit ene toernooi.
-          Ze loggen in met hun <strong>voor- en achternaam</strong> plus dit wachtwoord, en
-          hoeven niets te wijzigen. Na afloop van het toernooi werkt de inlog niet meer.
+          Ze loggen in met hun eigen <strong>inlognaam</strong> plus dit wachtwoord, en
+          hoeven niets te wijzigen. De inlognamen staan straks onder "Gastlogins tonen".
+          Na afloop van het toernooi werkt de inlog niet meer.
         </p>
         <button class="btn btn-primary btn-block" onclick="openFlightIndeling()">Flight indeling →</button>
         </div>
@@ -1849,7 +1848,9 @@
       <h2>Spelers & accounts</h2>
       <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
         <button class="btn btn-sm btn-primary" onclick="openAddPlayer()">+ Speler</button>
-        <button class="btn btn-sm btn-ghost" onclick="openBulkImport()">⬆ Bulk import</button>
+        <!-- v5.18.0: hier stond "⬆ Bulk import". Die maakte clubaccounts aan en
+             hoorde nooit thuis bij een toernooi; gasten importeren gaat nu per
+             toernooi, op het tabblad Spelers. "+ Speler" is ongewijzigd. -->
       </div>
     </div>
     <div class="card-collapse ingeklapt">
@@ -2119,64 +2120,27 @@
   </div>
 </div>
 
-<!-- ==================== BULK IMPORT MODAL ==================== -->
-<div class="modal-overlay" id="modal-bulk-import">
+<!-- v5.18.0: het venster "Bulk import toernooi-spelers" stond hier. Dat maakte
+     clubaccounts aan. Hieronder de vervanger: gasten voor ÉÉN toernooi, zonder
+     account en zonder iets buiten dat toernooi. -->
+<div class="modal-overlay" id="modal-gasten-plakken">
   <div class="modal" style="max-width:520px">
-    <h3>Bulk import toernooi-spelers</h3>
-    <p style="font-size:13px;color:var(--mid);margin-bottom:14px">
-      Vul voornaam, achternaam en hcp in per speler. Plak vanuit Excel (3 kolommen).
-      Alle spelers krijgen het initiële wachtwoord en worden bij eerste inlog gevraagd een eigen wachtwoord te kiezen.
+    <h3>Gasten plakken</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:12px">
+      Eén speler per regel: naam en handicap. Plak gerust rechtstreeks uit Excel.
+      Ze doen alleen aan dit toernooi mee en worden nergens anders bewaard.
     </p>
-    <div class="form-group" style="margin-bottom:12px">
-      <label>Toernooijnaam (zichtbaar in titelbalk voor deze spelers)</label>
-      <input type="text" id="bulk-toernooi-naam" placeholder="bijv. Clubkampioenschap 2026" autocomplete="off">
-    </div>
-    <div class="form-group" style="margin-bottom:12px">
-      <label>Ladder toewijzen</label>
-      <div id="bulk-import-ladders" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div>
-    </div>
-    <div style="overflow-x:auto;margin-bottom:12px">
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead>
-          <tr style="background:var(--green);color:white">
-            <th style="padding:8px 10px;text-align:left;font-weight:600;border-radius:6px 0 0 0">#</th>
-            <th style="padding:8px 10px;text-align:left;font-weight:600">Voornaam</th>
-            <th style="padding:8px 10px;text-align:left;font-weight:600">Achternaam</th>
-            <th style="padding:8px 10px;text-align:center;font-weight:600;border-radius:0 6px 0 0">HCP</th>
-            <th style="padding:8px 6px;border-radius:0 6px 0 0"></th>
-          </tr>
-        </thead>
-        <tbody id="bulk-import-rijen"></tbody>
-      </table>
-    </div>
-    <button class="btn btn-ghost btn-sm" onclick="voegBulkRijToe()" style="margin-bottom:14px">+ Rij toevoegen</button>
-    <div id="bulk-import-voortgang" style="display:none;margin-bottom:12px">
-      <div style="background:var(--green-pale);border:1.5px solid var(--green);border-radius:10px;padding:14px 16px;margin-bottom:10px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-          <div id="bulk-import-spinner" style="width:18px;height:18px;border:3px solid var(--green);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0"></div>
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--green)" id="bulk-import-status">Bezig...</div>
-            <div style="font-size:11px;color:var(--mid);margin-top:2px">Sluit dit venster niet — dit kan enkele minuten duren</div>
-          </div>
-        </div>
-        <div style="background:rgba(0,0,0,0.08);border-radius:4px;height:8px;margin-bottom:8px">
-          <div id="bulk-import-balk" style="background:var(--green);height:8px;border-radius:4px;width:0%;transition:width 0.5s"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--mid)">
-          <span id="bulk-import-teller">0 / 0 verwerkt</span>
-          <span id="bulk-import-tijd"></span>
-        </div>
-      </div>
-    </div>
-    <div id="bulk-import-resultaat" style="display:none;margin-bottom:12px">
-      <div id="bulk-import-samenvatting" style="font-size:13px;font-weight:600;margin-bottom:8px"></div>
-      <textarea id="bulk-import-credentials" readonly
-        style="width:100%;font-family:'DM Mono',monospace;font-size:12px;border:1.5px solid var(--border);border-radius:8px;padding:10px;background:var(--card-bg);color:var(--dark);resize:vertical;min-height:120px"></textarea>
-      <button class="btn btn-primary btn-block" onclick="kopieerBulkCredentials()" style="margin-top:8px">📋 Alles kopiëren voor WhatsApp</button>
-    </div>
+    <textarea id="gasten-plak-tekst" rows="8" oninput="toonGastenPlakTelling()"
+      placeholder="Karel Jansen	12&#10;Anna de Wit	8,4&#10;Karel	18"
+      style="width:100%;font-family:'DM Mono',monospace;font-size:13px"></textarea>
+    <div id="gasten-plak-telling" style="font-size:12px;color:var(--mid);margin:6px 0 12px">Plak hierboven je lijst.</div>
+    <p style="font-size:11px;color:var(--light);margin:0 0 12px">
+      Ze komen in de spelerspool van elke dag; daar deel je ze in met ⇄ Verdelen
+      (✈ Flights). Een inlog krijgen ze met "Gastlogins aanmaken".
+    </p>
     <div class="modal-actions">
-      <button class="btn btn-ghost" style="flex:1" id="bulk-import-sluit-btn" onclick="sluitBulkImport()">Sluiten</button>
-      <button class="btn btn-primary" style="flex:2" id="bulk-import-start-btn" onclick="startBulkImport()">Aanmaken</button>
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-gasten-plakken')">Sluiten</button>
+      <button class="btn btn-primary" style="flex:2" id="gasten-plak-knop" onclick="startGastenPlakken()">Toevoegen</button>
     </div>
   </div>
 </div>
