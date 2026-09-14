@@ -147,7 +147,25 @@ export const store = {
   get uitdagingenData() { return uitdagingenData; },
   set toernooiData(v) { toernooiData = v; },
   get toernooiData() { return toernooiData; },
-  set alleToernooien(v) { alleToernooien = v; },
+  // ⚠ v5.23.0 — DEZE LIJST BEVAT ELK TOERNOOI HOOGUIT ÉÉN KEER.
+  //
+  //  WAT ER MIS WAS. Sierk zag drie keuzeknoppen terwijl er twee toernooien
+  //  waren. Bij het opslaan vervangt de meeluisteraar in js/auth.js de hele
+  //  lijst — het nieuwe toernooi zit er dan al in — en daarna zette
+  //  startToernooi() het er nog eens bij met een `push`. Twee knoppen, hetzelfde
+  //  toernooi. Na verversen was het weg, dus het leek een spook.
+  //
+  //  De `push` is eruit, maar de regel hoort HIER: dit is de enige plek waar de
+  //  lijst wordt gezet, en daarmee kan geen enkele toekomstige route het nog
+  //  stukmaken. Meteen ook overal dezelfde volgorde — nieuwste eerst — want
+  //  op meerdere plekken geldt `alleToernooien[0]` als "het" toernooi, en de
+  //  ene schrijver sorteerde wel en de andere niet.
+  set alleToernooien(v) {
+    const gezien = new Set();
+    alleToernooien = (v || [])
+      .filter(t => t && t.id && !gezien.has(t.id) && gezien.add(t.id))
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  },
   get alleToernooien() { return alleToernooien; },
   set actieveToernooiId(v) { actieveToernooiId = v; },
   get actieveToernooiId() { return actieveToernooiId; },

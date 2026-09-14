@@ -74,7 +74,7 @@ function laadToernooiKern() {
     'toernooiModusVanSpeelwijzen', 'zichtbaarheidVanSpeelwijzen',
     // v5.22.0: wacht dit toernooi nog, of loopt het? Die twee bepalen welk
     // toernooi een speler te zien krijgt.
-    'toernooiWacht', 'toernooiLoopt',
+    'toernooiIsConcept', 'toernooiLoopt',
   ]);
   const k = knip('js/knockout.js', ['rondesNaarObj', 'objNaarRondes', 'verwerkKnockoutVoortgang']);
   const bron = `
@@ -94,7 +94,7 @@ function laadToernooiKern() {
       dagModus, heeftStrokeplayDag, gemengdeSpeelwijzen,
       dagPuntenUitSleutels, dagPunten, dagPuntenTotaal,
       toernooiModusVanSpeelwijzen, zichtbaarheidVanSpeelwijzen,
-      toernooiWacht, toernooiLoopt,
+      toernooiIsConcept, toernooiLoopt,
       rondesNaarObj, objNaarRondes, verwerkKnockoutVoortgang,
       _zetToernooi: (v) => { toernooiData = v; },
       _zetLive:     (v) => { _liveScores = v || {}; },
