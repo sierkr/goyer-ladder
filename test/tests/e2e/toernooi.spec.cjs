@@ -734,6 +734,41 @@ test.describe('Toernooi — de hele route', () => {
   });
 
   // ============================================================
+  //  v5.22.0 — TWEE KEER OPSLAAN MAAKT ÉÉN TOERNOOI
+  // ------------------------------------------------------------
+  //  Gemeten op LIVE, 14 september 2026: twee toernooien "Cie on tour 2026",
+  //  vijf seconden na elkaar aangemaakt, dezelfde acht spelers. Het opslaan
+  //  maakt ook alle gastaccounts aan — dat duurt seconden, en zolang bleef de
+  //  knop indrukbaar. Sierk: "ik heb maar 1 toernooi aangemaakt met deze naam."
+  //
+  //  ⚠ Deze test roept startToernooi() TWEE KEER RECHTSTREEKS aan, niet via de
+  //  knop. De knop gaat meteen op slot, dus een tweede klik is daarna sowieso
+  //  een lege handeling — dat zou de test laten slagen zonder het echte slot te
+  //  raken. Het slot zit op de functie; dus test hem daar.
+  // ============================================================
+  test('DUBBEL OPSLAAN: twee keer drukken levert één toernooi op', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Dubbelop', 1);
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+
+    await page.evaluate(() => { window.startToernooi(); window.startToernooi(); });
+
+    await expect.poll(async () =>
+      (await haalAlleToernooien()).filter(t => t.naam === 'Dubbelop').length,
+      { timeout: 25000, message: 'het toernooi is aangemaakt' }).toBe(1);
+
+    // En nog even wachten: een tweede die onderweg was mag alsnog niet landen.
+    await page.waitForTimeout(4000);
+    expect((await haalAlleToernooien()).filter(t => t.naam === 'Dubbelop').length,
+      'en er komt er geen tweede achteraan').toBe(1);
+  });
+
+  // ============================================================
   //  v5.20.0 — ✈ FLIGHTS STAAT ER ALTIJD
   // ============================================================
   //  De knop zat in de kop van de scorekaart, en die kop bestaat alleen als de
