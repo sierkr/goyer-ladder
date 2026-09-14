@@ -5340,16 +5340,32 @@ function openToernooiAfsluiten() {
   document.getElementById('modal-toernooi-afsluiten').classList.add('open');
 }
 
+// v5.25.0: deze routine doet acht dingen achter elkaar en meldde bij een fout
+// alleen "Toernooi afsluiten mislukt: <oorzaak>". Toen dat op 14 september 2026
+// gebeurde ("null is not an object") was daarmee niet te zeggen WELKE stap het
+// was — en de stap erna deed het wel, want het toernooi stond gewoon bij Oud.
+// `stap` houdt bij waar we zijn en komt in de melding terecht. Eén regel per
+// stap, verder verandert er niets aan wat de functie doet.
 async function bevestigToernooiAfsluiten() {
+  let stap = 'voorbereiden';
   try {
     const t = toernooiData;
     if (!t) return;
 
+    // v5.25.0: zonder id valt er niets weg te schrijven. Firestore geeft daar
+    // een onleesbare fout op ("null is not an object"); dit is de leesbare.
+    if (!actieveToernooiId) {
+      toast('Afsluiten kan niet: dit toernooi is niet gekoppeld aan de database', 9000);
+      return;
+    }
+
     // v5.10.0: gastlogins mogen na afloop weg.
+    stap = 'gastlogins opruimen';
     try { await ruimGastloginsOp(t); } catch(e) { console.warn('gastlogins opruimen:', e); }
 
     // v5.12.0: één strokeplay-dag is genoeg om de ladder eraf te houden.
     if (heeftStrokeplayDag(t)) {
+      stap = 'uitslag wegschrijven';
       t.status = 'afgerond';
       const idx = alleToernooien.findIndex(x => x.id === actieveToernooiId);
       if (idx >= 0) alleToernooien[idx].status = 'afgerond';
@@ -5360,6 +5376,7 @@ async function bevestigToernooiAfsluiten() {
       // kunnen hebben, zijn juist zij degenen bij wie de toernooi-vlag uit moet.
       // Een tijdelijke gast zonder account heeft geen profiel; die valt hier
       // vanzelf af omdat het document niet bestaat.
+      stap = 'spelers vrijgeven';
       const spelerUids = (t.spelers || []).map(s => s.uid).filter(u => u && !String(u).startsWith('gast_'));
       await Promise.all(spelerUids.map(uid =>
         getDoc(doc(db, 'spelers', uid)).then(snap => {
@@ -5370,6 +5387,7 @@ async function bevestigToernooiAfsluiten() {
         }).catch(e => console.warn('toernooiSpeler reset mislukt voor', uid, e.code))
       ));
 
+      stap = 'scherm bijwerken';
       store.alleToernooien = alleToernooien.filter(x => x.id !== actieveToernooiId);
       store.toernooiData = store.alleToernooien.length > 0 ? store.alleToernooien[0] : null;
       store.actieveToernooiId = store.toernooiData?.id || null;
@@ -5379,6 +5397,7 @@ async function bevestigToernooiAfsluiten() {
     }
 
     // Totaalstand over alle dagen
+    stap = 'totaalstand berekenen';
     const { punten, won, tied, lost, matrix } = berekenTPunten(0);
     const volgorde = matchplayVolgorde(
       t.spelers.map((s,i) => ({s, i, pt: punten[i], w: won[i], ti: tied[i], l: lost[i]})), matrix);
@@ -5387,6 +5406,7 @@ async function bevestigToernooiAfsluiten() {
       ? t.rankingLadderIds
       : (t.ladderId ? [t.ladderId] : []);
 
+    stap = 'ladder bijwerken';
     for (const ladderId of rankingLadderIds) {
       const { exists: snapExists, data: snapData } = await getLadderData(ladderId);
       if (snapExists) {
@@ -5470,6 +5490,7 @@ async function bevestigToernooiAfsluiten() {
     // v3.1.0: lees de bestaande archieftoernooien VERS uit het document i.p.v. een
     // mogelijk lege in-memory cache. Voorheen werd, als de archiefpagina nog niet
     // was geopend, op een lege lijst geunshift → alle eerdere toernooien gewist.
+    stap = 'archief bijwerken';
     let bestaandeToernooien = [];
     try {
       const _archiefSnap = await getDoc(ARCHIEF_DOC);
@@ -5502,12 +5523,14 @@ async function bevestigToernooiAfsluiten() {
     await setDoc(ARCHIEF_DOC, archief);
     window._archiefToernooienCache = archief.toernooien; // v3.1.0: cache synchroon houden
 
+    stap = 'uitslag wegschrijven';
     if (actieveToernooiId) await setDoc(doc(db, 'toernooien', actieveToernooiId), { ...toernooiData, status: 'afgerond' });
 
     // v3.0.0-11.73: reset toernooiSpeler-vlag voor alle deelnemers die via batch-import
     // zijn aangemaakt. Ze kunnen de app daarna als gewone speler gebruiken.
     // v5.10.0: gasten met een eigen inlog horen hier juist WEL bij — zie de
     // toelichting bij de andere afsluitroute.
+    stap = 'spelers vrijgeven';
     const toernooiSpelerUids = (t.spelers || [])
       .map(s => s.uid)
       .filter(u => u && !String(u).startsWith('gast_'));
@@ -5522,6 +5545,7 @@ async function bevestigToernooiAfsluiten() {
       ));
     }
 
+    stap = 'scherm bijwerken';
     store.alleToernooien = alleToernooien.filter(t => t.id !== actieveToernooiId);
     store.toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
     store.actieveToernooiId = toernooiData?.id || null;
@@ -5530,7 +5554,7 @@ async function bevestigToernooiAfsluiten() {
     toast('Toernooi afgerond! 🏅 Ladder bijgewerkt.');
     renderToernooi();
     renderLadder();
-  } catch(e) { toernooiFout('Toernooi afsluiten', e); }
+  } catch(e) { toernooiFout(`Toernooi afsluiten (${stap})`, e); }
 }
 
 // ============================================================
