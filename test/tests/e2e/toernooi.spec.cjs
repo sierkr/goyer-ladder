@@ -38,6 +38,13 @@ const beheerDb = admin.firestore();
 //
 // ⚠ Dit verbergt niets: is de voorwaarde na alle pogingen niet waar, dan valt
 // de test alsnog om — met de laatst gelezen inhoud erbij.
+// v5.21.0: alle toernooien tegelijk — sinds er meerdere naast elkaar mogen
+// staan (één gestart, de rest wachtend) is dat een zinvolle vraag.
+async function haalAlleToernooien() {
+  const snap = await beheerDb.collection('toernooien').get();
+  return snap.docs.map(d => d.data());
+}
+
 async function haalToernooi(naam, pogingen = 20, klaar = null) {
   let laatste = null;
   for (let i = 0; i < pogingen; i++) {
@@ -86,6 +93,7 @@ const jaOpAlles = (page) => page.on('dialog', d => d.accept());
 
 // Kiest een speler via het echte zoekveld, zoals een mens dat doet.
 async function kiesSpeler(page, naam) {
+  await naarSetupTab(page, 'spelers');   // v5.21.0
   await page.fill('#t-speler-zoek', naam.split(' ')[0]);
   const regel = page.locator(`#t-speler-zoek-lijst >> text=${naam}`).first();
   await regel.waitFor({ state: 'visible', timeout: 5000 });
@@ -104,6 +112,25 @@ async function kiesSpeler(page, naam) {
 }
 
 // Opent de flightindeling vanuit het aanmaakscherm.
+// ============================================================
+//  v5.21.0 — OPSLAAN EN STARTEN ZIJN TWEE MOMENTEN
+// ------------------------------------------------------------
+//  Tot v5.20.0 startte dag 1 mee op het moment dat je het toernooi aanmaakte.
+//  Nu wordt een toernooi opgeslagen en staat het te WACHTEN; starten doe je
+//  later met ▶ Dag 1 starten. Een test die daarna wil scoren moet die knop dus
+//  indrukken — net als een coordinator op de dag zelf.
+async function slaToernooiOp(page) {
+  await page.click('#flight-modal-start-btn');
+}
+
+async function slaOpEnStart(page, dagNr = 1) {
+  await slaToernooiOp(page);
+  const knop = page.locator(`#toernooi-detail button:has-text("Dag ${dagNr} starten")`);
+  await knop.waitFor({ state: 'visible', timeout: 20000 });
+  await knop.click();
+  await expect(page.locator('#t-scorecard-wrap')).toBeVisible({ timeout: 20000 });
+}
+
 async function naarFlightIndeling(page) {
   await page.click('#toernooi-setup-wrap button:has-text("Flight indeling")');
   await page.waitForSelector('#modal-flight-indeling.open', { timeout: 10000 });
@@ -123,10 +150,20 @@ async function openAanmaakscherm(page) {
 // zichtbaar. Alle dagblokken blijven wel in het scherm staan — daar rekent
 // startToernooi() op — maar invullen kan pas nadat je het tabblad kiest, net
 // als een coordinator dat doet.
+// v5.21.0: de dagtabbladen stonden in een eigen rij binnen #t-dag-blokken.
+// Ze zitten nu in de ENE rij bovenaan het aanmaakscherm (#t-setup-tabs), naast
+// Toernooi en Spelers.
 async function kiesSetupDag(page, dagNr) {
-  const tab = page.locator(`#t-dag-blokken button[onclick="selecteerSetupDag(${dagNr})"]`);
+  const tab = page.locator(`#t-setup-tabs button[onclick="selecteerSetupDag(${dagNr})"]`);
   if (await tab.count()) await tab.click();
   await expect(page.locator(`#t-dag-blokken .dag-blok[data-dagnr="${dagNr}"]`)).toBeVisible();
+}
+
+// v5.21.0: het aanmaakscherm heeft tabbladen. Spelers kiezen kan pas als dat
+// tabblad openstaat — net als bij een coordinator.
+async function naarSetupTab(page, tab) {
+  const knop = page.locator(`#t-setup-tabs button[onclick="selecteerSetupTab('${tab}')"]`);
+  if (await knop.count()) await knop.click();
 }
 
 // v5.13.1: de toernooibrede knoppen en schakelaars staan nu op het tabblad
@@ -166,8 +203,13 @@ async function openSpelersBeheer(p) {
 
 async function vulAanmaakformulier(page, naam, dagen = 1) {
   await openAanmaakscherm(page);
+  await naarSetupTab(page, 'toernooi');   // v5.21.0: de naam staat daar
   await page.fill('#t-naam', naam);
-  if (dagen > 1) await page.selectOption('#t-aantal-dagen', String(dagen));
+  // v5.21.0: "Aantal dagen" bestaat niet meer. Een dag erbij doe je met
+  // + Dag toevoegen, precies zoals bij een opgeslagen toernooi.
+  for (let d = 1; d < dagen; d++) {
+    await page.click('#t-setup-tabs button[onclick="voegSetupDagToe()"]');
+  }
   const blokken = page.locator('#t-dag-blokken .dag-blok');
   await expect(blokken).toHaveCount(dagen);
   for (let i = 0; i < dagen; i++) {
@@ -210,7 +252,7 @@ test.describe('Toernooi — de hele route', () => {
     const leegWaarschuwing = page.locator('#flight-lijst >> text=leeg');
     await expect(leegWaarschuwing).toHaveCount(0);
 
-    await page.click('#flight-modal-start-btn');
+    await slaOpEnStart(page);   // v5.21.0: opslaan én dag 1 starten
     await expect(page.locator('#modal-flight-indeling')).not.toHaveClass(/open/, { timeout: 15000 });
 
     // ── 3. Het toernooi draait ───────────────────────────────
@@ -276,7 +318,7 @@ test.describe('Toernooi — de hele route', () => {
       await vulAanmaakformulier(coord, 'Markers', 1);
       for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(coord, n);
       await naarFlightIndeling(coord);
-      await coord.click('#flight-modal-start-btn');
+      await slaOpEnStart(coord);   // v5.21.0: opslaan én dag 1 starten
       await expect(coord.locator('#toernooi-detail')).toContainText('Markers', { timeout: 15000 });
 
       // ── 2. De markerkring ligt vast in de flight ──────────────
@@ -708,20 +750,19 @@ test.describe('Toernooi — de hele route', () => {
     await vulAanmaakformulier(page, 'Flightknop', 1);
     for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
     await naarFlightIndeling(page);
-    await page.click('#flight-modal-start-btn');
+    await slaToernooiOp(page);
     await expect(page.locator('#toernooi-detail')).toContainText('Flightknop', { timeout: 15000 });
 
+    // v5.21.0: een pas opgeslagen toernooi WACHT — dag 1 is concept. Dat is
+    // meteen het geval waar deze test over gaat: de knop moet er ook dan zijn.
     await naarDagTab(page, 1);
     await expect(page.locator('#t-flights-btn'),
-      'op een gestarte dag').toBeVisible({ timeout: 15000 });
+      'op een conceptdag').toBeVisible({ timeout: 15000 });
 
-    // ⚠ Dit is het geval waar het om ging: terug naar concept, en de knop moet
-    // blijven staan. Voorheen verdween hij hier met de scorekaart mee.
-    await page.click('#toernooi-detail button:has-text("terugzetten naar concept")');
-    await expect(page.locator('#toernooi-detail button:has-text("starten")'))
-      .toBeVisible({ timeout: 15000 });
+    await page.click('#toernooi-detail button:has-text("Dag 1 starten")');
+    await expect(page.locator('#t-scorecard-wrap')).toBeVisible({ timeout: 20000 });
     await expect(page.locator('#t-flights-btn'),
-      'en op een conceptdag ook').toBeVisible({ timeout: 15000 });
+      'en op een gestarte dag ook').toBeVisible({ timeout: 15000 });
 
     // En hij doet het daar ook echt.
     await page.click('#t-flights-btn');
@@ -793,7 +834,7 @@ test.describe('Toernooi — de hele route', () => {
     await vulAanmaakformulier(page, 'Afsluiten', 1);
     for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(page, n);
     await naarFlightIndeling(page);
-    await page.click('#flight-modal-start-btn');
+    await slaOpEnStart(page);   // v5.21.0: opslaan én dag 1 starten
     await expect(page.locator('#toernooi-detail')).toContainText('Afsluiten', { timeout: 15000 });
 
     // Zolang de kaart niet vol is, mag de uitslagknop niet werken.
@@ -922,7 +963,7 @@ test.describe('Toernooi — de hele route', () => {
     await expect(page.locator('#t-geselecteerde-spelers')).toContainText('Bep');
 
     await naarFlightIndeling(page);
-    await page.click('#flight-modal-start-btn');
+    await slaOpEnStart(page);   // v5.21.0: opslaan én dag 1 starten
     await expect(page.locator('#toernooi-detail')).toContainText('Gastentoernooi', { timeout: 20000 });
 
     // De gast heeft een echt account gekregen, met de toernooicode erachter.
@@ -1062,8 +1103,13 @@ test.describe('Toernooi — de hele route', () => {
     await expect(page.locator('#modal-flight-indeling')).toHaveClass(/open/);
   });
 
-  test('TWEE TOERNOOIEN: een tweede toernooi naast een lopend kan niet', async ({ page }) => {
-    test.setTimeout(150000);
+  // ⚠ v5.21.0: deze test controleerde dat je geen TWEEDE toernooi kon AANMAKEN
+  //  zolang er één liep. Die grens is verhuisd, want aanmaken en starten zijn
+  //  twee momenten geworden. Sierk, 14 september 2026: zoveel wachtende
+  //  toernooien als je wilt, maar één tegelijk gestart. De test controleert nu
+  //  precies dat — beide helften.
+  test('TWEE TOERNOOIEN: klaarzetten mag, tegelijk starten niet', async ({ page }) => {
+    test.setTimeout(180000);
     jaOpAlles(page);
     await inloggen(page, 'coord@MPladder.stb');
     await naarToernooi(page);
@@ -1071,18 +1117,29 @@ test.describe('Toernooi — de hele route', () => {
     await vulAanmaakformulier(page, 'Eerste', 1);
     for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
     await naarFlightIndeling(page);
-    await page.click('#flight-modal-start-btn');
+    await slaOpEnStart(page);   // deze gaat écht lopen
     await expect(page.locator('#toernooi-detail')).toContainText('Eerste', { timeout: 15000 });
 
-    // Formulier weer tevoorschijn halen en een tweede proberen
+    // Een tweede klaarzetten MAG nu. Formulier weer tevoorschijn halen.
     await page.click('#toernooi-nieuw-sectie button');
     await expect(page.locator('#toernooi-setup-wrap')).toBeVisible();
     await vulAanmaakformulier(page, 'Tweede', 1);
     for (const n of ['Cees Speler', 'Nina Nieuw']) await kiesSpeler(page, n);
     await naarFlightIndeling(page);
-    await page.click('#flight-modal-start-btn');
+    await slaToernooiOp(page);
 
+    await expect.poll(async () => (await haalAlleToernooien()).map(t => t.naam).sort(),
+      { timeout: 20000, message: 'beide toernooien staan in de database' })
+      .toEqual(['Eerste', 'Tweede']);
+
+    // Maar starten gaat niet zolang "Eerste" loopt.
+    await page.click(`#toernooi-actief-wrap button:has-text("Tweede")`);
+    await naarDagTab(page, 1);
+    await page.click('#toernooi-detail button:has-text("Dag 1 starten")');
     await expect(page.locator('#toast')).toContainText('loopt nog', { timeout: 10000 });
+
+    const tweede = await haalToernooi('Tweede');
+    expect(tweede.dagen[0].gestart, 'en hij is dus niet gestart').toBeFalsy();
   });
 
   test('MEERDAAGS: dag 2 wordt NIET vooraf ingedeeld, maar zegt dat wel', async ({ page }) => {
@@ -1132,13 +1189,18 @@ test.describe('Toernooi — de hele route', () => {
     await vulAanmaakformulier(page, 'Levensloop', 1);
     for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
     await naarFlightIndeling(page);
-    await page.click('#flight-modal-start-btn');
+    await slaToernooiOp(page);
     await expect(page.locator('#toernooi-detail')).toContainText('Levensloop', { timeout: 25000 });
 
-    // Dag 1 start MEE met het toernooi — je hebt hem net ingesteld.
+    // ⚠ v5.21.0: dag 1 startte tot v5.20.0 MEE met het aanmaken. Nu niet meer —
+    // aanmaken en starten zijn twee momenten, en een pas opgeslagen toernooi
+    // staat te wachten. Dat maakt dag 1 gelijk aan elke andere dag.
     const detail = page.locator('#toernooi-detail');
-    await expect(detail, 'dag 1 is meteen gestart').not.toContainText('Dag 1 is nog niet gestart');
-    await expect(detail.locator('#t-scorecard-wrap'), 'dag 1 heeft een scorekaart').toBeVisible();
+    await expect(detail, 'dag 1 wacht nog').toContainText('Dag 1 is nog niet gestart');
+    await expect(detail.locator('#t-scorecard-wrap'), 'en heeft dus geen scorekaart').toHaveCount(0);
+
+    await page.click('#toernooi-detail button:has-text("Dag 1 starten")');
+    await expect(detail.locator('#t-scorecard-wrap'), 'na starten wel').toBeVisible({ timeout: 20000 });
 
     // Een dag die je ONDERWEG toevoegt begint als concept.
     await page.click('#toernooi-detail button:has-text("Dag toevoegen")');
@@ -1293,7 +1355,7 @@ test.describe('Toernooi — de hele route', () => {
     await vulAanmaakformulier(page, 'Herstart', 1);
     for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
     await naarFlightIndeling(page);
-    await page.click('#flight-modal-start-btn');
+    await slaOpEnStart(page);   // v5.21.0: opslaan én dag 1 starten
     await expect(page.locator('#toernooi-detail')).toContainText('Herstart', { timeout: 20000 });
 
     // De speler zit erbij en blijft ingelogd — dat is het geval dat stukging.
@@ -1334,7 +1396,7 @@ test.describe('Toernooi — de hele route', () => {
     await page.click('#toernooi-setup-wrap button:has-text("Gastspeler toevoegen")');
     await expect(page.locator('#t-geselecteerde-spelers')).toContainText('Karel Gast');
     await naarFlightIndeling(page);
-    await page.click('#flight-modal-start-btn');
+    await slaOpEnStart(page);   // v5.21.0: opslaan én dag 1 starten
     await expect(page.locator('#toernooi-detail')).toContainText('Herstartgast', { timeout: 20000 });
     await expect.poll(async () => {
       const x = await haalToernooi('Herstartgast');
@@ -1635,7 +1697,7 @@ test.describe('Toernooi — de hele route', () => {
     await vulAanmaakformulier(page, 'Nieuwtje', 1);
     for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
     await naarFlightIndeling(page);
-    await page.click('#flight-modal-start-btn');
+    await slaOpEnStart(page);   // v5.21.0: opslaan én dag 1 starten
     await expect(page.locator('#toernooi-detail')).toContainText('Nieuwtje', { timeout: 25000 });
 
     // ⚠ HIER GING HET MIS. Bij het AANMAKEN weigert de app sinds v5.9.0 een
@@ -1703,7 +1765,7 @@ test.describe('Toernooi — de hele route', () => {
     await kiesSpeler(page, 'Anna Speler');
     await page.click('#toernooi-setup-wrap button:has-text("Gastspeler toevoegen")');
     await naarFlightIndeling(page);
-    await page.click('#flight-modal-start-btn');
+    await slaOpEnStart(page);   // v5.21.0: opslaan én dag 1 starten
     await expect(page.locator('#toernooi-detail')).toContainText('Reparatie', { timeout: 25000 });
 
     // De wedstrijdleiding vult alvast een score in voor de gast. Die moet de

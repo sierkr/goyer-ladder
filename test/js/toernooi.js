@@ -1024,15 +1024,14 @@ function renderDagBlokken() {
   // Een nieuwe dag volgt dag 1 (v5.12.1); is die er nog niet, dan matchplay.
   const dag1 = bestaand[0] || {};
 
-  let tabs = `<div style="display:flex;gap:6px;overflow-x:auto;padding:0 0 0;scrollbar-width:none;border-bottom:1px solid var(--border);margin-bottom:12px">`;
+  // v5.21.0: hier werd een EIGEN rij dagtabbladen gebouwd, halverwege de pagina.
+  // Die rij is opgegaan in de ene rij bovenaan het aanmaakscherm — dezelfde rij
+  // die een opgeslagen toernooi heeft. Zie renderSetupTabs(). Deze functie
+  // tekent nu alleen nog de dagblokken zelf.
   let html = '';
   for (let d = 1; d <= aantalDagen; d++) {
     const prev = bestaand[d - 1] || {};
     const actief = d === (window._tSetupDagNr || 1);
-    tabs += `<button type="button" onclick="selecteerSetupDag(${d})"
-      style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px solid ${actief ? 'var(--green)' : 'var(--border)'};border-bottom:none;background:${actief ? 'var(--green)' : 'transparent'};color:${actief ? 'white' : 'var(--mid)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">
-      Dag ${d}${aantalDagen > 1 && d === (window._tSetupDagNr || 1) ? ` <span onclick="event.stopPropagation();verwijderSetupDag(${d})" title="Deze dag weghalen" style="margin-left:4px;opacity:.8">&#10005;</span>` : ''}
-    </button>`;
 
     const w = {
       datum:  prev.datum || '',
@@ -1056,12 +1055,8 @@ function renderDagBlokken() {
       ${dagFormulierHtml(w, { dagNr: d, metNieuweBaan: true })}
     </div>`;
   }
-  tabs += `<button type="button" onclick="voegSetupDagToe()"
-      style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px dashed var(--border);border-bottom:none;background:transparent;color:var(--green);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">
-      + Dag toevoegen
-    </button></div>`;
-
-  container.innerHTML = tabs + html;
+  container.innerHTML = html;
+  renderSetupTabs();
 
   // Baan-selectie herstellen: De Goyer op dag 1, en volgende dagen volgen dag 1.
   container.querySelectorAll('.dag-blok').forEach((blok, i) => {
@@ -1080,9 +1075,63 @@ function renderDagBlokken() {
 // uitlezen met querySelectorAll('.dag-blok') en hoefde daar niets aan.
 function selecteerSetupDag(dagNr) {
   window._tSetupDagNr = dagNr;
+  window._tSetupTab = dagNr;          // v5.21.0
   renderDagBlokken();
 }
 window.selecteerSetupDag = selecteerSetupDag;
+
+// ============================================================
+//  ÉÉN RIJ TABBLADEN OP HET AANMAAKSCHERM  (v5.21.0)
+// ------------------------------------------------------------
+//  [Toernooi] [Spelers] [Dag 1] [Dag 2] [+ Dag toevoegen]
+//
+//  Precies de rij die een opgeslagen toernooi heeft. Sierk, 14 september 2026:
+//  "als ik op nieuw toernooi aanmaken klik dan wil ik daar toernooi/spelers/
+//  dagen tabs. het volledige toernooi kunnen aanmaken."
+//
+//  ⚠ De dagblokken blijven ALLEMAAL in het scherm staan en worden alleen
+//  verborgen — startToernooi() leest ze uit met querySelectorAll('.dag-blok').
+//  Een blok echt weghalen zou die uitlezing stukmaken.
+function selecteerSetupTab(tab) {
+  window._tSetupTab = tab;
+  if (typeof tab === 'number') window._tSetupDagNr = tab;
+  renderDagBlokken();
+}
+window.selecteerSetupTab = selecteerSetupTab;
+
+function renderSetupTabs() {
+  const rij = document.getElementById('t-setup-tabs');
+  if (!rij) return;
+  const aantalDagen = parseInt(document.getElementById('t-aantal-dagen')?.value) || 1;
+  const huidig = window._tSetupTab ?? 'toernooi';
+  const dagNr = window._tSetupDagNr || 1;
+
+  const knop = (actief, klik, label, stippel) => `<button type="button" onclick="${klik}"
+      style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px ${stippel ? 'dashed' : 'solid'} ${actief ? 'var(--green)' : 'var(--border)'};border-bottom:none;background:${actief ? 'var(--green)' : 'transparent'};color:${actief ? 'white' : (stippel ? 'var(--green)' : 'var(--mid)')};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">${label}</button>`;
+
+  let html = `<div style="display:flex;gap:6px;overflow-x:auto;padding:0;scrollbar-width:none;border-bottom:1px solid var(--border);margin-bottom:12px">`;
+  html += knop(huidig === 'toernooi', "selecteerSetupTab('toernooi')", 'Toernooi');
+  html += knop(huidig === 'spelers', "selecteerSetupTab('spelers')", 'Spelers');
+  for (let d = 1; d <= aantalDagen; d++) {
+    const actief = huidig === d;
+    // Het ✕ staat alleen op de dag die je bekijkt, en alleen als er meer dan
+    // één dag is — anders houd je geen toernooi over.
+    const label = `Dag ${d}${aantalDagen > 1 && actief ? ` <span onclick="event.stopPropagation();verwijderSetupDag(${d})" title="Deze dag weghalen" style="margin-left:4px;opacity:.8">&#10005;</span>` : ''}`;
+    html += knop(actief, `selecteerSetupDag(${d})`, label);
+  }
+  html += knop(false, 'voegSetupDagToe()', '+ Dag toevoegen', true);
+  html += '</div>';
+  rij.innerHTML = html;
+
+  const toon = (id, aan) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = aan ? '' : 'none';
+  };
+  toon('t-setup-paneel-toernooi', huidig === 'toernooi');
+  toon('t-setup-paneel-spelers',  huidig === 'spelers');
+  toon('t-setup-paneel-dagen',    typeof huidig === 'number');
+}
+window.renderSetupTabs = renderSetupTabs;
 
 function voegSetupDagToe() {
   const el = document.getElementById('t-aantal-dagen');
@@ -1091,6 +1140,7 @@ function voegSetupDagToe() {
   if (nu >= 10) { toast('Meer dan tien dagen is niet mogelijk'); return; }
   el.value = nu + 1;
   window._tSetupDagNr = nu + 1;
+  window._tSetupTab = nu + 1;   // v5.21.0: spring meteen naar de nieuwe dag
   renderDagBlokken();
 }
 window.voegSetupDagToe = voegSetupDagToe;
@@ -1106,6 +1156,7 @@ function verwijderSetupDag(dagNr) {
   if (blok) blok.remove();
   el.value = nu - 1;
   window._tSetupDagNr = Math.min(dagNr, nu - 1);
+  window._tSetupTab = window._tSetupDagNr;   // v5.21.0
   renderDagBlokken();
 }
 window.verwijderSetupDag = verwijderSetupDag;
@@ -1304,7 +1355,7 @@ function openFlightIndeling() {
   store._flightPool = [];
 
   const startBtn = document.getElementById('flight-modal-start-btn');
-  if (startBtn) { startBtn.textContent = 'Toernooi starten →'; startBtn.onclick = startToernooi; }
+  if (startBtn) { startBtn.textContent = 'Toernooi opslaan →'; startBtn.onclick = startToernooi; }
 
   renderFlightLijst();
   document.getElementById('modal-flight-indeling').classList.add('open');
@@ -1794,7 +1845,7 @@ async function startToernooi() {
         `Er ${gastenZonderWw === 1 ? 'zit 1 gastspeler' : `zitten ${gastenZonderWw} gastspelers`} in dit ` +
         `toernooi, maar er is geen wachtwoord ingevuld.\n\n` +
         `Zonder wachtwoord krijgen zij GEEN inlog en kunnen ze niet meedoen op hun eigen telefoon.\n\n` +
-        `Toch starten?`)) return;
+        `Toch opslaan?`)) return;
     }
     if (gastWachtwoord && gastWachtwoord.length < 6) {
       toast('Het gastwachtwoord moet minstens 6 tekens hebben');
@@ -1814,13 +1865,14 @@ async function startToernooi() {
       }
     }
 
-    // v5.9.0: nooit twee actieve toernooien naast elkaar. Dat kon tot en met
-    // v5.8.9 omdat het aanmaakformulier boven een lopend toernooi bleef staan.
-    if (alleToernooien.length > 0) {
-      const lopend = alleToernooien[0];
-      toast(`"${lopend?.naam || 'Een toernooi'}" loopt nog. Sluit dat eerst af of annuleer het.`);
-      return;
-    }
+    // ⚠ v5.21.0: hier stond "nooit twee toernooien naast elkaar" — en die
+    // blokkade zat op AANMAKEN. Dat kon toen niet anders, want aanmaken was
+    // starten. Nu je een toernooi kunt aanmaken dat blijft wachten, zou die
+    // regel je verbieden het volgende alvast klaar te zetten.
+    //
+    // De grens is verhuisd naar STARTEN, in startDag(): zoveel wachtende
+    // toernooien als je wilt, maar één tegelijk gestart. Keuze van Sierk,
+    // 14 september 2026.
 
     // Lees alle dag-blokken
     const dagBlokken = Array.from(document.querySelectorAll('#t-dag-blokken .dag-blok'));
@@ -1916,10 +1968,15 @@ async function startToernooi() {
         plaatsPunten: cfg.plaatsPunten || '',   // v5.15.0, leeg = de standaardreeks
         flights,
         scores,
-        // v5.14.0: dag 1 start meteen — je hebt hem net op het aanmaakscherm
-        // ingesteld, dus die twee keer laten bevestigen is onzin. Dag 2 en
-        // verder beginnen als concept en zet je aan als je er bent.
-        gestart:  cfg.dagNr === 1,
+        // ⚠ v5.21.0: dag 1 startte hier meteen mee. Dat maakte aanmaken en
+        // starten één handeling, en dat is precies wat eruit moest. Sierk,
+        // 14 september 2026: "op een veel later tijdstip start ik het toernooi.
+        // dus dat aangemaakte toernooi staat onder nieuw toernooi en eerder
+        // toernooi netjes te wachten tot het gestart wordt."
+        //
+        // Alle dagen beginnen nu als concept. Het toernooi staat klaar en wacht;
+        // starten doe je met ▶ Dag 1 starten, dat sinds v5.14.0 al bestaat.
+        gestart:  false,
         afgerond: false
       };
     });
@@ -1990,7 +2047,7 @@ async function startToernooi() {
     });
     _toernooiListeners.push(unsub);
 
-    toast('Toernooi gestart! 🏅');
+    toast('Toernooi opgeslagen — het staat klaar. Start dag 1 wanneer je zover bent.', 7000);
     wisToernooiConcept(); // v4.0.0 (fix 7.1)
     closeModal('modal-flight-indeling');
     store._flights = [];
@@ -1999,6 +2056,8 @@ async function startToernooi() {
     store._tRankingLadderIds = new Set();
     document.getElementById('t-naam').value = '';
     document.getElementById('t-aantal-dagen').value = '1';
+    window._tSetupTab = 'toernooi';   // v5.21.0
+    window._tSetupDagNr = 1;
     // v5.12.8: waren vakjes, is nu een keuzelijst. Terug naar "Geen".
     const _rankKeuze = document.querySelector('#t-ranking-ladders select');
     if (_rankKeuze) _rankKeuze.value = '';
@@ -2014,7 +2073,7 @@ async function startToernooi() {
     renderToernooi();
     // v3.0.0-11.106: start live/ listeners direct na aanmaken
     herlaadToernooiListeners();
-  } catch(e) { toernooiFout('Toernooi starten', e); }
+  } catch(e) { toernooiFout('Toernooi opslaan', e); }
 }
 
 // ============================================================
@@ -2434,6 +2493,30 @@ async function maakGastAccount(volleNaam, code, wachtwoord, toernooiNaam) {
 //  Gevolg: een toernooi dat al liep toen v5.14.0 kwam heeft geen `gestart` op
 //  zijn dagen staan en toont die als concept. Eén keer op "Dag starten" drukken
 //  zet dat recht; er gaat geen score verloren.
+// ============================================================
+//  WACHT DIT TOERNOOI NOG?  (v5.21.0)
+// ------------------------------------------------------------
+//  Een toernooi dat is aangemaakt maar waarvan nog geen enkele dag is gestart,
+//  staat te wachten. Geen nieuw veld in de database, en dat is met opzet: het
+//  is af te leiden uit de dagen die er al staan, dus er valt niets te bewaren
+//  en niets uit de pas te lopen. Oude toernooien hoeven niet omgezet.
+function toernooiWacht(t) {
+  const dagen = t?.dagen || [];
+  if (dagen.length === 0) return false;
+  return dagen.every(d => !dagIsGestart(d));
+}
+
+// Loopt er al een toernooi? Dat is er één dat NIET meer wacht en nog niet klaar
+// is. Sierk, 14 september 2026: zoveel wachtende toernooien als je wilt, maar
+// één tegelijk gestart.
+function lopendToernooi(behalveId) {
+  return (alleToernooien || []).find(t =>
+    t.id !== behalveId &&
+    t.status !== 'afgerond' &&
+    !toernooiWacht(t) &&
+    !(t.dagen || []).every(d => d.afgerond));
+}
+
 function dagIsGestart(dag) {
   if (!dag) return false;
   return dag.gestart === true || dag.afgerond === true;
@@ -2789,6 +2872,16 @@ async function startDag() {
     const dag = actieveDag(t);
     if (!dag) { toast('Geen dag gevonden om te starten'); return; }
     if (dagIsGestart(dag)) { toast(`Dag ${dag.dagNr} is al gestart`); return; }
+    // v5.21.0: de grens die tot v5.20.0 op AANMAKEN zat, zit nu hier. Twee
+    // toernooien tegelijk laten lopen maakt het willekeurig welk toernooi een
+    // speler te zien krijgt — op meerdere plekken wordt alleToernooien[0]
+    // gebruikt uit een zoekopdracht zonder sorteervolgorde.
+    const alLopend = lopendToernooi(actieveToernooiId);
+    if (alLopend) {
+      toast(`"${alLopend.naam || 'Een toernooi'}" loopt nog. Sluit dat eerst af of annuleer het — `
+          + `daarna kun je deze starten.`, 9000);
+      return;
+    }
     if (!(dag.flights || []).some(f => (f.spelerIds || []).length > 0)) {
       // Zonder indeling toont de scorekaart holes zonder spelerskolommen —
       // precies het beeld "er is geen indeling" uit de meting van 11 september.
@@ -3201,8 +3294,13 @@ function gastenUitTekst(tekst, bestaandeNamen = []) {
   return { spelers, dubbel, leeg };
 }
 
-function openGastenPlakken() {
-  if (!toernooiData) return;
+// v5.21.0: dit venster doet nu twee dingen. Bij een OPGESLAGEN toernooi schrijft
+// het de gasten weg naar de database; op het AANMAAKSCHERM zet het ze in je
+// selectie, want daar bestaat het toernooi nog niet. Het uitlezen van je
+// geplakte lijst (gastenUitTekst) is in beide gevallen hetzelfde.
+function openGastenPlakken(modus) {
+  window._gastenPlakModus = modus === 'setup' ? 'setup' : 'toernooi';
+  if (window._gastenPlakModus !== 'setup' && !toernooiData) return;
   const vak = document.getElementById('gasten-plak-tekst');
   if (vak) vak.value = '';
   toonGastenPlakTelling();
@@ -3216,7 +3314,7 @@ function toonGastenPlakTelling() {
   const uit = document.getElementById('gasten-plak-telling');
   if (!uit) return;
   const tekst = document.getElementById('gasten-plak-tekst')?.value || '';
-  const { spelers, dubbel } = gastenUitTekst(tekst, (toernooiData?.spelers || []).map(sp => sp.naam));
+  const { spelers, dubbel } = gastenUitTekst(tekst, _gastenPlakBestaandeNamen());
   if (!tekst.trim()) { uit.textContent = 'Plak hierboven je lijst.'; return; }
   const delen = [`${spelers.length} speler${spelers.length === 1 ? '' : 's'}`];
   if (dubbel.length) delen.push(`${dubbel.length} dubbel, wordt overgeslagen (${dubbel.join(', ')})`);
@@ -3224,11 +3322,38 @@ function toonGastenPlakTelling() {
 }
 window.toonGastenPlakTelling = toonGastenPlakTelling;
 
+// Wie doet er al mee? Op het aanmaakscherm is dat je selectie, bij een
+// opgeslagen toernooi de deelnemerslijst.
+function _gastenPlakBestaandeNamen() {
+  return window._gastenPlakModus === 'setup'
+    ? (_tGeselecteerdeSpelers || []).map(sp => sp.naam)
+    : (toernooiData?.spelers || []).map(sp => sp.naam);
+}
+
 async function startGastenPlakken() {
   try {
+    const tekstSetup = document.getElementById('gasten-plak-tekst')?.value || '';
+    if (window._gastenPlakModus === 'setup') {
+      const { spelers, dubbel } = gastenUitTekst(tekstSetup, _gastenPlakBestaandeNamen());
+      if (spelers.length === 0) {
+        toast(dubbel.length ? 'Deze namen staan al in je selectie' : 'Geen spelers herkend in wat je plakte');
+        return;
+      }
+      spelers.forEach(({ naam, hcp }) => {
+        const gastId = 'gast_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+        store._tGeselecteerdeSpelers.push({ uid: gastId, naam, hcp, gast: true });
+      });
+      slaToernooiConceptOp();
+      renderTGeselecteerdeSpelers();
+      closeModal('modal-gasten-plakken');
+      toast(`${spelers.length} gastspeler(s) toegevoegd aan je selectie ✓`
+        + (dubbel.length ? ` — ${dubbel.length} dubbele naam overgeslagen` : ''), 6000);
+      return;
+    }
+
     const t = toernooiData;
     if (!t || !actieveToernooiId) return;
-    const tekst = document.getElementById('gasten-plak-tekst')?.value || '';
+    const tekst = tekstSetup;
     const { spelers, dubbel } = gastenUitTekst(tekst, (t.spelers || []).map(sp => sp.naam));
     if (spelers.length === 0) {
       toast(dubbel.length ? 'Deze namen doen al mee' : 'Geen spelers herkend in wat je plakte');
@@ -3442,7 +3567,7 @@ function renderToernooiActief() {
       <div class="card-header">
         <h2>${esc(t.naam)}</h2>
         <div style="display:flex;align-items:center;gap:8px">
-          <span class="badge badge-gold">${dagAfgerond ? 'Dag afgesloten' : uitslag ? 'Uitslag' : 'Bezig'}</span>
+          <span class="badge badge-gold">${toernooiWacht(t) ? 'Wacht' : dagAfgerond ? 'Dag afgesloten' : uitslag ? 'Uitslag' : 'Bezig'}</span>
         </div>
       </div>
       <div class="card-body" style="padding:10px 16px;font-size:13px;color:var(--mid)">
@@ -5506,7 +5631,9 @@ async function herstelGeannuleerdToernooi(id) {
     // krijgt — op meerdere plekken wordt `alleToernooien[0]` gebruikt uit een
     // zoekopdracht zonder sorteervolgorde. Dit is de derde manier om op
     // "Geen actief toernooi" uit te komen.
-    const lopend = (alleToernooien || []).find(t => t.id !== id);
+    // v5.21.0: alleen een toernooi dat ECHT loopt blokkeert; wachtende
+    // toernooien mogen naast elkaar staan.
+    const lopend = lopendToernooi(id);
     if (lopend) {
       toast(`"${lopend.naam || 'Een toernooi'}" loopt nog. Sluit dat eerst af of annuleer het.`, 9000);
       return;

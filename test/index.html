@@ -1119,7 +1119,7 @@
     <button class="btn btn-ghost btn-block btn-sm" onclick="voegFlightToe()" style="margin-top:8px">+ Flight toevoegen</button>
     <div class="modal-actions" style="margin-top:16px">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-flight-indeling')">← Terug</button>
-      <button class="btn btn-primary" style="flex:2" id="flight-modal-start-btn">Toernooi starten →</button>
+      <button class="btn btn-primary" style="flex:2" id="flight-modal-start-btn">Toernooi opslaan →</button>
     </div>
   </div>
 </div>
@@ -1673,86 +1673,93 @@
       </div>
       <div class="card-collapse ingeklapt">
         <div class="card-body">
-        <div class="form-group">
-          <label>Naam</label>
-          <input type="text" id="t-naam" placeholder="bijv. Clubkampioenschap 2025">
-        </div>
-        <div class="form-group">
-          <label>Aantal dagen</label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <select id="t-aantal-dagen" onchange="renderDagBlokken()" style="width:auto">
-              <option value="1">1 dag</option>
-              <option value="2">2 dagen</option>
-              <option value="3">3 dagen</option>
-              <option value="4">4 dagen</option>
-            </select>
-          </div>
-        </div>
-        <div id="t-dag-blokken"></div>
-        <!-- v5.13.0: hier stonden Starttijd en Interval voor het HELE toernooi.
-             Elke dag kreeg daardoor dezelfde tijd, en dat was op dit scherm niet
-             te corrigeren. Ze staan nu in het dagtabblad hierboven, samen met de
-             punten en de handicap. Zie ONTWERP-TOERNOOISCHERM.md. -->
-        <!-- v5.12.1: hier stond een tweede keuze "Speelwijze" voor het hele
-             toernooi. Sinds v5.12.0 kiest elke dag zijn eigen speelwijze in het
-             dagblok hierboven, dus stonden er twee keuzemenu's onder elkaar die
-             hetzelfde leken te vragen. Sierk, 13 september 2026: "de onderste
-             moet weg." Wat eraan hing — de puntenvelden, het HCP-percentage, de
-             uitleg bij strokeplay en de ranking-ladders — wordt nu aangestuurd
-             door de dagkeuzes zelf; zie pasSpeelwijzeToe() in js/toernooi.js. -->
-        <!-- v5.12.8: hier stond "Spelers ladder(s)", een rij vakjes om de
-             spelerslijst voor te filteren op een of meer ladders. Sierk:
-             "het kiezen van meerdere ladders komt nooit voor" en "kan weg en
-             standaard kan je alle spelers die in de goyer-ladder app zitten
-             selecteren". Weg; je zoekt spelers op naam in het zoekveld.
-             De ranking-ladder is een keuzelijst geworden — ook daar is er maar
-             één. De id t-ranking-ladders-wrap blijft: pasSpeelwijzeToe() en de
-             browsertest verbergen en tonen dit blok bij strokeplay. -->
-        <div class="form-group" id="t-ranking-ladders-wrap">
-          <label>Ranking ladder</label>
-          <div id="t-ranking-ladders" style="margin-top:4px"></div>
-        </div>
-        <div class="divider"></div>
-        <div id="t-matchplay-instellingen">
-          <!-- v5.13.0: hier stonden Winst/Gelijk/Verlies en het HCP-percentage
-               voor het hele toernooi. Ze staan nu per dag in het dagtabblad.
-               ⚠ Dit omhulsel BLIJFT bestaan: pasSpeelwijzeToe() toont en
-               verbergt het, en de browsertest controleert dat het bij matchplay
-               zichtbaar is en bij strokeplay niet. -->
-          <div class="note" style="margin-top:12px;font-size:12px">
-            De punten en de handicapverrekening stel je <strong>per dag</strong> in,
-            bovenaan bij het dagtabblad.
-          </div>
-        </div>
-        <div id="t-strokeplay-instellingen" style="display:none">
-          <div class="note" style="margin-top:12px;font-size:12px">
-            Bij <strong>Brutto</strong> telt de ruwe score. Bij <strong>Netto</strong> wordt de playing handicap afgetrokken van het totaal. Bij <strong>Stableford</strong> worden punten per hole berekend (netto): eagle=4, birdie=3, par=2, bogey=1, dubbel bogey+=0.
-          </div>
-        </div>
-        <div class="divider"></div>
-        <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px">Deelnemers selecteren</label>
-        <div style="position:relative;margin-bottom:8px">
-          <input type="text" id="t-speler-zoek" placeholder="🔍 Zoek en selecteer speler..." autocomplete="off"
-            oninput="zoekToernooiSpeler(this.value)" onfocus="zoekToernooiSpeler(this.value)"
-            onblur="setTimeout(sluitToernooiSpelerLijst, 150)">
-          <div id="t-speler-zoek-lijst" style="position:absolute;top:100%;left:0;right:0;background:var(--card-bg);color:var(--dark);border:1.5px solid var(--green);border-radius:8px;max-height:200px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,0.1);display:none;margin-top:2px"></div>
-        </div>
-        <div id="t-geselecteerde-spelers" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
-        <button class="btn btn-ghost btn-sm btn-block" onclick="voegGastspelerToe()" style="margin-bottom:12px">+ Gastspeler toevoegen</button>
+        <!-- ============================================================
+             HET AANMAAKSCHERM HEEFT DEZELFDE TABBLADEN  (v5.21.0)
+             ------------------------------------------------------------
+             Sierk, 14 september 2026: "als ik op nieuw toernooi aanmaken klik
+             dan wil ik daar toernooi/spelers/dagen tabs. het volledige toernooi
+             kunnen aanmaken."
 
-        <!-- v5.10.0: gastlogins. Laat je dit leeg, dan krijgen gastspelers geen
-             inlog en werkt alles zoals voorheen. -->
-        <div class="divider"></div>
-        <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px">Inlog voor gastspelers (optioneel)</label>
-        <div class="form-group" style="margin-bottom:6px">
-          <input type="text" id="t-gast-wachtwoord" placeholder="Wachtwoord voor dit toernooi" autocomplete="off">
+             Eén rij: [Toernooi] [Spelers] [Dag 1] [Dag 2] [+ Dag toevoegen] —
+             precies de rij die een opgeslagen toernooi ook heeft. De rij wordt
+             gebouwd door renderSetupTabs() in js/toernooi.js; hieronder staan de
+             drie panelen die hij aan- en uitzet.
+
+             ⚠ Hier stond "Aantal dagen", een keuzelijst 1 t/m 4. Twee manieren
+             om hetzelfde te zeggen: de dagtabbladen met + Dag toevoegen en ✕
+             deden het echte werk al. De keuzelijst is nu een verborgen teller
+             (#t-aantal-dagen) die alleen nog door de code wordt bijgehouden.
+             ============================================================ -->
+        <input type="hidden" id="t-aantal-dagen" value="1">
+        <div id="t-setup-tabs"></div>
+
+        <div id="t-setup-paneel-toernooi" class="t-setup-paneel">
+          <div class="form-group">
+            <label>Naam</label>
+            <input type="text" id="t-naam" placeholder="bijv. Clubkampioenschap 2025">
+          </div>
+          <!-- v5.12.8: hier stond "Spelers ladder(s)", een rij vakjes om de
+               spelerslijst voor te filteren op een of meer ladders. Sierk:
+               "het kiezen van meerdere ladders komt nooit voor". Weg; je zoekt
+               spelers op naam. De id t-ranking-ladders-wrap blijft:
+               pasSpeelwijzeToe() en de browsertest verbergen en tonen dit blok
+               bij strokeplay. -->
+          <div class="form-group" id="t-ranking-ladders-wrap">
+            <label>Ranking ladder</label>
+            <div id="t-ranking-ladders" style="margin-top:4px"></div>
+          </div>
+          <div id="t-matchplay-instellingen">
+            <!-- v5.13.0: hier stonden Winst/Gelijk/Verlies en het HCP-percentage
+                 voor het hele toernooi. Ze staan nu per dag in het dagtabblad.
+                 ⚠ Dit omhulsel BLIJFT bestaan: pasSpeelwijzeToe() toont en
+                 verbergt het, en de browsertest controleert dat. -->
+            <div class="note" style="margin-top:12px;font-size:12px">
+              De punten en de handicapverrekening stel je <strong>per dag</strong> in,
+              op het tabblad van die dag.
+            </div>
+          </div>
+          <div id="t-strokeplay-instellingen" style="display:none">
+            <div class="note" style="margin-top:12px;font-size:12px">
+              Bij <strong>Brutto</strong> telt de ruwe score. Bij <strong>Netto</strong> wordt de playing handicap afgetrokken van het totaal. Bij <strong>Stableford</strong> worden punten per hole berekend (netto): eagle=4, birdie=3, par=2, bogey=1, dubbel bogey+=0.
+            </div>
+          </div>
+          <!-- v5.10.0: gastlogins. Laat je dit leeg, dan krijgen gastspelers geen
+               inlog en werkt alles zoals voorheen. -->
+          <div class="divider"></div>
+          <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px">Inlog voor gastspelers (optioneel)</label>
+          <div class="form-group" style="margin-bottom:6px">
+            <input type="text" id="t-gast-wachtwoord" placeholder="Wachtwoord voor dit toernooi" autocomplete="off">
+          </div>
+          <p style="font-size:11px;color:var(--light);margin:0 0 12px">
+            Vul je dit in, dan krijgt elke gastspeler een inlog voor dit ene toernooi.
+            Ze loggen in met hun eigen <strong>inlognaam</strong> plus dit wachtwoord, en
+            hoeven niets te wijzigen. De inlognamen staan straks onder "Gastlogins tonen".
+            Na afloop van het toernooi werkt de inlog niet meer.
+          </p>
         </div>
-        <p style="font-size:11px;color:var(--light);margin:0 0 12px">
-          Vul je dit in, dan krijgt elke gastspeler een inlog voor dit ene toernooi.
-          Ze loggen in met hun eigen <strong>inlognaam</strong> plus dit wachtwoord, en
-          hoeven niets te wijzigen. De inlognamen staan straks onder "Gastlogins tonen".
-          Na afloop van het toernooi werkt de inlog niet meer.
-        </p>
+
+        <div id="t-setup-paneel-spelers" class="t-setup-paneel" style="display:none">
+          <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px">Deelnemers selecteren</label>
+          <div style="position:relative;margin-bottom:8px">
+            <input type="text" id="t-speler-zoek" placeholder="🔍 Zoek en selecteer speler..." autocomplete="off"
+              oninput="zoekToernooiSpeler(this.value)" onfocus="zoekToernooiSpeler(this.value)"
+              onblur="setTimeout(sluitToernooiSpelerLijst, 150)">
+            <div id="t-speler-zoek-lijst" style="position:absolute;top:100%;left:0;right:0;background:var(--card-bg);color:var(--dark);border:1.5px solid var(--green);border-radius:8px;max-height:200px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,0.1);display:none;margin-top:2px"></div>
+          </div>
+          <div id="t-geselecteerde-spelers" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
+          <button class="btn btn-ghost btn-sm btn-block" onclick="voegGastspelerToe()" style="margin-bottom:8px">+ Gastspeler toevoegen</button>
+          <!-- v5.21.0: plakken kon alleen bij een opgeslagen toernooi. Juist bij
+               het aanmaken heb je die lijst uit Excel bij de hand. -->
+          <button class="btn btn-ghost btn-sm btn-block" onclick="openGastenPlakken('setup')" style="margin-bottom:12px">⬆ Gasten plakken (lijst uit Excel)</button>
+        </div>
+
+        <div id="t-setup-paneel-dagen" class="t-setup-paneel" style="display:none">
+          <!-- v5.13.0: hier stonden Starttijd en Interval voor het HELE toernooi.
+               Elke dag kreeg daardoor dezelfde tijd. Ze staan nu in het
+               dagformulier, samen met de punten en de handicap. -->
+          <div id="t-dag-blokken"></div>
+        </div>
+
         <button class="btn btn-primary btn-block" onclick="openFlightIndeling()">Flight indeling →</button>
         </div>
       </div>
