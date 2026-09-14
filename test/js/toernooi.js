@@ -1963,6 +1963,8 @@ function selecteerDag(dagNr) {
   // bekeken dag blijft dan staan waar hij stond, zodat je bij terugkeren op
   // dezelfde dag uitkomt.
   window._tTabblad = dagNr === 0 ? 0 : null;
+  // v5.17.0: het tabblad Spelers is een derde stand van dezelfde schakelaar.
+  // Klik je op Toernooi of een dag, dan gaat die stand dus vanzelf uit.
   // v4.0.0: alleen lokale weergave — schrijft NIET meer naar Firestore.
   // Voorheen werd actiefDagNr voor het hele toernooi (alle gebruikers)
   // overschreven zodra iemand een oude dag bekeek (fix 7.4).
@@ -1972,6 +1974,29 @@ function selecteerDag(dagNr) {
   window._ranglijstDagNr = dagNr;
   renderToernooiActief();
 }
+
+// ============================================================
+//  HET TABBLAD SPELERS  (v5.17.0)
+// ------------------------------------------------------------
+//  Sierk, 14 september 2026: "ik denk erover om een aparte spelers tab te maken
+//  bij een toernooi."
+//
+//  ⚠ WAT ER MIS WAS. De knop "👥 Spelers" zat in de KOP VAN DE SCOREKAART. Die
+//  kop bestaat alleen op een dagtabblad, en alleen als die dag gestart is. Op
+//  het tabblad Toernooi, en op een dag die nog concept is, kon je dus niet bij
+//  je eigen spelerslijst. Terwijl je juist dán iemand toevoegt.
+//
+//  Nu staat het waar het hoort: een eigen tabblad, naast Toernooi en de dagen.
+//  Alleen voor de coordinator — een deelnemer heeft er niets te zoeken.
+//
+//  `_tTabblad` had twee standen (0 = Toernooi, null = een dag) en heeft er nu
+//  drie. 'spelers' is de derde; selecteerDag() zet hem vanzelf weer uit.
+function selecteerSpelersTab() {
+  if (!toernooiData) return;
+  window._tTabblad = 'spelers';
+  renderToernooiActief();
+}
+window.selecteerSpelersTab = selecteerSpelersTab;
 
 // Open modal om nieuwe dag te configureren
 // v5.13.0: het venster wordt gevuld door dagFormulierHtml() — dezelfde bron als
@@ -2831,6 +2856,23 @@ async function toonToernooiUitslag() {
 // ============================================================
 let _toernooiSpelerToevoegen = null;
 
+// v5.17.0: de spelerslijst staat op twee plekken op het scherm — op het tabblad
+// Spelers en in het venster "Spelers beheren". Eén bron, zodat ze niet uit
+// elkaar kunnen gaan lopen: verandert de inlogregel, dan verandert hij op
+// allebei. De rij is LETTERLIJK overgenomen uit het venster.
+function spelerRijenHtml(t) {
+  if (!t || !(t.spelers || []).length) {
+    return '<div style="padding:10px 0;font-size:13px;color:var(--light)">Nog geen spelers in dit toernooi</div>';
+  }
+  return t.spelers.map(s => `
+    <div style="display:flex;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+      <span style="flex:1;font-size:14px">${esc(s.naam)}${s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}<br>${inlogRegel(s)}</span>
+      <button class="btn btn-sm" style="background:var(--alert-bg);color:var(--alert-text);border:none;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:12px"
+        onclick="verwijderToernooiSpelerNieuw('${escAttr(s.uid)}')">✕</button>
+    </div>
+  `).join('');
+}
+
 function openToernooiSpelersBeheer() {
   const t = toernooiData;
   if (!t) return;
@@ -2850,13 +2892,7 @@ function openToernooiSpelersBeheer() {
   }
 
   const verwijderLijst = document.getElementById('toernooi-speler-verwijder-lijst');
-  verwijderLijst.innerHTML = t.spelers.map(s => `
-    <div style="display:flex;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
-      <span style="flex:1;font-size:14px">${esc(s.naam)}${s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}<br>${inlogRegel(s)}</span>
-      <button class="btn btn-sm" style="background:var(--alert-bg);color:var(--alert-text);border:none;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:12px"
-        onclick="verwijderToernooiSpelerNieuw('${escAttr(s.uid)}')">✕</button>
-    </div>
-  `).join('');
+  verwijderLijst.innerHTML = spelerRijenHtml(t);
 
   // Flight opties van actieve dag
   const dag = actieveDag(t);
@@ -3152,13 +3188,22 @@ function renderToernooiActief() {
   //  ⚠ Je landt op de ACTIEVE DAG, niet op het overzicht. De scorekaart staat
   //  daarmee nog steeds meteen in beeld, zoals altijd.
   const toonToernooiTab = window._tTabblad === 0;
+  // v5.17.0: het derde tabblad. Alleen de coordinator ziet hem; een deelnemer
+  // kan geen spelers toevoegen of verwijderen, dus bij hem bestaat hij niet.
+  const toonSpelersTab = isBeheerder && window._tTabblad === 'spelers';
   let dagTabsHtml = `<div style="display:flex;gap:6px;overflow-x:auto;padding:10px 16px 0;scrollbar-width:none;border-bottom:1px solid var(--border)">
     <button onclick="selecteerDag(0)"
       style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px solid ${toonToernooiTab ? 'var(--gold)' : 'var(--border)'};border-bottom:none;background:${toonToernooiTab ? 'var(--gold)' : 'transparent'};color:${toonToernooiTab ? 'white' : 'var(--mid)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">
       Toernooi
     </button>`;
+  if (isBeheerder) {
+    dagTabsHtml += `<button onclick="selecteerSpelersTab()"
+      style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px solid ${toonSpelersTab ? 'var(--gold)' : 'var(--border)'};border-bottom:none;background:${toonSpelersTab ? 'var(--gold)' : 'transparent'};color:${toonSpelersTab ? 'white' : 'var(--mid)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">
+      Spelers
+    </button>`;
+  }
   (t.dagen || []).forEach(d => {
-    const actief = !toonToernooiTab && d.dagNr === dagNr;
+    const actief = !toonToernooiTab && !toonSpelersTab && d.dagNr === dagNr;
     const kleur = d.afgerond ? 'var(--mid)' : 'var(--green)';
     dagTabsHtml += `<button onclick="selecteerDag(${d.dagNr})"
       style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px solid ${actief ? kleur : 'var(--border)'};border-bottom:none;background:${actief ? kleur : 'transparent'};color:${actief ? 'white' : 'var(--mid)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">
@@ -3309,7 +3354,9 @@ function renderToernooiActief() {
           ${isBeheerder ? `
             <button id="t-refresh-btn" class="btn btn-sm btn-ghost" onclick="refreshToernooiScorekaart()" style="display:none;background:var(--gold);color:white;border-color:var(--gold)">↺ Nieuw</button>
             ${!dagAfgerond ? `<button class="btn btn-sm btn-ghost" onclick="openFlightIndelingDag()">✈ Flights</button>` : ''}
-            <button class="btn btn-sm btn-ghost" onclick="openToernooiSpelersBeheer()">👥 Spelers</button>
+            <!-- v5.17.0: hier zat "👥 Spelers". Die knop is verhuisd naar het
+                 tabblad Spelers — zie selecteerSpelersTab(). Hier was hij pas
+                 bereikbaar zodra de dag gestart was, en dat is precies te laat. -->
           ` : ''}
         </div>
       </div>
@@ -3375,7 +3422,22 @@ function renderToernooiActief() {
     </div>
     ` : '';
 
-  const toernooiKnoppen = isBeheerder ? `
+  // v5.17.0: het tabblad SPELERS. De lijst, de knop naar "Spelers beheren" en de
+  // twee gastloginknoppen — die laatste stonden op het tabblad Toernooi, maar
+  // gaan over mensen, niet over het toernooi als geheel. Elk blok is letterlijk
+  // overgenomen; alleen de plek is nieuw.
+  const spelersKaart = isBeheerder ? `
+    <div class="card">
+      <div class="card-header">
+        <h2>Spelers</h2>
+        <span style="font-size:12px;color:var(--mid)">${(t.spelers || []).length}</span>
+      </div>
+      <div class="card-body" style="padding:4px 16px 14px">
+        <div id="t-spelers-lijst">${spelerRijenHtml(t)}</div>
+        <button class="btn btn-primary btn-block" style="margin-top:12px"
+          onclick="openToernooiSpelersBeheer()">+ Speler toevoegen of verwijderen</button>
+      </div>
+    </div>
     <div style="padding:0 0 16px">
       ${(t.spelers || []).some(sp => sp.gast && !sp.login) && !IS_TEST ? `
       <button class="btn btn-secondary btn-block" onclick="maakOntbrekendeGastlogins()" style="margin-bottom:8px">
@@ -3387,6 +3449,11 @@ function renderToernooiActief() {
         ⌨ Gastlogins tonen (${(t.spelers || []).filter(sp => sp.login).length})
       </button>
       ` : ''}
+    </div>
+    ` : '';
+
+  const toernooiKnoppen = isBeheerder ? `
+    <div style="padding:0 0 16px">
       ${heeftGeenScores(t) ? `
       <button class="btn btn-secondary btn-block" onclick="bewerkToernooi()" style="margin-bottom:8px">
         ↺ Toernooi opnieuw instellen
@@ -3444,8 +3511,10 @@ function renderToernooiActief() {
   // ============================================================
   //  WAT STAAT ER OP WELK TABBLAD  (v5.13.1)
   // ------------------------------------------------------------
-  //  Toernooi : naam, klassement over alle dagen, meekijklink, gastlogins,
+  //  Toernooi : naam, klassement over alle dagen, meekijklink,
   //             opnieuw instellen, afsluiten, annuleren.
+  //  Spelers  : de spelerslijst met inlognamen, toevoegen/verwijderen,
+  //             gastlogins aanmaken en tonen.            (v5.17.0)
   //  Dag N    : dagstand, onderlinge stand, scorekaart, en de dagknoppen.
   //
   //  ⚠ Elk blok is ONGEWIJZIGD; alleen de volgorde en de groepering zijn nieuw.
@@ -3454,7 +3523,12 @@ function renderToernooiActief() {
   //
   //  v3.0.0-11.106: binnen een dagtabblad verschilt de volgorde per rol. De
   //  speler ziet zijn scorekaart bovenaan, de coordinator eerst de standen.
-  if (toonToernooiTab) {
+  if (toonSpelersTab) {
+    // v5.17.0: geen scorekaart en geen klassement op dit tabblad. De renderaars
+    // hieronder zoeken hun eigen element op en doen niets als het er niet is —
+    // precies zoals op het tabblad Toernooi.
+    detail.innerHTML = dagTabsHtml + titelKaart + spelersKaart;
+  } else if (toonToernooiTab) {
     detail.innerHTML = dagTabsHtml + titelKaart + ranglijstKaart + liveLinkKnop + toernooiKnoppen;
   } else if (isBeheerder) {
     detail.innerHTML = dagTabsHtml + titelKaart + ranglijstKaart + matrixKaart + scorecardKaart + dagKnoppen;
@@ -5567,6 +5641,15 @@ window.maakOntbrekendeGastlogins = maakOntbrekendeGastlogins;
 
 // v5.12.3: de tekst die je doorstuurt. Los van het scherm, zodat de rekentest
 // hem kan natellen — dit is het briefje dat de spelers in handen krijgen.
+//
+// ⚠ v5.17.0: hier stond een tip onderaan: "de speler tikt zijn eigen voor- en
+// achternaam in". Die is weg, en niet alleen omdat hij overbodig was. Hij was
+// FOUT voor een gast die met alleen een voornaam is aangemaakt: `gastLoginVan()`
+// maakt daar `karel` van, niet `karel.jansen`. Zo iemand zat naar een tip te
+// kijken die hem uit de app hield. Elke regel noemt de inlognaam al letterlijk
+// ("Karel  —  inlog: karel"), dus de tip vertelde de naam ook nog eens na.
+// Sierk, 14 september 2026: "die tekst klopt niet omdat je ook spelers met
+// alleen een voornaam aanmaakt."
 function gastloginTekst({ adres, wachtwoord, regels }) {
   const breedte = Math.max(0, ...(regels || []).map(r => String(r.naam || '').length));
   const lijst = (regels || [])
@@ -5574,8 +5657,7 @@ function gastloginTekst({ adres, wachtwoord, regels }) {
     .join('\n');
   return `Inloggen op ${adres}\n`
     + `Wachtwoord: ${wachtwoord}\n\n`
-    + lijst
-    + `\n\nTip: de speler tikt zijn eigen voor- en achternaam in, plus het wachtwoord.`;
+    + lijst;
 }
 
 async function toonGastlogins() {
@@ -5605,8 +5687,9 @@ async function toonGastlogins() {
 
     const html = `
       <p style="font-size:13px;color:var(--mid);margin-bottom:10px">
-        Deze spelers loggen in met hun <strong>voor- en achternaam</strong> en het
-        wachtwoord hieronder. Na afloop van het toernooi werkt de inlog niet meer.
+        Deze spelers loggen in met de <strong>inlognaam</strong> die achter hun naam
+        staat, plus het wachtwoord hieronder. Na afloop van het toernooi werkt de
+        inlog niet meer.
       </p>
       <div style="background:var(--soft-bg);border-radius:8px;padding:10px 12px;margin-bottom:12px">
         <div style="font-size:11px;color:var(--mid);text-transform:uppercase;font-weight:600">Wachtwoord</div>
@@ -5721,4 +5804,4 @@ export function getActiefToernooiMetModus() {
 }
 
 
-export { alleScoresIngevuld, annuleerToernooi, behoudLiveScores, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, herlaadToernooiListeners, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, kiesTRankingLadder, toggleTScorecard, toggleTSpeler, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
+export { alleScoresIngevuld, annuleerToernooi, behoudLiveScores, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, herlaadToernooiListeners, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerSpelersTab, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, kiesTRankingLadder, toggleTScorecard, toggleTSpeler, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };

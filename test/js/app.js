@@ -53,7 +53,7 @@ import { renderToernooi, herlaadToernooien, selecteerToernooi, gaNaarToernooiOve
   updateTScoreAndAdvance, updateTScore, editToernooiHcp,
   toggleTScorecard, openToernooiAfsluiten, bevestigToernooiAfsluiten,
   annuleerToernooi, kiesTRankingLadder,
-  selecteerDag, openNieuweDagModal, voegDagToe, sluitDagAf, renderDagBlokken } from './toernooi.js';
+  selecteerDag, selecteerSpelersTab, openNieuweDagModal, voegDagToe, sluitDagAf, renderDagBlokken } from './toernooi.js';
 import { openLadderInstellingen, slaLadderInstellingenOp,
   openNieuweLadderModal, maakNieuweLadder, verschuifLadder,
   verwijderLadder, openLadderSpelersModal, slaLadderSpelersOp,
@@ -185,6 +185,7 @@ window.bevestigToernooiAfsluiten = bevestigToernooiAfsluiten;
 window.annuleerToernooi = annuleerToernooi;
 window.gaNaarToernooiOverzicht = gaNaarToernooiOverzicht;
 window.selecteerDag = selecteerDag;
+window.selecteerSpelersTab = selecteerSpelersTab;   // v5.17.0: tabblad Spelers
 window.openNieuweDagModal = openNieuweDagModal;
 window.voegDagToe = voegDagToe;
 window.sluitDagAf = sluitDagAf;
@@ -227,7 +228,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v5.16.0';
+  const VERSION = 'v5.17.0';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -271,7 +272,7 @@ window.kiesTRankingLadder = kiesTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v5.16.0';
+  const LOKALE_VERSIE = 'v5.17.0';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 

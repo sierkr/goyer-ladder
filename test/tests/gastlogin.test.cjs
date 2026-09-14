@@ -145,10 +145,13 @@ check('beide spelers staan erop',
   ['Harry Jansen', 'Karel Gast'].every(n => briefje.includes(n)), true);
 check('met hun inlognaam',
   ['inlog: harry', 'inlog: karel.gast'].every(t => briefje.includes(t)), true);
-check('de tip spreekt over de SPELER, niet over de gast',
-  briefje.includes('de speler tikt'), true);
-check('het woord "gast" staat niet meer in de tip',
-  briefje.includes('de gast tikt'), false);
+// v5.17.0: de tip onderaan is weg. Hij zei "tik je voor- en achternaam in" en
+// dat is onwaar voor een gast met alleen een voornaam — die logt in met `karel`.
+// Deze twee controles bewaken dat hij niet terugkomt.
+check('er staat geen tip meer onder de lijst',
+  /voor- en achternaam/.test(briefje), false);
+check('en het briefje eindigt met de laatste speler',
+  briefje.trim().endsWith('inlog: karel.gast'), true);
 check('een lijst zonder spelers valt niet om',
   typeof G.gastloginTekst({ adres: 'x', wachtwoord: 'y', regels: [] }), 'string');
 

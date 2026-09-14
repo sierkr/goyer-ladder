@@ -145,6 +145,25 @@ async function naarDagTab(p, dagNr = 1) {
   if (await tab.count()) await tab.click();
 }
 
+// v5.17.0: het venster "Spelers beheren" zat achter een knop in de kop van de
+// scorekaart. Die knop is weg; het venster gaat nu open vanaf het tabblad
+// Spelers. Twee klikken in plaats van één — precies wat een coordinator nu ook
+// doet.
+//
+// ⚠ Niet zoeken op tekst: sinds dit tabblad bestaat staat het woord "Spelers"
+// op DRIE knoppen (het tabblad, de knop naar het venster, en de kop van de
+// kaart). Playwright weigert dan te klikken. Daarom op `onclick`, net als
+// naarToernooiTab() en naarDagTab() hierboven.
+async function naarSpelersTab(p) {
+  const tab = p.locator('#toernooi-detail button[onclick="selecteerSpelersTab()"]');
+  if (await tab.count()) await tab.click();
+}
+
+async function openSpelersBeheer(p) {
+  await naarSpelersTab(p);
+  await p.click('#toernooi-detail button[onclick="openToernooiSpelersBeheer()"]');
+}
+
 async function vulAanmaakformulier(page, naam, dagen = 1) {
   await openAanmaakscherm(page);
   await page.fill('#t-naam', naam);
@@ -519,7 +538,7 @@ test.describe('Toernooi — de hele route', () => {
     await page.click('#flight-modal-start-btn');
     await expect(page.locator('#toernooi-detail')).toContainText('Inlognaam', { timeout: 15000 });
 
-    await page.click('#toernooi-detail button:has-text("Spelers")');
+    await openSpelersBeheer(page);
     const lijst = page.locator('#toernooi-speler-verwijder-lijst');
     await expect(lijst).toBeVisible({ timeout: 10000 });
     await expect(lijst, 'de inlognaam van Anna staat erbij').toContainText('anna');
@@ -569,7 +588,7 @@ test.describe('Toernooi — de hele route', () => {
                  geenZelf: true, alleenEchteSpelers: true });
 
     // ── Een vierde speler erbij, via Spelers beheren ──────────
-    await page.click('#toernooi-detail button:has-text("Spelers")');
+    await openSpelersBeheer(page);
     await page.fill('#toernooi-speler-zoek', 'Nina');
     const regel = page.locator('#toernooi-speler-zoek-lijst >> text=Nina Nieuw').first();
     await regel.waitFor({ state: 'visible', timeout: 5000 });
@@ -852,7 +871,7 @@ test.describe('Toernooi — de hele route', () => {
     await eenNaam.close();
 
     // En het beheerscherm toont precies dát: karel.gast, zonder toernooicode.
-    await page.click('#toernooi-detail button:has-text("Spelers")');
+    await openSpelersBeheer(page);
     const lijst = page.locator('#toernooi-speler-verwijder-lijst');
     await expect(lijst).toBeVisible({ timeout: 10000 });
     await expect(lijst, 'de inlognaam zoals de gast hem intikt').toContainText('karel.gast');
@@ -863,7 +882,9 @@ test.describe('Toernooi — de hele route', () => {
     // v5.11.5: hetzelfde in het lijstje achter "Gastlogins tonen" — dat is het
     // briefje dat je aan je gasten doorgeeft, dus daar mag de code al helemaal
     // niet op staan.
-    await naarToernooiTab(page);
+    // v5.17.0: de gastloginknoppen staan op het tabblad Spelers, niet meer op
+    // Toernooi — ze gaan over mensen, niet over het toernooi als geheel.
+    await naarSpelersTab(page);
     await page.click('#toernooi-detail button:has-text("Gastlogins tonen")');
     const briefje = page.locator('#archief-detail-inhoud');
     await expect(briefje).toBeVisible({ timeout: 10000 });
@@ -1532,7 +1553,7 @@ test.describe('Toernooi — de hele route', () => {
 
     // En dan staat de reparatieknop klaar — de enige uitweg was tot v5.12.3 de
     // gast verwijderen en opnieuw toevoegen, en dan raakt hij zijn scores kwijt.
-    await naarToernooiTab(page);
+    await naarSpelersTab(page);   // v5.17.0: gastloginknoppen staan op Spelers
     await expect(page.locator('#toernooi-detail button:has-text("Gastlogins aanmaken")'),
       'met de knop om het alsnog te doen').toBeVisible({ timeout: 15000 });
   });
@@ -1565,7 +1586,7 @@ test.describe('Toernooi — de hele route', () => {
     await vak.blur();
     await page.waitForTimeout(2500);
 
-    await naarToernooiTab(page);
+    await naarSpelersTab(page);   // v5.17.0: gastloginknoppen staan op Spelers
     await page.click('#toernooi-detail button:has-text("Gastlogins aanmaken")');
     await expect.poll(async () => {
       const x = await haalToernooi('Reparatie');

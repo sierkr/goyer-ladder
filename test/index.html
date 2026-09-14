@@ -883,10 +883,14 @@
     <div class="form-group">
       <label>Login</label>
       <input type="text" id="login-email" placeholder="voornaam.achternaam" autocomplete="username" inputmode="email">
-      <!-- v5.10.0: gasten van een toernooi tikken hier hun gewone naam in -->
+      <!-- v5.10.0: gasten van een toernooi tikken hier hun gewone naam in.
+           v5.17.0: "voor- en achternaam" klopte niet voor een gast die met
+           alleen een voornaam is aangemaakt — die logt in met "karel". De
+           inlognaam staat bij de gastloginlijst van de wedstrijdleiding, dus
+           daar verwijzen we naar in plaats van de naam na te vertellen. -->
       <p style="font-size:11px;color:var(--light);margin:4px 0 0">
-        Doe je als gast mee aan een toernooi? Vul dan je voor- en achternaam in,
-        met het wachtwoord dat je van de organisatie hebt gekregen.
+        Doe je als gast mee aan een toernooi? Vul dan de inlognaam in die je van
+        de organisatie hebt gekregen, met het bijbehorende wachtwoord.
       </p>
     </div>
     <div class="form-group">
@@ -942,7 +946,9 @@
          renderToernooiGastInlogKeuze() zet dit blok aan of uit. -->
     <label id="toernooi-gast-inlog-wrap" style="display:none;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--dark);margin-bottom:8px">
       <input type="checkbox" id="toernooi-gast-inlog" style="accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
-      <span>Met eigen inlog<br><span style="font-size:11px;color:var(--mid)">Logt in met voor- en achternaam plus het toernooiwachtwoord</span></span>
+      <!-- v5.17.0: zie index.html bij het inlogscherm — een gast met alleen een
+           voornaam logt in met "karel", niet met voor- en achternaam. -->
+      <span>Met eigen inlog<br><span style="font-size:11px;color:var(--mid)">Krijgt een eigen inlognaam plus het toernooiwachtwoord</span></span>
     </label>
     <button class="btn btn-primary btn-block btn-sm" onclick="voegGastspelerToeAanToernooi()" style="margin-bottom:8px">+ Gastspeler toevoegen</button>
 
@@ -1751,8 +1757,9 @@
         </div>
         <p style="font-size:11px;color:var(--light);margin:0 0 12px">
           Vul je dit in, dan krijgt elke gastspeler een inlog voor dit ene toernooi.
-          Ze loggen in met hun <strong>voor- en achternaam</strong> plus dit wachtwoord, en
-          hoeven niets te wijzigen. Na afloop van het toernooi werkt de inlog niet meer.
+          Ze loggen in met hun eigen <strong>inlognaam</strong> plus dit wachtwoord, en
+          hoeven niets te wijzigen. De inlognamen staan straks onder "Gastlogins tonen".
+          Na afloop van het toernooi werkt de inlog niet meer.
         </p>
         <button class="btn btn-primary btn-block" onclick="openFlightIndeling()">Flight indeling →</button>
         </div>
