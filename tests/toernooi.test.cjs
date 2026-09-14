@@ -125,6 +125,67 @@ check('de ene dag beïnvloedt de andere niet',
 //  wijzigen en verwijderen is nu een KNOP en niet meer de bijwerking "er staat
 //  een score".
 // ============================================================
+// ============================================================
+//  v5.15.0 — PUNTEN PER PLAATS BIJ EEN STROKEPLAY-DAG
+// ------------------------------------------------------------
+//  Sierk: "Optie tabel voor strokeplay. Standaard zoals nu met optie om elke
+//  plek in te stellen." De negen tests hierboven op dagPuntenUitSleutels()
+//  roepen hem ZONDER tabel aan; die bewijzen dus dat de standaard niet wijzigt.
+// ============================================================
+console.log('\n══ TOERNOOI — PUNTEN PER PLAATS ══');
+
+// ── de tekst uitlezen ───────────────────────────────────────────────────────
+check('"10, 7, 5, 3, 1" wordt een lijst',
+  K.plaatsPuntenUitTekst('10, 7, 5, 3, 1'), [10, 7, 5, 3, 1]);
+check('spaties en puntkomma mogen ook',
+  K.plaatsPuntenUitTekst('10 7;5'), [10, 7, 5]);
+check('negatieve punten mogen — een laatste plek mag punten kosten',
+  K.plaatsPuntenUitTekst('5, 2, 0, -2'), [5, 2, 0, -2]);
+check('leeg levert niets op (en dus de standaard)', K.plaatsPuntenUitTekst(''), null);
+check('onzin levert niets op', K.plaatsPuntenUitTekst('abc'), null);
+check('niets levert niets op', K.plaatsPuntenUitTekst(null), null);
+check('een lijst mag er ook zo in', K.plaatsPuntenUitTekst([9, 6, 3]), [9, 6, 3]);
+
+// ── de telling met tabel ────────────────────────────────────────────────────
+//  Vier spelers, sleutels -10..-4 (lager = beter na het omdraaien in dagPunten).
+const vier = [-10, -8, -6, -4];
+check('zonder tabel: de aflopende reeks, ongewijzigd',
+  K.dagPuntenUitSleutels(vier), [4, 3, 2, 1]);
+check('met tabel: precies wat er in de tabel staat',
+  K.dagPuntenUitSleutels(vier, [10, 7, 5, 3]), [10, 7, 5, 3]);
+
+//  ⚠ Voorbij de tabel is het 0 en niet "doortellen". Wie 10,7,5 invult bedoelt
+//  dat plek 4 niets oplevert; doortellen zou daar stilletjes punten van maken.
+check('voorbij de tabel levert een plek 0 op',
+  K.dagPuntenUitSleutels(vier, [10, 7, 5]), [10, 7, 5, 0]);
+check('een tabel langer dan het veld stoort niet',
+  K.dagPuntenUitSleutels(vier, [10, 7, 5, 3, 1, 0]), [10, 7, 5, 3]);
+
+// ── gedeelde plekken ────────────────────────────────────────────────────────
+//  Twee gedeelde eersten krijgen het gemiddelde van plek 1 en 2: (10+6)/2 = 8.
+check('gedeelde eerste plek deelt plek 1 en 2',
+  K.dagPuntenUitSleutels([-10, -10, -6, -4], [10, 6, 4, 2]), [8, 8, 4, 2]);
+//  En op de rand van de tabel: plek 3 is 4, plek 4 bestaat niet meer -> 0.
+check('gedeelde plek op de rand van de tabel middelt met 0',
+  K.dagPuntenUitSleutels([-10, -6, -6], [9, 5, 3]), [9, 4, 4]);
+
+// ── wie krijgt de tabel wel en niet ─────────────────────────────────────────
+const R1 = sp('r1', 10), R2 = sp('r2', 10);
+const scoresR = { r1: [3, ...Array(17).fill(null)], r2: [5, ...Array(17).fill(null)] };
+const tTab = maakT([R1, R2]);
+
+//  Een MATCHPLAY-dag negeert de tabel: daar bepalen winst/gelijk/verlies de
+//  volgorde, en de plaatspunten blijven de standaardreeks (2 spelers -> 2 en 1).
+check('een matchplay-dag negeert de puntentabel',
+  K.dagPunten(tTab, { ...maakDag(1, scoresR), plaatsPunten: '50, 40' }), [2, 1]);
+
+//  Een STROKEPLAY-dag volgt hem wel.
+const dagStroke = { ...maakDag(1, scoresR), modus: 'strokeplay', plaatsPunten: '50, 40' };
+check('een strokeplay-dag volgt de puntentabel',
+  K.dagPunten(tTab, dagStroke), [50, 40]);
+check('een strokeplay-dag zonder tabel blijft de standaardreeks',
+  K.dagPunten(tTab, { ...maakDag(1, scoresR), modus: 'strokeplay' }), [2, 1]);
+
 console.log('\n══ TOERNOOI — DE TOESTAND VAN EEN DAG ══');
 
 check('een verse dag is concept',
