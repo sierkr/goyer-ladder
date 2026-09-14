@@ -122,6 +122,25 @@ let _liveScoresMap = {}; // v3.0.0-11.106: { uid: { dagNr, scores, timestamp } }
 let _liveUnsub = null;   // onSnapshot unsubscribe
 let _docUnsub = null;    // main-doc onSnapshot unsubscribe
 
+// v5.25.0: de dag die de KIJKER zelf aanklikt.
+//
+// WAT ER MIS WAS: de dagknop zette zijn keuze rechtstreeks in toernooiData en
+// haalde daarna het toernooi opnieuw op. Die verse gegevens uit de database
+// overschreven de keuze meteen weer — de kijker bleef op dezelfde dag hangen.
+// Dezelfde overschrijving gebeurde bij elke real-time update van het
+// hoofddocument. De keuze staat daarom nu apart en wordt na elke ophaalbeurt
+// opnieuw toegepast. null = geen eigen keuze, dan volgt de kijker de dag die
+// de coordinator actief heeft staan.
+let gekozenDagNr = null;
+
+function pasGekozenDagToe() {
+  if (!toernooiData || !gekozenDagNr) return;
+  const aantal = (toernooiData.dagen || []).length;
+  if (gekozenDagNr >= 1 && gekozenDagNr <= aantal) {
+    toernooiData.actiefDagNr = gekozenDagNr;
+  }
+}
+
 // Haal toernooi ID op uit URL
 const params = new URLSearchParams(window.location.search);
 toernooiId = params.get('t');
@@ -175,6 +194,7 @@ async function laadToernooi() {
       }
       toernooiId = snap.docs[0].id;
       toernooiData = snap.docs[0].data();
+      pasGekozenDagToe();
     } else {
       const snap = await getDoc(doc(db, 'toernooien', toernooiId));
       if (!snap.exists()) {
@@ -182,6 +202,7 @@ async function laadToernooi() {
         return;
       }
       toernooiData = snap.data();
+      pasGekozenDagToe();
     }
 
     // v5.10.0: een AFGESLOTEN toernooi hoort hier gewoon te staan.
@@ -229,17 +250,26 @@ async function laadToernooi() {
 
     // Dag-tabs toevoegen als meerdere dagen
     const tabBar = document.getElementById('tab-bar');
-    const bestaandeDagTabs = tabBar.querySelectorAll('.dag-tab');
-    bestaandeDagTabs.forEach(t => t.remove());
+
+    // v5.25.0: eerst de oude balk weghalen, anders komt er elke keer een rij bij.
+    //
+    // WAT ER MIS WAS: hier werd binnen `tab-bar` gezocht naar de oude knoppen,
+    // maar de balk wordt NAAST tab-bar gezet (insertBefore op de ouder). Er viel
+    // daar dus nooit iets te vinden en elke tekenbeurt plakte er een rij onder.
+    // De balk heeft nu een eigen id en wordt op naam opgeruimd.
+    const oudeDagBalk = document.getElementById('dag-tab-balk');
+    if (oudeDagBalk) oudeDagBalk.remove();
+
     if (aantalDagen > 1) {
       const dagTabsContainer = document.createElement('div');
+      dagTabsContainer.id = 'dag-tab-balk';
       dagTabsContainer.style.cssText = 'display:flex;gap:4px;padding:8px 12px;background:var(--green-pale);border-bottom:1px solid var(--border);overflow-x:auto';
       (toernooiData.dagen || []).forEach(d => {
         const btn = document.createElement('button');
         btn.className = 'dag-tab';
         btn.textContent = `Dag ${d.dagNr}${d.afgerond ? ' ✓' : ''}`;
         btn.style.cssText = `padding:4px 12px;border-radius:16px;border:1.5px solid var(--green);background:${d.dagNr === (toernooiData.actiefDagNr||1) ? 'var(--green)' : 'transparent'};color:${d.dagNr === (toernooiData.actiefDagNr||1) ? 'white' : 'var(--green)'};font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap`;
-        btn.onclick = () => { toernooiData.actiefDagNr = d.dagNr; laadData(); };
+        btn.onclick = () => { gekozenDagNr = d.dagNr; pasGekozenDagToe(); laadData(); };
         dagTabsContainer.appendChild(btn);
       });
       tabBar.parentNode.insertBefore(dagTabsContainer, tabBar.nextSibling);
@@ -287,6 +317,7 @@ function startLiveListeners() {
     (snap) => {
       if (!snap.exists()) return;
       toernooiData = snap.data();
+      pasGekozenDagToe();
       updateTijd();
       renderInhoud();
     },
