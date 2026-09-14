@@ -10,7 +10,7 @@ const _verwerkToernooiStandenFn = httpsCallable(functions, 'verwerkToernooiStand
 // v5.10.0: verwijdert een Auth-account waarvan het profiel al weg is. Bestond
 // al voor wees-accounts uit de bulk-import; hier hergebruikt voor gastlogins.
 const _verwijderGastAccountFn = httpsCallable(functions, 'verwijderWeesAccount');
-import { store, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tRankingLadderIds, _flights, _liveScores } from './store.js';
+import { store, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tRankingLadderIds, _flights, _flightPool, _liveScores } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen, foutTekst, meldFout } from './auth.js';
 import { renderHcpBlok, alleBANEN, renderHandmatigHoles, kortNaamMap } from './partij.js';
 import { renderLadder } from './ladder.js';
@@ -697,6 +697,7 @@ function wisToernooiConcept() {
   // v5.11.3: de flightindeling hoort bij dit concept. Blijft hij staan, dan erf
   // je hem bij het volgende toernooi — met spelers die daar niet meedoen.
   store._flights = [];
+  store._flightPool = [];   // v5.19.0
 }
 
 // Herstelt state + simpele velden; dag-blok-waarden worden na renderDagBlokken
@@ -1297,6 +1298,10 @@ function openFlightIndeling() {
   window._toernooiStarttijd = starttijd;
   window._toernooiInterval = interval;
   window._flightDagModus = false;
+  // v5.19.0: op het AANMAAKSCHERM bestaat de pool niet — daar staat iedereen
+  // die je selecteert meteen in een flight. Wel leegmaken, anders blijft er een
+  // pool van een vorig toernooi staan.
+  store._flightPool = [];
 
   const startBtn = document.getElementById('flight-modal-start-btn');
   if (startBtn) { startBtn.textContent = 'Toernooi starten →'; startBtn.onclick = startToernooi; }
@@ -1475,8 +1480,12 @@ function verdeelNieuweTegenstanders(spelers, aantalFlights, eerdereFlights) {
 }
 
 function verdeelSpelersOverFlights(soort) {
-  const alle = _flights.flatMap(f => f.spelers);
+  // v5.19.0: de pool telt mee en loopt hiermee leeg. Dat is de knop voor een
+  // geplakte lijst van veertig gasten: die staan allemaal in de pool en zijn in
+  // één klap verdeeld.
+  const alle = [..._flights.flatMap(f => f.spelers), ..._flightPool];
   if (alle.length === 0 || _flights.length === 0) return;
+  store._flightPool = [];
   const keuze = soort || document.getElementById('t-verdeel-soort')?.value || 'beurt';
   const n = _flights.length;
   let indeling, melding = '';
@@ -1586,9 +1595,41 @@ function renderFlightLijst() {
   const ingedeeld = new Set(_flights.flatMap(f => f.spelers.map(s => s.uid)));
   const leeg = _legeFlights();
 
+  // ============================================================
+  //  DE SPELERSPOOL  (v5.19.0)
+  // ------------------------------------------------------------
+  //  Sierk, 14 september 2026: "ik wil op de dag zelf een spelers pool zien.
+  //  met de knop verdelen of handmatig bepaal ik waar de spelers geplaatst
+  //  worden. en ik zie dan zelf of de pool op een gegeven moment leeg is."
+  //
+  //  In de pool staat wie meedoet maar nog in geen enkele flight staat. Dat
+  //  gebeurt sinds v5.19.0 bij iedereen die je op het tabblad Spelers toevoegt:
+  //  daar kies je geen flight meer, want indelen hoort bij de dag.
+  //
+  //  ⚠ Daarom gaat er geen waarschuwing bij. De pool ís de waarschuwing: staat
+  //  er nog iemand in, dan staat hij ook niet op de scorekaart. Een lege pool
+  //  zegt dat je klaar bent.
+  const poolHtml = `
+    <div style="border:1.5px dashed ${_flightPool.length ? 'var(--gold)' : 'var(--border)'};border-radius:10px;padding:8px 12px;margin-bottom:12px;background:${_flightPool.length ? 'var(--gold-pale)' : 'transparent'}">
+      <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:${_flightPool.length ? 'var(--gold)' : 'var(--mid)'};margin-bottom:${_flightPool.length ? '6px' : '0'}">
+        Spelerspool${_flightPool.length ? ` (${_flightPool.length})` : ''}
+      </div>
+      ${_flightPool.length === 0
+        ? '<div style="font-size:12px;color:var(--light)">Leeg — iedereen is ingedeeld ✓</div>'
+        : _flightPool.map((s, pi) => `
+          <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+            <span style="flex:1;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.naam)}</span>
+            <span style="font-size:12px;color:var(--mid);flex-shrink:0">hcp ${Math.round(s.hcp)}</span>
+            <select onchange="plaatsUitPool(${pi}, this.value)" style="font-size:12px;border:1.5px solid var(--border);border-radius:5px;padding:3px 5px;background:var(--card-bg);color:var(--dark);flex-shrink:0;min-width:104px;max-width:150px">
+              <option value="">→ flight…</option>
+              ${_flights.map((lf, lfi) => `<option value="${lfi}">${esc(lf.naam)}</option>`).join('')}
+            </select>
+          </div>`).join('')}
+    </div>`;
+
   // v5.9.0: kop met het aantal spelers, een knop om gelijk te verdelen en een
   // waarschuwing als er een flight leeg is.
-  const kop = `
+  const kop = poolHtml + `
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       <span style="font-size:13px;color:var(--mid)">${ingedeeld.size} speler(s) · ${_flights.length} flight(s)</span>
       <select id="t-verdeel-soort" class="input" style="margin-left:auto;width:auto;font-size:12px;padding:4px 8px">
@@ -1632,10 +1673,13 @@ function renderFlightLijst() {
             <input type="number" value="${Math.round(s.hcp)}" min="-10" max="54"
               onchange="wijzigFlightHcp(${fi}, ${si}, this.value)"
               style="width:48px;padding:3px 6px;text-align:center;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;font-size:13px;flex-shrink:0">
-            ${_flights.length > 1 ? `
-            <select onchange="verplaatsSpelerFlight(${fi}, ${si}, this.value)" title="Verplaats naar een andere flight" style="font-size:12px;border:1.5px solid var(--border);border-radius:5px;padding:3px 5px;background:var(--card-bg);color:var(--dark);flex-shrink:0;min-width:104px;max-width:150px">
+            <!-- v5.19.0: dit menu stond er alleen bij twee of meer flights. Nu
+                 altijd, want ook met één flight kun je iemand terug in de pool
+                 zetten. -->
+            <select onchange="verplaatsSpelerFlight(${fi}, ${si}, this.value)" title="Verplaats naar een andere flight of terug naar de pool" style="font-size:12px;border:1.5px solid var(--border);border-radius:5px;padding:3px 5px;background:var(--card-bg);color:var(--dark);flex-shrink:0;min-width:104px;max-width:150px">
               ${_flights.map((lf, lfi) => `<option value="${lfi}" ${lfi === fi ? 'selected' : ''}>${esc(lf.naam)}</option>`).join('')}
-            </select>` : ''}
+              <option value="pool">→ Pool</option>
+            </select>
           </div>
         `).join('')}
         ${f.spelers.length === 0 ? '<p style="font-size:12px;color:var(--gold);padding:8px 0">Nog geen spelers. Gebruik ⇄ Verdelen, of verplaats iemand hierheen met het keuzemenu achter zijn naam.</p>' : ''}
@@ -1675,12 +1719,32 @@ function wijzigFlightNaam(fi, naam) { if (_flights[fi]) _flights[fi].naam = naam
 function wijzigFlightHcp(fi, si, val) { if (_flights[fi]?.spelers[si]) _flights[fi].spelers[si].hcp = parseFloat(val) || 0; bewaarFlightsInConcept(); }
 
 function verplaatsSpelerFlight(vanFi, si, naarFi) {
+  // v5.19.0: "pool" is een geldige bestemming — iemand uit de indeling halen
+  // zonder hem uit het toernooi te gooien.
+  if (naarFi === 'pool') {
+    const speler = _flights[vanFi].spelers.splice(si, 1)[0];
+    if (speler) _flightPool.push(speler);
+    renderFlightLijst();
+    return;
+  }
   naarFi = parseInt(naarFi);
   if (vanFi === naarFi) return;
   const speler = _flights[vanFi].spelers.splice(si, 1)[0];
   _flights[naarFi].spelers.push(speler);
   renderFlightLijst();
 }
+
+// v5.19.0: uit de pool in een flight. De keuzelijst begint op "→ flight…", dus
+// een lege waarde betekent: nog niets gekozen.
+function plaatsUitPool(pi, naarFi) {
+  if (naarFi === '' || naarFi === null) return;
+  const fi = parseInt(naarFi);
+  if (!_flights[fi]) return;
+  const speler = _flightPool.splice(pi, 1)[0];
+  if (speler) _flights[fi].spelers.push(speler);
+  renderFlightLijst();
+}
+window.plaatsUitPool = plaatsUitPool;
 
 // ============================================================
 //  START TOERNOOI — leest alle dag-blokken in
@@ -1930,6 +1994,7 @@ async function startToernooi() {
     wisToernooiConcept(); // v4.0.0 (fix 7.1)
     closeModal('modal-flight-indeling');
     store._flights = [];
+    store._flightPool = [];   // v5.19.0
     store._tGeselecteerdeSpelers = [];
     store._tRankingLadderIds = new Set();
     document.getElementById('t-naam').value = '';
@@ -2618,9 +2683,17 @@ function openFlightIndelingDag() {
       starthole: f.starthole || 1,
       starttijd: f.starttijd || starttijd
     }));
+    // ⚠ v5.19.0: hier ging het voorheen mis, en stil. Dit scherm laadde alleen
+    // spelers die IN een flight zaten. Wie er niet in zat — sinds v5.19.0
+    // iedereen die je op het tabblad Spelers toevoegt — bestond hier niet en
+    // kwam nooit op een scorekaart. Nu staat hij in de pool, in beeld.
+    const ingedeeld = new Set(store._flights.flatMap(f => f.spelers.map(s => s.uid)));
+    store._flightPool = (t.spelers || []).filter(s => !ingedeeld.has(s.uid));
   } else {
-    // Nieuwe indeling — zet alle spelers in flight 1
+    // Nieuwe indeling — zet alle spelers in flight 1. Ongewijzigd: bij een
+    // nieuwe dag deel je meteen in, daar hoort geen pool bij.
     store._flights = [{ id: 1, naam: 'Flight 1', spelers: [...t.spelers], starthole: 1, starttijd }];
+    store._flightPool = [];
   }
 
   window._toernooiStarttijd = starttijd;
@@ -2653,6 +2726,7 @@ async function slaFlightIndelingDagOp() {
     }));
 
     store._flights = [];
+    store._flightPool = [];   // v5.19.0
     window._flightDagModus = false;
     await slaToernooiOp();
     closeModal('modal-flight-indeling');
@@ -2894,12 +2968,8 @@ function openToernooiSpelersBeheer() {
   const verwijderLijst = document.getElementById('toernooi-speler-verwijder-lijst');
   verwijderLijst.innerHTML = spelerRijenHtml(t);
 
-  // Flight opties van actieve dag
-  const dag = actieveDag(t);
-  const flightOpties = ((dag?.flights) || (t.dagen?.[0]?.flights) || [{ naam: 'Flight 1' }]).map((f, i) =>
-    `<option value="${i}">${esc(f.naam)}</option>`).join('');
-  document.getElementById('toernooi-speler-flight-sel').innerHTML = flightOpties;
-  document.getElementById('toernooi-gast-flight-sel').innerHTML = flightOpties;
+  // v5.19.0: hier werden twee flightkeuzelijsten gevuld. Weg — dit venster gaat
+  // over wie meedoet, niet over waar hij staat.
 
   document.getElementById('toernooi-speler-zoek').value = '';
   document.getElementById('toernooi-gast-naam').value = '';
@@ -2983,16 +3053,16 @@ async function voegBestaandeSpelerToeAanToernooi() {
   try {
     if (!_toernooiSpelerToevoegen) { toast('Selecteer eerst een speler'); return; }
     const t = toernooiData;
-    const fi = parseInt(document.getElementById('toernooi-speler-flight-sel').value) || 0;
     const speler = { uid: _toernooiSpelerToevoegen.uid, naam: _toernooiSpelerToevoegen.naam, hcp: _toernooiSpelerToevoegen.hcp, gast: false };
 
     t.spelers.push(speler);
-    // Voeg scores toe aan ALLE dagen
+    // v5.19.0: hier stond een flightkeuze en werd de speler meteen in die
+    // flight gezet. Sierk, 14 september 2026: "de spelers tab is spelers
+    // beheer." Indelen hoort bij de dag, dus hij komt in de SPELERSPOOL — dat
+    // is simpelweg: wel in t.spelers, nog in geen enkele flight. Het
+    // flightvenster van elke dag toont hem daar.
     (t.dagen || []).forEach(dag => {
       dag.scores[speler.uid] = Array(dag.holes.length).fill(null);
-      if (dag.flights?.[fi]) {
-        dag.flights[fi].spelerIds = [...(dag.flights[fi].spelerIds || []), speler.uid];
-      }
     });
 
     herschikMarkers(t);   // v5.11.6
@@ -3009,7 +3079,6 @@ async function voegGastspelerToeAanToernooi() {
     const hcp  = parseFloat(document.getElementById('toernooi-gast-hcp').value) || 0;
     if (!naam) { toast('Voer een naam in'); return; }
     const t = toernooiData;
-    const fi = parseInt(document.getElementById('toernooi-gast-flight-sel').value) || 0;
     // v5.10.0: waarschuwen als deze naam al een clublid is. Als gast telt hij
     // NIET mee voor de ladderstand — dat is met opzet, maar het moet een keuze
     // zijn en geen ongeluk.
@@ -3043,11 +3112,10 @@ async function voegGastspelerToeAanToernooi() {
     const speler = { uid: gastId, naam, hcp, gast: true, ...(login ? { login } : {}) };
 
     t.spelers.push(speler);
+    // v5.19.0: geen flightkeuze meer — hij komt in de spelerspool. Zie
+    // voegBestaandeSpelerToeAanToernooi() hierboven.
     (t.dagen || []).forEach(dag => {
       dag.scores[gastId] = Array(dag.holes.length).fill(null);
-      if (dag.flights?.[fi]) {
-        dag.flights[fi].spelerIds = [...(dag.flights[fi].spelerIds || []), gastId];
-      }
     });
 
     herschikMarkers(t);   // v5.11.6
@@ -3133,20 +3201,10 @@ function gastenUitTekst(tekst, bestaandeNamen = []) {
   return { spelers, dubbel, leeg };
 }
 
-// De flightkeuze van dit venster. Dezelfde lijst als bij één gast toevoegen.
-function _vulGastenPlakFlights() {
-  const t = toernooiData;
-  const dag = actieveDag(t);
-  const flights = (dag?.flights) || (t?.dagen?.[0]?.flights) || [{ naam: 'Flight 1' }];
-  const sel = document.getElementById('gasten-plak-flight-sel');
-  if (sel) sel.innerHTML = flights.map((f, i) => `<option value="${i}">${esc(f.naam)}</option>`).join('');
-}
-
 function openGastenPlakken() {
   if (!toernooiData) return;
   const vak = document.getElementById('gasten-plak-tekst');
   if (vak) vak.value = '';
-  _vulGastenPlakFlights();
   toonGastenPlakTelling();
   document.getElementById('modal-gasten-plakken').classList.add('open');
 }
@@ -3176,19 +3234,16 @@ async function startGastenPlakken() {
       toast(dubbel.length ? 'Deze namen doen al mee' : 'Geen spelers herkend in wat je plakte');
       return;
     }
-    const fi = parseInt(document.getElementById('gasten-plak-flight-sel')?.value) || 0;
-
     // ⚠ Eén schrijfactie voor de hele lijst. Per speler wegschrijven zou bij
     // veertig gasten veertig keer het hele toernooidocument overschrijven, en
     // dan wint de laatste die klaar is — precies de fout uit v5.12.4.
     spelers.forEach(({ naam, hcp }) => {
       const gastId = 'gast_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
       t.spelers.push({ uid: gastId, naam, hcp, gast: true });
+      // v5.19.0: ze komen in de spelerspool, niet in een flight. Veertig gasten
+      // in één keer indelen doe je op de dag met ⇄ Verdelen.
       (t.dagen || []).forEach(dag => {
         dag.scores[gastId] = Array(dag.holes.length).fill(null);
-        if (dag.flights?.[fi]) {
-          dag.flights[fi].spelerIds = [...(dag.flights[fi].spelerIds || []), gastId];
-        }
       });
     });
 
@@ -3269,10 +3324,19 @@ function heeftGeenScores(t) {
   });
 }
 
+// ⚠ v5.19.0: dit keek naar ALLE deelnemers van het toernooi. Sinds de
+// spelerspool bestaat kan iemand meedoen zonder op deze dag ingedeeld te zijn —
+// en die heeft dus lege scores. Daarmee bleef de knop "Uitslag dag N" voor
+// altijd op "(scores onvolledig)" staan, zonder dat iets vertelde waarom. Nu
+// telt wie op DEZE dag in een flight staat. Heeft de dag geen flights, dan
+// gelden alle spelers, zoals voorheen.
 function alleScoresIngevuld(t, dag) {
   dag = dag || actieveDag(t);
   if (!dag || !t || !t.spelers || t.spelers.length === 0) return false;
-  return t.spelers.every(s =>
+  const ingedeeld = new Set((dag.flights || []).flatMap(f => f.spelerIds || []));
+  const meedoen = ingedeeld.size > 0 ? t.spelers.filter(s => ingedeeld.has(s.uid)) : t.spelers;
+  if (meedoen.length === 0) return false;
+  return meedoen.every(s =>
     (dag.holes || []).every((_, i) => {
       const val = dag.scores?.[s.uid]?.[i];
       return val !== null && val !== undefined && val !== '';

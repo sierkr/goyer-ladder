@@ -924,10 +924,6 @@
         onblur="setTimeout(sluitToernooiSpelerModal, 150)">
       <div id="toernooi-speler-zoek-lijst" style="position:absolute;top:100%;left:0;right:0;background:var(--card-bg);color:var(--dark);border:1.5px solid var(--green);border-radius:8px;max-height:160px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,0.1);display:none;margin-top:2px"></div>
     </div>
-    <div class="form-group" style="margin-bottom:8px">
-      <label>Flight</label>
-      <select id="toernooi-speler-flight-sel"></select>
-    </div>
     <button class="btn btn-primary btn-block btn-sm" onclick="voegBestaandeSpelerToeAanToernooi()" style="margin-bottom:16px">+ Toevoegen</button>
 
     <div class="divider"></div>
@@ -937,10 +933,6 @@
     <div style="display:grid;grid-template-columns:1fr 80px;gap:8px;margin-bottom:8px">
       <input type="text" id="toernooi-gast-naam" placeholder="Naam gastspeler">
       <input type="number" id="toernooi-gast-hcp" placeholder="hcp" style="text-align:center">
-    </div>
-    <div class="form-group" style="margin-bottom:8px">
-      <label>Flight</label>
-      <select id="toernooi-gast-flight-sel"></select>
     </div>
     <!-- v5.10.0: alleen zinvol als dit toernooi een gastwachtwoord heeft.
          renderToernooiGastInlogKeuze() zet dit blok aan of uit. -->
@@ -2142,13 +2134,9 @@
       placeholder="Karel Jansen	12&#10;Anna de Wit	8,4&#10;Karel	18"
       style="width:100%;font-family:'DM Mono',monospace;font-size:13px"></textarea>
     <div id="gasten-plak-telling" style="font-size:12px;color:var(--mid);margin:6px 0 12px">Plak hierboven je lijst.</div>
-    <div class="form-group" style="margin-bottom:12px">
-      <label>Flight</label>
-      <select id="gasten-plak-flight-sel"></select>
-    </div>
     <p style="font-size:11px;color:var(--light);margin:0 0 12px">
-      Ze komen allemaal in deze flight; verdeel ze daarna met ⇄ Verdelen.
-      Een inlog krijgen ze met "Gastlogins aanmaken".
+      Ze komen in de spelerspool van elke dag; daar deel je ze in met ⇄ Verdelen
+      (✈ Flights). Een inlog krijgen ze met "Gastlogins aanmaken".
     </p>
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-gasten-plakken')">Sluiten</button>

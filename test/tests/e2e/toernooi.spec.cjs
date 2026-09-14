@@ -596,10 +596,29 @@ test.describe('Toernooi — de hele route', () => {
     expect(gasten.every(sp => !sp.login),
       'niemand heeft een inlog gekregen').toBe(true);
 
-    // En ze staan in een flight, dus op de scorekaart.
+    // ⚠ v5.19.0: en ze staan in GEEN ENKELE flight. Dat is de spelerspool:
+    // meedoen en nog niet ingedeeld. Indelen hoort bij de dag.
     const inFlights = (t.dagen[0].flights || []).flatMap(f => f.spelerIds || []);
-    expect(gasten.every(sp => inFlights.includes(sp.uid)),
-      'alle drie zijn ingedeeld').toBe(true);
+    expect(gasten.some(sp => inFlights.includes(sp.uid)),
+      'niemand is al ingedeeld — ze staan in de pool').toBe(false);
+
+    // ── En dan op de dag: de pool staat in beeld en loopt leeg ──
+    await naarDagTab(page, 1);
+    await page.click('#toernooi-detail button[onclick="openFlightIndelingDag()"]');
+    const indeling = page.locator('#flight-lijst');
+    await expect(indeling, 'de pool toont de drie gasten').toContainText('Spelerspool (3)', { timeout: 10000 });
+    await expect(indeling).toContainText('Karel Jansen');
+
+    await page.click('#flight-lijst button:has-text("Verdelen")');
+    await expect(indeling, 'na verdelen is de pool leeg')
+      .toContainText('Leeg — iedereen is ingedeeld', { timeout: 10000 });
+
+    await page.click('#flight-modal-start-btn');
+    const na = await haalToernooi('Plaklijst', 20,
+      (x) => ((x.dagen?.[0]?.flights) || []).flatMap(f => f.spelerIds || []).length === 5);
+    const naFlights = (na.dagen[0].flights || []).flatMap(f => f.spelerIds || []);
+    expect(naFlights.length, 'alle vijf staan nu in een flight').toBe(5);
+    expect(new Set(naFlights).size, 'en niemand dubbel').toBe(5);
   });
 
   // ============================================================
@@ -650,6 +669,21 @@ test.describe('Toernooi — de hele route', () => {
     await regel.evaluate(el => el.click());
     await page.click('#modal-toernooi-spelers button:has-text("+ Toevoegen")');
     await expect(page.locator('#toernooi-detail')).toContainText('4 spelers', { timeout: 15000 });
+
+    // ⚠ v5.19.0: hier stond direct de controle op een kring van vier. Dat kan
+    // niet meer, en dat is met opzet: wie je op het tabblad Spelers toevoegt
+    // komt in de SPELERSPOOL, nog in geen enkele flight. Indelen hoort bij de
+    // dag. Nina moet dus eerst ingedeeld worden — en pas dán hoort de kring
+    // opnieuw verdeeld te zijn. Dat laatste is waar deze test over gaat.
+    expect(kringKlopt(await haalToernooi('Kring')).aantal,
+      'Nina staat nog in de pool, niet in de flight').toBe(3);
+
+    await naarDagTab(page, 1);
+    await page.click('#toernooi-detail button[onclick="openFlightIndelingDag()"]');
+    await expect(page.locator('#flight-lijst'), 'Nina staat in de pool')
+      .toContainText('Spelerspool (1)', { timeout: 10000 });
+    await page.click('#flight-lijst button:has-text("Verdelen")');
+    await page.click('#flight-modal-start-btn');
 
     await expect.poll(async () => kringKlopt(await haalToernooi('Kring')),
       { timeout: 15000, message: 'de kring is opnieuw verdeeld' })

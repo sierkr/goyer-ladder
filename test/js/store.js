@@ -65,6 +65,10 @@ export let _liveScores = {};
 export let _tGeselecteerdeSpelers = [];
 export let _tRankingLadderIds = new Set();
 export let _flights = [];
+// v5.19.0: de spelerspool van het flightvenster — wie meedoet maar nog in geen
+// enkele flight staat. Alleen zolang dat venster openstaat; bewaard wordt hij
+// niet, want "niet in een flight" is af te leiden uit het toernooi zelf.
+export let _flightPool = [];
 export let _toernooiSpelerToevoegen = null;
 
 // ─── Partij ──────────────────────────────────────────────────
@@ -153,6 +157,8 @@ export const store = {
   get _tRankingLadderIds() { return _tRankingLadderIds; },
   set _flights(v) { _flights = v; },
   get _flights() { return _flights; },
+  set _flightPool(v) { _flightPool = v; },
+  get _flightPool() { return _flightPool; },
   set playerSlotCount(v) { playerSlotCount = v; },
   get playerSlotCount() { return playerSlotCount; },
   set _beheerPartijId(v) { _beheerPartijId = v; },
