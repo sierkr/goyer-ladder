@@ -51,6 +51,10 @@ function laadToernooiKern() {
     // misging — knip een nieuwe hulpfunctie ALTIJD mee, anders valt de hele
     // toernooisuite om op 'x is not defined'.
     'plaatsPuntenUitTekst', 'puntenVoorPlaats',
+    // v5.16.0: de vijf indelingen. Pure functies, dus prima te knippen.
+    'flightGroottes', 'knipInBanden', 'verdeelOmBeurten', 'verdeelWillekeurig',
+    'verdeelOpStand', 'verdeelOpHandicapBanden', 'verdeelOpFlightHandicap',
+    'verdeelNieuweTegenstanders',
     'getTHcpSlagen', 'berekenTPuntenVoorDag', 'berekenStrokeplayRanglijstVoorDag',
     'berekenStrokeplayTotaal', 'countback', 'getDag', 'actieveDag',
     'heeftGeenScores', 'alleScoresIngevuld', 'berekenFlightTijd',
@@ -77,7 +81,10 @@ function laadToernooiKern() {
     ${t}
     ${k}
     return {
-      dagInstelling, dagIsGestart, plaatsPuntenUitTekst, puntenVoorPlaats, getTHcpSlagen, berekenTPuntenVoorDag, berekenStrokeplayRanglijstVoorDag,
+      dagInstelling, dagIsGestart, plaatsPuntenUitTekst, puntenVoorPlaats,
+      flightGroottes, knipInBanden, verdeelOmBeurten, verdeelWillekeurig,
+      verdeelOpStand, verdeelOpHandicapBanden, verdeelOpFlightHandicap,
+      verdeelNieuweTegenstanders, getTHcpSlagen, berekenTPuntenVoorDag, berekenStrokeplayRanglijstVoorDag,
       berekenStrokeplayTotaal, countback, getDag, actieveDag, heeftGeenScores,
       alleScoresIngevuld, berekenFlightTijd, berekenTPunten, _liveScoresVanDag,
       matchplayVolgorde, hcpVan,

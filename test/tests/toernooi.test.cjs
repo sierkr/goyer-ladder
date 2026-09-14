@@ -132,6 +132,97 @@ check('de ene dag beïnvloedt de andere niet',
 //  plek in te stellen." De negen tests hierboven op dagPuntenUitSleutels()
 //  roepen hem ZONDER tabel aan; die bewijzen dus dat de standaard niet wijzigt.
 // ============================================================
+// ============================================================
+//  v5.16.0 — VIJF MANIEREN OM IN TE DELEN
+// ------------------------------------------------------------
+//  Elke manier moet aan twee dingen voldoen, wat hij verder ook doet:
+//  iedereen precies één keer ingedeeld, en flights schelen hooguit één speler.
+//  Dat wordt hieronder voor alle vijf apart gecontroleerd — een indeling die
+//  iemand kwijtraakt of een flight van zes tegenover twee maakt, is stuk.
+// ============================================================
+console.log('\n══ TOERNOOI — INDELEN OVER FLIGHTS ══');
+
+const spelersMet = (paren) => paren.map(([uid, hcp]) => ({ uid, naam: uid, hcp }));
+const negen = spelersMet([['a',1],['b',2],['c',3],['d',4],['e',5],['f',6],['g',7],['h',8],['i',9]]);
+
+// ── de maatverdeling ────────────────────────────────────────────────────────
+check('9 over 4 flights -> 3,2,2,2', K.flightGroottes(9, 4), [3, 2, 2, 2]);
+check('8 over 4 flights -> 2,2,2,2', K.flightGroottes(8, 4), [2, 2, 2, 2]);
+check('2 over 4 flights -> 1,1,0,0', K.flightGroottes(2, 4), [1, 1, 0, 0]);
+check('geen flights -> niets', K.flightGroottes(9, 0), []);
+
+// ── de eis die voor alle vijf geldt ─────────────────────────────────────────
+const alleManieren = {
+  'om de beurt':        (sp, n) => K.verdeelOmBeurten(sp, n),
+  'willekeurig':        (sp, n) => K.verdeelWillekeurig(sp, n, () => 0.42),
+  'op stand':           (sp, n) => K.verdeelOpStand(sp, n, ['e','c','a','g','i','b','d','f','h']),
+  'handicapbanden':     (sp, n) => K.verdeelOpHandicapBanden(sp, n),
+  'flighthandicap':     (sp, n) => K.verdeelOpFlightHandicap(sp, n),
+  'nieuwe tegenstanders': (sp, n) => K.verdeelNieuweTegenstanders(sp, n, [[['a','b','c'],['d','e','f'],['g','h','i']]]),
+};
+for (const [naam, fn] of Object.entries(alleManieren)) {
+  const uit = fn(negen, 4);
+  const platgeslagen = uit.flat().map(x => x.uid).sort();
+  check(`${naam}: iedereen precies één keer`, platgeslagen,
+    ['a','b','c','d','e','f','g','h','i']);
+  const maten = uit.map(f => f.length).sort((x, y) => x - y);
+  check(`${naam}: flights schelen hooguit één speler`,
+    maten[maten.length - 1] - maten[0] <= 1, true);
+}
+
+// ── het eigen kenmerk van elke manier ───────────────────────────────────────
+check('om de beurt: a,e,i in flight 1',
+  K.verdeelOmBeurten(negen, 4)[0].map(x => x.uid), ['a', 'e', 'i']);
+
+//  Op stand met volgorde best->slecht: de BESTEN horen in de LAATSTE flight,
+//  want die gaat het laatst weg. Volgorde hier: e is de beste, h de slechtste.
+const opStand = K.verdeelOpStand(negen, 3, ['e','c','a','g','i','b','d','f','h']);
+check('op stand: de beste zit in de laatste flight',
+  opStand[opStand.length - 1].some(x => x.uid === 'e'), true);
+check('op stand: de slechtste zit in de eerste flight',
+  opStand[0].some(x => x.uid === 'h'), true);
+
+//  Handicapbanden: de drie laagste handicaps bij elkaar in flight 1.
+check('handicapbanden: de laagste handicaps samen',
+  K.verdeelOpHandicapBanden(negen, 3)[0].map(x => x.uid), ['a', 'b', 'c']);
+
+//  Flighthandicap: juist spreiden. Met 9 spelers (hcp 1..9) over 3 flights
+//  liggen de gemiddelden dicht bij elkaar; bij banden is het verschil 3.
+const gem = (f) => f.reduce((n, x) => n + x.hcp, 0) / f.length;
+const gespreid = K.verdeelOpFlightHandicap(negen, 3).map(gem);
+const gebandeerd = K.verdeelOpHandicapBanden(negen, 3).map(gem);
+check('flighthandicap: de gemiddelden liggen dicht bij elkaar',
+  Math.max(...gespreid) - Math.min(...gespreid) <= 1, true);
+check('en dat is aantoonbaar beter gespreid dan banden',
+  (Math.max(...gespreid) - Math.min(...gespreid)) < (Math.max(...gebandeerd) - Math.min(...gebandeerd)), true);
+
+// ── nog niet met elkaar gespeeld ────────────────────────────────────────────
+//  Zes spelers, drie flights van twee. Dag 1 was a-b, c-d, e-f. Er is ruimte
+//  genoeg voor een indeling zonder herhaling, dus die hoort eruit te komen.
+const zes = spelersMet([['a',1],['b',2],['c',3],['d',4],['e',5],['f',6]]);
+const indelingDag1 = [[['a','b'], ['c','d'], ['e','f']]];
+const nieuw2 = K.verdeelNieuweTegenstanders(zes, 3, indelingDag1);
+const paren = nieuw2.map(f => f.map(x => x.uid).sort().join('-'));
+check('geen enkel paar van dag 1 komt terug',
+  paren.some(p => ['a-b', 'c-d', 'e-f'].includes(p)), false);
+
+//  ⚠ En als het NIET kan: twee flights van drie, terwijl dag 1 dezelfde twee
+//  drietallen had. Elke indeling levert herhalingen op. De functie moet dan
+//  niet omvallen en zo min mogelijk herhalen — niet toveren.
+const dag1Zelfde = [[['a','b','c'], ['d','e','f']]];
+const krap = K.verdeelNieuweTegenstanders(zes, 2, dag1Zelfde);
+check('bij een onmogelijke opgave valt hij niet om',
+  krap.flat().map(x => x.uid).sort(), ['a','b','c','d','e','f']);
+check('en houdt hij de flights netjes op maat',
+  krap.map(f => f.length), [3, 3]);
+
+// ── randgevallen ────────────────────────────────────────────────────────────
+check('geen spelers levert lege flights', K.verdeelOmBeurten([], 3).map(f => f.length), [0, 0, 0]);
+check('meer flights dan spelers laat flights leeg',
+  K.verdeelOpHandicapBanden(spelersMet([['a',1],['b',2]]), 4).map(f => f.length), [1, 1, 0, 0]);
+check('zonder eerdere dagen deelt "nieuw" gewoon in',
+  K.verdeelNieuweTegenstanders(zes, 3, []).flat().length, 6);
+
 console.log('\n══ TOERNOOI — PUNTEN PER PLAATS ══');
 
 // ── de tekst uitlezen ───────────────────────────────────────────────────────
