@@ -45,6 +45,8 @@ function laadToernooiKern() {
     // 'dagInstelling is not defined'. Zie dezelfde waarschuwing bij
     // laadLadderKern() hieronder.
     'dagInstelling',
+    // v5.14.0: de toestand van een dag (concept / gestart / afgesloten).
+    'dagIsGestart',
     'getTHcpSlagen', 'berekenTPuntenVoorDag', 'berekenStrokeplayRanglijstVoorDag',
     'berekenStrokeplayTotaal', 'countback', 'getDag', 'actieveDag',
     'heeftGeenScores', 'alleScoresIngevuld', 'berekenFlightTijd',
@@ -71,7 +73,7 @@ function laadToernooiKern() {
     ${t}
     ${k}
     return {
-      dagInstelling, getTHcpSlagen, berekenTPuntenVoorDag, berekenStrokeplayRanglijstVoorDag,
+      dagInstelling, dagIsGestart, getTHcpSlagen, berekenTPuntenVoorDag, berekenStrokeplayRanglijstVoorDag,
       berekenStrokeplayTotaal, countback, getDag, actieveDag, heeftGeenScores,
       alleScoresIngevuld, berekenFlightTijd, berekenTPunten, _liveScoresVanDag,
       matchplayVolgorde, hcpVan,

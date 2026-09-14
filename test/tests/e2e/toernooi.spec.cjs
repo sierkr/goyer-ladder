@@ -940,6 +940,68 @@ test.describe('Toernooi — de hele route', () => {
   });
 
   // ============================================================
+  //  v5.14.0 — DE LEVENSLOOP VAN EEN DAG
+  // ------------------------------------------------------------
+  //  Sierk, 14 september 2026: "Totdat de dag gestart is kan ik dan de dag
+  //  aanpassen. En dan als de dag gestart is een dag annuleren om aanpassingen
+  //  te doen. Ik wil maximale vrijheid."
+  //
+  //  De grens was tot v5.13.1 een BIJWERKING: zodra er één cijfer stond kon je
+  //  niets meer wijzigen. Nu is het een knop, en die kan twee kanten op.
+  // ============================================================
+  test('LEVENSLOOP: een nieuwe dag begint als concept, start je, en kan terug', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+
+    await vulAanmaakformulier(page, 'Levensloop', 1);
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Levensloop', { timeout: 25000 });
+
+    // Dag 1 start MEE met het toernooi — je hebt hem net ingesteld.
+    const detail = page.locator('#toernooi-detail');
+    await expect(detail, 'dag 1 is meteen gestart').not.toContainText('Dag 1 is nog niet gestart');
+    await expect(detail.locator('#t-scorecard-wrap'), 'dag 1 heeft een scorekaart').toBeVisible();
+
+    // Een dag die je ONDERWEG toevoegt begint als concept.
+    await page.click('#toernooi-detail button:has-text("Dag toevoegen")');
+    await page.waitForSelector('#modal-nieuwe-dag.open', { timeout: 15000 });
+    await page.fill('#t-dag-datum', '2026-10-02');
+    await page.selectOption('#t-dag-baan', 'De Goyer');
+    await page.click('#modal-dag-opslaan-btn');
+    await expect(page.locator('#modal-nieuwe-dag')).not.toHaveClass(/open/, { timeout: 15000 });
+
+    await naarDagTab(page, 2);
+    await expect(detail, 'dag 2 begint als concept').toContainText('Dag 2 is nog niet gestart');
+    await expect(detail.locator('#t-scorecard-wrap'),
+      'een concept-dag heeft geen scorekaart').toHaveCount(0);
+    await expect(detail, 'en hij zegt dat hij nog niet is ingedeeld')
+      .toContainText('nog niet in flights ingedeeld');
+    await expect(detail.locator('button:has-text("Dag 2 wijzigen")'),
+      'een concept-dag is te wijzigen').toBeVisible();
+
+    // Starten: de scorekaart gaat open en wijzigen kan niet meer.
+    await page.click('#toernooi-detail button:has-text("Dag 2 starten")');
+    await expect(detail.locator('#t-scorecard-wrap'),
+      'na starten is er een scorekaart').toBeVisible({ timeout: 15000 });
+    await expect(detail.locator('button:has-text("Dag 2 wijzigen")'),
+      'een gestarte dag is niet meer te wijzigen').toHaveCount(0);
+    expect((await haalToernooi('Levensloop')).dagen[1].gestart,
+      'gestart staat ook echt in de database').toBe(true);
+
+    // En terug: dat is wat Sierk "dag annuleren" noemt.
+    await page.click('#toernooi-detail button:has-text("terugzetten naar concept")');
+    await expect(detail, 'terug op concept').toContainText('Dag 2 is nog niet gestart', { timeout: 15000 });
+    await expect(detail.locator('button:has-text("Dag 2 wijzigen")'),
+      'en dus weer te wijzigen').toBeVisible();
+    expect((await haalToernooi('Levensloop')).dagen[1].gestart,
+      'ook in de database staat hij weer op concept').toBe(false);
+  });
+
+  // ============================================================
   //  v5.12.1 — EEN GEANNULEERD TOERNOOI WEER OPSTARTEN
   // ------------------------------------------------------------
   //  Sierk, 13 september 2026: "ik heb een geannuleerd toernooi opnieuw gestart

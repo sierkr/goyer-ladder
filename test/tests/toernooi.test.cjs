@@ -118,6 +118,41 @@ check('de ene dag beïnvloedt de andere niet',
   [K.berekenTPuntenVoorDag(tHcp, maakDag(1, scoresGelijk, holesSi6)).punten,
    K.berekenTPuntenVoorDag(tHcp, dagHalf).punten], [[1, 1], [2, 0]]);
 
+// ============================================================
+//  v5.14.0 — DE LEVENSLOOP VAN EEN DAG
+// ------------------------------------------------------------
+//  concept -> gestart -> afgesloten, en terug kan altijd. De grens voor
+//  wijzigen en verwijderen is nu een KNOP en niet meer de bijwerking "er staat
+//  een score".
+// ============================================================
+console.log('\n══ TOERNOOI — DE TOESTAND VAN EEN DAG ══');
+
+check('een verse dag is concept',
+  K.dagIsGestart({ dagNr: 1 }), false);
+check('gestart:true is gestart',
+  K.dagIsGestart({ dagNr: 1, gestart: true }), true);
+check('gestart:false is concept',
+  K.dagIsGestart({ dagNr: 1, gestart: false }), false);
+
+//  ⚠ Een afgesloten dag geldt ALTIJD als gestart. Zonder deze regel zou een dag
+//  die al is afgerekend als "concept" op het scherm komen — een onzintoestand
+//  waarin de coordinator de baan van een uitgespeelde dag kan wijzigen.
+check('een afgesloten dag geldt als gestart',
+  K.dagIsGestart({ dagNr: 1, afgerond: true }), true);
+check('afgesloten wint van gestart:false',
+  K.dagIsGestart({ dagNr: 1, gestart: false, afgerond: true }), true);
+
+//  ⚠ Scores maken een dag NIET gestart. Dat is precies het verschil met
+//  v5.13.1: daar was `dagHeeftScores()` de grens. Nu kun je een dag met scores
+//  terugzetten naar concept en hem alsnog wijzigen.
+check('scores alleen maken een dag niet gestart',
+  K.dagIsGestart({ dagNr: 1, scores: { a: [4, 5, 3] } }), false);
+check('scores plus gestart:false blijft concept',
+  K.dagIsGestart({ dagNr: 1, gestart: false, scores: { a: [4, 5, 3] } }), false);
+
+check('geen dag -> niet gestart', K.dagIsGestart(null), false);
+check('undefined -> niet gestart', K.dagIsGestart(undefined), false);
+
 console.log('\n══ TOERNOOI — HANDICAP IN DE UITSLAG ══');
 const C=sp('c',0), D=sp('d',5);
 t = maakT([C,D]);
