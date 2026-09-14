@@ -132,17 +132,36 @@ function renderToernooi() {
     let html = '';
     if (isBeheerder && mijnToernooien.length > 1) {
       html += `<div style="display:flex;gap:8px;overflow-x:auto;padding:12px 16px;border-bottom:1px solid var(--border);scrollbar-width:none">`;
+      // v5.22.0: de toestand erachter. Twee toernooien met dezelfde naam waren
+      // op deze knoppen niet uit elkaar te houden — en die komen voor, zoals de
+      // dubbele "Cie on tour 2026" op live liet zien.
       mijnToernooien.forEach(t => {
         const actief = t.id === actieveToernooiId;
-        html += `<button onclick="selecteerToernooi('${escAttr(t.id)}')" style="flex-shrink:0;padding:6px 14px;border-radius:20px;border:1.5px solid ${actief ? 'var(--green)' : 'var(--border)'};background:${actief ? 'var(--green)' : 'white'};color:${actief ? 'white' : 'var(--dark)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">${esc(t.naam)}</button>`;
+        const staat = toernooiWacht(t) ? 'wacht' : 'bezig';
+        html += `<button onclick="selecteerToernooi('${escAttr(t.id)}')" style="flex-shrink:0;padding:6px 14px;border-radius:20px;border:1.5px solid ${actief ? 'var(--green)' : 'var(--border)'};background:${actief ? 'var(--green)' : 'white'};color:${actief ? 'white' : 'var(--dark)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">${esc(t.naam)} <span style="opacity:.75;font-size:11px">· ${staat}</span></button>`;
       });
       html += '</div>';
     }
     wrap.innerHTML = html + '<div id="toernooi-detail"></div>';
 
+    // ============================================================
+    //  WELK TOERNOOI KRIJG JE TE ZIEN  (v5.22.0)
+    // ------------------------------------------------------------
+    //  ⚠ WAT ER MIS WAS, gemeten op live. Hier stond `mijnToernooien[0]` —
+    //  het eerste uit een zoekopdracht ZONDER sorteervolgorde. Zolang er maar
+    //  één toernooi kon bestaan was dat onschuldig. Sinds v5.21.0 kun je een
+    //  volgend toernooi vooruit klaarzetten, en toen werd het willekeur: een
+    //  speler die inlogde kreeg "Dag 1 is nog niet gestart" te zien terwijl het
+    //  toernooi waar hij in meespeelt gewoon liep. Sierk: "een speler die
+    //  inlogt krijgt bericht dat dag 1 nog niet is gestart terwijl dat wel zo
+    //  is."
+    //
+    //  Nu: het toernooi dat LOOPT wint. Wacht er niets en loopt er niets, dan
+    //  valt hij terug op de eerste — er moet iets op het scherm staan.
     if (!actieveToernooiId || !mijnToernooien.find(t => t.id === actieveToernooiId)) {
-      store.actieveToernooiId = mijnToernooien[0].id;
-      store.toernooiData = mijnToernooien[0];
+      const kies = mijnToernooien.find(toernooiLoopt) || mijnToernooien[0];
+      store.actieveToernooiId = kies.id;
+      store.toernooiData = kies;
     }
     renderToernooiActief();
   } else {
@@ -1666,7 +1685,13 @@ function renderFlightLijst() {
         Spelerspool${_flightPool.length ? ` (${_flightPool.length})` : ''}
       </div>
       ${_flightPool.length === 0
-        ? '<div style="font-size:12px;color:var(--light)">Leeg — iedereen is ingedeeld ✓</div>'
+        // ⚠ v5.21.2: hier stond "Leeg — iedereen is ingedeeld ✓". Het woord
+        // "leeg" botste met de browsertest die controleert dat er GEEN
+        // lege-flight-waarschuwing in dit venster staat ("Flight 2 is leeg").
+        // Playwright zoekt daar hoofdletterloos op "leeg" en vond deze regel.
+        // De waarschuwing is echt; mijn tekst zat ernaast. Zonder dat woord
+        // zegt hij hetzelfde, korter.
+        ? '<div style="font-size:12px;color:var(--light)">Iedereen is ingedeeld ✓</div>'
         : _flightPool.map((s, pi) => `
           <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
             <span style="flex:1;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.naam)}</span>
@@ -1800,7 +1825,38 @@ window.plaatsUitPool = plaatsUitPool;
 // ============================================================
 //  START TOERNOOI — leest alle dag-blokken in
 // ============================================================
+// ============================================================
+//  ⚠ HET SLOT OP HET OPSLAAN  (v5.22.0)
+// ------------------------------------------------------------
+//  WAT ER MIS WAS, gemeten op live op 14 september 2026. In de database stonden
+//  TWEE toernooien "Cie on tour 2026", aangemaakt om 14:46:50 en 14:46:55 —
+//  vijf seconden na elkaar, met dezelfde acht spelers. Het tweede kreeg
+//  gastcode `cieontour20262`, want de app zag de eerste code al staan. Eén keer
+//  opslaan, twee keer uitgevoerd.
+//
+//  Sierk: "ik heb maar 1 toernooi aangemaakt met deze naam." Klopt. Deze functie
+//  maakt ook alle gastaccounts aan, één voor één; bij acht gasten duurt dat
+//  seconden. In die tijd gebeurt er op het scherm niets en blijft de knop
+//  indrukbaar. Een tweede druk begon het hele verhaal opnieuw.
+//
+//  ⚠ Dat dit vóór v5.21.0 niet gebeurde was toeval: de regel "X loopt nog"
+//  weigerde toen een tweede toernooi. Die is verhuisd naar starten, en toen lag
+//  dit gat open. Een vangnet dat per ongeluk iets anders afvangt is geen slot.
+//
+//  Het slot staat op de FUNCTIE, niet alleen op de knop: ook een dubbele
+//  toetsaanslag of een tweede aanroep van buitenaf komt er niet doorheen.
+let _bezigMetOpslaan = false;
+
 async function startToernooi() {
+  if (_bezigMetOpslaan) { toast('Bezig met opslaan — even geduld'); return; }
+  _bezigMetOpslaan = true;
+  const _opslaanKnop = document.getElementById('flight-modal-start-btn');
+  const _knopTekst = _opslaanKnop?.textContent;
+  if (_opslaanKnop) {
+    _opslaanKnop.disabled = true;
+    _opslaanKnop.style.opacity = '0.6';
+    _opslaanKnop.textContent = 'Bezig met opslaan…';
+  }
   try {
     const naam     = document.getElementById('t-naam').value.trim();
     // v5.13.0: punten en handicap staan per dag. Dag 1 is tegelijk de
@@ -2073,7 +2129,19 @@ async function startToernooi() {
     renderToernooi();
     // v3.0.0-11.106: start live/ listeners direct na aanmaken
     herlaadToernooiListeners();
-  } catch(e) { toernooiFout('Toernooi opslaan', e); }
+  } catch(e) {
+    toernooiFout('Toernooi opslaan', e);
+  } finally {
+    // ⚠ In `finally`, niet aan het eind van de `try`: gaat er onderweg iets mis,
+    // dan moet de knop weer werken — anders is het scherm op slot en ben je je
+    // hele formulier kwijt.
+    _bezigMetOpslaan = false;
+    if (_opslaanKnop) {
+      _opslaanKnop.disabled = false;
+      _opslaanKnop.style.opacity = '';
+      if (_knopTekst) _opslaanKnop.textContent = _knopTekst;
+    }
+  }
 }
 
 // ============================================================
@@ -2506,15 +2574,22 @@ function toernooiWacht(t) {
   return dagen.every(d => !dagIsGestart(d));
 }
 
-// Loopt er al een toernooi? Dat is er één dat NIET meer wacht en nog niet klaar
-// is. Sierk, 14 september 2026: zoveel wachtende toernooien als je wilt, maar
-// één tegelijk gestart.
-function lopendToernooi(behalveId) {
-  return (alleToernooien || []).find(t =>
-    t.id !== behalveId &&
+// Loopt dit toernooi? Dat is er één dat NIET meer wacht en nog niet klaar is.
+// Sierk, 14 september 2026: zoveel wachtende toernooien als je wilt, maar één
+// tegelijk gestart.
+//
+// v5.22.0: als losse functie eruit gehaald, want renderToernooi() heeft dezelfde
+// vraag — welk toernooi krijgt een speler te zien. Dezelfde regel twee keer
+// uitschrijven is twee keer kunnen afwijken.
+function toernooiLoopt(t) {
+  return !!t &&
     t.status !== 'afgerond' &&
     !toernooiWacht(t) &&
-    !(t.dagen || []).every(d => d.afgerond));
+    !(t.dagen || []).every(d => d.afgerond);
+}
+
+function lopendToernooi(behalveId) {
+  return (alleToernooien || []).find(t => t.id !== behalveId && toernooiLoopt(t));
 }
 
 function dagIsGestart(dag) {

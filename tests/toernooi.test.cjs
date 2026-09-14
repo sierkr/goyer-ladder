@@ -411,6 +411,52 @@ t = maakT([A,B], {dagen:[metFlights(maakDag(1,{a:[3,4], b:[4,4]}, holes2), [])]}
 check('staat er niemand in een flight, dan tellen alle spelers (zoals voorheen)',
   K.alleScoresIngevuld(t, t.dagen[0]), true);
 
+// ============================================================
+//  v5.22.0 — WACHT HET, OF LOOPT HET?
+// ------------------------------------------------------------
+//  Deze twee bepalen welk toernooi een speler te zien krijgt en of je er nog
+//  een mag starten. Op live stonden twee toernooien met dezelfde naam naast
+//  elkaar en kreeg een speler de verkeerde: "Dag 1 is nog niet gestart" terwijl
+//  zijn toernooi gewoon liep.
+// ============================================================
+console.log('\n══ TOERNOOI — WACHT OF LOOPT ══');
+
+const dagT = (extra) => ({ dagNr: 1, holes: holes18, scores: {}, afgerond: false, ...extra });
+
+check('geen enkele dag gestart -> wacht',
+  K.toernooiWacht({ dagen: [dagT({ gestart: false })] }), true);
+check('dag 1 gestart -> wacht niet meer',
+  K.toernooiWacht({ dagen: [dagT({ gestart: true })] }), false);
+check('dag 2 gestart telt ook',
+  K.toernooiWacht({ dagen: [dagT({ gestart: false }), dagT({ dagNr: 2, gestart: true })] }), false);
+check('een afgesloten dag geldt als gestart',
+  K.toernooiWacht({ dagen: [dagT({ afgerond: true })] }), false);
+check('een toernooi zonder dagen wacht niet',
+  K.toernooiWacht({ dagen: [] }), false);
+
+check('een wachtend toernooi loopt niet',
+  K.toernooiLoopt({ status: 'actief', dagen: [dagT({ gestart: false })] }), false);
+check('een gestart toernooi loopt',
+  K.toernooiLoopt({ status: 'actief', dagen: [dagT({ gestart: true })] }), true);
+check('alle dagen afgerond -> loopt niet meer',
+  K.toernooiLoopt({ status: 'actief', dagen: [dagT({ gestart: true, afgerond: true })] }), false);
+check('status afgerond -> loopt niet',
+  K.toernooiLoopt({ status: 'afgerond', dagen: [dagT({ gestart: true })] }), false);
+check('niets doorgeven valt niet om', K.toernooiLoopt(null), false);
+
+// ⚠ Dit is de situatie van live: twee toernooien, dezelfde naam, één wacht.
+// De speler hoort bij het lopende uit te komen, ongeacht de volgorde.
+const tweeToernooien = [
+  { id: 'a', naam: 'Cie on tour 2026', status: 'actief', dagen: [dagT({ gestart: false })] },
+  { id: 'b', naam: 'Cie on tour 2026', status: 'actief', dagen: [dagT({ gestart: true })] },
+];
+check('de speler krijgt het toernooi dat loopt',
+  (tweeToernooien.find(K.toernooiLoopt) || tweeToernooien[0]).id, 'b');
+check('ook als het lopende vooraan staat',
+  ([...tweeToernooien].reverse().find(K.toernooiLoopt) || tweeToernooien[0]).id, 'b');
+check('loopt er niets, dan valt hij terug op het eerste',
+  ([tweeToernooien[0]].find(K.toernooiLoopt) || tweeToernooien[0]).id, 'a');
+
 console.log('\n══ TOERNOOI — FLIGHTTIJDEN ══');
 check('flight 0 = basistijd', K.berekenFlightTijd('09:00', 10, 0), '09:00');
 check('flight 2 bij 10 min', K.berekenFlightTijd('09:00', 10, 2), '09:20');
