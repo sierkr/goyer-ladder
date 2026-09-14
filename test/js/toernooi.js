@@ -665,7 +665,8 @@ function slaToernooiConceptOp() {
         return { datum: d.datum, baan: d.baan, holes: d.holesKeuze,
                  holesCustom: d.holesKeuze === 'custom' ? String(d.holes) : '',
                  modus: d.modus, starttijd: d.starttijd, interval: d.interval,
-                 ptWin: d.ptWin, ptTie: d.ptTie, ptLoss: d.ptLoss, hcpPct: d.hcpPctHeel };
+                 ptWin: d.ptWin, ptTie: d.ptTie, ptLoss: d.ptLoss, hcpPct: d.hcpPctHeel,
+                 plaatsPunten: d.plaatsPunten };
       });
       const concept = {
         naam:        document.getElementById('t-naam')?.value || '',
@@ -765,6 +766,7 @@ function pasConceptDagenToe() {
     zetVeld('starttijd', c.starttijd); zetVeld('interval', c.interval);
     zetVeld('ptwin', c.ptWin); zetVeld('pttie', c.ptTie);
     zetVeld('ptloss', c.ptLoss); zetVeld('hcppct', c.hcpPct);
+    zetVeld('plaatspunten', c.plaatsPunten);   // v5.15.0
     if (modusEl) onDagModusWissel(modusEl);
     if (holesEl) onDagHolesWissel(holesEl);
   });
@@ -909,6 +911,15 @@ function dagFormulierHtml(w, opt) {
           style="text-align:center" value="${escAttr(w.interval ?? 10)}">
       </div>
     </div>
+    <div class="t-dag-strokeplay-blok" style="${modus === 'strokeplay' ? '' : 'display:none'}">
+      <div class="form-group" style="margin-bottom:0">
+        <label>Punten per plaats <span style="font-weight:400;color:var(--light)">(leeg = zoals nu)</span></label>
+        <input type="text"${idv('plaatspunten')} class="t-dag-plaatspunten"
+          placeholder="bijv. 10, 7, 5, 3, 1" value="${escAttr(w.plaatsPunten || '')}"
+          oninput="toonPlaatsPuntenVoorbeeld(this)">
+        <p class="t-dag-plaatspunten-voorbeeld" style="font-size:11px;color:var(--light);margin:4px 0 0"></p>
+      </div>
+    </div>
     <div class="t-dag-matchplay-blok" style="${toonPunten}">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
         <div class="form-group" style="margin-bottom:10px">
@@ -956,6 +967,7 @@ function dagUitFormulier(root) {
     ptTie:      getal('pttie', 0),
     ptLoss:     getal('ptloss', -2),
     hcpPctHeel: getal('hcppct', 75),
+    plaatsPunten: v('plaatspunten')?.value?.trim() || '',   // v5.15.0, leeg = standaard
   };
 }
 
@@ -969,10 +981,29 @@ function onDagHolesWissel(el) {
 window.onDagHolesWissel = onDagHolesWissel;
 
 // De puntenvelden horen alleen bij matchplay.
+// v5.15.0: laat onder het veld zien wat de ingetikte rij betekent. Zonder dit
+// is "wat gebeurt er met plek 6?" niet te zien, en dat is precies de regel die
+// een coordinator moet kennen: voorbij de tabel levert een plek 0 op.
+function toonPlaatsPuntenVoorbeeld(el) {
+  const root = el.closest('.dag-formulier') || el.closest('.dag-blok') || document;
+  const uit  = root.querySelector('.t-dag-plaatspunten-voorbeeld');
+  if (!uit) return;
+  const tabel = plaatsPuntenUitTekst(el.value);
+  if (!tabel) { uit.textContent = 'Leeg: de hoogste plek krijgt evenveel punten als er spelers zijn, daarna aflopend.'; return; }
+  uit.textContent = tabel.map((p, i) => `Plek ${i + 1} → ${p}`).join(' · ')
+    + ` · plek ${tabel.length + 1} en verder → 0`;
+}
+window.toonPlaatsPuntenVoorbeeld = toonPlaatsPuntenVoorbeeld;
+
 function onDagModusWissel(el) {
   const root = el.closest('.dag-formulier') || el.closest('.dag-blok') || document;
   const blok = root.querySelector('.t-dag-matchplay-blok');
   if (blok) blok.style.display = el.value === 'strokeplay' ? 'none' : '';
+  // v5.15.0: en omgekeerd voor het strokeplay-blok met de puntentabel.
+  const sBlok = root.querySelector('.t-dag-strokeplay-blok');
+  if (sBlok) sBlok.style.display = el.value === 'strokeplay' ? '' : 'none';
+  const ppVeld = root.querySelector('.t-dag-plaatspunten');
+  if (ppVeld) toonPlaatsPuntenVoorbeeld(ppVeld);
   // Op het aanmaakscherm hangt er meer aan de speelwijze (de ranking-ladder).
   if (document.getElementById('t-dag-blokken')?.contains(el)) pasSpeelwijzeToe();
 }
@@ -1534,6 +1565,7 @@ async function startToernooi() {
                          interval:  dv.interval ?? interval,
                          ptWin: dv.ptWin, ptTie: dv.ptTie, ptLoss: dv.ptLoss,
                          hcpPct: (dv.hcpPctHeel ?? 75) / 100,
+                         plaatsPunten: dv.plaatsPunten || '',   // v5.15.0
                          modus: dagModusKeuze });
     }
 
@@ -1590,6 +1622,7 @@ async function startToernooi() {
         ptTie:     cfg.ptTie,
         ptLoss:    cfg.ptLoss,
         hcpPct:    cfg.hcpPct,
+        plaatsPunten: cfg.plaatsPunten || '',   // v5.15.0, leeg = de standaardreeks
         flights,
         scores,
         // v5.14.0: dag 1 start meteen — je hebt hem net op het aanmaakscherm
@@ -2186,6 +2219,7 @@ async function slaDagWijzigingOp() {
     dag.ptTie     = dv.ptTie;
     dag.ptLoss    = dv.ptLoss;
     dag.hcpPct    = (dv.hcpPctHeel ?? 75) / 100;
+    dag.plaatsPunten = dv.plaatsPunten || '';   // v5.15.0
 
     // Bij een ander aantal holes moeten de scorerijen mee.
     //
@@ -2283,6 +2317,7 @@ async function voegDagToe() {
       ptTie:     dv.ptTie,
       ptLoss:    dv.ptLoss,
       hcpPct:    (dv.hcpPctHeel ?? 75) / 100,
+      plaatsPunten: dv.plaatsPunten || '',   // v5.15.0
       flights:  [],  // leeg — beheerder deelt in via flight modal
       scores,
       gestart:  false,   // v5.14.0: eerst indelen en instellen, dan starten
@@ -2434,9 +2469,19 @@ async function startDag() {
       if (!confirm(`Dag ${dag.dagNr} heeft nog geen flightindeling.\n\n` +
                    `De scorekaart blijft dan leeg. Toch starten?`)) return;
     }
-    dag.gestart = true;
+    // ⚠ v5.15.0 — PAK DE DAG OPNIEUW, NA DE VRAAG.
+    // Hierboven staat een confirm(), en zolang die openstaat kan de
+    // meeluisteraar `toernooiData` vervangen door een verse serverkopie. De
+    // `dag` van vóór de vraag wijst dan in het WEGGEGOOIDE object: je wijzigt
+    // de oude kopie en slaToernooiOp() schrijft de nieuwe weg, met de oude
+    // waarde erin. De wijziging verdwijnt dan geruisloos.
+    // Dezelfde fout als bij de sleutelwissel in v5.12.4. Gevonden doordat de
+    // levenslooptest in de volle reeks omviel en los slaagde.
+    const dagNu = (toernooiData?.dagen || []).find(d => d.dagNr === dag.dagNr);
+    if (!dagNu) { toast('De dag is ondertussen verdwenen — ververs het scherm'); return; }
+    dagNu.gestart = true;
     await slaToernooiOp();
-    toast(`Dag ${dag.dagNr} gestart — de scorekaart staat open`);
+    toast(`Dag ${dagNu.dagNr} gestart — de scorekaart staat open`);
     renderToernooiActief();
   } catch(e) { toernooiFout('Dag starten', e); }
 }
@@ -2465,9 +2510,19 @@ async function zetDagTerugNaarConcept() {
                  `De instellingen worden weer aanpasbaar en de scorekaart gaat dicht.` +
                  waarschuwing)) return;
 
-    dag.gestart = false;
+    // ⚠ v5.15.0 — PAK DE DAG OPNIEUW, NA DE VRAAG.
+    // Hierboven staat een confirm(), en zolang die openstaat kan de
+    // meeluisteraar `toernooiData` vervangen door een verse serverkopie. De
+    // `dag` van vóór de vraag wijst dan in het WEGGEGOOIDE object: je wijzigt
+    // de oude kopie en slaToernooiOp() schrijft de nieuwe weg, met de oude
+    // waarde erin. De wijziging verdwijnt dan geruisloos.
+    // Dezelfde fout als bij de sleutelwissel in v5.12.4. Gevonden doordat de
+    // levenslooptest in de volle reeks omviel en los slaagde.
+    const dagNu = (toernooiData?.dagen || []).find(d => d.dagNr === dag.dagNr);
+    if (!dagNu) { toast('De dag is ondertussen verdwenen — ververs het scherm'); return; }
+    dagNu.gestart = false;
     await slaToernooiOp();
-    toast(`Dag ${dag.dagNr} staat weer op concept`);
+    toast(`Dag ${dagNu.dagNr} staat weer op concept`);
     renderToernooiActief();
   } catch(e) { toernooiFout('Dag terugzetten', e); }
 }
@@ -2483,9 +2538,19 @@ async function heropenDag() {
                  `De scores worden weer aanpasbaar. De al berekende uitslag blijft staan ` +
                  `en wordt opnieuw bepaald zodra je de dag opnieuw afsluit.`)) return;
 
-    dag.afgerond = false;
+    // ⚠ v5.15.0, ook hier — PAK DE DAG OPNIEUW, NA DE VRAAG.
+    // Hierboven staat een confirm(), en zolang die openstaat kan de
+    // meeluisteraar `toernooiData` vervangen door een verse serverkopie. De
+    // `dag` van vóór de vraag wijst dan in het WEGGEGOOIDE object: je wijzigt
+    // de oude kopie en slaToernooiOp() schrijft de nieuwe weg, met de oude
+    // waarde erin. De wijziging verdwijnt dan geruisloos.
+    // Dezelfde fout als bij de sleutelwissel in v5.12.4. Gevonden doordat de
+    // levenslooptest in de volle reeks omviel en los slaagde.
+    const dagNu = (toernooiData?.dagen || []).find(d => d.dagNr === dag.dagNr);
+    if (!dagNu) { toast('De dag is ondertussen verdwenen — ververs het scherm'); return; }
+    dagNu.afgerond = false;
     await slaToernooiOp();
-    toast(`Dag ${dag.dagNr} is weer open`);
+    toast(`Dag ${dagNu.dagNr} is weer open`);
     renderToernooiActief();
   } catch(e) { toernooiFout('Dag heropenen', e); }
 }
@@ -3835,7 +3900,41 @@ function gemengdeSpeelwijzen(t) {
 
 // Zet één dagklassement om in dagpunten. `sleutels` is per speler een getal
 // waarbij LAGER beter is, of null voor wie die dag niet meedeed.
-function dagPuntenUitSleutels(sleutels) {
+// v5.15.0 — PUNTEN PER PLAATS, OPTIONEEL PER DAG
+//  Leest "10, 7, 5, 3, 1" uit en geeft [10,7,5,3,1]. Puntkomma's, spaties en
+//  nieuwe regels mogen ook; wat geen getal is valt weg. Levert dat niets op,
+//  dan null — en dan geldt de standaardreeks.
+//
+//  ⚠ Negatieve punten mogen: een laatste plek die punten kost is een geldige
+//  wedstrijdkeuze, net als de -2 bij matchplay.
+function plaatsPuntenUitTekst(tekst) {
+  if (Array.isArray(tekst)) {
+    const lijst = tekst.map(Number).filter(Number.isFinite);
+    return lijst.length > 0 ? lijst : null;
+  }
+  if (typeof tekst !== 'string') return null;
+  const lijst = tekst.split(/[^0-9.,\-]+|,(?=\s)|;/)
+    .join(' ').split(/[\s,;]+/)
+    .map(d => d.trim()).filter(Boolean)
+    .map(Number).filter(Number.isFinite);
+  return lijst.length > 0 ? lijst : null;
+}
+
+// Wat is plek `plaats` waard? Zonder tabel de aflopende reeks (bij n spelers
+// krijgt plek 1 er n, plek 2 er n-1, ...). Mét tabel wat er in de tabel staat;
+// voorbij de tabel is het 0.
+//
+// ⚠ Voorbij de tabel 0 en niet "doortellen": een coordinator die 10,7,5 invult
+// bedoelt dat plek 4 en verder niets opleveren. Doortellen zou daar stilletjes
+// punten van maken. Het scherm toont deze regel ook letterlijk.
+function puntenVoorPlaats(plaats, n, tabel) {
+  if (Array.isArray(tabel) && tabel.length > 0) {
+    return plaats >= 1 && plaats <= tabel.length ? tabel[plaats - 1] : 0;
+  }
+  return n - plaats + 1;
+}
+
+function dagPuntenUitSleutels(sleutels, tabel) {
   const uit = new Array((sleutels || []).length).fill(0);
   const mee = (sleutels || []).map((sl, i) => ({ i, sl }))
     .filter(x => x.sl !== null && x.sl !== undefined && Number.isFinite(x.sl));
@@ -3849,7 +3948,9 @@ function dagPuntenUitSleutels(sleutels) {
     while (m + 1 < mee.length && mee[m + 1].sl === mee[k].sl) m++;
     const groep = mee.slice(k, m + 1);
     let som = 0;
-    for (let p = plaats; p < plaats + groep.length; p++) som += n - p + 1;
+    // Gedeelde plekken delen de som van de plekken die ze samen bezetten —
+    // ongewijzigd sinds v5.12.0, nu alleen met een instelbare waarde per plek.
+    for (let p = plaats; p < plaats + groep.length; p++) som += puntenVoorPlaats(p, n, tabel);
     const gedeeld = som / groep.length;
     groep.forEach(x => { uit[x.i] = gedeeld; });
     plaats += groep.length;
@@ -3867,10 +3968,14 @@ function dagPunten(t, dag) {
   if (!t || !dag) return new Array((t?.spelers || []).length).fill(0);
   if (dagModus(t, dag) === 'strokeplay') {
     const res = berekenStrokeplayRanglijstVoorDag(t, dag);
+    // v5.15.0: alleen een STROKEPLAY-dag kan een eigen puntentabel hebben.
+    // Sierk, 14 september 2026: "Matchplay kan ik al per dag instellen. Optie
+    // tabel voor strokeplay." Bij matchplay bepaalt winst/gelijk/verlies de
+    // volgorde binnen de dag; de plaatspunten blijven daar de standaardreeks.
     return dagPuntenUitSleutels((t.spelers || []).map((s, i) => {
       const r = res[i];
       return (r && r.holes > 0) ? -(r.stableford ?? 0) : null;
-    }));
+    }), plaatsPuntenUitTekst(dag.plaatsPunten));
   }
   const res = berekenTPuntenVoorDag(t, dag);
   return dagPuntenUitSleutels((t.spelers || []).map((s, i) =>
@@ -4692,6 +4797,7 @@ function _herstelSetupVanuitToernooi(t) {
     zetD('ptwin',  dag.ptWin  ?? t.ptWin);
     zetD('pttie',  dag.ptTie  ?? t.ptTie);
     zetD('ptloss', dag.ptLoss ?? t.ptLoss);
+    zetD('plaatspunten', dag.plaatsPunten);   // v5.15.0
     zetD('hcppct', dag.hcpPct !== undefined ? Math.round(dag.hcpPct * 100)
                  : (t.hcpPct !== undefined ? Math.round(t.hcpPct * 100) : undefined));
     const modusEl = blok.querySelector('.t-dag-modus');            // v5.12.0

@@ -29,12 +29,29 @@ const beheerDb = admin.firestore();
 
 // Haalt het toernooi met deze naam op uit de nagemaakte database. Wacht even:
 // de browser schrijft, de admin-ingang leest, en dat is niet op dezelfde tel.
-async function haalToernooi(naam, pogingen = 20) {
+// v5.15.0: `klaar` is een optionele voorwaarde. Zonder die voorwaarde nam deze
+// functie het EERSTE document met de juiste naam, hoe oud ook — en dan lees je
+// de database op een moment dat de schrijfactie van de app er nog niet in staat.
+// De schermcontroles hierboven wachten wel (toContainText polt tot 15 seconden);
+// deze deed dat niet, en viel daardoor in de volle reeks om terwijl hij los
+// slaagde. De app had gelijk, de test nam iets aan.
+//
+// ⚠ Dit verbergt niets: is de voorwaarde na alle pogingen niet waar, dan valt
+// de test alsnog om — met de laatst gelezen inhoud erbij.
+async function haalToernooi(naam, pogingen = 20, klaar = null) {
+  let laatste = null;
   for (let i = 0; i < pogingen; i++) {
     const snap = await beheerDb.collection('toernooien').get();
     const gevonden = snap.docs.map(d => d.data()).find(d => d.naam === naam);
-    if (gevonden) return gevonden;
+    if (gevonden) {
+      laatste = gevonden;
+      if (!klaar || klaar(gevonden)) return gevonden;
+    }
     await new Promise(r => setTimeout(r, 500));
+  }
+  if (laatste) {
+    throw new Error(`Toernooi "${naam}" bereikte de verwachte toestand niet. ` +
+                    `Laatst gelezen dagen: ${JSON.stringify((laatste.dagen || []).map(d => ({ dagNr: d.dagNr, gestart: d.gestart, afgerond: d.afgerond })))}`);
   }
   const alle = (await beheerDb.collection('toernooien').get()).docs.map(d => d.data().naam);
   throw new Error(`Toernooi "${naam}" niet in de database. Wel gevonden: ${JSON.stringify(alle)}`);
@@ -989,16 +1006,55 @@ test.describe('Toernooi — de hele route', () => {
       'na starten is er een scorekaart').toBeVisible({ timeout: 15000 });
     await expect(detail.locator('button:has-text("Dag 2 wijzigen")'),
       'een gestarte dag is niet meer te wijzigen').toHaveCount(0);
-    expect((await haalToernooi('Levensloop')).dagen[1].gestart,
-      'gestart staat ook echt in de database').toBe(true);
+    expect((await haalToernooi('Levensloop', 20, t => t.dagen?.[1]?.gestart === true))
+      .dagen[1].gestart, 'gestart staat ook echt in de database').toBe(true);
 
     // En terug: dat is wat Sierk "dag annuleren" noemt.
     await page.click('#toernooi-detail button:has-text("terugzetten naar concept")');
     await expect(detail, 'terug op concept').toContainText('Dag 2 is nog niet gestart', { timeout: 15000 });
     await expect(detail.locator('button:has-text("Dag 2 wijzigen")'),
       'en dus weer te wijzigen').toBeVisible();
-    expect((await haalToernooi('Levensloop')).dagen[1].gestart,
-      'ook in de database staat hij weer op concept').toBe(false);
+    expect((await haalToernooi('Levensloop', 20, t => t.dagen?.[1]?.gestart === false))
+      .dagen[1].gestart, 'ook in de database staat hij weer op concept').toBe(false);
+  });
+
+  // ============================================================
+  //  v5.15.0 — PUNTEN PER PLAATS BIJ EEN STROKEPLAY-DAG
+  // ------------------------------------------------------------
+  //  Sierk: "Optie tabel voor strokeplay. Standaard zoals nu met optie om elke
+  //  plek in te stellen." Het veld hoort alleen bij strokeplay te staan, en wat
+  //  je intikt moet ook echt in de database belanden.
+  // ============================================================
+  test('PUNTEN PER PLAATS: alleen bij strokeplay, en het komt in de database', async ({ page }) => {
+    test.setTimeout(150000);
+    jaOpAlles(page);
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Plaatspunten', 1);
+
+    const blok = page.locator('#t-dag-blokken .dag-blok[data-dagnr="1"]');
+    const veld = blok.locator('.t-dag-plaatspunten');
+
+    // Matchplay: het veld hoort er niet te staan.
+    await expect(blok.locator('.t-dag-strokeplay-blok'),
+      'matchplay: geen puntentabel').toBeHidden();
+
+    // Strokeplay: wel, met een voorbeeld eronder dat de 0-regel uitlegt.
+    await blok.locator('.t-dag-modus').selectOption('strokeplay');
+    await expect(blok.locator('.t-dag-strokeplay-blok'),
+      'strokeplay: de puntentabel verschijnt').toBeVisible();
+    await veld.fill('10, 7, 5');
+    await expect(blok.locator('.t-dag-plaatspunten-voorbeeld'),
+      'het voorbeeld zegt wat er voorbij de tabel gebeurt').toContainText('plek 4 en verder → 0');
+
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await page.click('#flight-modal-start-btn');
+    await expect(page.locator('#toernooi-detail')).toContainText('Plaatspunten', { timeout: 25000 });
+
+    const t = await haalToernooi('Plaatspunten');
+    expect(t.dagen[0].plaatsPunten, 'de tabel staat in de database').toBe('10, 7, 5');
+    expect(t.dagen[0].modus, 'en de dag is strokeplay').toBe('strokeplay');
   });
 
   // ============================================================
