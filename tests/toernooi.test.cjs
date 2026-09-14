@@ -438,8 +438,14 @@ check('een wachtend toernooi loopt niet',
   K.toernooiLoopt({ status: 'actief', dagen: [dagT({ gestart: false })] }), false);
 check('een gestart toernooi loopt',
   K.toernooiLoopt({ status: 'actief', dagen: [dagT({ gestart: true })] }), true);
-check('alle dagen afgerond -> loopt niet meer',
-  K.toernooiLoopt({ status: 'actief', dagen: [dagT({ gestart: true, afgerond: true })] }), false);
+// ⚠ v5.24.1: dit stond op `false`, en dat was de fout. Een toernooi waarvan
+// alle dagen zijn afgesloten maar dat zelf nog niet is afgesloten, viel daardoor
+// buiten alle drie de blokken van het startscherm en was onvindbaar. Sierk:
+// "jawel past in loopt nu want het is niet afgesloten. morgen voeg ik dag 3 toe."
+check('alle dagen afgerond, toernooi niet -> loopt nog steeds',
+  K.toernooiLoopt({ status: 'actief', dagen: [dagT({ gestart: true, afgerond: true })] }), true);
+check('pas als het toernooi zelf is afgesloten, loopt het niet meer',
+  K.toernooiLoopt({ status: 'afgerond', dagen: [dagT({ gestart: true, afgerond: true })] }), false);
 check('status afgerond -> loopt niet',
   K.toernooiLoopt({ status: 'afgerond', dagen: [dagT({ gestart: true })] }), false);
 check('niets doorgeven valt niet om', K.toernooiLoopt(null), false);
@@ -456,6 +462,32 @@ check('ook als het lopende vooraan staat',
   ([...tweeToernooien].reverse().find(K.toernooiLoopt) || tweeToernooien[0]).id, 'b');
 check('loopt er niets, dan valt hij terug op het eerste',
   ([tweeToernooien[0]].find(K.toernooiLoopt) || tweeToernooien[0]).id, 'a');
+
+// ============================================================
+//  v5.24.1 — DE DRIE BLOKKEN ZIJN SAMEN DEKKEND
+// ------------------------------------------------------------
+//  ⚠ Dit is de test die v5.24.0 had moeten tegenhouden. Ik had de blokken LOS
+//  getest — klopt concept, klopt loopt — maar niet of ze samen alles opvangen.
+//  Een toernooi met alle dagen afgesloten viel er stilletjes tussenuit.
+//
+//  De regel: elk ACTIEF toernooi staat in precies één blok. Nooit nul, nooit
+//  twee. Wat er ook voor toestand bij komt.
+// ============================================================
+console.log('\n══ TOERNOOI — ELK TOERNOOI IN PRECIES ÉÉN BLOK ══');
+
+const alleToestanden = [
+  { naam: 'niets gestart',            dagen: [dagT({ gestart: false })] },
+  { naam: 'dag 1 bezig',              dagen: [dagT({ gestart: true })] },
+  { naam: 'dag 1 dicht, dag 2 open',  dagen: [dagT({ gestart: true, afgerond: true }), dagT({ dagNr: 2, gestart: true })] },
+  { naam: 'alle dagen dicht',         dagen: [dagT({ gestart: true, afgerond: true }), dagT({ dagNr: 2, gestart: true, afgerond: true })] },
+  { naam: 'dag 2 nog concept',        dagen: [dagT({ gestart: true, afgerond: true }), dagT({ dagNr: 2, gestart: false })] },
+  { naam: 'zonder dagen',             dagen: [] },
+].map(t => ({ ...t, status: 'actief' }));
+
+const inBlokken = (t) => [K.toernooiIsConcept(t), K.toernooiLoopt(t)].filter(Boolean).length;
+alleToestanden.forEach(t => {
+  check(`"${t.naam}" staat in precies één blok`, inBlokken(t), 1);
+});
 
 console.log('\n══ TOERNOOI — FLIGHTTIJDEN ══');
 check('flight 0 = basistijd', K.berekenFlightTijd('09:00', 10, 0), '09:00');

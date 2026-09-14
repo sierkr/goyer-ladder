@@ -2685,11 +2685,24 @@ function toernooiIsConcept(t) {
 // v5.22.0: als losse functie eruit gehaald, want renderToernooi() heeft dezelfde
 // vraag — welk toernooi krijgt een speler te zien. Dezelfde regel twee keer
 // uitschrijven is twee keer kunnen afwijken.
+//  ⚠ v5.24.1 — HIER STOND OOK `!(t.dagen||[]).every(d => d.afgerond)`.
+//  Daarmee viel een toernooi waarvan alle dagen waren afgesloten, maar dat zelf
+//  nog niet was afgesloten, buiten ALLE drie de blokken van het startscherm:
+//  geen concept (er is gespeeld), niet lopend (alle dagen dicht), en niet oud
+//  (de status staat nog op actief). Sierk speelde twee dagen, sloot ze af, ging
+//  terug naar het overzicht — en zijn toernooi was "compleet weg". Het stond er
+//  gewoon; het werd alleen nergens getoond.
+//
+//  Sierk, 14 september 2026: "jawel past in loopt nu want het is niet
+//  afgesloten. morgen voeg ik dag 3 toe." Precies: alle dagen dicht is geen
+//  eindpunt maar een tussenstand. Een toernooi loopt tot JIJ het afsluit.
+//
+//  Daarmee is de indeling dekkend: concept = geen dag gestart, en al het andere
+//  actieve loopt. Er kan niets meer tussenuit vallen.
 function toernooiLoopt(t) {
   return !!t &&
     t.status !== 'afgerond' &&
-    !toernooiIsConcept(t) &&
-    !(t.dagen || []).every(d => d.afgerond);
+    !toernooiIsConcept(t);
 }
 
 function lopendToernooi(behalveId) {
