@@ -102,6 +102,32 @@ async function openAanmaakscherm(page) {
 }
 
 // Vult het aanmaakformulier voor een toernooi van `dagen` dagen.
+// v5.13.0: elke dag heeft een eigen tabblad en alleen het gekozen tabblad is
+// zichtbaar. Alle dagblokken blijven wel in het scherm staan — daar rekent
+// startToernooi() op — maar invullen kan pas nadat je het tabblad kiest, net
+// als een coordinator dat doet.
+async function kiesSetupDag(page, dagNr) {
+  const tab = page.locator(`#t-dag-blokken button[onclick="selecteerSetupDag(${dagNr})"]`);
+  if (await tab.count()) await tab.click();
+  await expect(page.locator(`#t-dag-blokken .dag-blok[data-dagnr="${dagNr}"]`)).toBeVisible();
+}
+
+// v5.13.1: de toernooibrede knoppen en schakelaars staan nu op het tabblad
+// "Toernooi", naast de dagtabbladen. Een coordinator klikt daar eerst heen; de
+// tests doen dat nu ook. Het tabblad is te herkennen aan selecteerDag(0).
+async function naarToernooiTab(p) {
+  const tab = p.locator('#toernooi-detail button[onclick="selecteerDag(0)"]');
+  if (await tab.count()) await tab.click();
+}
+
+// En weer terug naar een dag: de scorekaart, de onderlinge stand en de
+// dagknoppen staan daar. Een schakelaar omzetten doe je op het Toernooi-tabblad
+// en daarna kijk je op de dag wat het deed — precies wat deze tests nabootsen.
+async function naarDagTab(p, dagNr = 1) {
+  const tab = p.locator(`#toernooi-detail button[onclick="selecteerDag(${dagNr})"]`);
+  if (await tab.count()) await tab.click();
+}
+
 async function vulAanmaakformulier(page, naam, dagen = 1) {
   await openAanmaakscherm(page);
   await page.fill('#t-naam', naam);
@@ -109,7 +135,8 @@ async function vulAanmaakformulier(page, naam, dagen = 1) {
   const blokken = page.locator('#t-dag-blokken .dag-blok');
   await expect(blokken).toHaveCount(dagen);
   for (let i = 0; i < dagen; i++) {
-    const blok = blokken.nth(i);
+    await kiesSetupDag(page, i + 1);
+    const blok = page.locator(`#t-dag-blokken .dag-blok[data-dagnr="${i + 1}"]`);
     await blok.locator('.t-dag-datum').fill(`2026-10-0${i + 1}`);
     await blok.locator('.t-dag-baan').selectOption('De Goyer');
   }
@@ -346,7 +373,9 @@ test.describe('Toernooi — de hele route', () => {
       await expect(blok(coord)).toBeVisible();
 
       // Uit: bij de deelnemer verdwijnt het blok helemaal, ook de gegevens.
+      await naarToernooiTab(coord);
       await coord.uncheck('#t-matrix-zichtbaar-chk');
+      await naarDagTab(coord);
       await expect(blok(speler)).toHaveCount(0, { timeout: 20000 });
       await expect(speler.locator('#t-matrix')).toHaveCount(0);
       await expect(blok(coord), 'de coordinator ziet hem altijd').toBeVisible();
@@ -388,7 +417,9 @@ test.describe('Toernooi — de hele route', () => {
       await expect(blok(speler), 'en het namenrooster nog steeds niet').toHaveCount(0);
 
       // En weer aan: allebei de blokken komen terug.
+      await naarToernooiTab(coord);
       await coord.check('#t-matrix-zichtbaar-chk');
+      await naarDagTab(coord);
       await expect(blok(speler)).toBeVisible({ timeout: 20000 });
       await expect(klassement(speler), 'en het klassement ook').toBeVisible({ timeout: 20000 });
     } finally {
@@ -549,9 +580,10 @@ test.describe('Toernooi — de hele route', () => {
     await vulAanmaakformulier(page, 'Gemengd', 2);
 
     // Dag 1 strokeplay, dag 2 matchplay.
-    const blokken = page.locator('#t-dag-blokken .dag-blok');
-    await blokken.nth(0).locator('.t-dag-modus').selectOption('strokeplay');
-    await blokken.nth(1).locator('.t-dag-modus').selectOption('matchplay');
+    await kiesSetupDag(page, 1);
+    await page.locator('#t-dag-blokken .dag-blok[data-dagnr="1"] .t-dag-modus').selectOption('strokeplay');
+    await kiesSetupDag(page, 2);
+    await page.locator('#t-dag-blokken .dag-blok[data-dagnr="2"] .t-dag-modus').selectOption('matchplay');
 
     for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(page, n);
     await naarFlightIndeling(page);
@@ -810,6 +842,7 @@ test.describe('Toernooi — de hele route', () => {
     // v5.11.5: hetzelfde in het lijstje achter "Gastlogins tonen" — dat is het
     // briefje dat je aan je gasten doorgeeft, dus daar mag de code al helemaal
     // niet op staan.
+    await naarToernooiTab(page);
     await page.click('#toernooi-detail button:has-text("Gastlogins tonen")');
     const briefje = page.locator('#archief-detail-inhoud');
     await expect(briefje).toBeVisible({ timeout: 10000 });
@@ -918,6 +951,7 @@ test.describe('Toernooi — de hele route', () => {
 
   // Hulpje: annuleren en daarna weer herstellen, als coordinator.
   async function annuleerEnHerstel(page, naam) {
+    await naarToernooiTab(page);
     await page.click('#toernooi-detail button:has-text("Toernooi annuleren")');
     await expect.poll(async () =>
       (await beheerDb.collection('toernooien').get()).docs.map(d => d.data().status),
@@ -1024,6 +1058,7 @@ test.describe('Toernooi — de hele route', () => {
     // En het opruimen is niet verdwenen, alleen verhuisd: bij DEFINITIEF
     // verwijderen gaat het gastaccount alsnog mee. Dat is de handeling die niet
     // meer terug te draaien is, dus daar hoort het.
+    await naarToernooiTab(page);
     await page.click('#toernooi-detail button:has-text("Toernooi annuleren")');
     await expect.poll(async () =>
       (await beheerDb.collection('toernooien').get()).docs.map(d => d.data().status),
@@ -1080,13 +1115,16 @@ test.describe('Toernooi — de hele route', () => {
     await page.selectOption('#t-aantal-dagen', '2');
     await expect(keuzes, 'twee dagen, twee keuzes').toHaveCount(2);
     await expect(keuzes.nth(0), 'dag 1 houdt zijn keuze').toHaveValue('strokeplay');
-    await keuzes.nth(1).selectOption('matchplay');
+    // v5.13.0: dag 2 staat achter zijn eigen tabblad.
+    await kiesSetupDag(page, 2);
+    await page.locator('#t-dag-blokken .dag-blok[data-dagnr="2"] .t-dag-modus').selectOption('matchplay');
     await expect(punten,  'gemengd: de puntenvelden zijn terug voor dag 2').toBeVisible();
     await expect(uitleg,  'gemengd: de uitleg blijft voor dag 1').toBeVisible();
     await expect(ranking, 'gemengd: nog steeds geen ranking-ladder').toBeHidden();
 
     // En alles weer matchplay brengt de ranking-ladder terug.
-    await keuzes.nth(0).selectOption('matchplay');
+    await kiesSetupDag(page, 1);
+    await page.locator('#t-dag-blokken .dag-blok[data-dagnr="1"] .t-dag-modus').selectOption('matchplay');
     await expect(ranking, 'weer helemaal matchplay: de ranking-ladder mag weer').toBeVisible();
     await expect(uitleg,  'en de strokeplay-uitleg is weg').toBeHidden();
   });
@@ -1128,12 +1166,16 @@ test.describe('Toernooi — de hele route', () => {
       await expect(speler.locator('#toernooi-detail h2:has-text("Onderlinge stand")'),
         'en het namenrooster juist niet — je speelt niet tegen elkaar').toHaveCount(0);
 
+      await naarToernooiTab(coord);
       await coord.uncheck('#t-matrix-zichtbaar-chk');
+      await naarDagTab(coord);
       await expect(klassement(speler), 'schakelaar uit: weg bij de deelnemer')
         .toHaveCount(0, { timeout: 20000 });
       await expect(klassement(coord), 'en de coordinator houdt hem').toBeVisible();
 
+      await naarToernooiTab(coord);
       await coord.check('#t-matrix-zichtbaar-chk');
+      await naarDagTab(coord);
       await expect(klassement(speler), 'en weer terug').toBeVisible({ timeout: 20000 });
     } finally {
       await ctxCoord.close(); await ctxSpeler.close();
@@ -1170,6 +1212,7 @@ test.describe('Toernooi — de hele route', () => {
   }
 
   async function annuleerLopend(pagina) {
+    await naarToernooiTab(pagina);
     await pagina.click('#toernooi-detail button:has-text("Toernooi annuleren")');
     await expect.poll(async () =>
       (await beheerDb.collection('toernooien').get()).docs
@@ -1231,6 +1274,7 @@ test.describe('Toernooi — de hele route', () => {
     // `sierk2`, en nog een keer `sierk3` — terwijl er maar één Sierk meedeed.
     // Sierk, 13 september 2026: "er was maar 1 speler in het toernooi die zo
     // heet."
+    await naarToernooiTab(page);
     await page.click('#toernooi-detail button:has-text("Toernooi opnieuw instellen")');
     await expect(page.locator('#toernooi-setup-wrap')).toBeVisible({ timeout: 20000 });
     await expect.poll(async () =>
@@ -1320,6 +1364,7 @@ test.describe('Toernooi — de hele route', () => {
 
     // En dan staat de reparatieknop klaar — de enige uitweg was tot v5.12.3 de
     // gast verwijderen en opnieuw toevoegen, en dan raakt hij zijn scores kwijt.
+    await naarToernooiTab(page);
     await expect(page.locator('#toernooi-detail button:has-text("Gastlogins aanmaken")'),
       'met de knop om het alsnog te doen').toBeVisible({ timeout: 15000 });
   });
@@ -1352,6 +1397,7 @@ test.describe('Toernooi — de hele route', () => {
     await vak.blur();
     await page.waitForTimeout(2500);
 
+    await naarToernooiTab(page);
     await page.click('#toernooi-detail button:has-text("Gastlogins aanmaken")');
     await expect.poll(async () => {
       const x = await haalToernooi('Reparatie');

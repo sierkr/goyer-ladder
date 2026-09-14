@@ -39,6 +39,12 @@ function knipConstante(bestand, naam) {
 
 function laadToernooiKern() {
   const t = knip('js/toernooi.js', [
+    // v5.13.0: dagInstelling() is de terugval per dag -> toernooi -> standaard.
+    // berekenTPuntenVoorDag() roept hem aan; staat hij hier niet, dan knipt het
+    // harnas alleen de aanroeper eruit en valt de hele toernooisuite om met
+    // 'dagInstelling is not defined'. Zie dezelfde waarschuwing bij
+    // laadLadderKern() hieronder.
+    'dagInstelling',
     'getTHcpSlagen', 'berekenTPuntenVoorDag', 'berekenStrokeplayRanglijstVoorDag',
     'berekenStrokeplayTotaal', 'countback', 'getDag', 'actieveDag',
     'heeftGeenScores', 'alleScoresIngevuld', 'berekenFlightTijd',
@@ -65,7 +71,7 @@ function laadToernooiKern() {
     ${t}
     ${k}
     return {
-      getTHcpSlagen, berekenTPuntenVoorDag, berekenStrokeplayRanglijstVoorDag,
+      dagInstelling, getTHcpSlagen, berekenTPuntenVoorDag, berekenStrokeplayRanglijstVoorDag,
       berekenStrokeplayTotaal, countback, getDag, actieveDag, heeftGeenScores,
       alleScoresIngevuld, berekenFlightTijd, berekenTPunten, _liveScoresVanDag,
       matchplayVolgorde, hcpVan,

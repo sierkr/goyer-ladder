@@ -631,6 +631,8 @@ function selecteerToernooi(id) {
   store.actieveToernooiId = id;
   store.toernooiData = alleToernooien.find(t => t.id === id) || null;
   window._bekijkDagNr = null; // v4.0.0: bekijk-dag hoort bij één toernooi (fix 7.4)
+  window._tTabblad = null;    // v5.13.1: begin op de actieve dag, niet op het overzicht
+  window._ranglijstDagNr = null;
   renderToernooi();
 }
 
@@ -641,26 +643,33 @@ function selecteerToernooi(id) {
 // localStorage, zodat een refresh/crash tijdens het instellen niets kost.
 const TOERNOOI_CONCEPT_KEY = 'toernooiConcept_v1';
 
+// v5.13.0: de toernooibrede velden voor tijd, punten en handicap zijn van het
+// aanmaakscherm verdwenen — ze staan nu per dag. Waar de code nog één waarde
+// voor het hele toernooi nodig heeft (de standaard voor een dag die er later
+// bij komt), geldt dag 1 als die standaard.
+function setupDag1() {
+  const blok = document.querySelector('#t-dag-blokken .dag-blok');
+  return blok ? dagUitFormulier(blok) : null;
+}
+
 function slaToernooiConceptOp() {
   clearTimeout(window._tConceptSaveTimer);
   window._tConceptSaveTimer = setTimeout(() => {
     try {
-      const dagen = Array.from(document.querySelectorAll('#t-dag-blokken .dag-blok')).map(b => ({
-        datum:       b.querySelector('.t-dag-datum')?.value || '',
-        baan:        b.querySelector('.t-dag-baan')?.value || '',
-        holes:       b.querySelector('.t-dag-holes')?.value || '18',
-        holesCustom: b.querySelector('.t-dag-holes-custom')?.value || '',
-        modus:       b.querySelector('.t-dag-modus')?.value || ''   // v5.12.0
-      }));
+      // v5.13.0: het hele dagformulier gaat mee in het concept, dus ook
+      // starttijd, interval, punten en handicap. Voorheen stonden die vier
+      // buiten de dagen en gingen ze bij een herlaad verloren zodra het aantal
+      // dagen wijzigde.
+      const dagen = Array.from(document.querySelectorAll('#t-dag-blokken .dag-blok')).map(b => {
+        const d = dagUitFormulier(b);
+        return { datum: d.datum, baan: d.baan, holes: d.holesKeuze,
+                 holesCustom: d.holesKeuze === 'custom' ? String(d.holes) : '',
+                 modus: d.modus, starttijd: d.starttijd, interval: d.interval,
+                 ptWin: d.ptWin, ptTie: d.ptTie, ptLoss: d.ptLoss, hcpPct: d.hcpPctHeel };
+      });
       const concept = {
         naam:        document.getElementById('t-naam')?.value || '',
         aantalDagen: document.getElementById('t-aantal-dagen')?.value || '1',
-        starttijd:   document.getElementById('t-starttijd')?.value || '09:00',
-        interval:    document.getElementById('t-interval')?.value || '',
-        ptWin:       document.getElementById('t-pt-win')?.value || '',
-        ptTie:       document.getElementById('t-pt-tie')?.value || '',
-        ptLoss:      document.getElementById('t-pt-loss')?.value || '',
-        hcpPct:      document.getElementById('t-hcp-pct')?.value || '',
         modus:       toernooiModusUitFormulier(),   // v5.12.1: afgeleid uit de dagen
         dagen,
         spelers:        store._tGeselecteerdeSpelers || [],
@@ -701,12 +710,6 @@ function herstelToernooiConcept() {
     const zet = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined && val !== '') el.value = val; };
     zet('t-naam', c.naam);
     zet('t-aantal-dagen', c.aantalDagen);
-    zet('t-starttijd', c.starttijd);
-    zet('t-interval', c.interval);
-    zet('t-pt-win', c.ptWin);
-    zet('t-pt-tie', c.ptTie);
-    zet('t-pt-loss', c.ptLoss);
-    zet('t-hcp-pct', c.hcpPct);
     // v5.12.1: de speelwijze staat in de dagblokken, niet meer in een radio
     // hier. pasConceptDagenToe() zet ze terug; daarna beslist pasSpeelwijzeToe()
     // wat er zichtbaar is.
@@ -753,6 +756,17 @@ function pasConceptDagenToe() {
     if (custEl && c.holesCustom) custEl.value = c.holesCustom;
     const modusEl = blok.querySelector('.t-dag-modus');            // v5.12.0
     if (modusEl && c.modus) modusEl.value = c.modus;
+    // v5.13.0: tijd, punten en handicap staan nu ook per dag in het concept.
+    const zetVeld = (klasse, waarde) => {
+      if (waarde === undefined || waarde === null || waarde === '') return;
+      const el = blok.querySelector('.t-dag-' + klasse);
+      if (el) el.value = waarde;
+    };
+    zetVeld('starttijd', c.starttijd); zetVeld('interval', c.interval);
+    zetVeld('ptwin', c.ptWin); zetVeld('pttie', c.ptTie);
+    zetVeld('ptloss', c.ptLoss); zetVeld('hcppct', c.hcpPct);
+    if (modusEl) onDagModusWissel(modusEl);
+    if (holesEl) onDagHolesWissel(holesEl);
   });
   pasSpeelwijzeToe();   // v5.12.1
 }
@@ -805,114 +819,265 @@ function initToernooiSetup() {
 }
 
 // Rendert één dag-configuratie blok per dag
+// ============================================================
+//  HET DAGFORMULIER — ÉÉN BRON  (v5.13.0)
+// ============================================================
+//  Sierk, 13 september 2026: "Dat A4tje was beeldspraak om alles op een blad te
+//  hebben en niet verspreid over de hele app. Single source."
+//
+//  WAT ER MIS WAS. Een dag werd op TWEE plekken ingesteld en die waren niet
+//  gelijk. Het aanmaakscherm kende Datum, Baan, Aantal holes en Speelwijze; het
+//  venster "Dag toevoegen / Dag wijzigen" kende diezelfde vier PLUS Starttijd en
+//  Interval. Gevolg: bij het aanmaken van een meerdaags toernooi kreeg elke dag
+//  dezelfde starttijd, en dat was daar niet te corrigeren.
+//
+//  Vanaf nu bouwt dagFormulierHtml() het formulier en leest dagUitFormulier()
+//  het terug — op BEIDE plekken. Komt er een veld bij, dan staat het meteen
+//  overal.
+//
+//  ⚠ WAAROM ER ID'S ÉN KLASSEN UITKOMEN. Het aanmaakscherm leest de velden op
+//  KLASSE (startToernooi() doet `querySelectorAll('.dag-blok')` en zoekt daarin
+//  `.t-dag-datum`), het venster leest ze op ID (`getElementById('t-dag-datum')`).
+//  De browsertests hangen aan allebei. Eén element mag beide dragen, dus geeft
+//  deze functie in het venster id én klasse uit. Zo hoefde er geen enkele
+//  bestaande aanroep of test te wijzigen.
+//
+//  ⚠ Het venster mag maar ÉÉN keer tegelijk open staan, anders zouden er twee
+//  elementen met hetzelfde id zijn. Dat is nu ook al zo.
+function dagFormulierHtml(w, opt) {
+  w = w || {}; opt = opt || {};
+  const metIds  = opt.metIds === true;
+  const dagNr   = opt.dagNr || 1;
+  const banen   = alleBANEN();
+  const baanOpties = Object.keys(banen)
+    .filter(n => n !== 'Handmatig invoeren')
+    .map(n => `<option value="${escAttr(n)}"${n === w.baan ? ' selected' : ''}>${esc(n)}</option>`)
+    .join('');
+  // id="" is ongeldig; laat het attribuut dan helemaal weg.
+  const idv = (naam) => metIds ? ` id="t-dag-${naam}"` : '';
+  const holes   = w.holes || '18';
+  const modus   = w.modus === 'strokeplay' ? 'strokeplay' : 'matchplay';
+  const toonCust = holes === 'custom' ? '' : 'display:none';
+  const toonPunten = modus === 'matchplay' ? '' : 'display:none';
+
+  return `
+    <div class="form-group" style="margin-bottom:10px">
+      <label>Datum</label>
+      <input type="date"${idv('datum')} class="t-dag-datum" value="${escAttr(w.datum || '')}">
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label>Baan</label>
+      <select${idv('baan')} class="t-dag-baan"${opt.metNieuweBaan ? ` onchange="onTDagBaanSelect(this, ${dagNr})"` : ''}>
+        ${baanOpties}
+        ${opt.metNieuweBaan ? '<option value="Handmatig invoeren">+ Nieuwe baan toevoegen</option>' : ''}
+      </select>
+      ${opt.metNieuweBaan ? `
+      <div id="t-baan-handmatig-${dagNr}" style="display:none;margin-top:10px">
+        <div id="t-holes-handmatig-${dagNr}"></div>
+      </div>` : ''}
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label>Aantal holes</label>
+      <select${idv('holes')} class="t-dag-holes" onchange="onDagHolesWissel(this)">
+        <option value="18"${holes === '18' ? ' selected' : ''}>18 holes</option>
+        <option value="9"${holes === '9' ? ' selected' : ''}>9 holes</option>
+        <option value="custom"${holes === 'custom' ? ' selected' : ''}>Aangepast...</option>
+      </select>
+      <div${idv('holes-custom-wrap')} class="t-dag-holes-custom-wrap" style="${toonCust};margin-top:6px">
+        <input type="number"${idv('holes-custom')} class="t-dag-holes-custom" min="1" max="18"
+          placeholder="bijv. 12" style="text-align:center;width:80px" value="${escAttr(w.holesCustom || '')}">
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label>Speelwijze</label>
+      <select${idv('modus')} class="t-dag-modus" onchange="onDagModusWissel(this)">
+        <option value="matchplay"${modus === 'matchplay' ? ' selected' : ''}>Matchplay</option>
+        <option value="strokeplay"${modus === 'strokeplay' ? ' selected' : ''}>Strokeplay</option>
+      </select>
+      <p style="font-size:11px;color:var(--light);margin:4px 0 0">
+        ⚠ Zit er een strokeplay-dag in het toernooi, dan telt het niet mee voor de ladder.
+      </p>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="form-group" style="margin-bottom:10px">
+        <label>Starttijd</label>
+        <input type="time"${idv('starttijd')} class="t-dag-starttijd" value="${escAttr(w.starttijd || '09:00')}">
+      </div>
+      <div class="form-group" style="margin-bottom:10px">
+        <label>Interval (min)</label>
+        <input type="number"${idv('interval')} class="t-dag-interval" min="0" max="60"
+          style="text-align:center" value="${escAttr(w.interval ?? 10)}">
+      </div>
+    </div>
+    <div class="t-dag-matchplay-blok" style="${toonPunten}">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div class="form-group" style="margin-bottom:10px">
+          <label>Winst</label>
+          <input type="number"${idv('ptwin')} class="t-dag-ptwin" style="text-align:center" value="${escAttr(w.ptWin ?? 2)}">
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label>Gelijk</label>
+          <input type="number"${idv('pttie')} class="t-dag-pttie" style="text-align:center" value="${escAttr(w.ptTie ?? 0)}">
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label>Verlies</label>
+          <input type="number"${idv('ptloss')} class="t-dag-ptloss" style="text-align:center" value="${escAttr(w.ptLoss ?? -2)}">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>HCP verrekening %</label>
+        <input type="number"${idv('hcppct')} class="t-dag-hcppct" min="0" max="100"
+          style="width:90px" value="${escAttr(w.hcpPct ?? 75)}">
+      </div>
+    </div>`;
+}
+
+// Leest hetzelfde formulier weer uit. `root` is het omhullende element:
+// het dagblok op het aanmaakscherm, of het venster.
+//  ⚠ Percentages komen hier als HELE getallen uit (75), net als op het scherm.
+//  De omrekening naar 0.75 gebeurt bij het opslaan, op één plek.
+function dagUitFormulier(root) {
+  if (!root) return null;
+  const v = (k) => root.querySelector('.t-dag-' + k);
+  const getal = (k, standaard) => {
+    const el = v(k); const n = parseFloat(el?.value);
+    return Number.isFinite(n) ? n : standaard;
+  };
+  const holesKeuze = v('holes')?.value || '18';
+  return {
+    datum:      v('datum')?.value || '',
+    baan:       v('baan')?.value || '',
+    holesKeuze,
+    holes:      holesKeuze === 'custom' ? getal('holes-custom', 18) : parseInt(holesKeuze, 10),
+    modus:      v('modus')?.value === 'strokeplay' ? 'strokeplay' : 'matchplay',
+    starttijd:  v('starttijd')?.value || '09:00',
+    interval:   getal('interval', 10),
+    ptWin:      getal('ptwin', 2),
+    ptTie:      getal('pttie', 0),
+    ptLoss:     getal('ptloss', -2),
+    hcpPctHeel: getal('hcppct', 75),
+  };
+}
+
+// Aangepast aantal holes tonen of verbergen — werkt in beide schermen doordat
+// hij het omhullende formulier opzoekt in plaats van een vast id.
+function onDagHolesWissel(el) {
+  const root = el.closest('.dag-formulier') || el.closest('.dag-blok') || document;
+  const wrap = root.querySelector('.t-dag-holes-custom-wrap');
+  if (wrap) wrap.style.display = el.value === 'custom' ? 'block' : 'none';
+}
+window.onDagHolesWissel = onDagHolesWissel;
+
+// De puntenvelden horen alleen bij matchplay.
+function onDagModusWissel(el) {
+  const root = el.closest('.dag-formulier') || el.closest('.dag-blok') || document;
+  const blok = root.querySelector('.t-dag-matchplay-blok');
+  if (blok) blok.style.display = el.value === 'strokeplay' ? 'none' : '';
+  // Op het aanmaakscherm hangt er meer aan de speelwijze (de ranking-ladder).
+  if (document.getElementById('t-dag-blokken')?.contains(el)) pasSpeelwijzeToe();
+}
+window.onDagModusWissel = onDagModusWissel;
+
 function renderDagBlokken() {
   const aantalDagen = parseInt(document.getElementById('t-aantal-dagen')?.value) || 1;
   const container   = document.getElementById('t-dag-blokken');
   if (!container) return;
 
-  const banen = alleBANEN();
-  const baanOpties = Object.keys(banen)
-    .filter(n => n !== 'Handmatig invoeren')
-    .map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`)
-    .join('');
+  // Bewaar wat er staat, zodat een dag erbij of eraf de invoer niet wist.
+  // v5.13.0: dit liep achter — starttijd, interval en de punten stonden er niet
+  // in, dus die zouden bij elke wijziging van het aantal dagen wegvallen.
+  const bestaand = Array.from(container.querySelectorAll('.dag-blok'))
+    .map(blok => dagUitFormulier(blok));
 
-  // Bewaar bestaande waarden zodat wisselen van aantal dagen de invoer niet wist
-  const bestaand = Array.from(container.querySelectorAll('.dag-blok')).map(blok => ({
-    datum:  blok.querySelector('.t-dag-datum')?.value  || '',
-    baan:   blok.querySelector('.t-dag-baan')?.value   || '',
-    holes:  blok.querySelector('.t-dag-holes')?.value  || '18',
-    hcust:  blok.querySelector('.t-dag-holes-custom')?.value || '',
-    modus:  blok.querySelector('.t-dag-modus')?.value  || ''
-  }));
+  // Een nieuwe dag volgt dag 1 (v5.12.1); is die er nog niet, dan matchplay.
+  const dag1 = bestaand[0] || {};
 
-  // v5.12.0: de speelwijze staat per DAG. De keuze bovenaan het formulier is de
-  // standaard voor een nieuwe dag; per dag kun je ervan afwijken.
-  // v5.12.1: een nieuwe dag volgt de speelwijze van dag 1; is die er nog niet,
-  // dan matchplay. Voorheen kwam dit uit de toernooibrede keuze die nu weg is.
-  const toernooiModus = document.querySelector('#t-dag-blokken .t-dag-modus')?.value || 'matchplay';
-
+  let tabs = `<div style="display:flex;gap:6px;overflow-x:auto;padding:0 0 0;scrollbar-width:none;border-bottom:1px solid var(--border);margin-bottom:12px">`;
   let html = '';
   for (let d = 1; d <= aantalDagen; d++) {
-    const prev      = bestaand[d - 1] || {};
-    const label     = aantalDagen > 1 ? `Dag ${d}` : 'Speeldag';
-    const dagDatum  = prev.datum || '';
-    const dagBaan   = prev.baan  || '';
-    const dagHoles  = prev.holes || '18';
-    const dagHcust  = prev.hcust || '';
-    const dagModusKeuze = prev.modus || toernooiModus;
-    const showCust  = dagHoles === 'custom' ? '' : 'display:none';
+    const prev = bestaand[d - 1] || {};
+    const actief = d === (window._tSetupDagNr || 1);
+    tabs += `<button type="button" onclick="selecteerSetupDag(${d})"
+      style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px solid ${actief ? 'var(--green)' : 'var(--border)'};border-bottom:none;background:${actief ? 'var(--green)' : 'transparent'};color:${actief ? 'white' : 'var(--mid)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">
+      Dag ${d}${aantalDagen > 1 && d === (window._tSetupDagNr || 1) ? ` <span onclick="event.stopPropagation();verwijderSetupDag(${d})" title="Deze dag weghalen" style="margin-left:4px;opacity:.8">&#10005;</span>` : ''}
+    </button>`;
+
+    const w = {
+      datum:  prev.datum || '',
+      baan:   prev.baan  || (d > 1 ? (dag1.baan || '') : ''),
+      holes:  prev.holesKeuze || (d > 1 ? (dag1.holesKeuze || '18') : '18'),
+      holesCustom: prev.holesKeuze === 'custom' ? prev.holes : '',
+      modus:  prev.modus || dag1.modus || 'matchplay',
+      // v5.13.0: een volgende dag neemt tijd en punten van de vorige over als
+      // voorzet. Dat scheelt overtypen en houdt een toernooi meestal consistent.
+      starttijd: prev.starttijd ?? (d > 1 ? (bestaand[d - 2]?.starttijd ?? '09:00') : '09:00'),
+      interval:  prev.interval  ?? (d > 1 ? (bestaand[d - 2]?.interval  ?? 10) : 10),
+      ptWin:     prev.ptWin     ?? dag1.ptWin  ?? 2,
+      ptTie:     prev.ptTie     ?? dag1.ptTie  ?? 0,
+      ptLoss:    prev.ptLoss    ?? dag1.ptLoss ?? -2,
+      hcpPct:    prev.hcpPctHeel ?? dag1.hcpPctHeel ?? 75,
+    };
 
     html += `
-    <div class="dag-blok" style="border:1.5px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
-      ${aantalDagen > 1 ? `<div style="font-weight:700;font-size:13px;color:var(--green);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">${label}</div>` : ''}
-      <div class="form-group" style="margin-bottom:10px">
-        <label>Datum</label>
-        <input type="date" class="t-dag-datum" value="${esc(dagDatum)}"
-          ${d === 1 && !dagDatum ? `placeholder="${new Date().toISOString().split('T')[0]}"` : ''}>
-      </div>
-      <div class="form-group" style="margin-bottom:10px">
-        <label>Baan</label>
-        <select class="t-dag-baan" onchange="onTDagBaanSelect(this, ${d})">
-          ${baanOpties}
-          <option value="Handmatig invoeren">+ Nieuwe baan toevoegen</option>
-        </select>
-        <div id="t-baan-handmatig-${d}" style="display:none;margin-top:10px">
-          <div id="t-holes-handmatig-${d}"></div>
-        </div>
-      </div>
-      <div class="form-group" style="margin-bottom:10px">
-        <label>Aantal holes</label>
-        <select class="t-dag-holes" onchange="this.closest('.dag-blok').querySelector('.t-dag-holes-custom-wrap').style.display=this.value==='custom'?'block':'none'">
-          <option value="18" ${dagHoles==='18'?'selected':''}>18 holes</option>
-          <option value="9"  ${dagHoles==='9' ?'selected':''}>9 holes</option>
-          <option value="custom" ${dagHoles==='custom'?'selected':''}>Aangepast...</option>
-        </select>
-        <div class="t-dag-holes-custom-wrap" style="${showCust};margin-top:6px">
-          <input type="number" class="t-dag-holes-custom" min="1" max="18"
-            placeholder="bijv. 12" style="text-align:center;width:80px" value="${esc(dagHcust)}">
-        </div>
-      </div>
-      <div class="form-group" style="margin-bottom:0">
-        <label>Speelwijze</label>
-        <select class="t-dag-modus" onchange="pasSpeelwijzeToe()">
-          <option value="matchplay"  ${dagModusKeuze==='matchplay' ?'selected':''}>Matchplay</option>
-          <option value="strokeplay" ${dagModusKeuze==='strokeplay'?'selected':''}>Strokeplay</option>
-        </select>
-        <p style="font-size:11px;color:var(--light);margin:4px 0 0">
-          ⚠ Zit er een strokeplay-dag in het toernooi, dan telt het niet mee voor de ladder.
-        </p>
-      </div>
+    <div class="dag-blok dag-formulier" data-dagnr="${d}"
+         style="${actief ? '' : 'display:none;'}border:1.5px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px">
+      ${dagFormulierHtml(w, { dagNr: d, metNieuweBaan: true })}
     </div>`;
   }
-  container.innerHTML = html;
+  tabs += `<button type="button" onclick="voegSetupDagToe()"
+      style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px dashed var(--border);border-bottom:none;background:transparent;color:var(--green);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">
+      + Dag toevoegen
+    </button></div>`;
 
-  // Herstel baan-selectie (na innerHTML vervangen)
-  const blokken = container.querySelectorAll('.dag-blok');
-  blokken.forEach((blok, i) => {
-    const prev = bestaand[i];
-    if (prev?.baan) {
-      const sel = blok.querySelector('.t-dag-baan');
-      if (sel && [...sel.options].some(o => o.value === prev.baan)) {
-        sel.value = prev.baan;
-      }
-    } else {
-      // Default: De Goyer op dag 1, zelfde baan als dag 1 op volgende dagen
-      const sel = blok.querySelector('.t-dag-baan');
-      if (sel) {
-        const deGoyer = [...sel.options].find(o => o.value === 'De Goyer');
-        if (i === 0 && deGoyer) sel.value = 'De Goyer';
-        else if (i > 0) {
-          const dag1Baan = container.querySelector('.dag-blok .t-dag-baan')?.value;
-          if (dag1Baan && [...sel.options].some(o => o.value === dag1Baan)) sel.value = dag1Baan;
-        }
-      }
-    }
+  container.innerHTML = tabs + html;
+
+  // Baan-selectie herstellen: De Goyer op dag 1, en volgende dagen volgen dag 1.
+  container.querySelectorAll('.dag-blok').forEach((blok, i) => {
+    const sel = blok.querySelector('.t-dag-baan');
+    if (!sel) return;
+    const gewenst = bestaand[i]?.baan
+      || (i === 0 ? 'De Goyer' : (container.querySelector('.dag-blok .t-dag-baan')?.value || ''));
+    if (gewenst && [...sel.options].some(o => o.value === gewenst)) sel.value = gewenst;
   });
 
-  // v5.12.1: de dagblokken bepalen wat er onderin het formulier zichtbaar is.
-  // Wisselt het aantal dagen, dan kan dat veranderen.
   pasSpeelwijzeToe();
 }
+
+// v5.13.0: welk dagtabblad staat open. Alle dagblokken blijven in het scherm
+// staan en worden alleen verborgen — zo blijft startToernooi() ze onveranderd
+// uitlezen met querySelectorAll('.dag-blok') en hoefde daar niets aan.
+function selecteerSetupDag(dagNr) {
+  window._tSetupDagNr = dagNr;
+  renderDagBlokken();
+}
+window.selecteerSetupDag = selecteerSetupDag;
+
+function voegSetupDagToe() {
+  const el = document.getElementById('t-aantal-dagen');
+  if (!el) return;
+  const nu = parseInt(el.value) || 1;
+  if (nu >= 10) { toast('Meer dan tien dagen is niet mogelijk'); return; }
+  el.value = nu + 1;
+  window._tSetupDagNr = nu + 1;
+  renderDagBlokken();
+}
+window.voegSetupDagToe = voegSetupDagToe;
+
+function verwijderSetupDag(dagNr) {
+  const el = document.getElementById('t-aantal-dagen');
+  if (!el) return;
+  const nu = parseInt(el.value) || 1;
+  if (nu <= 1) { toast('Een toernooi heeft minstens één dag'); return; }
+  if (!confirm(`Dag ${dagNr} weghalen uit dit toernooi?`)) return;
+  // De blokken worden opnieuw opgebouwd uit wat er staat; haal deze eruit.
+  const blok = document.querySelector(`#t-dag-blokken .dag-blok[data-dagnr="${dagNr}"]`);
+  if (blok) blok.remove();
+  el.value = nu - 1;
+  window._tSetupDagNr = Math.min(dagNr, nu - 1);
+  renderDagBlokken();
+}
+window.verwijderSetupDag = verwijderSetupDag;
+
 window.renderDagBlokken = renderDagBlokken;
 
 // v5.12.8: toggleTSpelersLadder() is vervallen met het blok "Spelers
@@ -1046,15 +1211,10 @@ function toggleTSpeler(id) {
 // ============================================================
 //  FLIGHT INDELING
 // ============================================================
-// v5.12.4: het aangepaste aantal holes in het venster "Dag toevoegen" /
-// "Dag wijzigen". De tegenhanger in het aanmaakscherm staat inline op het
-// dagblok (zie renderDagBlokken); hier ontbrak hij helemaal.
-function toggleDagHolesCustom() {
-  const sel  = document.getElementById('t-dag-holes');
-  const wrap = document.getElementById('t-dag-holes-custom-wrap');
-  if (wrap) wrap.style.display = sel?.value === 'custom' ? 'block' : 'none';
-}
-window.toggleDagHolesCustom = toggleDagHolesCustom;
+// v5.13.0: toggleDagHolesCustom() stond hier als tegenhanger van een inline
+// regel op het aanmaakscherm — twee keer dezelfde handeling. Beide zijn
+// vervangen door onDagHolesWissel(), dat bij het gedeelde dagformulier hoort en
+// het omhullende blok opzoekt in plaats van een vast id.
 
 // Leest het aantal holes uit het dagvenster. Geeft null als de coordinator
 // "Aangepast" koos maar geen bruikbaar getal invulde — dan hoort het opslaan te
@@ -1077,8 +1237,10 @@ function openFlightIndeling() {
   const geselecteerd = _tGeselecteerdeSpelers;
   if (geselecteerd.length < 2) { toast('Selecteer minimaal 2 spelers'); return; }
 
-  const starttijd = document.getElementById('t-starttijd')?.value || '09:00';
-  const interval = parseInt(document.getElementById('t-interval')?.value) || 0;
+  // v5.13.0: de flightindeling op het aanmaakscherm gaat over dag 1.
+  const _d1 = setupDag1();
+  const starttijd = _d1?.starttijd || '09:00';
+  const interval  = _d1?.interval ?? 0;
 
   if (_flights.length === 0) {
     // v5.10.0: `gast` en `login` MOETEN mee.
@@ -1268,10 +1430,14 @@ function verplaatsSpelerFlight(vanFi, si, naarFi) {
 async function startToernooi() {
   try {
     const naam     = document.getElementById('t-naam').value.trim();
-    const ptWin    = parseFloat(document.getElementById('t-pt-win').value);
-    const ptTie    = parseFloat(document.getElementById('t-pt-tie').value);
-    const ptLoss   = parseFloat(document.getElementById('t-pt-loss').value);
-    const hcpPct   = parseFloat(document.getElementById('t-hcp-pct').value) / 100;
+    // v5.13.0: punten en handicap staan per dag. Dag 1 is tegelijk de
+    // toernooistandaard — die geldt voor een dag die er later bij komt en zonder
+    // eigen waarden wordt aangemaakt.
+    const _d1      = setupDag1() || {};
+    const ptWin    = _d1.ptWin  ?? 2;
+    const ptTie    = _d1.ptTie  ?? 0;
+    const ptLoss   = _d1.ptLoss ?? -2;
+    const hcpPct   = (_d1.hcpPctHeel ?? 75) / 100;
     // v3.1.1: als er geen ranking-ladder is aangevinkt, val terug op de spelers-ladder(s),
     // zodat een toernooi altijd de ladder bijwerkt waar de deelnemers vandaan komen.
     // Voorkomt dat de ranking leeg blijft (o.a. na het per ongeluk uitzetten van het vinkje
@@ -1285,8 +1451,8 @@ async function startToernooi() {
     const rankingLadderIds = [..._rankingSet];
     const ladderId = rankingLadderIds[0] || null;
     const modus    = toernooiModusUitFormulier();   // v5.12.1
-    const starttijd = document.getElementById('t-starttijd')?.value || '09:00';
-    const interval  = parseInt(document.getElementById('t-interval')?.value) || 0;
+    const starttijd = _d1.starttijd || '09:00';   // v5.13.0: alleen nog terugval
+    const interval  = _d1.interval ?? 0;
     // v5.10.0: leeg laten mag — dan krijgen gastspelers geen inlog.
     const gastWachtwoord = document.getElementById('t-gast-wachtwoord')?.value.trim() || '';
 
@@ -1359,7 +1525,15 @@ async function startToernooi() {
       // v5.12.0: de speelwijze van DEZE dag. Staat er niets, dan die van het
       // toernooi — zo blijft een bestaand toernooi zich gedragen als altijd.
       const dagModusKeuze = blok.querySelector('.t-dag-modus')?.value || modus;
-      dagenConfig.push({ dagNr: i + 1, datum, baan: baanNaam, holes, starttijd, interval,
+      // v5.13.0: tijd, punten en handicap komen per dag uit hetzelfde
+      // dagformulier. Elke dag krijgt dus zijn eigen waarden in plaats van
+      // allemaal dezelfde toernooibrede.
+      const dv = dagUitFormulier(blok) || {};
+      dagenConfig.push({ dagNr: i + 1, datum, baan: baanNaam, holes,
+                         starttijd: dv.starttijd || starttijd,
+                         interval:  dv.interval ?? interval,
+                         ptWin: dv.ptWin, ptTie: dv.ptTie, ptLoss: dv.ptLoss,
+                         hcpPct: (dv.hcpPctHeel ?? 75) / 100,
                          modus: dagModusKeuze });
     }
 
@@ -1410,6 +1584,12 @@ async function startToernooi() {
         starttijd: cfg.starttijd,
         interval:  cfg.interval,
         modus:     cfg.modus,      // v5.12.0
+        // v5.13.0: per dag. dagInstelling() valt terug op de toernooibrede
+        // waarde als deze velden ontbreken, dus oude toernooien blijven gelijk.
+        ptWin:     cfg.ptWin,
+        ptTie:     cfg.ptTie,
+        ptLoss:    cfg.ptLoss,
+        hcpPct:    cfg.hcpPct,
         flights,
         scores,
         afgerond: false
@@ -1515,42 +1695,61 @@ async function startToernooi() {
 // Selecteer actieve dag en herrender
 function selecteerDag(dagNr) {
   if (!toernooiData) return;
+  // v5.13.1: 0 is het tabblad "Toernooi" — het geheel, niet één dag. De
+  // bekeken dag blijft dan staan waar hij stond, zodat je bij terugkeren op
+  // dezelfde dag uitkomt.
+  window._tTabblad = dagNr === 0 ? 0 : null;
   // v4.0.0: alleen lokale weergave — schrijft NIET meer naar Firestore.
   // Voorheen werd actiefDagNr voor het hele toernooi (alle gebruikers)
   // overschreven zodra iemand een oude dag bekeek (fix 7.4).
-  window._bekijkDagNr = dagNr;
+  if (dagNr !== 0) window._bekijkDagNr = dagNr;
+  // Het klassement volgt het tabblad: op "Toernooi" het totaal (0), op een
+  // dagtabblad die dag. Voorheen had het klassement een eigen keuze.
+  window._ranglijstDagNr = dagNr;
   renderToernooiActief();
 }
 
 // Open modal om nieuwe dag te configureren
+// v5.13.0: het venster wordt gevuld door dagFormulierHtml() — dezelfde bron als
+// het aanmaakscherm. Hiervoor stond het formulier hier een tweede keer,
+// uitgetikt in index.html, en kende het net andere velden.
+//
+// `metIds: true` zorgt dat de velden hun vaste namen (t-dag-datum, ...) houden
+// naast hun klasse. Alle bestaande code en alle browsertests die op die namen
+// zoeken blijven daardoor werken.
+function vulDagVenster(w, dagNr) {
+  const doel = document.getElementById('modal-dag-formulier');
+  if (!doel) return;
+  doel.innerHTML = dagFormulierHtml(w, { metIds: true, dagNr: dagNr || 1 });
+}
+
 function openNieuweDagModal() {
   const t = toernooiData;
   if (!t) return;
   const vorigeDag = (t.dagen || []).slice(-1)[0];
-  // Vul datum default: dag eerder + 1
-  const datumEl = document.getElementById('t-dag-datum');
-  if (datumEl) {
-    if (vorigeDag?.datum) {
-      const d = new Date(vorigeDag.datum);
-      d.setDate(d.getDate() + 1);
-      datumEl.value = d.toISOString().split('T')[0];
-    } else {
-      datumEl.value = new Date().toISOString().split('T')[0];
-    }
+  // Datum: die van de vorige dag plus één.
+  let datum;
+  if (vorigeDag?.datum) {
+    const d = new Date(vorigeDag.datum);
+    d.setDate(d.getDate() + 1);
+    datum = d.toISOString().split('T')[0];
+  } else {
+    datum = new Date().toISOString().split('T')[0];
   }
-  // Vul baan default: zelfde als vorige dag
-  const baanEl = document.getElementById('t-dag-baan');
-  if (baanEl) {
-    const banen = alleBANEN();
-    baanEl.innerHTML = Object.keys(banen)
-      .filter(n => n !== 'Handmatig invoeren')
-      .map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`)
-      .join('');
-    if (vorigeDag?.baan && banen[vorigeDag.baan]) baanEl.value = vorigeDag.baan;
-  }
-  // v5.12.0: speelwijze — standaard die van de vorige dag.
-  const modusEl = document.getElementById('t-dag-modus');
-  if (modusEl) modusEl.value = dagModus(t, vorigeDag);
+  // De rest volgt de vorige dag; ontbreekt die waarde daar, dan de
+  // toernooibrede — dezelfde volgorde als dagInstelling() bij het rekenen.
+  vulDagVenster({
+    datum,
+    baan:      vorigeDag?.baan || '',
+    holes:     String(vorigeDag?.holes?.length || 18) === '9' ? '9' : '18',
+    modus:     dagModus(t, vorigeDag),
+    starttijd: vorigeDag?.starttijd || '09:00',
+    interval:  vorigeDag?.interval ?? 10,
+    ptWin:     dagInstelling(vorigeDag, t, 'ptWin', 2),
+    ptTie:     dagInstelling(vorigeDag, t, 'ptTie', 0),
+    ptLoss:    dagInstelling(vorigeDag, t, 'ptLoss', -2),
+    hcpPct:    Math.round(dagInstelling(vorigeDag, t, 'hcpPct', 0.75) * 100),
+  }, (t.dagen || []).length + 1);
   // v5.9.1: het venster doet nu twee dingen. Hier expliciet in de stand
   // "toevoegen" zetten, zodat een eerdere wijzig-sessie niet blijft hangen.
   _zetDagModalStand(null);
@@ -1893,40 +2092,22 @@ function openDagBewerkenModal() {
     toast(`Dag ${dag.dagNr} heeft al scores — wijzigen kan niet meer`);
     return;
   }
-  const datumEl = document.getElementById('t-dag-datum');
-  if (datumEl) datumEl.value = dag.datum || '';
-
-  const modusEl = document.getElementById('t-dag-modus');   // v5.12.0
-  if (modusEl) modusEl.value = dagModus(t, dag);
-
-  const baanEl = document.getElementById('t-dag-baan');
-  if (baanEl) {
-    const banen = alleBANEN();
-    baanEl.innerHTML = Object.keys(banen)
-      .filter(n => n !== 'Handmatig invoeren')
-      .map(n => `<option value="${escAttr(n)}">${esc(n)}</option>`)
-      .join('');
-    if (dag.baan && banen[dag.baan]) baanEl.value = dag.baan;
-  }
-
+  // v5.13.0: uit dezelfde bron als het aanmaakscherm. Hiervoor werd elk veld
+  // hier met de hand gevuld, en misten de nieuwe velden dus vanzelf.
   const aantal = (dag.holes || []).length;
-  const holesEl = document.getElementById('t-dag-holes');
-  const custEl  = document.getElementById('t-dag-holes-custom');
-  const custWrap = document.getElementById('t-dag-holes-custom-wrap');
-  if (holesEl) {
-    if (aantal === 18 || aantal === 9) {
-      holesEl.value = String(aantal);
-      if (custWrap) custWrap.style.display = 'none';
-    } else {
-      holesEl.value = 'custom';
-      if (custEl) custEl.value = aantal;
-      if (custWrap) custWrap.style.display = 'block';
-    }
-  }
-  const tijdEl = document.getElementById('t-dag-starttijd');
-  if (tijdEl) tijdEl.value = dag.starttijd || '09:00';
-  const intEl = document.getElementById('t-dag-interval');
-  if (intEl) intEl.value = dag.interval != null ? dag.interval : 10;
+  vulDagVenster({
+    datum:       dag.datum || '',
+    baan:        dag.baan || '',
+    holes:       (aantal === 18 || aantal === 9) ? String(aantal) : 'custom',
+    holesCustom: (aantal === 18 || aantal === 9) ? '' : String(aantal),
+    modus:       dagModus(t, dag),
+    starttijd:   dag.starttijd || '09:00',
+    interval:    dag.interval ?? 10,
+    ptWin:       dagInstelling(dag, t, 'ptWin', 2),
+    ptTie:       dagInstelling(dag, t, 'ptTie', 0),
+    ptLoss:      dagInstelling(dag, t, 'ptLoss', -2),
+    hcpPct:      Math.round(dagInstelling(dag, t, 'hcpPct', 0.75) * 100),
+  }, dag.dagNr);
 
   _zetDagModalStand(dag.dagNr);
   document.getElementById('modal-nieuwe-dag').classList.add('open');
@@ -1961,10 +2142,16 @@ async function slaDagWijzigingOp() {
     dag.datum     = datum;
     dag.baan      = baanNaam;
     dag.holes     = holes;
-    dag.modus     = document.getElementById('t-dag-modus')?.value || dagModus(t, dag);  // v5.12.0
-    dag.starttijd = document.getElementById('t-dag-starttijd')?.value || dag.starttijd || '09:00';
-    const intVal  = parseInt(document.getElementById('t-dag-interval')?.value);
-    dag.interval  = Number.isFinite(intVal) ? intVal : (dag.interval || 0);
+    // v5.13.0: uit hetzelfde gedeelde formulier, dus ook de punten en de
+    // handicapverrekening van deze dag.
+    const dv      = dagUitFormulier(document.getElementById('modal-dag-formulier')) || {};
+    dag.modus     = dv.modus || dagModus(t, dag);  // v5.12.0
+    dag.starttijd = dv.starttijd || dag.starttijd || '09:00';
+    dag.interval  = dv.interval ?? (dag.interval || 0);
+    dag.ptWin     = dv.ptWin;
+    dag.ptTie     = dv.ptTie;
+    dag.ptLoss    = dv.ptLoss;
+    dag.hcpPct    = (dv.hcpPctHeel ?? 75) / 100;
 
     // Bij een ander aantal holes moeten de (lege) scorerijen mee. Er zijn hier
     // per definitie geen ingevulde scores, dus er gaat niets verloren.
@@ -2033,17 +2220,24 @@ async function voegDagToe() {
     t.spelers.forEach(s => { scores[s.uid] = Array(holes.length).fill(null); });
 
     // Flight indeling: start leeg (beheerder stelt in via flight modal)
-    const starttijd = document.getElementById('t-dag-starttijd')?.value || '09:00';
-    const interval  = parseInt(document.getElementById('t-dag-interval')?.value) || 0;
+    // v5.13.0: het hele dagformulier in één keer uitlezen, met dezelfde functie
+    // als het aanmaakscherm. Zo krijgt een dag die je ONDERWEG toevoegt precies
+    // dezelfde instellingen als een dag die je bij het aanmaken invult —
+    // inclusief eigen punten en eigen handicapverrekening.
+    const dv = dagUitFormulier(document.getElementById('modal-dag-formulier')) || {};
 
     const nieuweDag = {
       dagNr:    (t.dagen || []).length + 1,
       datum,
       baan:     baanNaam,
       holes,
-      starttijd,
-      interval,
-      modus:    document.getElementById('t-dag-modus')?.value || dagModus(t, null),  // v5.12.0
+      starttijd: dv.starttijd || '09:00',
+      interval:  dv.interval ?? 0,
+      modus:     dv.modus || dagModus(t, null),  // v5.12.0
+      ptWin:     dv.ptWin,
+      ptTie:     dv.ptTie,
+      ptLoss:    dv.ptLoss,
+      hcpPct:    (dv.hcpPctHeel ?? 75) / 100,
       flights:  [],  // leeg — beheerder deelt in via flight modal
       scores,
       afgerond: false
@@ -2552,34 +2746,44 @@ function renderToernooiActief() {
     })
   );
 
-  // Dag-tabs (altijd tonen als > 1 dag)
-  let dagTabsHtml = '';
-  if (aantalDagen > 1 || (isBeheerder && !dagAfgerond)) {
-    dagTabsHtml = `<div style="display:flex;gap:6px;overflow-x:auto;padding:10px 16px 0;scrollbar-width:none;border-bottom:1px solid var(--border)">`;
-    (t.dagen || []).forEach(d => {
-      const actief = d.dagNr === dagNr;
-      const kleur = d.afgerond ? 'var(--mid)' : 'var(--green)';
-      dagTabsHtml += `<button onclick="selecteerDag(${d.dagNr})"
-        style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px solid ${actief ? kleur : 'var(--border)'};border-bottom:none;background:${actief ? kleur : 'transparent'};color:${actief ? 'white' : 'var(--mid)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">
-        Dag ${d.dagNr}${d.afgerond ? ' ✓' : ''}
-      </button>`;
-    });
-    // v5.9.1: "+ Dag toevoegen" is er voor de coordinator altijd.
-    //
-    // WAT ER MIS WAS: de knop verscheen alleen als ALLE dagen al afgesloten
-    // waren. Merk je bij het aanmaken dat het toernooi twee dagen duurt in
-    // plaats van één, dan was de enige uitweg het hele toernooi weggooien en
-    // opnieuw instellen. Terwijl voegDagToe() er al klaar voor was: die
-    // waarschuwt zelf netjes als de vorige dag nog niet is afgesloten. De
-    // functie kon het dus wel, het scherm liet het niet toe.
-    if (isBeheerder) {
-      dagTabsHtml += `<button onclick="openNieuweDagModal()"
-        style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px dashed var(--border);border-bottom:none;background:transparent;color:var(--green);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">
-        + Dag toevoegen
-      </button>`;
-    }
-    dagTabsHtml += '</div>';
+  // ============================================================
+  //  ÉÉN RIJ TABBLADEN  (v5.13.1)
+  // ------------------------------------------------------------
+  //  WAT ER MIS WAS. Er stonden TWEE rijen dagtabbladen op dit scherm: hier
+  //  `Dag 1 · Dag 2 · + Dag toevoegen`, en verderop binnen het klassement nog
+  //  een rij `Dag 1 · Dag 2 · Totaal`. Twee keer dezelfde vraag, en het
+  //  klassement kon een andere dag tonen dan de rest van het scherm.
+  //
+  //  Nu één rij: [Toernooi] [Dag 1] [Dag 2] [+ Dag]. Tabblad 0 is het toernooi
+  //  als geheel — klassement over alle dagen, gastlogins, afsluiten. Een
+  //  dagtabblad toont alles van díe dag. Zie ONTWERP-TOERNOOISCHERM.md.
+  //
+  //  ⚠ Je landt op de ACTIEVE DAG, niet op het overzicht. De scorekaart staat
+  //  daarmee nog steeds meteen in beeld, zoals altijd.
+  const toonToernooiTab = window._tTabblad === 0;
+  let dagTabsHtml = `<div style="display:flex;gap:6px;overflow-x:auto;padding:10px 16px 0;scrollbar-width:none;border-bottom:1px solid var(--border)">
+    <button onclick="selecteerDag(0)"
+      style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px solid ${toonToernooiTab ? 'var(--gold)' : 'var(--border)'};border-bottom:none;background:${toonToernooiTab ? 'var(--gold)' : 'transparent'};color:${toonToernooiTab ? 'white' : 'var(--mid)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">
+      Toernooi
+    </button>`;
+  (t.dagen || []).forEach(d => {
+    const actief = !toonToernooiTab && d.dagNr === dagNr;
+    const kleur = d.afgerond ? 'var(--mid)' : 'var(--green)';
+    dagTabsHtml += `<button onclick="selecteerDag(${d.dagNr})"
+      style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px solid ${actief ? kleur : 'var(--border)'};border-bottom:none;background:${actief ? kleur : 'transparent'};color:${actief ? 'white' : 'var(--mid)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">
+      Dag ${d.dagNr}${d.afgerond ? ' ✓' : ''}
+    </button>`;
+  });
+  // v5.9.1: "+ Dag toevoegen" is er voor de coordinator altijd. Merk je bij het
+  // aanmaken dat het toernooi twee dagen duurt in plaats van één, dan was de
+  // enige uitweg anders het hele toernooi weggooien en opnieuw instellen.
+  if (isBeheerder) {
+    dagTabsHtml += `<button onclick="openNieuweDagModal()"
+      style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px dashed var(--border);border-bottom:none;background:transparent;color:var(--green);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">
+      + Dag toevoegen
+    </button>`;
   }
+  dagTabsHtml += '</div>';
 
   // v3.0.0-11.106: bouw secties als variabelen op, zodat de volgorde
   // verschilt voor beheerder (scores onderaan) vs speler (scores bovenaan).
@@ -2619,26 +2823,18 @@ function renderToernooiActief() {
   // Daarom staat er nu een kop boven. Een blok zonder naam is een blok waar je
   // niet over kunt praten.
   const standZichtbaar = isBeheerder || !t.matrixVerborgen;
-  const ranglijstKaart = (standZichtbaar && (uitslag || dagAfgerond || dagModus(t, dag) === 'strokeplay')) ? `
+  // v5.13.1: op het tabblad "Toernooi" is het klassement de hoofdzaak, dus daar
+  // staat het er altijd. Op een dagtabblad geldt de oude regel: pas als de
+  // uitslag vrij is, de dag is afgesloten, of het strokeplay is.
+  const ranglijstKaart = (standZichtbaar && (toonToernooiTab || uitslag || dagAfgerond || dagModus(t, dag) === 'strokeplay')) ? `
     <div class="card">
       <div class="card-header">
         <h2>Klassement</h2>
         ${isBeheerder && t.matrixVerborgen ? '<span style="font-size:11px;color:var(--mid)">· niet zichtbaar voor deelnemers</span>' : ''}
       </div>
-      <div style="display:flex;gap:6px;overflow-x:auto;padding:10px 12px 0;scrollbar-width:none;border-bottom:1px solid var(--border)">
-        ${(t.dagen || []).map(d => `
-          <button onclick="selecteerRanglijstDag(${d.dagNr})"
-            id="t-rl-tab-${d.dagNr}"
-            style="flex-shrink:0;padding:5px 12px;border-radius:16px 16px 0 0;border:1.5px solid var(--border);border-bottom:none;background:transparent;color:var(--mid);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">
-            Dag ${d.dagNr}
-          </button>`).join('')}
-        ${aantalDagen > 1 ? `
-          <button onclick="selecteerRanglijstDag(0)"
-            id="t-rl-tab-0"
-            style="flex-shrink:0;padding:5px 12px;border-radius:16px 16px 0 0;border:1.5px solid var(--border);border-bottom:none;background:transparent;color:var(--mid);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">
-            Totaal
-          </button>` : ''}
-      </div>
+      <!-- v5.13.1: hier stond een TWEEDE rij dagtabbladen. Het klassement volgt
+           nu het tabblad bovenaan: op "Toernooi" het totaal over alle dagen, op
+           een dagtabblad de stand van die dag. -->
       <div id="t-ranglijst"></div>
     </div>` : '';
 
@@ -2707,13 +2903,41 @@ function renderToernooiActief() {
       </button>
     </div>`;
 
-  const beheerderKnoppen = isBeheerder ? `
+  // ============================================================
+  //  DE KNOPPEN, GESPLITST  (v5.13.1)
+  // ------------------------------------------------------------
+  //  Ze stonden in één lijst door elkaar: "Dag 2 wijzigen" naast "Toernooi
+  //  afsluiten". Nu staat elke knop op het tabblad waar hij hoort. De inhoud
+  //  van elke knop is LETTERLIJK overgenomen — alleen de groepering is nieuw.
+  const dagKnoppen = isBeheerder ? `
     <div style="padding:0 0 16px">
       ${!dagHeeftScores(dag) ? `
       <button class="btn btn-ghost btn-block" onclick="openDagBewerkenModal()" style="margin-bottom:8px">
         ✏️ Dag ${dagNr} wijzigen (datum, baan, holes)
       </button>
       ` : ''}
+      ${!dagAfgerond && !uitslag ? `
+      <button id="t-uitslag-btn" class="btn btn-primary btn-block"
+        style="margin-bottom:8px;${!allesIngevuld ? 'opacity:0.5;cursor:not-allowed' : ''}"
+        ${!allesIngevuld ? 'disabled' : ''}>
+        📊 Uitslag dag ${dagNr} ${!allesIngevuld ? '(scores onvolledig)' : ''}
+      </button>
+      ` : ''}
+      ${uitslag && !dagAfgerond ? `
+      <button class="btn btn-gold btn-block" onclick="sluitDagAf()" style="margin-bottom:8px">
+        ✓ Dag ${dagNr} afsluiten
+      </button>
+      ` : ''}
+      ${dagAfgerond ? `
+      <button class="btn btn-ghost btn-block" onclick="heropenDag()" style="margin-bottom:8px">
+        ↩ Dag ${dagNr} heropenen
+      </button>
+      ` : ''}
+    </div>
+    ` : '';
+
+  const toernooiKnoppen = isBeheerder ? `
+    <div style="padding:0 0 16px">
       ${(t.spelers || []).some(sp => sp.gast && !sp.login) && !IS_TEST ? `
       <button class="btn btn-secondary btn-block" onclick="maakOntbrekendeGastlogins()" style="margin-bottom:8px">
         ⌨ Gastlogins aanmaken (${(t.spelers || []).filter(sp => sp.gast && !sp.login).length} zonder inlog)
@@ -2732,23 +2956,6 @@ function renderToernooiActief() {
         Het huidige toernooi wordt verwijderd en alle instellingen komen terug in het
         aanmaakscherm. Voor alleen een dag erbij of een andere baan: gebruik de knoppen hierboven.
       </p>
-      ` : ''}
-      ${!dagAfgerond && !uitslag ? `
-      <button id="t-uitslag-btn" class="btn btn-primary btn-block"
-        style="margin-bottom:8px;${!allesIngevuld ? 'opacity:0.5;cursor:not-allowed' : ''}"
-        ${!allesIngevuld ? 'disabled' : ''}>
-        📊 Uitslag dag ${dagNr} ${!allesIngevuld ? '(scores onvolledig)' : ''}
-      </button>
-      ` : ''}
-      ${uitslag && !dagAfgerond ? `
-      <button class="btn btn-gold btn-block" onclick="sluitDagAf()" style="margin-bottom:8px">
-        ✓ Dag ${dagNr} afsluiten
-      </button>
-      ` : ''}
-      ${dagAfgerond ? `
-      <button class="btn btn-ghost btn-block" onclick="heropenDag()" style="margin-bottom:8px">
-        ↩ Dag ${dagNr} heropenen
-      </button>
       ` : ''}
       ${heeftStrokeplayDag(t) && (t.rankingLadderIds?.length > 0 || t.ladderId) ? `
       <div style="padding:8px 12px;background:var(--gold-pale);border-radius:8px;margin-bottom:8px;font-size:12px;color:var(--gold)">
@@ -2795,20 +3002,32 @@ function renderToernooiActief() {
     </div>
     ` : '';
 
-  // v3.0.0-11.106: volgorde verschilt per rol
-  // Speler: titel → scorekaart → ranglijst → matrix → livelink
-  // Beheerder: titel → ranglijst → matrix → scorekaart → livelink → knoppen
-  if (isBeheerder) {
-    detail.innerHTML = dagTabsHtml + titelKaart + ranglijstKaart + matrixKaart + scorecardKaart + liveLinkKnop + beheerderKnoppen;
+  // ============================================================
+  //  WAT STAAT ER OP WELK TABBLAD  (v5.13.1)
+  // ------------------------------------------------------------
+  //  Toernooi : naam, klassement over alle dagen, meekijklink, gastlogins,
+  //             opnieuw instellen, afsluiten, annuleren.
+  //  Dag N    : dagstand, onderlinge stand, scorekaart, en de dagknoppen.
+  //
+  //  ⚠ Elk blok is ONGEWIJZIGD; alleen de volgorde en de groepering zijn nieuw.
+  //  De scorekaart is verplaatst, niet herschreven — zie
+  //  ONTWERP-TOERNOOISCHERM.md, hoofdstuk 5.
+  //
+  //  v3.0.0-11.106: binnen een dagtabblad verschilt de volgorde per rol. De
+  //  speler ziet zijn scorekaart bovenaan, de coordinator eerst de standen.
+  if (toonToernooiTab) {
+    detail.innerHTML = dagTabsHtml + titelKaart + ranglijstKaart + liveLinkKnop + toernooiKnoppen;
+  } else if (isBeheerder) {
+    detail.innerHTML = dagTabsHtml + titelKaart + ranglijstKaart + matrixKaart + scorecardKaart + dagKnoppen;
   } else {
-    detail.innerHTML = dagTabsHtml + titelKaart + scorecardKaart + ranglijstKaart + matrixKaart + liveLinkKnop;
+    detail.innerHTML = dagTabsHtml + titelKaart + scorecardKaart + ranglijstKaart + matrixKaart;
   }
 
   renderTScorecard();
 
-  // Toon ranglijst op actieve dag als dag afgerond of uitslag zichtbaar
-  if (uitslag || dagAfgerond || dagModus(t, dag) === 'strokeplay') {
-    selecteerRanglijstDag(dagNr);
+  // v5.13.1: het klassement volgt het tabblad — 0 is het totaal over alle dagen.
+  if (toonToernooiTab || uitslag || dagAfgerond || dagModus(t, dag) === 'strokeplay') {
+    selecteerRanglijstDag(toonToernooiTab ? 0 : dagNr);
   }
   renderTMatrix();
 
@@ -2821,26 +3040,12 @@ function renderToernooiActief() {
 // ============================================================
 // dagNr: 0 = totaal, 1..N = dag
 function selecteerRanglijstDag(dagNr) {
+  // v5.13.1: het klassement had een eigen rij tabbladen; die is weg en het
+  // volgt nu de rij bovenaan. Wat hier stond om die knoppen te kleuren is
+  // daarmee vervallen. De functie blijft bestaan omdat hij op window staat en
+  // de keuze van welke dag getoond wordt nog wél nodig is.
   window._ranglijstDagNr = dagNr;
-  // Update tab styling
-  const t = toernooiData;
-  if (!t) return;
-  (t.dagen || []).forEach(d => {
-    const tab = document.getElementById(`t-rl-tab-${d.dagNr}`);
-    const actief = d.dagNr === dagNr;
-    if (tab) {
-      tab.style.background = actief ? 'var(--green)' : 'transparent';
-      tab.style.color = actief ? 'white' : 'var(--mid)';
-      tab.style.borderColor = actief ? 'var(--green)' : 'var(--border)';
-    }
-  });
-  const totaalTab = document.getElementById('t-rl-tab-0');
-  if (totaalTab) {
-    const actief = dagNr === 0;
-    totaalTab.style.background = actief ? 'var(--gold)' : 'transparent';
-    totaalTab.style.color = actief ? 'white' : 'var(--mid)';
-    totaalTab.style.borderColor = actief ? 'var(--gold)' : 'var(--border)';
-  }
+  if (!toernooiData) return;
   renderTRanglijst();
 }
 window.selecteerRanglijstDag = selecteerRanglijstDag;
@@ -3358,8 +3563,31 @@ function getTHcpSlagen(spelerA, spelerB, hole, hcpPct, aantalHoles = 18) {
 // ============================================================
 
 // Bereken matchplay punten voor één dag
+// v5.13.0 — DE INSTELLINGEN STAAN PER DAG.
+//  Tot v5.12.8 gold één puntentelling en één handicappercentage voor het hele
+//  toernooi. Sierk wilde per dag kunnen kiezen: een dag met 2/0/-2 en een dag
+//  met 3/1/0 in hetzelfde toernooi.
+//
+//  ⚠ Altijd met terugval op de toernooibrede waarde. Een toernooi van vóór
+//  v5.13.0 heeft deze velden niet op de dag staan en rekent daardoor EXACT
+//  zoals het altijd deed. Dat is met opzet: er draaien toernooien.
+//
+//  `?? ` en niet `||`: een puntenwaarde van 0 (gelijkspel levert vaak 0 op) is
+//  een geldige keuze en mag niet als "niet ingevuld" gelezen worden.
+function dagInstelling(dag, t, veld, standaard) {
+  const opDag = dag && dag[veld];
+  if (opDag !== undefined && opDag !== null && opDag !== '') return Number(opDag);
+  const opToernooi = t && t[veld];
+  if (opToernooi !== undefined && opToernooi !== null && opToernooi !== '') return Number(opToernooi);
+  return standaard;
+}
+
 function berekenTPuntenVoorDag(t, dag) {
   if (!dag) return { punten: [], won: [], tied: [], lost: [], matrix: [], standen: [] };
+  const dagPtWin  = dagInstelling(dag, t, 'ptWin',  2);
+  const dagPtTie  = dagInstelling(dag, t, 'ptTie',  0);
+  const dagPtLoss = dagInstelling(dag, t, 'ptLoss', -2);
+  const dagHcpPct = dagInstelling(dag, t, 'hcpPct', 0.75);
   const n = t.spelers.length;
   const punten = new Array(n).fill(0);
   const won    = new Array(n).fill(0);
@@ -3390,7 +3618,10 @@ function berekenTPuntenVoorDag(t, dag) {
         // uitgerekende uitslag dus af van wat de spelers voor zich zagen — en
         // dat is precies het soort verschil dat een toernooi laat ontsporen.
         // Nu is er nog maar een implementatie: die van getTHcpSlagen().
-        const { ontvanger, slagOpHole } = getTHcpSlagen(sA, sB, hole, t.hcpPct, dag.holes.length);
+        // v5.13.0: de handicapverrekening staat per DAG. Ontbreekt hij op de
+        // dag — elk toernooi van vóór v5.13.0 — dan geldt de toernooibrede
+        // waarde en verandert er dus niets aan een bestaand toernooi.
+        const { ontvanger, slagOpHole } = getTHcpSlagen(sA, sB, hole, dagHcpPct, dag.holes.length);
         const aKrijgtSlag = (slagOpHole > 0 && ontvanger.uid === sA.uid) ? slagOpHole : 0;
         const bKrijgtSlag = (slagOpHole > 0 && ontvanger.uid === sB.uid) ? slagOpHole : 0;
         const nettoA = scoreA - aKrijgtSlag;
@@ -3405,15 +3636,15 @@ function berekenTPuntenVoorDag(t, dag) {
       standen[j][i] = -standA;
 
       if (standA > 0) {
-        punten[i] += t.ptWin; punten[j] += t.ptLoss;
+        punten[i] += dagPtWin; punten[j] += dagPtLoss;
         won[i]++; lost[j]++;
         matrix[i][j] = 'W'; matrix[j][i] = 'L';
       } else if (standA < 0) {
-        punten[j] += t.ptWin; punten[i] += t.ptLoss;
+        punten[j] += dagPtWin; punten[i] += dagPtLoss;
         won[j]++; lost[i]++;
         matrix[i][j] = 'L'; matrix[j][i] = 'W';
       } else {
-        punten[i] += t.ptTie; punten[j] += t.ptTie;
+        punten[i] += dagPtTie; punten[j] += dagPtTie;
         tied[i]++; tied[j]++;
         matrix[i][j] = 'T'; matrix[j][i] = 'T';
       }
@@ -4264,15 +4495,13 @@ function _herstelSetupVanuitToernooi(t) {
   // gevuld vanuit t.dagen; pasSpeelwijzeToe() draait daarna.
 
   // Punt-instellingen
-  if (t.ptWin  !== undefined) { const el = document.getElementById('t-pt-win');  if (el) el.value = t.ptWin; }
-  if (t.ptTie  !== undefined) { const el = document.getElementById('t-pt-tie');  if (el) el.value = t.ptTie; }
-  if (t.ptLoss !== undefined) { const el = document.getElementById('t-pt-loss'); if (el) el.value = t.ptLoss; }
-  if (t.hcpPct !== undefined) { const el = document.getElementById('t-hcp-pct'); if (el) el.value = Math.round(t.hcpPct * 100); }
+  // v5.13.0: punten, handicap, starttijd en interval staan per dag. Ze worden
+  // hieronder in de dagblokken teruggezet, niet meer in toernooibrede velden.
 
   // Dag 1 starttijd + interval (van eerste dag)
   const dag1 = (t.dagen || [])[0];
-  if (dag1?.starttijd) { const el = document.getElementById('t-starttijd'); if (el) el.value = dag1.starttijd; }
-  if (dag1?.interval  !== undefined) { const el = document.getElementById('t-interval');  if (el) el.value = dag1.interval; }
+  // v5.13.0: starttijd en interval staan per dag en worden hieronder in de
+  // dagblokken teruggezet, samen met de punten en de handicap.
 
   // Aantal dagen + dag-blokken
   const aantalEl = document.getElementById('t-aantal-dagen');
@@ -4303,8 +4532,23 @@ function _herstelSetupVanuitToernooi(t) {
         if (custWrap) custWrap.style.display = 'block';
       }
     }
+    // v5.13.0: alles wat per dag is opgeslagen ook per dag terugzetten.
+    // Ontbreekt het op de dag — een toernooi van vóór v5.13.0 — dan valt het
+    // terug op de toernooibrede waarde, dezelfde volgorde als dagInstelling().
+    const zetD = (klasse, waarde) => {
+      if (waarde === undefined || waarde === null || waarde === '') return;
+      const el = blok.querySelector('.t-dag-' + klasse);
+      if (el) el.value = waarde;
+    };
+    zetD('starttijd', dag.starttijd);
+    zetD('interval',  dag.interval);
+    zetD('ptwin',  dag.ptWin  ?? t.ptWin);
+    zetD('pttie',  dag.ptTie  ?? t.ptTie);
+    zetD('ptloss', dag.ptLoss ?? t.ptLoss);
+    zetD('hcppct', dag.hcpPct !== undefined ? Math.round(dag.hcpPct * 100)
+                 : (t.hcpPct !== undefined ? Math.round(t.hcpPct * 100) : undefined));
     const modusEl = blok.querySelector('.t-dag-modus');            // v5.12.0
-    if (modusEl) modusEl.value = dagModus(t, dag);
+    if (modusEl) { modusEl.value = dagModus(t, dag); onDagModusWissel(modusEl); }
   });
 
   // Spelers — herstel uit t.spelers
