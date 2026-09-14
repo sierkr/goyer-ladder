@@ -631,6 +631,8 @@ function selecteerToernooi(id) {
   store.actieveToernooiId = id;
   store.toernooiData = alleToernooien.find(t => t.id === id) || null;
   window._bekijkDagNr = null; // v4.0.0: bekijk-dag hoort bij één toernooi (fix 7.4)
+  window._tTabblad = null;    // v5.13.1: begin op de actieve dag, niet op het overzicht
+  window._ranglijstDagNr = null;
   renderToernooi();
 }
 
@@ -1693,10 +1695,17 @@ async function startToernooi() {
 // Selecteer actieve dag en herrender
 function selecteerDag(dagNr) {
   if (!toernooiData) return;
+  // v5.13.1: 0 is het tabblad "Toernooi" — het geheel, niet één dag. De
+  // bekeken dag blijft dan staan waar hij stond, zodat je bij terugkeren op
+  // dezelfde dag uitkomt.
+  window._tTabblad = dagNr === 0 ? 0 : null;
   // v4.0.0: alleen lokale weergave — schrijft NIET meer naar Firestore.
   // Voorheen werd actiefDagNr voor het hele toernooi (alle gebruikers)
   // overschreven zodra iemand een oude dag bekeek (fix 7.4).
-  window._bekijkDagNr = dagNr;
+  if (dagNr !== 0) window._bekijkDagNr = dagNr;
+  // Het klassement volgt het tabblad: op "Toernooi" het totaal (0), op een
+  // dagtabblad die dag. Voorheen had het klassement een eigen keuze.
+  window._ranglijstDagNr = dagNr;
   renderToernooiActief();
 }
 
@@ -2737,34 +2746,44 @@ function renderToernooiActief() {
     })
   );
 
-  // Dag-tabs (altijd tonen als > 1 dag)
-  let dagTabsHtml = '';
-  if (aantalDagen > 1 || (isBeheerder && !dagAfgerond)) {
-    dagTabsHtml = `<div style="display:flex;gap:6px;overflow-x:auto;padding:10px 16px 0;scrollbar-width:none;border-bottom:1px solid var(--border)">`;
-    (t.dagen || []).forEach(d => {
-      const actief = d.dagNr === dagNr;
-      const kleur = d.afgerond ? 'var(--mid)' : 'var(--green)';
-      dagTabsHtml += `<button onclick="selecteerDag(${d.dagNr})"
-        style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px solid ${actief ? kleur : 'var(--border)'};border-bottom:none;background:${actief ? kleur : 'transparent'};color:${actief ? 'white' : 'var(--mid)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">
-        Dag ${d.dagNr}${d.afgerond ? ' ✓' : ''}
-      </button>`;
-    });
-    // v5.9.1: "+ Dag toevoegen" is er voor de coordinator altijd.
-    //
-    // WAT ER MIS WAS: de knop verscheen alleen als ALLE dagen al afgesloten
-    // waren. Merk je bij het aanmaken dat het toernooi twee dagen duurt in
-    // plaats van één, dan was de enige uitweg het hele toernooi weggooien en
-    // opnieuw instellen. Terwijl voegDagToe() er al klaar voor was: die
-    // waarschuwt zelf netjes als de vorige dag nog niet is afgesloten. De
-    // functie kon het dus wel, het scherm liet het niet toe.
-    if (isBeheerder) {
-      dagTabsHtml += `<button onclick="openNieuweDagModal()"
-        style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px dashed var(--border);border-bottom:none;background:transparent;color:var(--green);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">
-        + Dag toevoegen
-      </button>`;
-    }
-    dagTabsHtml += '</div>';
+  // ============================================================
+  //  ÉÉN RIJ TABBLADEN  (v5.13.1)
+  // ------------------------------------------------------------
+  //  WAT ER MIS WAS. Er stonden TWEE rijen dagtabbladen op dit scherm: hier
+  //  `Dag 1 · Dag 2 · + Dag toevoegen`, en verderop binnen het klassement nog
+  //  een rij `Dag 1 · Dag 2 · Totaal`. Twee keer dezelfde vraag, en het
+  //  klassement kon een andere dag tonen dan de rest van het scherm.
+  //
+  //  Nu één rij: [Toernooi] [Dag 1] [Dag 2] [+ Dag]. Tabblad 0 is het toernooi
+  //  als geheel — klassement over alle dagen, gastlogins, afsluiten. Een
+  //  dagtabblad toont alles van díe dag. Zie ONTWERP-TOERNOOISCHERM.md.
+  //
+  //  ⚠ Je landt op de ACTIEVE DAG, niet op het overzicht. De scorekaart staat
+  //  daarmee nog steeds meteen in beeld, zoals altijd.
+  const toonToernooiTab = window._tTabblad === 0;
+  let dagTabsHtml = `<div style="display:flex;gap:6px;overflow-x:auto;padding:10px 16px 0;scrollbar-width:none;border-bottom:1px solid var(--border)">
+    <button onclick="selecteerDag(0)"
+      style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px solid ${toonToernooiTab ? 'var(--gold)' : 'var(--border)'};border-bottom:none;background:${toonToernooiTab ? 'var(--gold)' : 'transparent'};color:${toonToernooiTab ? 'white' : 'var(--mid)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">
+      Toernooi
+    </button>`;
+  (t.dagen || []).forEach(d => {
+    const actief = !toonToernooiTab && d.dagNr === dagNr;
+    const kleur = d.afgerond ? 'var(--mid)' : 'var(--green)';
+    dagTabsHtml += `<button onclick="selecteerDag(${d.dagNr})"
+      style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px solid ${actief ? kleur : 'var(--border)'};border-bottom:none;background:${actief ? kleur : 'transparent'};color:${actief ? 'white' : 'var(--mid)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">
+      Dag ${d.dagNr}${d.afgerond ? ' ✓' : ''}
+    </button>`;
+  });
+  // v5.9.1: "+ Dag toevoegen" is er voor de coordinator altijd. Merk je bij het
+  // aanmaken dat het toernooi twee dagen duurt in plaats van één, dan was de
+  // enige uitweg anders het hele toernooi weggooien en opnieuw instellen.
+  if (isBeheerder) {
+    dagTabsHtml += `<button onclick="openNieuweDagModal()"
+      style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px dashed var(--border);border-bottom:none;background:transparent;color:var(--green);font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif">
+      + Dag toevoegen
+    </button>`;
   }
+  dagTabsHtml += '</div>';
 
   // v3.0.0-11.106: bouw secties als variabelen op, zodat de volgorde
   // verschilt voor beheerder (scores onderaan) vs speler (scores bovenaan).
@@ -2804,26 +2823,18 @@ function renderToernooiActief() {
   // Daarom staat er nu een kop boven. Een blok zonder naam is een blok waar je
   // niet over kunt praten.
   const standZichtbaar = isBeheerder || !t.matrixVerborgen;
-  const ranglijstKaart = (standZichtbaar && (uitslag || dagAfgerond || dagModus(t, dag) === 'strokeplay')) ? `
+  // v5.13.1: op het tabblad "Toernooi" is het klassement de hoofdzaak, dus daar
+  // staat het er altijd. Op een dagtabblad geldt de oude regel: pas als de
+  // uitslag vrij is, de dag is afgesloten, of het strokeplay is.
+  const ranglijstKaart = (standZichtbaar && (toonToernooiTab || uitslag || dagAfgerond || dagModus(t, dag) === 'strokeplay')) ? `
     <div class="card">
       <div class="card-header">
         <h2>Klassement</h2>
         ${isBeheerder && t.matrixVerborgen ? '<span style="font-size:11px;color:var(--mid)">· niet zichtbaar voor deelnemers</span>' : ''}
       </div>
-      <div style="display:flex;gap:6px;overflow-x:auto;padding:10px 12px 0;scrollbar-width:none;border-bottom:1px solid var(--border)">
-        ${(t.dagen || []).map(d => `
-          <button onclick="selecteerRanglijstDag(${d.dagNr})"
-            id="t-rl-tab-${d.dagNr}"
-            style="flex-shrink:0;padding:5px 12px;border-radius:16px 16px 0 0;border:1.5px solid var(--border);border-bottom:none;background:transparent;color:var(--mid);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">
-            Dag ${d.dagNr}
-          </button>`).join('')}
-        ${aantalDagen > 1 ? `
-          <button onclick="selecteerRanglijstDag(0)"
-            id="t-rl-tab-0"
-            style="flex-shrink:0;padding:5px 12px;border-radius:16px 16px 0 0;border:1.5px solid var(--border);border-bottom:none;background:transparent;color:var(--mid);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif">
-            Totaal
-          </button>` : ''}
-      </div>
+      <!-- v5.13.1: hier stond een TWEEDE rij dagtabbladen. Het klassement volgt
+           nu het tabblad bovenaan: op "Toernooi" het totaal over alle dagen, op
+           een dagtabblad de stand van die dag. -->
       <div id="t-ranglijst"></div>
     </div>` : '';
 
@@ -2892,13 +2903,41 @@ function renderToernooiActief() {
       </button>
     </div>`;
 
-  const beheerderKnoppen = isBeheerder ? `
+  // ============================================================
+  //  DE KNOPPEN, GESPLITST  (v5.13.1)
+  // ------------------------------------------------------------
+  //  Ze stonden in één lijst door elkaar: "Dag 2 wijzigen" naast "Toernooi
+  //  afsluiten". Nu staat elke knop op het tabblad waar hij hoort. De inhoud
+  //  van elke knop is LETTERLIJK overgenomen — alleen de groepering is nieuw.
+  const dagKnoppen = isBeheerder ? `
     <div style="padding:0 0 16px">
       ${!dagHeeftScores(dag) ? `
       <button class="btn btn-ghost btn-block" onclick="openDagBewerkenModal()" style="margin-bottom:8px">
         ✏️ Dag ${dagNr} wijzigen (datum, baan, holes)
       </button>
       ` : ''}
+      ${!dagAfgerond && !uitslag ? `
+      <button id="t-uitslag-btn" class="btn btn-primary btn-block"
+        style="margin-bottom:8px;${!allesIngevuld ? 'opacity:0.5;cursor:not-allowed' : ''}"
+        ${!allesIngevuld ? 'disabled' : ''}>
+        📊 Uitslag dag ${dagNr} ${!allesIngevuld ? '(scores onvolledig)' : ''}
+      </button>
+      ` : ''}
+      ${uitslag && !dagAfgerond ? `
+      <button class="btn btn-gold btn-block" onclick="sluitDagAf()" style="margin-bottom:8px">
+        ✓ Dag ${dagNr} afsluiten
+      </button>
+      ` : ''}
+      ${dagAfgerond ? `
+      <button class="btn btn-ghost btn-block" onclick="heropenDag()" style="margin-bottom:8px">
+        ↩ Dag ${dagNr} heropenen
+      </button>
+      ` : ''}
+    </div>
+    ` : '';
+
+  const toernooiKnoppen = isBeheerder ? `
+    <div style="padding:0 0 16px">
       ${(t.spelers || []).some(sp => sp.gast && !sp.login) && !IS_TEST ? `
       <button class="btn btn-secondary btn-block" onclick="maakOntbrekendeGastlogins()" style="margin-bottom:8px">
         ⌨ Gastlogins aanmaken (${(t.spelers || []).filter(sp => sp.gast && !sp.login).length} zonder inlog)
@@ -2917,23 +2956,6 @@ function renderToernooiActief() {
         Het huidige toernooi wordt verwijderd en alle instellingen komen terug in het
         aanmaakscherm. Voor alleen een dag erbij of een andere baan: gebruik de knoppen hierboven.
       </p>
-      ` : ''}
-      ${!dagAfgerond && !uitslag ? `
-      <button id="t-uitslag-btn" class="btn btn-primary btn-block"
-        style="margin-bottom:8px;${!allesIngevuld ? 'opacity:0.5;cursor:not-allowed' : ''}"
-        ${!allesIngevuld ? 'disabled' : ''}>
-        📊 Uitslag dag ${dagNr} ${!allesIngevuld ? '(scores onvolledig)' : ''}
-      </button>
-      ` : ''}
-      ${uitslag && !dagAfgerond ? `
-      <button class="btn btn-gold btn-block" onclick="sluitDagAf()" style="margin-bottom:8px">
-        ✓ Dag ${dagNr} afsluiten
-      </button>
-      ` : ''}
-      ${dagAfgerond ? `
-      <button class="btn btn-ghost btn-block" onclick="heropenDag()" style="margin-bottom:8px">
-        ↩ Dag ${dagNr} heropenen
-      </button>
       ` : ''}
       ${heeftStrokeplayDag(t) && (t.rankingLadderIds?.length > 0 || t.ladderId) ? `
       <div style="padding:8px 12px;background:var(--gold-pale);border-radius:8px;margin-bottom:8px;font-size:12px;color:var(--gold)">
@@ -2980,20 +3002,32 @@ function renderToernooiActief() {
     </div>
     ` : '';
 
-  // v3.0.0-11.106: volgorde verschilt per rol
-  // Speler: titel → scorekaart → ranglijst → matrix → livelink
-  // Beheerder: titel → ranglijst → matrix → scorekaart → livelink → knoppen
-  if (isBeheerder) {
-    detail.innerHTML = dagTabsHtml + titelKaart + ranglijstKaart + matrixKaart + scorecardKaart + liveLinkKnop + beheerderKnoppen;
+  // ============================================================
+  //  WAT STAAT ER OP WELK TABBLAD  (v5.13.1)
+  // ------------------------------------------------------------
+  //  Toernooi : naam, klassement over alle dagen, meekijklink, gastlogins,
+  //             opnieuw instellen, afsluiten, annuleren.
+  //  Dag N    : dagstand, onderlinge stand, scorekaart, en de dagknoppen.
+  //
+  //  ⚠ Elk blok is ONGEWIJZIGD; alleen de volgorde en de groepering zijn nieuw.
+  //  De scorekaart is verplaatst, niet herschreven — zie
+  //  ONTWERP-TOERNOOISCHERM.md, hoofdstuk 5.
+  //
+  //  v3.0.0-11.106: binnen een dagtabblad verschilt de volgorde per rol. De
+  //  speler ziet zijn scorekaart bovenaan, de coordinator eerst de standen.
+  if (toonToernooiTab) {
+    detail.innerHTML = dagTabsHtml + titelKaart + ranglijstKaart + liveLinkKnop + toernooiKnoppen;
+  } else if (isBeheerder) {
+    detail.innerHTML = dagTabsHtml + titelKaart + ranglijstKaart + matrixKaart + scorecardKaart + dagKnoppen;
   } else {
-    detail.innerHTML = dagTabsHtml + titelKaart + scorecardKaart + ranglijstKaart + matrixKaart + liveLinkKnop;
+    detail.innerHTML = dagTabsHtml + titelKaart + scorecardKaart + ranglijstKaart + matrixKaart;
   }
 
   renderTScorecard();
 
-  // Toon ranglijst op actieve dag als dag afgerond of uitslag zichtbaar
-  if (uitslag || dagAfgerond || dagModus(t, dag) === 'strokeplay') {
-    selecteerRanglijstDag(dagNr);
+  // v5.13.1: het klassement volgt het tabblad — 0 is het totaal over alle dagen.
+  if (toonToernooiTab || uitslag || dagAfgerond || dagModus(t, dag) === 'strokeplay') {
+    selecteerRanglijstDag(toonToernooiTab ? 0 : dagNr);
   }
   renderTMatrix();
 
@@ -3006,26 +3040,12 @@ function renderToernooiActief() {
 // ============================================================
 // dagNr: 0 = totaal, 1..N = dag
 function selecteerRanglijstDag(dagNr) {
+  // v5.13.1: het klassement had een eigen rij tabbladen; die is weg en het
+  // volgt nu de rij bovenaan. Wat hier stond om die knoppen te kleuren is
+  // daarmee vervallen. De functie blijft bestaan omdat hij op window staat en
+  // de keuze van welke dag getoond wordt nog wél nodig is.
   window._ranglijstDagNr = dagNr;
-  // Update tab styling
-  const t = toernooiData;
-  if (!t) return;
-  (t.dagen || []).forEach(d => {
-    const tab = document.getElementById(`t-rl-tab-${d.dagNr}`);
-    const actief = d.dagNr === dagNr;
-    if (tab) {
-      tab.style.background = actief ? 'var(--green)' : 'transparent';
-      tab.style.color = actief ? 'white' : 'var(--mid)';
-      tab.style.borderColor = actief ? 'var(--green)' : 'var(--border)';
-    }
-  });
-  const totaalTab = document.getElementById('t-rl-tab-0');
-  if (totaalTab) {
-    const actief = dagNr === 0;
-    totaalTab.style.background = actief ? 'var(--gold)' : 'transparent';
-    totaalTab.style.color = actief ? 'white' : 'var(--mid)';
-    totaalTab.style.borderColor = actief ? 'var(--gold)' : 'var(--border)';
-  }
+  if (!toernooiData) return;
   renderTRanglijst();
 }
 window.selecteerRanglijstDag = selecteerRanglijstDag;
