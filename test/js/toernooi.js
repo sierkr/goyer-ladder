@@ -137,8 +137,12 @@ function renderToernooi() {
       // dubbele "Cie on tour 2026" op live liet zien.
       mijnToernooien.forEach(t => {
         const actief = t.id === actieveToernooiId;
-        const staat = toernooiWacht(t) ? 'wacht' : 'bezig';
-        html += `<button onclick="selecteerToernooi('${escAttr(t.id)}')" style="flex-shrink:0;padding:6px 14px;border-radius:20px;border:1.5px solid ${actief ? 'var(--green)' : 'var(--border)'};background:${actief ? 'var(--green)' : 'white'};color:${actief ? 'white' : 'var(--dark)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">${esc(t.naam)} <span style="opacity:.75;font-size:11px">· ${staat}</span></button>`;
+        // v5.23.0: dezelfde woorden als bij een dag — concept of bezig — plus de
+        // datum van dag 1. Twee toernooien met dezelfde naam zijn anders niet uit
+        // elkaar te houden, en die kwamen op live echt voor.
+        const staat = toernooiIsConcept(t) ? 'concept' : 'bezig';
+        const datum = (t.dagen || [])[0]?.datum || '';
+        html += `<button onclick="selecteerToernooi('${escAttr(t.id)}')" style="flex-shrink:0;padding:6px 14px;border-radius:20px;border:1.5px solid ${actief ? 'var(--green)' : 'var(--border)'};background:${actief ? 'var(--green)' : 'white'};color:${actief ? 'white' : 'var(--dark)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">${esc(t.naam)} <span style="opacity:.75;font-size:11px">· ${staat}${datum ? ' · ' + esc(datum) : ''}</span></button>`;
       });
       html += '</div>';
     }
@@ -2086,7 +2090,12 @@ async function startToernooi() {
         toast(`Geen inlog gelukt voor: ${mislukt.join(', ')} — de rest staat klaar`, 9000);
       }
     }
-    alleToernooien.push(nieuweToernooi);
+    // v5.23.0: hier stond `alleToernooien.push(nieuweToernooi)`. De
+    // meeluisteraar in js/auth.js heeft het nieuwe toernooi op dit moment
+    // meestal al in de lijst gezet — en dan stond het er twee keer in. De lijst
+    // bewaakt dat nu zelf (zie de setter in js/store.js), maar zelf niets
+    // toevoegen is het eerlijke antwoord: de database is de bron.
+    store.alleToernooien = [nieuweToernooi, ...alleToernooien];
     store.toernooiData = nieuweToernooi;
     store.actieveToernooiId = newRef.id;
 
@@ -2568,7 +2577,7 @@ async function maakGastAccount(volleNaam, code, wachtwoord, toernooiNaam) {
 //  staat te wachten. Geen nieuw veld in de database, en dat is met opzet: het
 //  is af te leiden uit de dagen die er al staan, dus er valt niets te bewaren
 //  en niets uit de pas te lopen. Oude toernooien hoeven niet omgezet.
-function toernooiWacht(t) {
+function toernooiIsConcept(t) {
   const dagen = t?.dagen || [];
   if (dagen.length === 0) return false;
   return dagen.every(d => !dagIsGestart(d));
@@ -2584,7 +2593,7 @@ function toernooiWacht(t) {
 function toernooiLoopt(t) {
   return !!t &&
     t.status !== 'afgerond' &&
-    !toernooiWacht(t) &&
+    !toernooiIsConcept(t) &&
     !(t.dagen || []).every(d => d.afgerond);
 }
 
@@ -3642,7 +3651,7 @@ function renderToernooiActief() {
       <div class="card-header">
         <h2>${esc(t.naam)}</h2>
         <div style="display:flex;align-items:center;gap:8px">
-          <span class="badge badge-gold">${toernooiWacht(t) ? 'Wacht' : dagAfgerond ? 'Dag afgesloten' : uitslag ? 'Uitslag' : 'Bezig'}</span>
+          <span class="badge badge-gold">${toernooiIsConcept(t) ? 'Concept' : dagAfgerond ? 'Dag afgesloten' : uitslag ? 'Uitslag' : 'Bezig'}</span>
         </div>
       </div>
       <div class="card-body" style="padding:10px 16px;font-size:13px;color:var(--mid)">
@@ -3932,9 +3941,46 @@ function renderToernooiActief() {
         Deelnemers zien hun eigen kolom en die van hun marker-speler; de rest staat op punten.
         Het oude vinkje "Scores verbergen" is daarmee vervallen.
       </div>
+      <!-- ============================================================
+           DRIE TOESTANDEN, DEZELFDE WOORDEN ALS BIJ EEN DAG  (v5.23.0)
+           ------------------------------------------------------------
+           Sierk, 14 september 2026: "ik denk aan een mogelijkheid om ze naar
+           concept te kunnen zetten ipv annuleren. ik vind de huidige opzet
+           onoverzichtelijk." Terecht: een dag kende concept → gestart →
+           afgesloten, en een toernooi kende actief, geannuleerd, afgerond,
+           wacht en bezig. Vijf woorden voor drie toestanden.
+
+           Nu geldt overal hetzelfde:
+             Concept     niets gestart  → alles aanpasbaar, en weg mag weg
+             Bezig       er wordt gespeeld → terug naar concept kan altijd
+             Afgesloten  uitslag staat vast
+
+           ⚠ VERWIJDEREN MAG ALLEEN ZONDER SCORES. Staat er ergens een score,
+           dan blijft annuleren de weg: dat is herstelbaar. Zo kun je nooit per
+           ongeluk iets weggooien waarin gespeeld is.
+           ============================================================ -->
+      ${!toernooiIsConcept(t) ? `
+      <button class="btn btn-ghost btn-block" onclick="zetToernooiTerugNaarConcept()" style="margin-bottom:8px">
+        ↩ Toernooi terug naar concept
+      </button>
+      <p style="font-size:11px;color:var(--light);margin:-4px 0 10px">
+        Alle nog niet afgesloten dagen gaan terug op concept. Instellingen en
+        indeling worden weer aanpasbaar; ingevulde scores blijven bewaard.
+      </p>
+      ` : ''}
+      ${toernooiIsConcept(t) && heeftGeenScores(t) ? `
+      <button class="btn btn-ghost btn-block" onclick="verwijderConceptToernooi()" style="margin-bottom:8px;color:var(--red)">
+        🗑 Toernooi verwijderen
+      </button>
+      <p style="font-size:11px;color:var(--light);margin:-4px 0 10px">
+        Dit toernooi is een concept zonder scores, dus het kan gewoon weg.
+        Definitief — er is niets te herstellen.
+      </p>
+      ` : `
       <button class="btn btn-ghost btn-block" onclick="annuleerToernooi()" style="margin-bottom:8px;color:var(--red)">
         Toernooi annuleren
       </button>
+      `}
     </div>
     ` : '';
 
@@ -5565,11 +5611,84 @@ function _herstelSetupVanuitToernooi(t) {
   }
 }
 
+// ============================================================
+//  TERUG NAAR CONCEPT  (v5.23.0)
+// ------------------------------------------------------------
+//  Hetzelfde als "↩ Dag N terugzetten naar concept", maar dan voor alle dagen
+//  tegelijk. Scores blijven staan; een AFGESLOTEN dag wordt niet aangeraakt —
+//  daar is de uitslag al gepubliceerd, en die heropen je apart.
+async function zetToernooiTerugNaarConcept() {
+  try {
+    const t = toernooiData;
+    if (!t || !actieveToernooiId) return;
+    const terug = (t.dagen || []).filter(d => !d.afgerond && dagIsGestart(d));
+    if (terug.length === 0) { toast('Er staat geen dag open om terug te zetten'); return; }
+    if (!confirm(`"${t.naam}" terugzetten naar concept?\n\n`
+      + `${terug.length === 1 ? 'Dag ' + terug[0].dagNr + ' gaat' : terug.length + ' dagen gaan'} `
+      + `terug op concept. De instellingen en de indeling worden weer aanpasbaar; `
+      + `ingevulde scores blijven bewaard.`)) return;
+    // ⚠ Na de confirm het toernooi opnieuw pakken — zie de waarschuwing bij
+    // startDag(). Zolang de vraag openstaat kan de meeluisteraar toernooiData
+    // hebben vervangen door een verse serverkopie.
+    const nu = toernooiData;
+    if (!nu) return;
+    (nu.dagen || []).forEach(d => { if (!d.afgerond) d.gestart = false; });
+    await slaToernooiOp();
+    renderToernooiActief();
+    toast('Toernooi staat weer op concept');
+  } catch(e) { toernooiFout('Terug naar concept', e); }
+}
+window.zetToernooiTerugNaarConcept = zetToernooiTerugNaarConcept;
+
+// Een concept zonder scores mag gewoon weg. Geen annuleren-en-later-opruimen:
+// er valt niets te herstellen, dus dat tussenstation is alleen maar verwarrend.
+async function verwijderConceptToernooi() {
+  try {
+    const t = toernooiData;
+    const id = actieveToernooiId;
+    if (!t || !id) return;
+    // ⚠ Twee grendels, want dit verwijdert echt.
+    if (!toernooiIsConcept(t)) { toast('Zet het toernooi eerst terug naar concept'); return; }
+    if (!heeftGeenScores(t)) { toast('Er staan scores in dit toernooi — annuleer het in plaats van verwijderen'); return; }
+    const datum = (t.dagen || [])[0]?.datum || '';
+    if (!confirm(`"${t.naam}"${datum ? ' van ' + datum : ''} verwijderen?\n\n`
+      + `Het is een concept zonder scores. Dit kan niet ongedaan worden gemaakt.`)) return;
+    await _verwijderToernooiDocument(id);
+    store.alleToernooien = alleToernooien.filter(x => x.id !== id);
+    store.toernooiData = alleToernooien[0] || null;
+    store.actieveToernooiId = toernooiData?.id || null;
+    window._bekijkDagNr = null;
+    window._tTabblad = null;
+    renderToernooi();
+    toast('Toernooi verwijderd');
+  } catch(e) { toernooiFout('Toernooi verwijderen', e); }
+}
+window.verwijderConceptToernooi = verwijderConceptToernooi;
+
+// Het echte weghalen: gastlogins, live-scores en het document zelf. Eén plek,
+// gebruikt door zowel het verwijderen van een concept als het definitief
+// verwijderen van een geannuleerd toernooi.
+async function _verwijderToernooiDocument(id) {
+  try {
+    const snap = await getDoc(doc(db, 'toernooien', id));
+    if (snap.exists()) await ruimGastloginsOp({ id, ...snap.data() });
+  } catch(e) { console.warn('gastlogins opruimen:', e); }
+  try {
+    const liveDocs = await getDocs(collection(db, 'toernooien', id, 'live'));
+    await Promise.all(liveDocs.docs.map(d => deleteDoc(d.ref)));
+  } catch(e) { /* live-documenten bestaan mogelijk niet */ }
+  await deleteDoc(doc(db, 'toernooien', id));
+}
+
 async function annuleerToernooi() {
   try {
     // v4.0.0 (fix 7.2): eerlijke tekst — annuleren is herstelbaar via de
     // sectie "Geannuleerde toernooien" onderaan de toernooipagina.
-    if (!confirm("Toernooi annuleren?\n\nHet toernooi verdwijnt uit beeld, maar kan via 'Geannuleerde toernooien' worden hersteld of definitief verwijderd.\n\nDe gastlogins blijven werken.")) return;
+    // v5.23.0: zeg WELK toernooi. Twee met dezelfde naam kwamen op live echt
+    // voor, en dan is "Toernooi annuleren?" geen vraag maar een gok.
+    const _naam = toernooiData?.naam || 'Dit toernooi';
+    const _datum = (toernooiData?.dagen || [])[0]?.datum || '';
+    if (!confirm(`"${_naam}"${_datum ? ' van ' + _datum : ''} annuleren?\n\nHet toernooi verdwijnt uit beeld, maar kan via 'Geannuleerde toernooien' worden hersteld of definitief verwijderd.\n\nDe gastlogins blijven werken.`)) return;
     // v5.12.1: annuleren raakt de gastlogins NIET meer aan.
     //
     // WAT ER MIS WAS. Tot v5.12.0 bood deze functie hier aan de gastaccounts te
@@ -5585,7 +5704,12 @@ async function annuleerToernooi() {
     // definitief weg mochten. Opruimen hoort bij handelingen die NIET
     // herstelbaar zijn — definitief verwijderen en toernooi afsluiten — en daar
     // gebeurt het ook.
-    if (actieveToernooiId) await setDoc(doc(db, 'toernooien', actieveToernooiId), { ...toernooiData, status: 'geannuleerd' });
+    // ⚠ v5.23.0: hier stond `setDoc(..., { ...toernooiData, status })` — het HELE
+    // toernooi uit het geheugen, weggeschreven naar het id dat op dat moment
+    // geselecteerd staat. Lopen die twee uit de pas (en dat kon: de lijst bevatte
+    // hetzelfde toernooi soms dubbel), dan overschrijf je het ene toernooi met
+    // de inhoud van het andere. Nu wordt alleen het statusveld gezet.
+    if (actieveToernooiId) await updateDoc(doc(db, 'toernooien', actieveToernooiId), { status: 'geannuleerd' });
     store.alleToernooien = alleToernooien.filter(t => t.id !== actieveToernooiId);
     store.toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
     store.actieveToernooiId = toernooiData?.id || null;
@@ -5765,15 +5889,7 @@ async function verwijderGeannuleerdToernooi(id, naam) {
     if (!confirm(`"${naam || 'Dit toernooi'}" DEFINITIEF verwijderen?\n\nDit kan niet ongedaan worden gemaakt — alle scores verdwijnen voorgoed.`)) return;
     // v5.12.1: hier hoort de gastopruiming thuis, niet bij annuleren. Dit is de
     // handeling die niet meer terug te draaien is, dus mogen de accounts mee.
-    try {
-      const snap = await getDoc(doc(db, 'toernooien', id));
-      if (snap.exists()) await ruimGastloginsOp({ id, ...snap.data() });
-    } catch(e) { console.warn('gastlogins opruimen:', e); }
-    try {
-      const liveDocs = await getDocs(collection(db, 'toernooien', id, 'live'));
-      await Promise.all(liveDocs.docs.map(d => deleteDoc(d.ref)));
-    } catch(e) { /* live docs bestaan mogelijk niet */ }
-    await deleteDoc(doc(db, 'toernooien', id));
+    await _verwijderToernooiDocument(id);   // v5.23.0: één plek die echt weghaalt
     laadGeannuleerdeToernooien();
     toast('Toernooi definitief verwijderd');
   } catch(e) { console.error('verwijderGeannuleerdToernooi mislukt:', e); toast('Verwijderen mislukt, probeer opnieuw'); }

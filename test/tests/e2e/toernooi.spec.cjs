@@ -734,6 +734,60 @@ test.describe('Toernooi — de hele route', () => {
   });
 
   // ============================================================
+  //  v5.23.0 — CONCEPT, BEZIG, AFGESLOTEN — OOK VOOR EEN TOERNOOI
+  // ------------------------------------------------------------
+  //  Sierk, 14 september 2026: "ik denk aan een mogelijkheid om ze naar concept
+  //  te kunnen zetten ipv annuleren. ik vind de huidige opzet onoverzichtelijk."
+  //
+  //  Een dag kende concept → gestart → afgesloten; een toernooi kende actief,
+  //  geannuleerd, afgerond, wacht en bezig. Nu dezelfde drie woorden, met één
+  //  harde regel: verwijderen mag alleen zonder scores.
+  // ============================================================
+  test('TOESTANDEN: een concept verwijder je, een lopend toernooi zet je terug', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Toestand', 1);
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await slaToernooiOp(page);
+    await expect(page.locator('#toernooi-detail')).toContainText('Toestand', { timeout: 20000 });
+
+    // ── Net opgeslagen: concept, geen scores. Verwijderen mag. ──
+    await naarToernooiTab(page);
+    await expect(page.locator('#toernooi-detail'), 'de badge zegt Concept').toContainText('Concept');
+    await expect(page.locator('#toernooi-detail button:has-text("Toernooi verwijderen")'),
+      'een concept zonder scores mag gewoon weg').toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#toernooi-detail button:has-text("Toernooi annuleren")'),
+      'en hoeft dus niet via annuleren').toHaveCount(0);
+
+    // ── Dag 1 starten: bezig. Nu geen verwijderknop meer. ──
+    await naarDagTab(page, 1);
+    await page.click('#toernooi-detail button:has-text("Dag 1 starten")');
+    await expect(page.locator('#t-scorecard-wrap')).toBeVisible({ timeout: 20000 });
+    await naarToernooiTab(page);
+    await expect(page.locator('#toernooi-detail button:has-text("Toernooi verwijderen")'),
+      'een lopend toernooi verwijder je niet zomaar').toHaveCount(0);
+    await expect(page.locator('#toernooi-detail button:has-text("Toernooi annuleren")'),
+      'daar is annuleren voor').toBeVisible();
+
+    // ── Terug naar concept: de dag gaat mee terug. ──
+    await page.click('#toernooi-detail button:has-text("terug naar concept")');
+    await expect.poll(async () => (await haalToernooi('Toestand')).dagen[0].gestart,
+      { timeout: 20000, message: 'dag 1 staat weer op concept' }).toBe(false);
+    await naarToernooiTab(page);
+    await expect(page.locator('#toernooi-detail'), 'en de badge weer op Concept').toContainText('Concept');
+
+    // ── En dan mag het echt weg. ──
+    await page.click('#toernooi-detail button:has-text("Toernooi verwijderen")');
+    await expect.poll(async () =>
+      (await haalAlleToernooien()).filter(t => t.naam === 'Toestand').length,
+      { timeout: 25000, message: 'het toernooi is uit de database verdwenen' }).toBe(0);
+  });
+
+  // ============================================================
   //  v5.22.0 — TWEE KEER OPSLAAN MAAKT ÉÉN TOERNOOI
   // ------------------------------------------------------------
   //  Gemeten op LIVE, 14 september 2026: twee toernooien "Cie on tour 2026",
@@ -1627,7 +1681,10 @@ test.describe('Toernooi — de hele route', () => {
     await pagina.click('#toernooi-setup-wrap button:has-text("Gastspeler toevoegen")');
     await expect(pagina.locator('#t-geselecteerde-spelers')).toContainText(gastnaam.split(' ')[0]);
     await naarFlightIndeling(pagina);
-    await pagina.click('#flight-modal-start-btn');
+    // v5.23.0: dag 1 ook echt starten. De tests die dit hulpje gebruiken
+    // annuleren het toernooi daarna, en annuleren bestaat alleen voor een
+    // toernooi waar iets in gebeurd is — een concept zonder scores verwijder je.
+    await slaOpEnStart(pagina);
     await expect(pagina.locator('#toernooi-detail')).toContainText(toernooinaam, { timeout: 25000 });
     await expect.poll(async () => {
       const a = (await beheerDb.collection('toernooien').get()).docs

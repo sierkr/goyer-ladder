@@ -424,15 +424,15 @@ console.log('\n══ TOERNOOI — WACHT OF LOOPT ══');
 const dagT = (extra) => ({ dagNr: 1, holes: holes18, scores: {}, afgerond: false, ...extra });
 
 check('geen enkele dag gestart -> wacht',
-  K.toernooiWacht({ dagen: [dagT({ gestart: false })] }), true);
+  K.toernooiIsConcept({ dagen: [dagT({ gestart: false })] }), true);
 check('dag 1 gestart -> wacht niet meer',
-  K.toernooiWacht({ dagen: [dagT({ gestart: true })] }), false);
+  K.toernooiIsConcept({ dagen: [dagT({ gestart: true })] }), false);
 check('dag 2 gestart telt ook',
-  K.toernooiWacht({ dagen: [dagT({ gestart: false }), dagT({ dagNr: 2, gestart: true })] }), false);
+  K.toernooiIsConcept({ dagen: [dagT({ gestart: false }), dagT({ dagNr: 2, gestart: true })] }), false);
 check('een afgesloten dag geldt als gestart',
-  K.toernooiWacht({ dagen: [dagT({ afgerond: true })] }), false);
+  K.toernooiIsConcept({ dagen: [dagT({ afgerond: true })] }), false);
 check('een toernooi zonder dagen wacht niet',
-  K.toernooiWacht({ dagen: [] }), false);
+  K.toernooiIsConcept({ dagen: [] }), false);
 
 check('een wachtend toernooi loopt niet',
   K.toernooiLoopt({ status: 'actief', dagen: [dagT({ gestart: false })] }), false);
