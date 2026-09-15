@@ -1067,6 +1067,119 @@
     color: #c0392b !important;
     font-weight: 700;
   }
+
+
+  /* ============================================================
+     PROEF — v5.29.0: ALLE LETTERS IN PAPIER TWEE KEER ZO GROOT
+     ------------------------------------------------------------
+     Op verzoek van Sierk, om te zien hoe groot groot genoeg is.
+     Machinaal afgeleid uit dit stijlblad: elke regel met een
+     font-size in px, verdubbeld en op Papier gericht. Dit is een
+     PROEF, geen ontwerp — de bedoeling is kijken en dan kiezen.
+     Weghalen = dit hele blok weghalen.
+     ============================================================ */
+  html[data-theme="papier"] header .subtitle { font-size: 22px !important; }
+  html[data-theme="papier"] nav button { font-size: 22px !important; }
+  html[data-theme="papier"] .card-header h2 { font-size: 36px !important; }
+  html[data-theme="papier"] /* BUTTONS */ .btn { font-size: 30px !important; }
+  html[data-theme="papier"] .btn-sm { font-size: 26px !important; }
+  html[data-theme="papier"] .form-group label { font-size: 24px !important; }
+  html[data-theme="papier"] input, html[data-theme="papier"] select { font-size: 32px !important; }
+  html[data-theme="papier"] .player-name { font-size: 30px !important; }
+  html[data-theme="papier"] .player-hcp { font-size: 24px !important; }
+  html[data-theme="papier"] .player-stats { font-size: 24px !important; }
+  html[data-theme="papier"] .delta-up { font-size: 22px !important; }
+  html[data-theme="papier"] .delta-down { font-size: 22px !important; }
+  html[data-theme="papier"] .speler-zoek-item { font-size: 28px !important; }
+  html[data-theme="papier"] /* SCOREKAART */ .scorecard { font-size: 26px !important; }
+  html[data-theme="papier"] .scorecard th { font-size: 22px !important; }
+  html[data-theme="papier"] .scorecard th.player-col { font-size: 24px !important; }
+  html[data-theme="papier"] .scorecard td.player-col { font-size: 26px !important; }
+  html[data-theme="papier"] .scorecard input[type=number] { font-size: 28px !important; }
+  html[data-theme="papier"] .hole-par { font-size: 22px !important; }
+  html[data-theme="papier"] .hole-si { font-size: 22px !important; }
+  html[data-theme="papier"] /* RESULT CELL */ .res-W { font-size: 24px !important; }
+  html[data-theme="papier"] .res-L { font-size: 24px !important; }
+  html[data-theme="papier"] .res-T { font-size: 24px !important; }
+  html[data-theme="papier"] .match-player { font-size: 28px !important; }
+  html[data-theme="papier"] .match-vs { font-size: 32px !important; }
+  html[data-theme="papier"] .match-score { font-size: 32px !important; }
+  html[data-theme="papier"] .card-header.inklapbaar::after { font-size: 32px !important; }
+  html[data-theme="papier"] .badge { font-size: 22px !important; }
+  html[data-theme="papier"] /* SECTION TITLE */ .section-title { font-size: 30px !important; }
+  html[data-theme="papier"] /* TOAST */ /* v5.11.2 — DE INFORMATIEBALK MOET TE LEZEN ZIJN. ⚠ WAT ER MIS WAS: `white-space: nowrap` zonder maximale breedte. Een korte bevestiging paste, html[data-theme="papier"] maar sinds v5.9.0 noemen foutmeldingen de ECHTE oorzaak en die zijn lang. Zo'n melding werd één regel die aan beide kanten buiten het scherm liep — juist de tekst die je nodig hebt was onleesbaar. Sierk, html[data-theme="papier"] 12 september 2026: "de informatiebalk heeft geen regelterugloop en verdwijnt buiten beeld." Nu loopt hij door over meerdere regels, html[data-theme="papier"] blijft hij binnen het scherm, html[data-theme="papier"] en kun je hem wegtikken in plaats van negen seconden te wachten. */ #toast { font-size: 26px !important; }
+  html[data-theme="papier"] .modal h3 { font-size: 44px !important; }
+  html[data-theme="papier"] .standing-result .name { font-size: 32px !important; }
+  html[data-theme="papier"] .standing-result .change { font-size: 56px !important; }
+  html[data-theme="papier"] .empty-icon { font-size: 80px !important; }
+  html[data-theme="papier"] .empty p { font-size: 28px !important; }
+  html[data-theme="papier"] .admin-row .hcp { font-size: 24px !important; }
+  html[data-theme="papier"] .tag { font-size: 24px !important; }
+  html[data-theme="papier"] #laad-overlay .laad-logo { font-size: 64px !important; }
+  html[data-theme="papier"] .login-logo { font-size: 56px !important; }
+  html[data-theme="papier"] .login-sub { font-size: 24px !important; }
+  html[data-theme="papier"] .login-fout { font-size: 26px !important; }
+  html[data-theme="papier"] .aanpas-link { font-size: 24px !important; }
+  /* iOS zoomt in op velden onder 16px — dat blijft zo. */ html[data-theme="papier"] input, html[data-theme="papier"] select { font-size: 32px !important; }
+  html[data-theme="papier"] header h1 { font-size: 34px !important; }
+  html[data-theme="papier"] #logout-btn, html[data-theme="papier"] #versie-badge { font-size: 24px !important; }
+  html[data-theme="papier"] nav button span.nav-label { font-size: 26px !important; }
+  html[data-theme="papier"] .card-header h2 { font-size: 32px !important; }
+  html[data-theme="papier"] .rank-badge { font-size: 26px !important; }
+  html[data-theme="papier"] .player-hcp, html[data-theme="papier"] .player-stats { font-size: 26px !important; }
+  html[data-theme="papier"] .match-vs { font-size: 26px !important; }
+  html[data-theme="papier"] .modal h3 { font-size: 32px !important; }
+  html[data-theme="papier"] .login-logo { font-size: 36px !important; }
+  /* De kop: inkt op papier in plaats van wit op groen. Een enkele lijn eronder scheidt de namen van het raster. */ html[data-theme="papier"] .scorecard th { font-size: 28px !important; }
+  html[data-theme="papier"] .scorecard th.player-col { font-size: 26px !important; }
+  /* De handicap onder de naam. Stond wit-op-groen op 60% dekking; nu gewoon leesbaar. */ html[data-theme="papier"] .scorecard th span[onclick*="editPartijHcp"] { font-size: 26px !important; }
+  /* Het team-label bij High-Low (T1 / T2). */ html[data-theme="papier"] .scorecard th span:not([onclick]) { font-size: 20px !important; }
+  html[data-theme="papier"] .scorecard tbody td:first-child span[style*="font-size:15px"] { font-size: 34px !important; }
+  html[data-theme="papier"] .hole-par { font-size: 26px !important; }
+  html[data-theme="papier"] .hole-si { font-size: 26px !important; }
+  /* De hokjes. Breder en met grotere cijfers dan in de andere twee stijlen: dit is het enige element in de app waar iemand met een handschoen aan, in de zon, op moet mikken. */ html[data-theme="papier"] .scorecard input[type=number] { font-size: 36px !important; }
+  /* De totaalregel: een dunne lijn erboven, en het totaal zwaarder dan de losse scores zodat je hem in een oogopslag vindt. */ html[data-theme="papier"] .scorecard tbody tr:last-child td { font-size: 34px !important; }
+  html[data-theme="papier"] .scorecard tbody tr:last-child td:first-child { font-size: 26px !important; }
+
+  /* Ook de losse style="font-size:..."-opgaven uit de HTML en de JS,
+     want die worden niet door een selector uit dit stijlblad geraakt. */
+  html[data-theme="papier"] [style*="font-size:12px"] { font-size: 24px !important; }
+  html[data-theme="papier"] [style*="font-size:13px"] { font-size: 26px !important; }
+  html[data-theme="papier"] [style*="font-size:11px"] { font-size: 22px !important; }
+  html[data-theme="papier"] [style*="font-size:14px"] { font-size: 28px !important; }
+  html[data-theme="papier"] [style*="font-size:10px"] { font-size: 20px !important; }
+  html[data-theme="papier"] [style*="font-size:15px"] { font-size: 30px !important; }
+  html[data-theme="papier"] [style*="font-size: 13px"] { font-size: 26px !important; }
+  html[data-theme="papier"] [style*="font-size: 26px"] { font-size: 52px !important; }
+  html[data-theme="papier"] [style*="font-size: 12px"] { font-size: 24px !important; }
+  html[data-theme="papier"] [style*="font-size: 24px"] { font-size: 48px !important; }
+  html[data-theme="papier"] [style*="font-size: 11px"] { font-size: 22px !important; }
+  html[data-theme="papier"] [style*="font-size: 16px"] { font-size: 32px !important; }
+  html[data-theme="papier"] [style*="font-size: 22px"] { font-size: 44px !important; }
+  html[data-theme="papier"] [style*="font-size: 32px"] { font-size: 64px !important; }
+  html[data-theme="papier"] [style*="font-size:16px"] { font-size: 32px !important; }
+  html[data-theme="papier"] [style*="font-size:18px"] { font-size: 36px !important; }
+  html[data-theme="papier"] [style*="font-size: 14px"] { font-size: 28px !important; }
+  html[data-theme="papier"] [style*="font-size: 28px"] { font-size: 56px !important; }
+  html[data-theme="papier"] [style*="font-size:20px"] { font-size: 40px !important; }
+  html[data-theme="papier"] [style*="font-size: 18px"] { font-size: 36px !important; }
+  html[data-theme="papier"] [style*="font-size: 15px"] { font-size: 30px !important; }
+  html[data-theme="papier"] [style*="font-size: 17px"] { font-size: 34px !important; }
+  html[data-theme="papier"] [style*="font-size: 36px"] { font-size: 72px !important; }
+  html[data-theme="papier"] [style*="font-size: 30px"] { font-size: 60px !important; }
+  html[data-theme="papier"] [style*="font-size: 34px"] { font-size: 68px !important; }
+  html[data-theme="papier"] [style*="font-size:28px"] { font-size: 56px !important; }
+  html[data-theme="papier"] [style*="font-size:26px"] { font-size: 52px !important; }
+  html[data-theme="papier"] [style*="font-size:9px"] { font-size: 18px !important; }
+  html[data-theme="papier"] [style*="font-size: 20px"] { font-size: 40px !important; }
+  html[data-theme="papier"] [style*="font-size: 56px"] { font-size: 112px !important; }
+  html[data-theme="papier"] [style*="font-size:24px"] { font-size: 48px !important; }
+  html[data-theme="papier"] [style*="font-size:17px"] { font-size: 34px !important; }
+  html[data-theme="papier"] [style*="font-size: 40px"] { font-size: 80px !important; }
+  html[data-theme="papier"] [style*="font-size: 10px"] { font-size: 20px !important; }
+  html[data-theme="papier"] [style*="font-size: 44px"] { font-size: 88px !important; }
+  html[data-theme="papier"] [style*="font-size: 80px"] { font-size: 160px !important; }
+  html[data-theme="papier"] [style*="font-size: 64px"] { font-size: 128px !important; }
 </style>
 </head>
 <body>
