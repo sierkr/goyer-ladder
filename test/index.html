@@ -14,7 +14,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <title>Goyer Golf MP Ladder</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap');
 
   html { color-scheme: light; }
 
@@ -767,6 +767,265 @@
      rand van de kleur en ziet niemand het verschil. De browsertest MARKERS
      ving dit op: hij leest de rand zoals hij echt op het scherm staat.
      ============================================================ */
+
+  /* ============================================================
+     PAPIER-STIJL — v5.27.0
+     ------------------------------------------------------------
+     Het idee: de scorekaart is een vel Japans schrijfpapier
+     (genko yoshi) — een raster van lege hokjes waar je tekens in
+     schrijft. Dat is letterlijk wat een scorekaart is, dus de vorm
+     komt hier uit de inhoud en niet uit een sfeerplaatje.
+
+     Drie regels waar de rest uit volgt:
+      1. De lege ruimte doet het werk. Geen streepje onder elke rij;
+         er blijft er precies een over, na hole 9, waar de ronde
+         ook echt breekt.
+      2. Inkt op papier, nooit wit op een kleurvlak. De groene balk
+         met witte namen en half-doorzichtige handicaps was buiten
+         in de zon het slechtst leesbare stukje van de app.
+      3. Een accent — vermiljoen, de kleur van een naamstempel — en
+         dat gaat naar het vakje waar je NU in typt. Verder nergens.
+
+     Net als bij de andere twee stijlen verandert hier alleen het
+     uiterlijk. Geen enkel scherm wordt anders opgebouwd; js/ronde.js
+     is niet aangeraakt.
+
+     De maten van de scorekaart staan in js/ronde.js rechtstreeks op
+     de elementen (style="width:38px..."). Daar win je alleen van met
+     !important. Dat is hier geen truc maar het bestaande patroon van
+     dit stijlblad — zie de t-cel-regels onderaan.
+     ============================================================ */
+  html[data-theme="papier"] {
+    --green: #2e6b4f;          /* dennengroen, de clubherkenning */
+    --green-light: #3d8463;
+    --green-pale: #e6efe9;
+    --gold: #8a7a4e;           /* gedempt, geen glim */
+    --gold-light: #c9bc94;
+    --cream: #fbfaf7;          /* het papier */
+    --dark: #22252a;           /* inkt */
+    --mid: #5c6269;
+    --light: #8b9097;          /* lichte inkt */
+    --white: #ffffff;
+    --red: #c0392b;            /* vermiljoen, het stempel */
+    --blue: #2f5d7c;
+    --radius: 2px;             /* papier heeft geen ronde hoeken */
+    --shadow: none;
+    --card-bg: #ffffff;
+    --border: #e4e1da;         /* de potloodlijn van het raster */
+    --input-bg: #ffffff;
+    --nav-bg: #fbfaf7;
+    --alert-bg: #fbecea;
+    --alert-text: #a33427;
+    --info-bg: #eaf0f4;
+    --info-text: #2f5d7c;
+    --warning-bg: #f7f0e2;
+    --warning-text: #7a5c1e;
+    --soft-bg: #f5f4f0;
+    --soft-text: #5c6269;
+    --subtle-bg: #f5f4f0;
+    --success-bg: #e6efe9;
+    --success-text: #1f4d38;
+    --on-primary: #ffffff;
+    --on-dark-surface: #f0f0f0;
+  }
+
+  /* Een letterfamilie voor alles. Zen Kaku Gothic New is gekozen om
+     zijn cijfers: op een scorekaart is het verschil tussen een 6 en
+     een 8 op een armlengte afstand het hele werk. */
+  html[data-theme="papier"] * {
+    font-family: 'Zen Kaku Gothic New', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  }
+  /* iOS zoomt in op velden onder 16px — dat blijft zo. */
+  html[data-theme="papier"] input,
+  html[data-theme="papier"] select { font-size: 16px !important; }
+
+  html[data-theme="papier"] body { background: var(--cream); color: var(--dark); }
+
+  html[data-theme="papier"] header {
+    background: var(--cream); border-bottom: 1px solid var(--border); box-shadow: none;
+  }
+  html[data-theme="papier"] header h1 {
+    color: var(--dark) !important; font-size: 17px !important;
+    font-weight: 700 !important; letter-spacing: 0.02em !important;
+  }
+  html[data-theme="papier"] header .subtitle { color: var(--light) !important; }
+  html[data-theme="papier"] #logout-btn,
+  html[data-theme="papier"] #versie-badge {
+    color: var(--light) !important; background: transparent !important;
+    border: 1px solid var(--border) !important; border-radius: 2px !important;
+  }
+
+  html[data-theme="papier"] nav {
+    background: var(--nav-bg); border-bottom: 1px solid var(--border); box-shadow: none;
+  }
+  html[data-theme="papier"] nav button span.nav-label {
+    color: var(--light) !important; font-size: 11px !important; font-weight: 500 !important;
+  }
+  html[data-theme="papier"] nav button.active span.nav-label {
+    color: var(--dark) !important; font-weight: 700 !important;
+  }
+
+  /* Kaarten zijn vellen papier: een dunne lijn, geen schaduw, geen ronding. */
+  html[data-theme="papier"] .card {
+    box-shadow: none; border: 1px solid var(--border); border-radius: 2px; background: var(--card-bg);
+  }
+  html[data-theme="papier"] .card-header h2 {
+    color: var(--dark) !important; font-size: 14px !important; font-weight: 700 !important;
+    letter-spacing: 0 !important; text-transform: none !important;
+  }
+
+  html[data-theme="papier"] .btn {
+    border-radius: 2px; box-shadow: none; padding: 10px 16px !important; min-height: 40px !important;
+  }
+  html[data-theme="papier"] .btn-sm { padding: 7px 12px !important; min-height: 34px !important; }
+  html[data-theme="papier"] input,
+  html[data-theme="papier"] select {
+    border: 1px solid var(--border); border-radius: 2px; background: var(--input-bg); color: var(--dark);
+  }
+
+  html[data-theme="papier"] .ladder-item {
+    padding: 10px 14px !important; min-height: auto !important; gap: 8px !important;
+    border-left: none !important; margin-left: 0 !important;
+  }
+  html[data-theme="papier"] .rank-badge {
+    font-size: 13px !important; min-width: 22px !important; color: var(--light) !important;
+    font-variant-numeric: tabular-nums;
+  }
+  html[data-theme="papier"] .rank-badge.top3 { color: var(--gold) !important; }
+  html[data-theme="papier"] .rank-badge.zelf { color: var(--green) !important; font-weight: 700 !important; }
+  html[data-theme="papier"] .player-name { font-size: 13px !important; }
+  html[data-theme="papier"] .player-hcp,
+  html[data-theme="papier"] .player-stats { font-size: 11px !important; color: var(--light) !important; }
+  html[data-theme="papier"] .match-vs { color: var(--light) !important; font-size: 13px !important; }
+
+  html[data-theme="papier"] .modal {
+    border-radius: 2px; box-shadow: none; border: 1px solid var(--border);
+  }
+  html[data-theme="papier"] .modal h3 {
+    color: var(--dark) !important; font-size: 16px !important; letter-spacing: 0 !important;
+  }
+  html[data-theme="papier"] #login-scherm { background: var(--cream); }
+  html[data-theme="papier"] .login-box {
+    box-shadow: none; border: 1px solid var(--border); border-radius: 2px;
+  }
+  html[data-theme="papier"] .login-logo {
+    color: var(--dark) !important; font-size: 18px !important; letter-spacing: 0.02em !important;
+  }
+
+  /* ------------------------------------------------------------
+     DE SCOREKAART — hier zit de stijl echt in
+     ------------------------------------------------------------ */
+
+  /* De kleine teksten op de kaart (par, slagenindex, handicap, "Totaal")
+     staan bewust op --mid en niet op --light. Gemeten op wit: --light haalt
+     3,21 : 1 en --mid 6,17 : 1. Onder de 4,5 valt kleine tekst buiten in de
+     zon weg, en juist daar wordt deze kaart gebruikt. Niet lichter maken. */
+  /* Cijfers krijgen overal dezelfde breedte, anders staan de kolommen
+     scheef zodra er een 1 tussen staat. */
+  html[data-theme="papier"] .scorecard { font-variant-numeric: tabular-nums; }
+
+  /* De kop: inkt op papier in plaats van wit op groen. Een enkele lijn
+     eronder scheidt de namen van het raster. */
+  html[data-theme="papier"] .scorecard th {
+    background: transparent !important;
+    color: var(--dark) !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    padding: 4px 6px 8px !important;
+    border-bottom: 1px solid var(--dark) !important;
+    vertical-align: bottom !important;
+  }
+  html[data-theme="papier"] .scorecard th.player-col {
+    font-weight: 500 !important; font-size: 11px !important; color: var(--mid) !important;
+  }
+  /* De handicap onder de naam. Stond wit-op-groen op 60% dekking; nu
+     gewoon leesbaar. */
+  html[data-theme="papier"] .scorecard th span[onclick*="editPartijHcp"] {
+    color: var(--mid) !important;
+    font-size: 11px !important;
+    border-bottom: 1px dashed var(--border) !important;
+  }
+  /* Het team-label bij High-Low (T1 / T2). */
+  html[data-theme="papier"] .scorecard th span:not([onclick]) {
+    background: var(--green-pale) !important;
+    color: var(--green) !important;
+    border-radius: 2px !important;
+    font-size: 10px !important;
+  }
+
+  /* Geen streepje onder elke rij: de ruimte scheidt de holes. */
+  html[data-theme="papier"] .scorecard td {
+    border-bottom: none !important;
+    padding: 3px 6px !important;
+  }
+
+  /* De enige lijn die overblijft: na hole 9. De :not() zorgt dat hij
+     wegblijft bij een ronde van 9 holes — dan is rij 9 de laatste hole
+     en valt de lijn samen met de totaalregel. */
+  html[data-theme="papier"] .scorecard tbody tr:nth-child(9):not(:nth-last-child(2)) td {
+    border-bottom: 1px solid var(--border) !important;
+    padding-bottom: 9px !important;
+  }
+  html[data-theme="papier"] .scorecard tbody tr:nth-child(10) td { padding-top: 9px !important; }
+
+  /* Het holenummer groot, par en slagenindex klein en stil eronder. */
+  html[data-theme="papier"] .scorecard td.player-col,
+  html[data-theme="papier"] .scorecard tbody td:first-child {
+    color: var(--dark) !important;
+  }
+  html[data-theme="papier"] .scorecard tbody td:first-child span[style*="font-size:15px"] {
+    font-size: 17px !important; font-weight: 700 !important;
+  }
+  html[data-theme="papier"] .hole-par { color: var(--mid) !important; font-weight: 500 !important; }
+  html[data-theme="papier"] .hole-si  { color: var(--mid) !important; font-weight: 500 !important; }
+
+  /* De hokjes. Breder en met grotere cijfers dan in de andere twee
+     stijlen: dit is het enige element in de app waar iemand met een
+     handschoen aan, in de zon, op moet mikken. */
+  html[data-theme="papier"] .scorecard input[type=number] {
+    width: 52px !important;
+    height: 44px !important;
+    padding: 2px !important;
+    font-size: 18px !important;
+    font-weight: 500 !important;
+    color: var(--dark) !important;
+    background: var(--input-bg) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 2px !important;
+    -moz-appearance: textfield;
+  }
+  html[data-theme="papier"] .scorecard input[type=number]::-webkit-outer-spin-button,
+  html[data-theme="papier"] .scorecard input[type=number]::-webkit-inner-spin-button {
+    -webkit-appearance: none; margin: 0;
+  }
+  /* Het enige accent in de hele stijl: waar je nu in typt. */
+  html[data-theme="papier"] .scorecard input[type=number]:focus {
+    border-color: var(--red) !important;
+    box-shadow: inset 0 -3px 0 var(--red) !important;
+    outline: none !important;
+  }
+
+  /* De totaalregel: een dunne lijn erboven, en het totaal zwaarder dan
+     de losse scores zodat je hem in een oogopslag vindt. */
+  html[data-theme="papier"] .scorecard tbody tr:last-child td {
+    border-top: 1px solid var(--dark) !important;
+    border-bottom: none !important;
+    padding-top: 10px !important;
+    font-size: 17px !important;
+    font-weight: 700 !important;
+    color: var(--dark) !important;
+  }
+  html[data-theme="papier"] .scorecard tbody tr:last-child td:first-child {
+    font-size: 11px !important; font-weight: 500 !important; color: var(--mid) !important;
+  }
+
+  /* Uitslagcellen elders in de app: rustiger, zonder gevulde blokjes. */
+  html[data-theme="papier"] .res-W,
+  html[data-theme="papier"] .res-L,
+  html[data-theme="papier"] .res-T {
+    border-radius: 2px !important; font-weight: 700 !important;
+  }
+
   /* ⚠ De keuzes hieronder zijn zwaarder gemaakt dan ze eruitzien: de
      clubstijl gebruikt `html[data-theme="matchcheck"] .scorecard
      input[type=number]` mét !important, en dat weegt zwaarder dan een gewone
@@ -1635,6 +1894,8 @@
             onclick="kiesWeergave('matchcheck')">Helder</button>
           <button type="button" class="btn btn-sm weergave-optie" data-weergave="club"
             onclick="kiesWeergave('club')">Klassiek</button>
+          <button type="button" class="btn btn-sm weergave-optie" data-weergave="papier"
+            onclick="kiesWeergave('papier')">Papier</button>
         </div>
         <p style="font-size:11px;color:var(--light);margin-top:6px">
           Geldt alleen op dit apparaat. &quot;Standaard&quot; volgt de instelling van de club.
@@ -1974,6 +2235,7 @@
         <div id="uistijl-keuze" style="display:flex;flex-direction:column;gap:8px">
           <button type="button" class="btn btn-ghost btn-block uistijl-optie" data-stijl="club" onclick="kiesUiStijl('club')">Standaard (huidige stijl)</button>
           <button type="button" class="btn btn-ghost btn-block uistijl-optie" data-stijl="matchcheck" onclick="kiesUiStijl('matchcheck')">MatchCheck-stijl</button>
+          <button type="button" class="btn btn-ghost btn-block uistijl-optie" data-stijl="papier" onclick="kiesUiStijl('papier')">Papier</button>
         </div>
       </div>
     </div>

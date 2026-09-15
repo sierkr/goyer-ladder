@@ -271,7 +271,8 @@ export async function laadUiStijl(storeRef) {
     const waarde = snap.exists() ? snap.data().uiStijl : null;
     // v5.6.0: de standaard voor de club is nu Helder (matchcheck). Alleen een
     // uitdrukkelijke 'club' in ladder/config levert nog de klassieke stijl.
-    storeRef.uiStijl = (waarde === 'club') ? 'club' : 'matchcheck';
+    // v5.27.0: 'papier' is er als derde stijl bijgekomen.
+    storeRef.uiStijl = STIJLEN.includes(waarde) ? waarde : 'matchcheck';
   } catch(e) {
     console.warn('laadUiStijl mislukt, val terug op de standaardstijl:', e);
     storeRef.uiStijl = 'matchcheck';
@@ -346,18 +347,22 @@ export async function laadBanen(storeRef, { vanServer = false } = {}) {
 //  gekozen nooit meer terug, en bereikte een latere wijziging van de club hem
 //  nooit meer.
 // ============================================================
+//  v5.27.0: 'papier' erbij — de derde stand. Eén lijst, zodat een vierde stijl
+//  later op één plek wordt toegevoegd in plaats van op vier.
+const STIJLEN = ['club', 'matchcheck', 'papier'];
+
 const WEERGAVE_SLEUTEL = 'goyer-weergave';
 
 export function leesEigenWeergave() {
   try {
     const w = localStorage.getItem(WEERGAVE_SLEUTEL);
-    return (w === 'matchcheck' || w === 'club') ? w : 'standaard';
+    return STIJLEN.includes(w) ? w : 'standaard';
   } catch (e) { return 'standaard'; }
 }
 
 export function bewaarEigenWeergave(waarde) {
   try {
-    if (waarde === 'matchcheck' || waarde === 'club') {
+    if (STIJLEN.includes(waarde)) {
       localStorage.setItem(WEERGAVE_SLEUTEL, waarde);
     } else {
       localStorage.removeItem(WEERGAVE_SLEUTEL);
@@ -372,7 +377,7 @@ export function bewaarEigenWeergave(waarde) {
 export function effectieveStijl(clubStijl) {
   const eigen = leesEigenWeergave();
   if (eigen !== 'standaard') return eigen;
-  return (clubStijl === 'club') ? 'club' : 'matchcheck';
+  return STIJLEN.includes(clubStijl) ? clubStijl : 'matchcheck';
 }
 
 /**
@@ -381,7 +386,7 @@ export function effectieveStijl(clubStijl) {
  * verandert alleen kleuren/typografie/randen — nooit de HTML-structuur.
  */
 export function pasUiStijlToe(waarde) {
-  const stijl = (waarde === 'matchcheck') ? 'matchcheck' : 'club';
+  const stijl = STIJLEN.includes(waarde) ? waarde : 'club';
   if (stijl === 'club') {
     document.documentElement.removeAttribute('data-theme');
   } else {

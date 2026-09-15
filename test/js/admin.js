@@ -959,6 +959,10 @@ async function slaInitieelWachtwoordOp() {
 // ============================================================
 //  v5.6.0 — WEERGAVEKEUZE IN HET PROFIEL
 // ============================================================
+// v5.27.0: de namen op een plek, zodat een vierde stijl niet op drie
+// plekken een los tekstje achterlaat.
+const STIJLNAAM = { club: 'Klassiek', matchcheck: 'Helder', papier: 'Papier' };
+
 function renderWeergaveKeuze() {
   const huidige = leesEigenWeergave();
   document.querySelectorAll('#weergave-keuze .weergave-optie').forEach(btn => {
@@ -972,7 +976,7 @@ function kiesWeergave(waarde) {
   renderWeergaveKeuze();
   toast(waarde === 'standaard'
     ? 'Weergave volgt weer de clubinstelling'
-    : `Weergave: ${waarde === 'matchcheck' ? 'Helder' : 'Klassiek'} (alleen op dit apparaat)`);
+    : `Weergave: ${STIJLNAAM[waarde] || waarde} (alleen op dit apparaat)`);
 }
 
 function renderUiStijlKaart() {
@@ -983,7 +987,7 @@ function renderUiStijlKaart() {
 }
 
 async function kiesUiStijl(waarde) {
-  if (waarde !== 'club' && waarde !== 'matchcheck') return;
+  if (!STIJLNAAM[waarde]) return;
   try {
     const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
     await setDoc(doc(db, 'ladder', 'config'), { uiStijl: waarde }, { merge: true });
@@ -992,9 +996,7 @@ async function kiesUiStijl(waarde) {
     renderUiStijlKaart();
     // v5.6.0: niet langer dwingend voor iedereen — wie in zijn profiel zelf een
     // weergave koos, houdt die.
-    toast(waarde === 'matchcheck'
-      ? 'Helder is nu de clubstandaard ✓'
-      : 'Klassiek is nu de clubstandaard ✓');
+    toast(`${STIJLNAAM[waarde]} is nu de clubstandaard \u2713`);
   } catch(e) {
     console.error('kiesUiStijl mislukt:', e);
     toast('Opslaan mislukt: ' + (e.message || e.code));

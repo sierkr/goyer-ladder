@@ -84,7 +84,7 @@
 </header>
 
 <div id="tab-bar" class="tab-bar" style="display:none">
-  <button class="tab-btn actief" onclick="toonTab('scores')">Scores</button>
+  <button class="tab-btn actief" onclick="toonTab('scores')" id="tab-scores">Scores</button>
   <button class="tab-btn" onclick="toonTab('ranglijst')" id="tab-ranglijst">Ranglijst</button>
 </div>
 
@@ -131,14 +131,101 @@ let _docUnsub = null;    // main-doc onSnapshot unsubscribe
 // hoofddocument. De keuze staat daarom nu apart en wordt na elke ophaalbeurt
 // opnieuw toegepast. null = geen eigen keuze, dan volgt de kijker de dag die
 // de coordinator actief heeft staan.
+// v5.26.0: 0 betekent Totaal — de stand over alle dagen samen.
 let gekozenDagNr = null;
 
 function pasGekozenDagToe() {
-  if (!toernooiData || !gekozenDagNr) return;
+  if (!toernooiData || !gekozenDagNr) return;   // null en 0 doen hier niets
   const aantal = (toernooiData.dagen || []).length;
   if (gekozenDagNr >= 1 && gekozenDagNr <= aantal) {
     toernooiData.actiefDagNr = gekozenDagNr;
   }
+}
+
+// ============================================================
+//  ÉÉN DAGBALK VOOR DE HELE PAGINA  (v5.26.0)
+// ============================================================
+//  WAT ER MIS WAS. Er stonden TWEE rijen dagknoppen op het scherm: deze balk,
+//  en een eigen rij binnen de ranglijstkaart. Die tweede rij was bovendien
+//  dood — haar knoppen riepen `wisselRanglijstDag()` aan, maar dit script
+//  draait als module, dus die naam bestaat niet op de pagina en elke klik liep
+//  stuk. En juist in die dode rij zat de knop Totaal: de totaalstand was
+//  daardoor helemaal niet te bereiken.
+//
+//  Nu is er één rij, hier, met de dagen én Totaal, en die bedient allebei de
+//  tabbladen. De knoppen krijgen hun klik in JavaScript toegewezen (btn.onclick)
+//  en niet als tekst in de HTML — dan kan het niet meer misgaan op modulescope.
+//
+//  ⚠ Een klik doet géén database-rondje meer. Bij een afgesloten toernooi valt
+//  er niets nieuws op te halen; dat wachten voelde op een telefoon als een
+//  knop die niet reageert.
+function tekenKop() {
+  if (!toernooiData) return;
+
+  const dagen = toernooiData.dagen || [];
+  const aantalDagen = dagen.length;
+  const isAfgerond = toernooiData.status !== 'actief';
+  const toonTotaal = gekozenDagNr === 0;
+
+  // -- kopregel onder de toernooinaam --
+  const actDag = dagen[(toernooiData.actiefDagNr || 1) - 1] || null;
+  const baanLabel = actDag?.baan || toernooiData.baan || '';
+  const datumLabel = actDag?.datum || toernooiData.datum || '';
+  const staart = toonTotaal
+    ? 'Totaal · alle dagen'
+    : (aantalDagen > 1 ? `Dag ${toernooiData.actiefDagNr || 1} · ` : '') +
+      baanLabel +
+      (datumLabel ? ' · ' + new Date(datumLabel).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' }) : '');
+  document.getElementById('toernooi-meta').textContent =
+    (isAfgerond ? 'Einduitslag · ' : '') + staart;
+
+  // -- dagbalk --
+  // v5.25.0: eerst de oude balk weghalen, anders komt er elke keer een rij bij.
+  const oudeDagBalk = document.getElementById('dag-tab-balk');
+  if (oudeDagBalk) oudeDagBalk.remove();
+  if (aantalDagen <= 1) return;
+
+  const tabBar = document.getElementById('tab-bar');
+  const balk = document.createElement('div');
+  balk.id = 'dag-tab-balk';
+  balk.style.cssText = 'display:flex;gap:4px;padding:8px 12px;background:var(--green-pale);border-bottom:1px solid var(--border);overflow-x:auto';
+
+  const maakKnop = (tekst, actief, kleur, nr) => {
+    const btn = document.createElement('button');
+    btn.className = 'dag-tab';
+    btn.textContent = tekst;
+    btn.style.cssText = `padding:4px 12px;border-radius:16px;border:1.5px solid var(--${kleur});background:${actief ? `var(--${kleur})` : 'transparent'};color:${actief ? 'white' : `var(--${kleur})`};font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap`;
+    btn.onclick = () => kiesDag(nr);
+    return btn;
+  };
+
+  dagen.forEach(d => {
+    const actief = !toonTotaal && d.dagNr === (toernooiData.actiefDagNr || 1);
+    balk.appendChild(maakKnop(`Dag ${d.dagNr}${d.afgerond ? ' ✓' : ''}`, actief, 'green', d.dagNr));
+  });
+  balk.appendChild(maakKnop('Totaal', toonTotaal, 'gold', 0));
+
+  tabBar.parentNode.insertBefore(balk, tabBar.nextSibling);
+}
+
+// Totaal bestaat alleen als ranglijst — losse holescores hebben geen totaal.
+// Daarom springt de kijker daarbij mee naar het tabblad Ranglijst.
+function kiesDag(nr) {
+  gekozenDagNr = nr;
+  pasGekozenDagToe();
+  if (nr === 0 && actiefTab !== 'ranglijst') {
+    actiefTab = 'ranglijst';
+    markeerTabKnoppen();
+  }
+  tekenKop();
+  renderInhoud();
+}
+
+function markeerTabKnoppen() {
+  const scores = document.getElementById('tab-scores');
+  const rang   = document.getElementById('tab-ranglijst');
+  if (scores) scores.classList.toggle('actief', actiefTab === 'scores');
+  if (rang)   rang.classList.toggle('actief',   actiefTab === 'ranglijst');
 }
 
 // Haal toernooi ID op uit URL
@@ -147,8 +234,16 @@ toernooiId = params.get('t');
 
 window.toonTab = function(tab) {
   actiefTab = tab;
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('actief'));
-  event.currentTarget.classList.add('actief');
+  // v5.26.0: de knoppen worden op naam gemarkeerd. Voorheen ging dat via
+  // `event.currentTarget` — dat werkt alleen bij een echte klik, en sinds de
+  // dagbalk zelf naar Ranglijst kan springen moest het ook zonder klik kunnen.
+  markeerTabKnoppen();
+  // Terug naar Scores terwijl Totaal aan staat: losse holescores horen bij
+  // één dag, dus dan valt de kijker terug op de dag die actief is.
+  if (tab === 'scores' && gekozenDagNr === 0) {
+    gekozenDagNr = toernooiData?.actiefDagNr || 1;
+    tekenKop();
+  }
   renderInhoud();
 };
 
@@ -233,47 +328,13 @@ async function laadToernooi() {
 
     document.getElementById('toernooi-naam').textContent = toernooiData.naam;
 
-    // v3.0.0-11.37: meerdaagse structuur — toon actieve dag info
-    const actDag = (toernooiData.dagen || [])[( toernooiData.actiefDagNr || 1) - 1] || null;
-    const aantalDagen = (toernooiData.dagen || []).length;
-    const dagLabel = aantalDagen > 1 ? `Dag ${toernooiData.actiefDagNr || 1} · ` : '';
-    const baanLabel = actDag?.baan || toernooiData.baan || '';
-    const datumLabel = actDag?.datum || toernooiData.datum || '';
-    document.getElementById('toernooi-meta').textContent =
-      (isAfgerond ? 'Einduitslag · ' : '') +
-      dagLabel + baanLabel + (datumLabel ? ' · ' + new Date(datumLabel).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' }) : '');
     // v5.10.0: bij een afgesloten toernooi is er niets meer live. De knop
     // 'Live' die om de tien seconden ververst zou dan een leugen zijn.
     const verversKnop = document.querySelector('.refresh-btn');
     if (verversKnop && isAfgerond) verversKnop.style.display = 'none';
     document.getElementById('tab-bar').style.display = 'flex';
 
-    // Dag-tabs toevoegen als meerdere dagen
-    const tabBar = document.getElementById('tab-bar');
-
-    // v5.25.0: eerst de oude balk weghalen, anders komt er elke keer een rij bij.
-    //
-    // WAT ER MIS WAS: hier werd binnen `tab-bar` gezocht naar de oude knoppen,
-    // maar de balk wordt NAAST tab-bar gezet (insertBefore op de ouder). Er viel
-    // daar dus nooit iets te vinden en elke tekenbeurt plakte er een rij onder.
-    // De balk heeft nu een eigen id en wordt op naam opgeruimd.
-    const oudeDagBalk = document.getElementById('dag-tab-balk');
-    if (oudeDagBalk) oudeDagBalk.remove();
-
-    if (aantalDagen > 1) {
-      const dagTabsContainer = document.createElement('div');
-      dagTabsContainer.id = 'dag-tab-balk';
-      dagTabsContainer.style.cssText = 'display:flex;gap:4px;padding:8px 12px;background:var(--green-pale);border-bottom:1px solid var(--border);overflow-x:auto';
-      (toernooiData.dagen || []).forEach(d => {
-        const btn = document.createElement('button');
-        btn.className = 'dag-tab';
-        btn.textContent = `Dag ${d.dagNr}${d.afgerond ? ' ✓' : ''}`;
-        btn.style.cssText = `padding:4px 12px;border-radius:16px;border:1.5px solid var(--green);background:${d.dagNr === (toernooiData.actiefDagNr||1) ? 'var(--green)' : 'transparent'};color:${d.dagNr === (toernooiData.actiefDagNr||1) ? 'white' : 'var(--green)'};font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap`;
-        btn.onclick = () => { gekozenDagNr = d.dagNr; pasGekozenDagToe(); laadData(); };
-        dagTabsContainer.appendChild(btn);
-      });
-      tabBar.parentNode.insertBefore(dagTabsContainer, tabBar.nextSibling);
-    }
+    tekenKop();
 
     updateTijd();
     renderInhoud();
@@ -481,31 +542,21 @@ function berekenStrokeplayRanglijst(t, dagNrOverride) {
 
 function renderRanglijst() {
   const t = toernooiData;
-  const aantalDagen = (t.dagen || []).length;
   const dag = actieveDagLive(t);
   const holes  = dag?.holes  || t.holes  || [];
   // v3.0.0-11.106: merge live scores
   const scores = dag ? getLiveScoresVoorDag(dag) : (t.scores || {});
   const dagNr  = t.actiefDagNr || 1;
 
-  // Ranglijst tabs bij meerdere dagen: Dag 1, Dag 2... + Totaal
-  let tabsHtml = '';
-  if (aantalDagen > 1) {
-    tabsHtml = '<div style="display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid var(--border);overflow-x:auto">';
-    (t.dagen || []).forEach(d => {
-      const actief = d.dagNr === dagNr;
-      tabsHtml += `<button onclick="wisselRanglijstDag(${d.dagNr})" style="padding:4px 12px;border-radius:16px;border:1.5px solid var(--green);background:${actief?'var(--green)':'transparent'};color:${actief?'white':'var(--green)'};font-size:12px;cursor:pointer;font-family:inherit">Dag ${d.dagNr}</button>`;
-    });
-    tabsHtml += `<button onclick="wisselRanglijstDag(0)" style="padding:4px 12px;border-radius:16px;border:1.5px solid var(--gold);background:${dagNr===0?'var(--gold)':'transparent'};color:${dagNr===0?'white':'var(--gold)'};font-size:12px;cursor:pointer;font-family:inherit">Totaal</button>`;
-    tabsHtml += '</div>';
-  }
-
-  const rlDagNr = window._liveRlDagNr !== undefined ? window._liveRlDagNr : dagNr;
+  // v5.26.0: hier stond een TWEEDE rij dagknoppen, met de enige knop Totaal die
+  // de pagina had. Zie de toelichting bij tekenKop(): die rij was dood en staat
+  // nu als één balk bovenaan. Welke dag getoond wordt, komt dus van daar.
+  const rlDagNr = gekozenDagNr === 0 ? 0 : dagNr;
   const rlHoles  = rlDagNr === 0 ? holes : (actieveDagLive(t, rlDagNr)?.holes  || holes);
   const rlDag    = rlDagNr === 0 ? null : actieveDagLive(t, rlDagNr);
   const rlScores = rlDag ? getLiveScoresVoorDag(rlDag) : scores;
 
-  let html = '<div class="card">' + tabsHtml;
+  let html = '<div class="card">';
 
   if (t.modus === 'strokeplay') {
     const sorteerOp = t._ranglijstModus || 'brutto';
@@ -604,11 +655,6 @@ function renderRanglijst() {
 
   html += '</div>';
   document.getElementById('inhoud').innerHTML = html;
-}
-
-function wisselRanglijstDag(dagNr) {
-  window._liveRlDagNr = dagNr;
-  renderRanglijst();
 }
 
 // Start
