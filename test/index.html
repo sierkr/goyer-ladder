@@ -616,12 +616,12 @@
     --green: #1a7a4a;
     --green-light: #23935c;
     --green-pale: #d5f0e2;
-    --gold: #b5882a;
+    --gold: #926507;    /* v5.28.0: was #b5882a, 2,90 : 1 in badges */
     --gold-light: #e9c46a;
     --cream: #f7f8fa;
     --dark: #1a1a2e;
-    --mid: #6b7280;
-    --light: #9aa0aa;
+    --mid: #616876;     /* v5.28.0: was #6b7280, 4,00 : 1 op groen */
+    --light: #6b717b;   /* v5.28.0: was #9aa0aa, haalde 2,48 : 1 */
     --white: #ffffff;
     --red: #c0392b;
     --blue: #2471a3;
@@ -799,12 +799,12 @@
     --green: #2e6b4f;          /* dennengroen, de clubherkenning */
     --green-light: #3d8463;
     --green-pale: #e6efe9;
-    --gold: #8a7a4e;           /* gedempt, geen glim */
+    --gold: #7c6c40;           /* gedempt, geen glim */
     --gold-light: #c9bc94;
     --cream: #fbfaf7;          /* het papier */
     --dark: #22252a;           /* inkt */
     --mid: #5c6269;
-    --light: #8b9097;          /* lichte inkt */
+    --light: #6d7279;          /* lichte inkt */
     --white: #ffffff;
     --red: #c0392b;            /* vermiljoen, het stempel */
     --blue: #2f5d7c;
@@ -853,16 +853,23 @@
   html[data-theme="papier"] #versie-badge {
     color: var(--light) !important; background: transparent !important;
     border: 1px solid var(--border) !important; border-radius: 2px !important;
+    font-size: 12px !important;
   }
 
   html[data-theme="papier"] nav {
     background: var(--nav-bg); border-bottom: 1px solid var(--border); box-shadow: none;
   }
   html[data-theme="papier"] nav button span.nav-label {
-    color: var(--light) !important; font-size: 11px !important; font-weight: 500 !important;
+    color: var(--light) !important; font-size: 13px !important; font-weight: 500 !important;
   }
+  /* v5.28.0: de actieve tab had donkere inkt op vol groen — 2,44 : 1, het
+     slechtste van de hele app. Nu inkt op lichtgroen: 13,09 : 1. Het blokje
+     blijft herkenbaar; groen is nu de vulling en niet de inkt. */
   html[data-theme="papier"] nav button.active span.nav-label {
-    color: var(--dark) !important; font-weight: 700 !important;
+    background: var(--green-pale) !important;
+    border-color: var(--green) !important;
+    color: var(--dark) !important;
+    font-weight: 700 !important;
   }
 
   /* Kaarten zijn vellen papier: een dunne lijn, geen schaduw, geen ronding. */
@@ -870,7 +877,7 @@
     box-shadow: none; border: 1px solid var(--border); border-radius: 2px; background: var(--card-bg);
   }
   html[data-theme="papier"] .card-header h2 {
-    color: var(--dark) !important; font-size: 14px !important; font-weight: 700 !important;
+    color: var(--dark) !important; font-size: 16px !important; font-weight: 700 !important;
     letter-spacing: 0 !important; text-transform: none !important;
   }
 
@@ -893,9 +900,9 @@
   }
   html[data-theme="papier"] .rank-badge.top3 { color: var(--gold) !important; }
   html[data-theme="papier"] .rank-badge.zelf { color: var(--green) !important; font-weight: 700 !important; }
-  html[data-theme="papier"] .player-name { font-size: 13px !important; }
+  html[data-theme="papier"] .player-name { font-size: 15px !important; }
   html[data-theme="papier"] .player-hcp,
-  html[data-theme="papier"] .player-stats { font-size: 11px !important; color: var(--light) !important; }
+  html[data-theme="papier"] .player-stats { font-size: 13px !important; color: var(--light) !important; }
   html[data-theme="papier"] .match-vs { color: var(--light) !important; font-size: 13px !important; }
 
   html[data-theme="papier"] .modal {
@@ -929,20 +936,20 @@
   html[data-theme="papier"] .scorecard th {
     background: transparent !important;
     color: var(--dark) !important;
-    font-size: 13px !important;
+    font-size: 14px !important;
     font-weight: 700 !important;
     padding: 4px 6px 8px !important;
     border-bottom: 1px solid var(--dark) !important;
     vertical-align: bottom !important;
   }
   html[data-theme="papier"] .scorecard th.player-col {
-    font-weight: 500 !important; font-size: 11px !important; color: var(--mid) !important;
+    font-weight: 500 !important; font-size: 13px !important; color: var(--mid) !important;
   }
   /* De handicap onder de naam. Stond wit-op-groen op 60% dekking; nu
      gewoon leesbaar. */
   html[data-theme="papier"] .scorecard th span[onclick*="editPartijHcp"] {
     color: var(--mid) !important;
-    font-size: 11px !important;
+    font-size: 13px !important;
     border-bottom: 1px dashed var(--border) !important;
   }
   /* Het team-label bij High-Low (T1 / T2). */
@@ -976,8 +983,8 @@
   html[data-theme="papier"] .scorecard tbody td:first-child span[style*="font-size:15px"] {
     font-size: 17px !important; font-weight: 700 !important;
   }
-  html[data-theme="papier"] .hole-par { color: var(--mid) !important; font-weight: 500 !important; }
-  html[data-theme="papier"] .hole-si  { color: var(--mid) !important; font-weight: 500 !important; }
+  html[data-theme="papier"] .hole-par { color: var(--mid) !important; font-weight: 500 !important; font-size: 13px !important; }
+  html[data-theme="papier"] .hole-si  { color: var(--mid) !important; font-weight: 500 !important; font-size: 13px !important; }
 
   /* De hokjes. Breder en met grotere cijfers dan in de andere twee
      stijlen: dit is het enige element in de app waar iemand met een
@@ -1016,7 +1023,7 @@
     color: var(--dark) !important;
   }
   html[data-theme="papier"] .scorecard tbody tr:last-child td:first-child {
-    font-size: 11px !important; font-weight: 500 !important; color: var(--mid) !important;
+    font-size: 13px !important; font-weight: 500 !important; color: var(--mid) !important;
   }
 
   /* Uitslagcellen elders in de app: rustiger, zonder gevulde blokjes. */
@@ -1160,7 +1167,7 @@
     <button onclick="openWachtwoordVergeten()" style="background:none;border:none;color:var(--light);font-size:13px;margin-top:12px;width:100%;cursor:pointer;font-family:'DM Sans',sans-serif">
       Wachtwoord vergeten?
     </button>
-    <div class="login-versie" style="text-align:right;margin-top:8px;font-size:10px;color:#ccc;font-family:'DM Mono',monospace">v2.x</div>
+    <div class="login-versie" style="text-align:right;margin-top:8px;font-size:11px;color:var(--light);font-family:'DM Mono',monospace">v2.x</div>
   </div>
 </div>
 

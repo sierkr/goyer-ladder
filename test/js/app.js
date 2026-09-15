@@ -223,7 +223,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v5.27.0';
+  const VERSION = 'v5.28.0';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -242,7 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.login-versie').forEach(el => {
     el.textContent = label;
     if (IS_TEST) {
-      el.style.color = '#ff6b35';
+      el.style.color = '#c2410c'; // v5.28.0: was #ff6b35 — 2,84 : 1 op wit
       el.style.fontWeight = '600';
     }
   });
@@ -267,7 +267,7 @@ window.kiesTRankingLadder = kiesTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v5.27.0';
+  const LOKALE_VERSIE = 'v5.28.0';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 
