@@ -271,7 +271,8 @@ export async function laadUiStijl(storeRef) {
     const waarde = snap.exists() ? snap.data().uiStijl : null;
     // v5.6.0: de standaard voor de club is nu Helder (matchcheck). Alleen een
     // uitdrukkelijke 'club' in ladder/config levert nog de klassieke stijl.
-    storeRef.uiStijl = (waarde === 'club') ? 'club' : 'matchcheck';
+    // v5.27.0: 'papier' is er als derde stijl bijgekomen.
+    storeRef.uiStijl = STIJLEN.includes(waarde) ? waarde : 'matchcheck';
   } catch(e) {
     console.warn('laadUiStijl mislukt, val terug op de standaardstijl:', e);
     storeRef.uiStijl = 'matchcheck';
@@ -346,18 +347,22 @@ export async function laadBanen(storeRef, { vanServer = false } = {}) {
 //  gekozen nooit meer terug, en bereikte een latere wijziging van de club hem
 //  nooit meer.
 // ============================================================
+//  v5.27.0: 'papier' erbij — de derde stand. Eén lijst, zodat een vierde stijl
+//  later op één plek wordt toegevoegd in plaats van op vier.
+const STIJLEN = ['club', 'matchcheck', 'papier'];
+
 const WEERGAVE_SLEUTEL = 'goyer-weergave';
 
 export function leesEigenWeergave() {
   try {
     const w = localStorage.getItem(WEERGAVE_SLEUTEL);
-    return (w === 'matchcheck' || w === 'club') ? w : 'standaard';
+    return STIJLEN.includes(w) ? w : 'standaard';
   } catch (e) { return 'standaard'; }
 }
 
 export function bewaarEigenWeergave(waarde) {
   try {
-    if (waarde === 'matchcheck' || waarde === 'club') {
+    if (STIJLEN.includes(waarde)) {
       localStorage.setItem(WEERGAVE_SLEUTEL, waarde);
     } else {
       localStorage.removeItem(WEERGAVE_SLEUTEL);
@@ -372,7 +377,67 @@ export function bewaarEigenWeergave(waarde) {
 export function effectieveStijl(clubStijl) {
   const eigen = leesEigenWeergave();
   if (eigen !== 'standaard') return eigen;
-  return (clubStijl === 'club') ? 'club' : 'matchcheck';
+  return STIJLEN.includes(clubStijl) ? clubStijl : 'matchcheck';
+}
+
+// ============================================================
+//  v5.33.0 — UITKLAPMENU'S IN HOOFDLETTERS
+// ------------------------------------------------------------
+//  De stijlregel `text-transform: uppercase` werkt hier niet overal. Op de
+//  Mint-browser klopt het, maar zodra een iPhone de keuzelijst openklapt
+//  tekent het toestel die zelf en negeert het de opmaak. Sierk zag dat: "niet
+//  alle dropdowns zijn aangepast op hoofdletters".
+//
+//  Daarom zetten we de tekst van elke optie zelf om. Het origineel gaat in
+//  data-goyer-origineel, zodat Helder en Klassiek hun gewone tekst terugkrijgen.
+//
+//  ⚠ Dit raakt alleen wat je ZIET. De waarde (`option.value`) blijft
+//  ongemoeid, dus er verandert niets aan wat er opgeslagen of vergeleken wordt.
+// ============================================================
+function zetOptiesOm(hoofdletters) {
+  let aantal = 0;
+  document.querySelectorAll('option').forEach(o => {
+    if (hoofdletters) {
+      if (o.dataset.goyerOrigineel === undefined) o.dataset.goyerOrigineel = o.textContent;
+      const om = o.dataset.goyerOrigineel.toUpperCase();
+      if (o.textContent !== om) { o.textContent = om; aantal++; }
+    } else if (o.dataset.goyerOrigineel !== undefined) {
+      if (o.textContent !== o.dataset.goyerOrigineel) o.textContent = o.dataset.goyerOrigineel;
+      delete o.dataset.goyerOrigineel;
+      aantal++;
+    }
+  });
+  return aantal;
+}
+
+//  Lijsten worden onderweg opnieuw opgebouwd (spelers, ladders, banen). Zonder
+//  waarnemer staat zo'n verse lijst weer in gewone letters.
+//
+//  ⚠ Twee valkuilen die hier met opzet zijn afgedekt:
+//   1. Het omzetten verandert zelf de DOM en zou de waarnemer opnieuw kunnen
+//      wekken. Daarom schrijven we alleen als de tekst écht anders is; de
+//      tweede ronde verandert niets en daar stopt het.
+//   2. Bij elke wijziging alles nalopen is duur. Daarom wachten we tot het
+//      volgende tekenmoment en doen we het één keer.
+let _optieWaarnemer = null;
+let _omzettingGepland = false;
+
+function houdOptiesBij(aan) {
+  if (aan) {
+    if (_optieWaarnemer || !document.body) return;
+    _optieWaarnemer = new MutationObserver(lijst => {
+      const raaktOpties = lijst.some(m =>
+        [...m.addedNodes].some(n => n.nodeType === 1 &&
+          (n.tagName === 'OPTION' || n.tagName === 'SELECT' || n.querySelector?.('option'))));
+      if (!raaktOpties || _omzettingGepland) return;
+      _omzettingGepland = true;
+      requestAnimationFrame(() => { _omzettingGepland = false; zetOptiesOm(true); });
+    });
+    _optieWaarnemer.observe(document.body, { childList: true, subtree: true });
+  } else if (_optieWaarnemer) {
+    _optieWaarnemer.disconnect();
+    _optieWaarnemer = null;
+  }
 }
 
 /**
@@ -381,12 +446,16 @@ export function effectieveStijl(clubStijl) {
  * verandert alleen kleuren/typografie/randen — nooit de HTML-structuur.
  */
 export function pasUiStijlToe(waarde) {
-  const stijl = (waarde === 'matchcheck') ? 'matchcheck' : 'club';
+  const stijl = STIJLEN.includes(waarde) ? waarde : 'club';
   if (stijl === 'club') {
     document.documentElement.removeAttribute('data-theme');
   } else {
     document.documentElement.setAttribute('data-theme', stijl);
   }
+  // v5.33.0: de uitklapmenu's kunnen niet met opmaak alleen — zie hierboven.
+  const hoofdletters = (stijl === 'papier');
+  zetOptiesOm(hoofdletters);
+  houdOptiesBij(hoofdletters);
 }
 
 /**
