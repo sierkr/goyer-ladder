@@ -1164,6 +1164,13 @@ function renderDagBlokken() {
       ptTie:     prev.ptTie     ?? dag1.ptTie  ?? 0,
       ptLoss:    prev.ptLoss    ?? dag1.ptLoss ?? -2,
       hcpPct:    prev.hcpPctHeel ?? dag1.hcpPctHeel ?? 75,
+      // ⚠ v5.34.0 — DIT ONTBRAK SINDS v5.15.0. De puntentabel voor een
+      // strokeplay-dag werd wel uitgelezen en opgeslagen, maar niet bewaard bij
+      // het opnieuw opbouwen van de dagblokken. Wisselde je van tabblad, voegde
+      // je een dag toe of wijzigde je het aantal dagen, dan was wat je had
+      // ingetikt weg — zonder melding. Precies de fout waar de opmerking
+      // bovenaan deze functie al voor waarschuwde.
+      plaatsPunten: prev.plaatsPunten ?? dag1.plaatsPunten ?? '',
     };
 
     html += `
@@ -5631,6 +5638,19 @@ async function bewerkToernooi() {
 
     // Herlaad setup-state vanuit het verwijderde document
     _herstelSetupVanuitToernooi(t);
+
+    // ⚠ v5.34.0 — HIER GING HET MIS SINDS v5.24.0.
+    // Deze functie gooit het toernooi weg en zet de instellingen terug in het
+    // formulier. Maar sinds er drie schermen zijn (start · nieuw · detail) moet
+    // je er ook bij zeggen wélk scherm. Zonder deze regel zag renderToernooi()
+    // geen geldig toernooi meer en viel hij terug op het STARTSCHERM — met alle
+    // herstelde gegevens onzichtbaar in een verborgen formulier. De melding
+    // "Instellingen hersteld — pas aan en start opnieuw" klopte dan niet: er
+    // viel niets aan te passen.
+    // Gevonden doordat de browsertest "opnieuw instellen levert geen sierk2 op"
+    // twee dagen rood stond.
+    window._toernooiScherm = 'nieuw';
+    window._tSetupTab = 'toernooi';
 
     // Toon het aanmaakscherm
     renderToernooi();

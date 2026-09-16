@@ -2093,6 +2093,12 @@
   <div id="toernooi-setup-wrap" style="display:none">
     <!-- v3.0.9: standaard verborgen; renderToernooi() toont dit alleen voor coordinators.
          Voorkomt dat een deelnemer het aanmaakscherm ("NIEUW TOERNOOI") ziet. -->
+    <!-- ⚠ v5.34.0: hier was geen weg terug. Sinds v5.24.0 heeft het detailscherm
+         "← Toernooien", maar het aanmaakscherm niet. Begon je een nieuw toernooi
+         en bedacht je je, dan kon je alleen verder of de pagina verversen. -->
+    <div style="padding:0 0 10px">
+      <button class="btn btn-ghost btn-sm" onclick="toonToernooiStart()" style="font-size:13px">← Toernooien</button>
+    </div>
     <div class="card">
       <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
         <h2>Nieuw Toernooi</h2>
