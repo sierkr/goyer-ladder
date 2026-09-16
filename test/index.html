@@ -947,10 +947,12 @@
   }
   /* De handicap onder de naam. Stond wit-op-groen op 60% dekking; nu
      gewoon leesbaar. */
+  /* v5.31.0: dit is niet langer het handicapregeltje maar de NAAM zelf.
+     Aantikken opent het venster om de handicap aan te passen; het streepje
+     eronder is de enige hint dat er iets gebeurt. */
   html[data-theme="papier"] .scorecard th span[onclick*="editPartijHcp"] {
-    color: var(--mid) !important;
-    font-size: 13px !important;
-    border-bottom: 1px dashed var(--border) !important;
+    color: var(--dark) !important;
+    border-bottom: 1px dashed var(--light) !important;
   }
   /* Het team-label bij High-Low (T1 / T2). */
   html[data-theme="papier"] .scorecard th span:not([onclick]) {
@@ -989,7 +991,7 @@
   /* De hokjes. Breder en met grotere cijfers dan in de andere twee
      stijlen: dit is het enige element in de app waar iemand met een
      handschoen aan, in de zon, op moet mikken. */
-  html[data-theme="papier"] .scorecard input[type=number] {
+  html[data-theme="papier"] table.scorecard input[type=number] {
     width: 52px !important;
     height: 44px !important;
     padding: 2px !important;
@@ -1031,6 +1033,56 @@
   html[data-theme="papier"] .res-L,
   html[data-theme="papier"] .res-T {
     border-radius: 2px !important; font-weight: 700 !important;
+  }
+
+
+  /* ============================================================
+     v5.31.0 — DICHTHEID B, DOORGETROKKEN NAAR ALLE TABBLADEN
+     ------------------------------------------------------------
+     Gekozen uit vier proeven: letter 16px, boxhoogte 31px. De
+     BREEDTE blijft overal ongemoeid — die past precies op de
+     telefoon en dat was de voorwaarde.
+
+     16px is ook de ondergrens: wordt de letter in een invoerveld
+     kleiner, dan zoomt iOS bij het aantikken vanzelf in en staat
+     het scherm scheef.
+
+     Buiten schot, met opzet:
+      - aanvink- en keuzerondjes (staan in de :not() hieronder)
+      - het meerregelige tekstvak: alleen de letter, niet de hoogte
+      - de invulvakjes van de scorekaart: die hebben hun eigen maat
+      - de ronde pilletjes in de toernooi-ranglijst: ander onderdeel
+      - knoppen: die moet je met koude handen kunnen raken
+     ============================================================ */
+  html[data-theme="papier"] input:not([type=checkbox]):not([type=radio]),
+  html[data-theme="papier"] select {
+    font-size: 16px !important;
+    padding: 0 14px !important;
+    min-height: 31px !important;
+    height: 31px !important;
+    line-height: 1 !important;
+  }
+  html[data-theme="papier"] textarea { font-size: 16px !important; }
+
+  /* ⚠ Aanvink- en keuzerondjes erven `min-height: 44px` uit de basisregel voor
+     invoervelden. Nagemeten: het rondje werd daardoor 44px hoog en stak 7px
+     ONDER het keuzeblok van 31px uit. Die 44px was bedoeld voor velden waar je
+     in typt; een rondje krijgt zijn maat van de browser. */
+  html[data-theme="papier"] input[type=checkbox],
+  html[data-theme="papier"] input[type=radio] {
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  /* De zeven keuzeblokken: speltype, handicapverdeling, slagplaatsing en
+     de omgevingskeuze bij de reservekopie. Herkenbaar aan hun eigen
+     padding, want ze hebben geen klasse. */
+  html[data-theme="papier"] label[style*="padding:10px 12px"] {
+    font-size: 16px !important;
+    padding: 0 12px !important;
+    min-height: 31px !important;
+    height: 31px !important;
+    line-height: 1 !important;
   }
 
   /* ⚠ De keuzes hieronder zijn zwaarder gemaakt dan ze eruitzien: de

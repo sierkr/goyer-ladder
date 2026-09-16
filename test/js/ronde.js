@@ -8,7 +8,7 @@ import { closeModal } from './admin.js';
 import { kortNaamMap, mijnPartij, renderHcpBlok } from './partij.js';
 // v5.8.0: alle slagentoekenning komt uit een module, niet meer uit losse
 // kopieen per scherm.
-import { hcpInstellingen, slagenOpHole, spelerSlagen, koppelSlagen, partijHcpVan } from './hcp.js';
+import { hcpInstellingen, slagenOpHole, spelerSlagen, koppelSlagen } from './hcp.js';
 import { getLadderSpelers, ladderStandenGeladen } from './ladder-view.js';
 import { renderLadder, berekenWeergaveRangen } from './ladder.js';
 
@@ -155,8 +155,7 @@ function renderScorecard() {
   let headHtml = '<tr><th class="player-col" style="text-align:left">Hole</th>';
   p.spelers.forEach(s => {
     headHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px">
-      ${p.speltype === 'highlow' && teamLabel[s.uid] !== undefined ? `<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:6px;margin-bottom:2px;background:rgba(255,255,255,0.22);color:#fff">T${teamLabel[s.uid] + 1}</span><br>` : ''}${esc(naamMap[s.uid])}<br>
-      <span onclick="editPartijHcp('${escAttr(s.uid)}')" style="font-size:10px;font-weight:400;color:rgba(255,255,255,0.7);cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)" title="Klik om de handicap aan te passen">hcp ${Math.round(partijHcpVan(s))}</span>
+      ${p.speltype === 'highlow' && teamLabel[s.uid] !== undefined ? `<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:6px;margin-bottom:2px;background:rgba(255,255,255,0.22);color:#fff">T${teamLabel[s.uid] + 1}</span><br>` : ''}<span onclick="editPartijHcp('${escAttr(s.uid)}')" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.45)" title="Tik op de naam om de handicap aan te passen">${esc(naamMap[s.uid])}</span>
     </th>`;
   });
   // v3.0.0-11.97: extra kolom voor Amerikaantje punten
@@ -678,15 +677,14 @@ function renderMatchOverview() {
     const naamA_style = scoreLeadA ? 'font-weight:700;color:var(--green)' : '';
     const naamB_style = scoreLeadB ? 'font-weight:700;color:var(--green)' : '';
     const scoreStyle = scoreLeadA ? 'background:var(--green-pale);color:var(--green)' : scoreLeadB ? 'background:var(--green-pale);color:var(--green)' : '';
-    // v5.8.0: het potloodje om de slagen los bij te stellen is vervallen. De
-    // slagen volgen nu uit de handicaps en de instellingen van de partij; wil
-    // je ze anders, dan pas je die aan via "Partij-instellingen aanpassen".
-    const hcpInfo = `<span style="font-size:10px;color:var(--light)">${m.hcpSlagen > 0 ? esc((m.hcpOntvanger === m.spelerA.uid ? nA : nB)) + ' +' + m.hcpSlagen + ' slag' + (m.hcpSlagen > 1 ? 'en' : '') : 'Gelijke handicap'}</span>`;
+    // v5.31.0: de slagenregel stond hier alleen onder de LINKER naam en nergens
+    // onder de rechter. Met align-items:center zakte de rechternaam daardoor
+    // omlaag — de namen stonden niet op gelijke hoogte. De informatie stond
+    // bovendien al volledig in het blok "Handicap & slagen". Weggehaald.
 
     html += `<div class="match-card">
       <div style="flex:1;min-width:0">
         <div class="match-player" style="${naamA_style};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nA)}</div>
-        ${hcpInfo}
       </div>
       <div style="text-align:center;flex:0 0 90px">
         <div class="match-score" style="${scoreStyle};font-size:13px;padding:4px 6px">${esc(scoreText)}</div>
