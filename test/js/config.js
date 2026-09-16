@@ -380,6 +380,66 @@ export function effectieveStijl(clubStijl) {
   return STIJLEN.includes(clubStijl) ? clubStijl : 'matchcheck';
 }
 
+// ============================================================
+//  v5.33.0 — UITKLAPMENU'S IN HOOFDLETTERS
+// ------------------------------------------------------------
+//  De stijlregel `text-transform: uppercase` werkt hier niet overal. Op de
+//  Mint-browser klopt het, maar zodra een iPhone de keuzelijst openklapt
+//  tekent het toestel die zelf en negeert het de opmaak. Sierk zag dat: "niet
+//  alle dropdowns zijn aangepast op hoofdletters".
+//
+//  Daarom zetten we de tekst van elke optie zelf om. Het origineel gaat in
+//  data-goyer-origineel, zodat Helder en Klassiek hun gewone tekst terugkrijgen.
+//
+//  ⚠ Dit raakt alleen wat je ZIET. De waarde (`option.value`) blijft
+//  ongemoeid, dus er verandert niets aan wat er opgeslagen of vergeleken wordt.
+// ============================================================
+function zetOptiesOm(hoofdletters) {
+  let aantal = 0;
+  document.querySelectorAll('option').forEach(o => {
+    if (hoofdletters) {
+      if (o.dataset.goyerOrigineel === undefined) o.dataset.goyerOrigineel = o.textContent;
+      const om = o.dataset.goyerOrigineel.toUpperCase();
+      if (o.textContent !== om) { o.textContent = om; aantal++; }
+    } else if (o.dataset.goyerOrigineel !== undefined) {
+      if (o.textContent !== o.dataset.goyerOrigineel) o.textContent = o.dataset.goyerOrigineel;
+      delete o.dataset.goyerOrigineel;
+      aantal++;
+    }
+  });
+  return aantal;
+}
+
+//  Lijsten worden onderweg opnieuw opgebouwd (spelers, ladders, banen). Zonder
+//  waarnemer staat zo'n verse lijst weer in gewone letters.
+//
+//  ⚠ Twee valkuilen die hier met opzet zijn afgedekt:
+//   1. Het omzetten verandert zelf de DOM en zou de waarnemer opnieuw kunnen
+//      wekken. Daarom schrijven we alleen als de tekst écht anders is; de
+//      tweede ronde verandert niets en daar stopt het.
+//   2. Bij elke wijziging alles nalopen is duur. Daarom wachten we tot het
+//      volgende tekenmoment en doen we het één keer.
+let _optieWaarnemer = null;
+let _omzettingGepland = false;
+
+function houdOptiesBij(aan) {
+  if (aan) {
+    if (_optieWaarnemer || !document.body) return;
+    _optieWaarnemer = new MutationObserver(lijst => {
+      const raaktOpties = lijst.some(m =>
+        [...m.addedNodes].some(n => n.nodeType === 1 &&
+          (n.tagName === 'OPTION' || n.tagName === 'SELECT' || n.querySelector?.('option'))));
+      if (!raaktOpties || _omzettingGepland) return;
+      _omzettingGepland = true;
+      requestAnimationFrame(() => { _omzettingGepland = false; zetOptiesOm(true); });
+    });
+    _optieWaarnemer.observe(document.body, { childList: true, subtree: true });
+  } else if (_optieWaarnemer) {
+    _optieWaarnemer.disconnect();
+    _optieWaarnemer = null;
+  }
+}
+
 /**
  * Past de gegeven UI-stijl toe op de pagina door het data-theme attribuut op
  * <html> te zetten. De bijbehorende CSS (in index.html, [data-theme="matchcheck"])
@@ -392,6 +452,10 @@ export function pasUiStijlToe(waarde) {
   } else {
     document.documentElement.setAttribute('data-theme', stijl);
   }
+  // v5.33.0: de uitklapmenu's kunnen niet met opmaak alleen — zie hierboven.
+  const hoofdletters = (stijl === 'papier');
+  zetOptiesOm(hoofdletters);
+  houdOptiesBij(hoofdletters);
 }
 
 /**

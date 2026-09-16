@@ -1064,14 +1064,90 @@
   }
   html[data-theme="papier"] textarea { font-size: 16px !important; }
 
-  /* ⚠ Aanvink- en keuzerondjes erven `min-height: 44px` uit de basisregel voor
-     invoervelden. Nagemeten: het rondje werd daardoor 44px hoog en stak 7px
-     ONDER het keuzeblok van 31px uit. Die 44px was bedoeld voor velden waar je
-     in typt; een rondje krijgt zijn maat van de browser. */
+  /* ============================================================
+     v5.33.0 — DE BOLLETJES ZELF TEKENEN
+     ------------------------------------------------------------
+     Tot v5.32.0 lieten we dit aan het toestel over. Op de Mint
+     kwam er 13x13 uit bij een letter van 16px — keurig. Op een
+     iPhone tekent iOS ze zelf, veel groter, en trekt zich van
+     opgegeven maten niets aan. Daarom tekenen we ze nu zelf:
+     dan is de maat op elk toestel gelijk en kunnen de keuzeblokken
+     op dezelfde 31px als de rest.
+
+     0,8em: iets kleiner dan de letter, zodat het bolletje nooit
+     zwaarder oogt dan het woord ernaast.
+
+     Alle 18 aanvinkvakjes en keuzerondjes in de app zitten in een
+     <label>. Het kleinere bolletje maakt het aantikken dus niet
+     moeilijker — de hele regel blijft het doelwit.
+     ============================================================ */
   html[data-theme="papier"] input[type=checkbox],
   html[data-theme="papier"] input[type=radio] {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    width: 0.8em !important;
+    height: 0.8em !important;
+    min-width: 0 !important;
     min-height: 0 !important;
-    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 1.5px solid var(--mid) !important;
+    background: var(--input-bg) !important;
+    flex-shrink: 0 !important;
+    display: inline-block !important;
+    position: relative !important;
+    vertical-align: middle !important;
+    cursor: pointer !important;
+  }
+  html[data-theme="papier"] input[type=radio]    { border-radius: 50% !important; }
+  html[data-theme="papier"] input[type=checkbox] { border-radius: 1px !important; }
+
+  html[data-theme="papier"] input[type=radio]:checked {
+    border-color: var(--dark) !important;
+  }
+  html[data-theme="papier"] input[type=radio]:checked::after {
+    content: '' !important;
+    position: absolute !important;
+    inset: 2px !important;
+    border-radius: 50% !important;
+    background: var(--dark) !important;
+  }
+  html[data-theme="papier"] input[type=checkbox]:checked {
+    background: var(--dark) !important;
+    border-color: var(--dark) !important;
+  }
+  html[data-theme="papier"] input[type=checkbox]:checked::after {
+    content: '' !important;
+    position: absolute !important;
+    left: 50% !important;
+    top: 45% !important;
+    width: 0.20em !important;
+    height: 0.42em !important;
+    border: solid var(--input-bg) !important;
+    border-width: 0 2px 2px 0 !important;
+    transform: translate(-50%, -50%) rotate(45deg) !important;
+  }
+  /* Zichtbaar waar je bent bij bediening met een toetsenbord. */
+  html[data-theme="papier"] input[type=checkbox]:focus-visible,
+  html[data-theme="papier"] input[type=radio]:focus-visible {
+    outline: 2px solid var(--red) !important;
+    outline-offset: 1px !important;
+  }
+
+  /* ============================================================
+     v5.33.0 — EEN KNOP BREEKT ZIJN TEKST NIET MEER AF
+     ------------------------------------------------------------
+     In het uitslagscherm staat de knop "✕ overslaan" in een rij
+     die de ruimte verdeelt met de spelersnamen. Werden die namen
+     lang, dan werd de knop samengedrukt en kwam de ✕ boven het
+     woord te staan. Nu geeft de knop zijn ruimte niet meer op en
+     breekt zijn tekst niet af; de namen krijgen de rest en lopen
+     door naar een tweede regel.
+     ============================================================ */
+  html[data-theme="papier"] .btn,
+  html[data-theme="papier"] button {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
   }
 
   /* De zeven keuzeblokken: speltype, handicapverdeling, slagplaatsing en
@@ -2317,8 +2393,8 @@
           De opbouw en werking van elk scherm blijven in beide stijlen exact hetzelfde.
         </p>
         <div id="uistijl-keuze" style="display:flex;flex-direction:column;gap:8px">
-          <button type="button" class="btn btn-ghost btn-block uistijl-optie" data-stijl="club" onclick="kiesUiStijl('club')">Standaard (huidige stijl)</button>
-          <button type="button" class="btn btn-ghost btn-block uistijl-optie" data-stijl="matchcheck" onclick="kiesUiStijl('matchcheck')">MatchCheck-stijl</button>
+          <button type="button" class="btn btn-ghost btn-block uistijl-optie" data-stijl="club" onclick="kiesUiStijl('club')">Klassiek</button>
+          <button type="button" class="btn btn-ghost btn-block uistijl-optie" data-stijl="matchcheck" onclick="kiesUiStijl('matchcheck')">Helder</button>
           <button type="button" class="btn btn-ghost btn-block uistijl-optie" data-stijl="papier" onclick="kiesUiStijl('papier')">Papier</button>
         </div>
       </div>
