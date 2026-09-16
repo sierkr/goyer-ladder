@@ -125,6 +125,10 @@ async function slaToernooiOp(page) {
 
 async function slaOpEnStart(page, dagNr = 1) {
   await slaToernooiOp(page);
+  // v5.33.1: de knop "Dag N starten" staat op het DAGtabblad. Bleef het scherm
+  // op Toernooi staan — bijvoorbeeld omdat een vorige stap daarheen ging om te
+  // annuleren — dan bestond die knop niet en liep de test vast.
+  await naarDagTab(page, dagNr);
   const knop = page.locator(`#toernooi-detail button:has-text("Dag ${dagNr} starten")`);
   await knop.waitFor({ state: 'visible', timeout: 20000 });
   await knop.click();
@@ -141,20 +145,53 @@ async function naarFlightIndeling(page) {
 // v5.24.0: het tabblad TOERNOOI opent op een STARTSCHERM (Nieuw toernooi ·
 // Loopt nu · Concept · Oud). Het aanmaakscherm zit achter "➕ Nieuw toernooi" —
 // precies zoals een coordinator het doet.
-async function openAanmaakscherm(page) {
-  const nieuwKnop = page.locator('#toernooi-start-wrap button:has-text("Nieuw toernooi")');
-  if (await nieuwKnop.count()) await nieuwKnop.click();
-  const kop = page.locator('#toernooi-setup-wrap .card-header.inklapbaar').first();
-  await kop.waitFor({ state: 'visible', timeout: 10000 });
-  if (await kop.evaluate(el => el.classList.contains('ingeklapt'))) await kop.click();
-  await expect(kop).not.toHaveClass(/ingeklapt/);
+// ⚠ v5.33.1 — WAT HIER MIS WAS, en waarom de browsertests twee dagen rood
+// stonden. Sinds v5.24.0 zijn er DRIE schermen (start · nieuw · detail). Staat
+// er een toernooi open, dan is `#toernooi-start-wrap` verborgen en dus ook de
+// knop "➕ Nieuw toernooi". Deze functie klikte die knop dan niet — `count()`
+// telt ook verborgen elementen, maar de klik ging naar iets onzichtbaars — en
+// wachtte daarna op een kop die per definitie verborgen bleef, want het
+// aanmaakscherm stond op display:none. Vijf tests liepen daarop vast.
+//
+// Nu eerst terug naar het startscherm, precies zoals een coordinator doet:
+// "← Toernooien" en dan "➕ Nieuw toernooi".
+async function naarToernooiStart(page) {
+  // v5.34.0: "← Toernooien" staat op TWEE schermen — in het lopende toernooi en
+  // (sinds deze versie) ook op het aanmaakscherm. Zoek de knop die op dit moment
+  // zichtbaar is, in plaats van er één plek voor aan te wijzen.
+  //
+  // ⚠ En hij moet tegen een hertekening kunnen. Vlak na het opslaan bouwt de app
+  // het scherm opnieuw op; de knop die Playwright net gevonden had is dan weg
+  // halverwege de klik ("element is not visible"). Daarom drie pogingen, en pas
+  // daarna hard falen — dat verbergt niets, want het startscherm moet er komen.
+  const start = page.locator('#toernooi-start-wrap');
+  for (let poging = 0; poging < 3; poging++) {
+    if (await start.isVisible().catch(() => false)) return;
+    const terug = page.locator('button:has-text("← Toernooien"):visible').first();
+    if (await terug.count()) await terug.click({ timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(1000);
+  }
+  await expect(start, 'het startscherm van de toernooitab').toBeVisible({ timeout: 15000 });
 }
 
-// Terug naar het startscherm vanuit een geopend toernooi.
-async function naarToernooiStart(page) {
-  const terug = page.locator('#toernooi-actief-wrap button:has-text("← Toernooien")');
-  if (await terug.count()) await terug.click();
-  await expect(page.locator('#toernooi-start-wrap')).toBeVisible({ timeout: 10000 });
+async function openAanmaakscherm(page) {
+  // Staat er een toernooi open? Dan eerst terug naar het overzicht.
+  const setupZichtbaar = await page.locator('#toernooi-setup-wrap').isVisible().catch(() => false);
+  if (!setupZichtbaar) {
+    await naarToernooiStart(page);
+    await page.click('#toernooi-start-wrap button:has-text("Nieuw toernooi")');
+  }
+  await expect(page.locator('#toernooi-setup-wrap'),
+    'het aanmaakscherm').toBeVisible({ timeout: 15000 });
+
+  // De kop is sinds v5.21.0 niet meer de ingang — de tabbladen zijn dat — maar
+  // hij kan nog ingeklapt staan en vangt dan klikken af.
+  const kop = page.locator('#toernooi-setup-wrap .card-header.inklapbaar').first();
+  if (await kop.isVisible().catch(() => false)) {
+    if (await kop.evaluate(el => el.classList.contains('ingeklapt'))) await kop.click();
+    await expect(kop).not.toHaveClass(/ingeklapt/);
+  }
+  await naarSetupTab(page, 'toernooi');
 }
 
 // Vult het aanmaakformulier voor een toernooi van `dagen` dagen.
@@ -203,6 +240,17 @@ async function naarDagTab(p, dagNr = 1) {
 // op DRIE knoppen (het tabblad, de knop naar het venster, en de kop van de
 // kaart). Playwright weigert dan te klikken. Daarom op `onclick`, net als
 // naarToernooiTab() en naarDagTab() hierboven.
+// v5.34.0: na een herlaad komt een COORDINATOR sinds v5.24.0 op het startscherm
+// uit — niet meer meteen in het toernooi. Een deelnemer wel. Deze helper opent
+// het lopende toernooi weer, precies zoals de coordinator dat zelf doet.
+async function openLopendToernooi(p) {
+  const start = p.locator('#toernooi-start-wrap');
+  if (!(await start.isVisible().catch(() => false))) return;
+  const openen = start.locator('button:has-text("Openen")').first();
+  if (await openen.isVisible().catch(() => false)) await openen.click();
+  await expect(p.locator('#toernooi-detail')).toBeVisible({ timeout: 15000 });
+}
+
 async function naarSpelersTab(p) {
   const tab = p.locator('#toernooi-detail button[onclick="selecteerSpelersTab()"]');
   if (await tab.count()) await tab.click();
@@ -505,6 +553,7 @@ test.describe('Toernooi — de hele route', () => {
         await p.reload();
         await p.waitForSelector('#login-scherm', { state: 'hidden', timeout: 25000 });
         await naarToernooi(p);
+        await openLopendToernooi(p);   // v5.34.0: coordinator landt op het startscherm
       }
 
       await expect(klassement(coord), 'de coordinator ziet het klassement')
@@ -1363,6 +1412,9 @@ test.describe('Toernooi — de hele route', () => {
     await naarToernooi(page);
     await vulAanmaakformulier(page, 'Plaatspunten', 1);
 
+    // v5.33.1: het aanmaakscherm heeft sinds v5.21.0 tabbladen. Het dagblok is
+    // pas zichtbaar als je het dagtabblad kiest.
+    await kiesSetupDag(page, 1);
     const blok = page.locator('#t-dag-blokken .dag-blok[data-dagnr="1"]');
     const veld = blok.locator('.t-dag-plaatspunten');
 
