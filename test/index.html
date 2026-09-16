@@ -878,7 +878,7 @@
   }
   html[data-theme="papier"] .card-header h2 {
     color: var(--dark) !important; font-size: 16px !important; font-weight: 700 !important;
-    letter-spacing: 0 !important; text-transform: none !important;
+    letter-spacing: 0 !important;
   }
 
   html[data-theme="papier"] .btn {
@@ -1083,6 +1083,31 @@
     min-height: 31px !important;
     height: 31px !important;
     line-height: 1 !important;
+  }
+
+
+  /* ============================================================
+     v5.32.0 — ALLES IN HOOFDLETTERS (alleen Papier)
+     ------------------------------------------------------------
+     Op uitdrukkelijk verzoek van Sierk: overal, elk tabblad, ook
+     de lopende zinnen. Ik heb erbij gezegd dat hoofdletters in
+     hele zinnen slechter leesbaar zijn — woorden verliezen hun
+     vorm zonder op- en neergaande stokken — en hij wil het toch.
+     Zijn app, zijn keuze. Dit is dus geen vergissing; haal het
+     niet "op" zonder het hem te vragen.
+
+     Let op: dit verandert alleen wat je ZIET. Wat een speler
+     intypt wordt onveranderd opgeslagen; de omzetting zit in de
+     weergave, niet in de gegevens.
+     ============================================================ */
+  html[data-theme="papier"] *,
+  html[data-theme="papier"] *::before,
+  html[data-theme="papier"] *::after {
+    text-transform: uppercase !important;
+  }
+  html[data-theme="papier"] input::placeholder,
+  html[data-theme="papier"] textarea::placeholder {
+    text-transform: uppercase !important;
   }
 
   /* ⚠ De keuzes hieronder zijn zwaarder gemaakt dan ze eruitzien: de
