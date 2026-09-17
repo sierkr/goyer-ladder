@@ -458,3 +458,37 @@ test.describe('Zelfherstel', () => {
 
 // Voorkomt dat de hulpfuncties als ongebruikt worden gezien.
 module.exports = { toonSchermstatus, volgConsole };
+
+// ============================================================
+//  v5.35.0 — TWEE HANDLEIDINGEN EN EEN ? OP DE SCOREKAART
+// ------------------------------------------------------------
+//  Sierk, 16 september 2026: "help file voor beheerders en coordinatoren en
+//  beknopt voor deelnemers toernooi. Dat laatste mag met een ? Op de
+//  scorekaart."
+//
+//  Deze test controleert dat het WERKT — dat de handleidingen laden en het
+//  venster opengaat. Of de TEKST klopt kan geen test; dat leest Sierk.
+// ============================================================
+test.describe('Handleidingen', () => {
+
+  test('de HELP-tab heeft twee handleidingen en ze laden allebei', async ({ page }) => {
+    await inloggen(page, 'coord@MPladder.stb');
+    await page.click('nav button:has-text("Help")');
+
+    const frame = page.locator('#help-frame');
+    await expect(frame, 'het handleidingvenster staat er').toBeVisible({ timeout: 15000 });
+    await expect(frame).toHaveAttribute('src', /handleiding-partij-ronde\.html/);
+    await expect(page.frameLocator('#help-frame').locator('h1'),
+      'de partijhandleiding laadt').toContainText('Partij', { timeout: 15000 });
+
+    await page.click('#help-knop-toernooi');
+    await expect(frame).toHaveAttribute('src', /handleiding-toernooi\.html/);
+    await expect(page.frameLocator('#help-frame').locator('h1'),
+      'de toernooihandleiding laadt').toContainText('Toernooi', { timeout: 15000 });
+
+    // En weer terug.
+    await page.click('#help-knop-partij');
+    await expect(frame).toHaveAttribute('src', /handleiding-partij-ronde\.html/);
+  });
+
+});
