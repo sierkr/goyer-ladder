@@ -2014,7 +2014,39 @@
 
 <!-- ==================== HELP ==================== -->
 <div id="page-help" class="page">
-  <iframe src="handleiding-partij-ronde.html" style="width:100%;height:calc(100vh - 120px);border:none;display:block"></iframe>
+  <!-- v5.35.0: er zijn twee handleidingen. De bestaande gaat over een partij
+       tussen twee mensen; de nieuwe over een toernooi. Twee knoppen die het
+       ene venster van bron wisselen — geen tweede scherm. -->
+  <div style="display:flex;gap:6px;padding:10px 16px 0">
+    <button id="help-knop-partij" class="btn btn-sm" onclick="kiesHandleiding('partij')">Partij &amp; Ronde</button>
+    <button id="help-knop-toernooi" class="btn btn-sm btn-ghost" onclick="kiesHandleiding('toernooi')">Toernooi</button>
+  </div>
+  <iframe id="help-frame" src="handleiding-partij-ronde.html" style="width:100%;height:calc(100vh - 165px);border:none;display:block"></iframe>
+</div>
+
+<!-- ==================== UITLEG SCOREKAART (v5.35.0) ====================
+     Korte hulp voor de DEELNEMER, achter het ?-knopje op de scorekaart.
+     Bewust een venster en geen pagina: je staat midden in een ronde. -->
+<div class="modal-overlay" id="modal-scorekaart-hulp">
+  <div class="modal">
+    <h3>Zo werkt de scorekaart</h3>
+    <div style="font-size:14px;line-height:1.6;color:var(--dark)">
+      <p style="margin-bottom:10px"><strong>Jouw kolom</strong> staat op je eigen naam. Daar vul je je eigen score in.</p>
+      <p style="margin-bottom:10px"><strong>Je marker</strong> is één medespeler uit je flight; jij houdt zijn kaart bij en iemand anders die van jou. Zo wordt elke score twee keer geteld.</p>
+      <p style="margin-bottom:6px"><strong>De kleuren:</strong></p>
+      <ul style="margin:0 0 10px 18px;padding:0">
+        <li style="margin-bottom:4px">leeg — nog niets ingevuld</li>
+        <li style="margin-bottom:4px"><span style="color:#e67e22;font-weight:600">oranje</span> — pas één van jullie heeft ingevuld</li>
+        <li style="margin-bottom:4px"><strong>zwart</strong> — jullie hebben hetzelfde getal: dat is de score</li>
+        <li style="margin-bottom:4px"><span style="color:var(--red);font-weight:600">rood</span> — jullie getallen verschillen; overleg even</li>
+      </ul>
+      <p style="margin-bottom:10px">Vult de wedstrijdleiding een getal in, dan geldt dat en staat de hole vast.</p>
+      <p style="margin-bottom:0"><strong>Opslaan hoeft niet.</strong> Alles wordt vanzelf bewaard, ook als je even geen bereik hebt.</p>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-primary btn-block" onclick="closeModal('modal-scorekaart-hulp')">Begrepen</button>
+    </div>
+  </div>
 </div>
 
 <!-- ==================== PROFIEL ==================== -->

@@ -2260,6 +2260,13 @@ async function startToernooi() {
 // ============================================================
 
 // Selecteer actieve dag en herrender
+// v5.35.0: korte uitleg voor de deelnemer, achter het ?-knopje op de
+// scorekaart. Zelfde manier van openen als elk ander venster in deze app.
+function toonScorekaartHulp() {
+  document.getElementById('modal-scorekaart-hulp')?.classList.add('open');
+}
+window.toonScorekaartHulp = toonScorekaartHulp;
+
 function selecteerDag(dagNr) {
   if (!toernooiData) return;
   // v5.13.1: 0 is het tabblad "Toernooi" — het geheel, niet één dag. De
@@ -3885,6 +3892,13 @@ function renderToernooiActief() {
       <div class="card-header inklapbaar ${dagAfgerond ? 'ingeklapt' : ''}" onclick="toggleAdminKaart(this)">
         <h2>${scorecardTitel}</h2>
         <div style="display:flex;gap:6px" onclick="event.stopPropagation()">
+          <!-- v5.35.0: korte uitleg voor de DEELNEMER — kolommen, marker,
+               kleuren, en dat opslaan niet hoeft. Staat hier in de KOP van de
+               kaart, niet in renderTScorecard(): die functie en de negen andere
+               van de speler/marker/coordinator-logica blijven onaangeraakt.
+               Zie ONTWERP-TOERNOOISCHERM.md, hoofdstuk 5. -->
+          <button class="btn btn-sm btn-ghost" onclick="toonScorekaartHulp()"
+            title="Hoe werkt de scorekaart?" style="min-width:32px">?</button>
           ${isBeheerder ? `
             <button id="t-refresh-btn" class="btn btn-sm btn-ghost" onclick="refreshToernooiScorekaart()" style="display:none;background:var(--gold);color:white;border-color:var(--gold)">↺ Nieuw</button>
             <!-- v5.20.0: hier zat "✈ Flights". Deze kop bestaat alleen als de

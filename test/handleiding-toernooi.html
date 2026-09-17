@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Handleiding — Toernooi · Goyer Golf MP Ladder</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&family=Playfair+Display:wght@700&display=swap');
+
+  :root {
+    --green: #2d6a4f;
+    --green-mid: #40916c;
+    --green-pale: #d8f3dc;
+    --gold: #b7950b;
+    --gold-pale: #fef9e7;
+    --red: #c0392b;
+    --mid: #555;
+    --light: #888;
+    --border: #e8e4da;
+    --bg: #f9f7f2;
+    --white: #ffffff;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: #1a1a1a;
+    line-height: 1.65;
+    font-size: 15px;
+  }
+
+  header {
+    background: var(--green);
+    color: white;
+    padding: 32px 24px 28px;
+    position: relative;
+    overflow: hidden;
+  }
+  header::after {
+    content: '⛳';
+    position: absolute;
+    right: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 64px;
+    opacity: 0.15;
+  }
+  header .label {
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: white;
+    opacity: 0.7;
+    margin-bottom: 6px;
+    max-width: 65%;
+  }
+  header h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: white;
+    max-width: 65%;
+  }
+  header p {
+    margin-top: 8px;
+    font-size: 14px;
+    color: white;
+    opacity: 0.85;
+    max-width: 65%;
+  }
+
+  nav.toc {
+    background: var(--white);
+    border-bottom: 1px solid var(--border);
+    padding: 0 16px;
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  nav.toc::-webkit-scrollbar { display: none; }
+  nav.toc a {
+    display: block;
+    padding: 14px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--mid);
+    text-decoration: none;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  nav.toc a:hover { color: var(--green); border-bottom-color: var(--green-pale); }
+
+  main {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 24px 16px 60px;
+  }
+
+  section {
+    margin-bottom: 40px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--green-pale);
+  }
+  .section-icon {
+    width: 36px;
+    height: 36px;
+    background: var(--green);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .section-header h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    color: var(--green);
+  }
+
+  h3 {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--green-mid);
+    margin: 20px 0 10px;
+  }
+
+  p { margin-bottom: 10px; color: #333; }
+
+  .card {
+    background: var(--white);
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+
+  .card-step {
+    display: flex;
+    gap: 14px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    align-items: flex-start;
+  }
+  .card-step:last-child { border-bottom: none; }
+
+  .step-num {
+    width: 26px;
+    height: 26px;
+    background: var(--green);
+    color: white;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .step-body strong {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 3px;
+  }
+  .step-body p {
+    font-size: 13px;
+    color: var(--mid);
+    margin: 0;
+  }
+
+  .tip {
+    background: var(--gold-pale);
+    border-left: 3px solid var(--gold);
+    border-radius: 0 8px 8px 0;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+    color: #7a6000;
+  }
+  .tip strong { color: var(--gold); }
+
+  .note {
+    background: var(--green-pale);
+    border-left: 3px solid var(--green-mid);
+    border-radius: 0 8px 8px 0;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+    color: #1a4a30;
+  }
+
+  .warn {
+    background: #fde8e8;
+    border-left: 3px solid var(--red);
+    border-radius: 0 8px 8px 0;
+    padding: 10px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+    color: #7a1010;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'DM Mono', monospace;
+  }
+  .badge-green { background: var(--green-pale); color: var(--green); }
+  .badge-gold { background: var(--gold-pale); color: var(--gold); }
+  .badge-red { background: #fde8e8; color: var(--red); }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin: 12px 0;
+  }
+  th {
+    background: var(--green);
+    color: white;
+    padding: 8px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+  }
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    color: #333;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: #fafaf8; }
+
+  .formula-box {
+    background: #1a1a1a;
+    color: #a8f0c4;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    margin: 12px 0;
+    line-height: 1.8;
+  }
+  .formula-box .comment { color: #666; }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 32px 0;
+  }
+
+  footer {
+    text-align: center;
+    padding: 20px;
+    font-size: 12px;
+    color: var(--light);
+    border-top: 1px solid var(--border);
+  }
+</style></head>
+<body>
+
+<header>
+  <div class="label">Goyer Golf MP Ladder · Handleiding</div>
+  <h1>Toernooi</h1>
+  <p>Voor de wedstrijdleiding — van aanmaken tot uitslag, en wat te doen als er iets misgaat</p>
+</header>
+
+<nav class="toc">
+  <a href="#overzicht">Het overzichtsscherm</a>
+  <a href="#aanmaken">Toernooi aanmaken</a>
+  <a href="#dagen">Wat je per dag instelt</a>
+  <a href="#flights">Flights indelen</a>
+  <a href="#levensloop">Dag starten en terugzetten</a>
+  <a href="#spelen">Tijdens het spelen</a>
+  <a href="#gastlogins">Gastlogins</a>
+  <a href="#standen">Standen en klassement</a>
+  <a href="#afsluiten">Afsluiten</a>
+  <a href="#misgaat">Als er iets misgaat</a>
+</nav>
+
+<main>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="overzicht">
+    <div class="section-header">
+      <div class="section-icon">🗂</div>
+      <h2>Het overzichtsscherm</h2>
+    </div>
+
+    <p>De tab <strong>Toernooi</strong> opent op een overzicht. Bovenaan staat <span class="badge badge-green">➕ Nieuw toernooi</span>, daaronder drie lijsten:</p>
+
+    <div class="card">
+      <p><strong>Loopt nu</strong> — het toernooi dat op dit moment gespeeld wordt.</p>
+      <p><strong>Concept</strong> — klaargezet maar nog niet gestart. Je mag er meerdere klaarzetten.</p>
+      <p><strong>Oud</strong> — afgesloten en geannuleerde toernooien.</p>
+    </div>
+
+    <p>Met <strong>Openen →</strong> ga je een toernooi in. Vanuit een geopend toernooi kom je met <strong>← Toernooien</strong> weer terug op dit overzicht.</p>
+
+    <div class="note">
+      <p>Een <strong>deelnemer</strong> ziet dit overzicht niet. Die komt meteen in het lopende toernooi terecht.</p>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="aanmaken">
+    <div class="section-header">
+      <div class="section-icon">📝</div>
+      <h2>Toernooi aanmaken</h2>
+    </div>
+
+    <p>Na <strong>➕ Nieuw toernooi</strong> krijg je één rij tabbladen:</p>
+
+    <div class="formula-box">Toernooi &nbsp;·&nbsp; Spelers &nbsp;·&nbsp; Dag 1 &nbsp;·&nbsp; Dag 2 &nbsp;·&nbsp; + Dag toevoegen</div>
+
+    <div class="card-step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <p><strong>Tabblad Toernooi</strong> — de naam, en de <strong>ranking ladder</strong>: de ladder waarvoor dit toernooi meetelt. Kies je <em>Geen</em>, dan telt het voor geen enkele ladder.</p>
+      </div>
+    </div>
+
+    <div class="card-step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <p><strong>Tabblad Spelers</strong> — deelnemers zoeken en selecteren, gastspelers toevoegen, en het <strong>wachtwoord voor gastspelers</strong>.</p>
+      </div>
+    </div>
+
+    <div class="card-step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <p><strong>Tabblad Dag 1</strong> (en verder) — alles van die ene dag. Zie het volgende hoofdstuk.</p>
+      </div>
+    </div>
+
+    <div class="tip">
+      <p>Met <strong>+ Dag toevoegen</strong> komt er een dag bij. Op het tabblad van de dag die je bekijkt staat een <strong>✕</strong> om die dag weer weg te halen.</p>
+    </div>
+
+    <div class="warn">
+      <p>Een toernooi <strong>klaarzetten</strong> mag altijd, ook als er al een loopt. <strong>Starten</strong> kan pas als het lopende toernooi is afgesloten of geannuleerd — er kan er maar één tegelijk gespeeld worden.</p>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="dagen">
+    <div class="section-header">
+      <div class="section-icon">📅</div>
+      <h2>Wat je per dag instelt</h2>
+    </div>
+
+    <p>Elke dag heeft een eigen tabblad met een eigen formulier. Hetzelfde formulier krijg je later bij <strong>+ Dag toevoegen</strong> en bij <strong>✏️ Dag wijzigen</strong>, zodat er nooit twee versies van dezelfde vraag zijn.</p>
+
+    <div class="card">
+      <p><strong>Datum · Baan · Aantal holes</strong> — 18, 9 of een aangepast aantal.</p>
+      <p><strong>Speelwijze</strong> — Matchplay of Strokeplay, <em>per dag</em>. Een toernooi mag gemengd zijn.</p>
+      <p><strong>Starttijd en interval</strong> — de eerste flight vertrekt op de starttijd, elke volgende het interval later.</p>
+      <p><strong>Bij matchplay:</strong> punten voor winst, gelijk en verlies, en het handicappercentage.</p>
+      <p><strong>Bij strokeplay:</strong> punten per plaats (zie hieronder).</p>
+    </div>
+
+    <div class="warn">
+      <p>Zit er één <strong>strokeplay-dag</strong> in het toernooi, dan telt het <strong>niet</strong> mee voor de ladder. Dat staat ook bij de keuze op het scherm.</p>
+    </div>
+
+    <h3>Punten per plaats bij strokeplay</h3>
+    <p>Elke dag levert <strong>plaatspunten</strong> op voor het klassement. Standaard is dat een aflopende reeks: bij negen spelers krijgt de eerste 9, de tweede 8, enzovoort. Gedeelde plekken delen het gemiddelde.</p>
+    <p>Op een strokeplay-dag kun je dat zelf invullen, bijvoorbeeld:</p>
+    <div class="formula-box">10, 7, 5, 3, 1</div>
+    <p>Onder het veld staat meteen wat dat betekent. Let op de laatste regel: <strong>plekken voorbij je lijstje leveren 0 op</strong>. Laat je het veld leeg, dan geldt de gewone aflopende reeks.</p>
+
+    <div class="note">
+      <p>De matchplay-punten (winst/gelijk/verlies) bepalen de <strong>volgorde binnen die dag</strong>. Daarna telt alleen die volgorde mee voor het klassement — niet het aantal punten zelf. Hogere punten maken een dag dus niet zwaarder.</p>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="flights">
+    <div class="section-header">
+      <div class="section-icon">✈</div>
+      <h2>Flights indelen</h2>
+    </div>
+
+    <p>De knop <strong>✈ Flights</strong> staat bij elke dag, of die nu concept of gestart is. In het venster kies je naast de knop <strong>⇄ Verdelen</strong> hoe er verdeeld moet worden:</p>
+
+    <div class="card">
+      <p><strong>Om de beurt</strong> — gewoon gelijk verdelen.</p>
+      <p><strong>Op plek, beste laatst</strong> — op de toernooistand tot nu toe; de besten starten als laatste. Op dag 1 is er nog geen stand, dan wordt er willekeurig ingedeeld.</p>
+      <p><strong>Nog niet met elkaar gespeeld</strong> — zoveel mogelijk nieuwe tegenstanders, op basis van de eerdere dagen.</p>
+      <p><strong>Op individuele handicap</strong> — gelijke spelers bij elkaar.</p>
+      <p><strong>Op flight handicap</strong> — juist spreiden, zodat elke flight ongeveer even sterk is.</p>
+    </div>
+
+    <p>Alle vijf verdelen zo gelijk mogelijk: de flights schelen hooguit één speler.</p>
+
+    <div class="warn">
+      <p><strong>Nog niet met elkaar gespeeld</strong> kan niet toveren. Bij weinig flights en veel dagen is een herhaling onvermijdelijk; dan kiest de app de indeling met de minste herhalingen.</p>
+    </div>
+
+    <div class="note">
+      <p>Dag 2 en verder beginnen <strong>zonder indeling</strong>. Dat is met opzet: je deelt ze pas in als je de uitslag van de vorige dag kent. De dag zegt zelf dat hij nog niet is ingedeeld.</p>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="levensloop">
+    <div class="section-header">
+      <div class="section-icon">▶</div>
+      <h2>Dag starten en terugzetten</h2>
+    </div>
+
+    <p>Een dag heeft drie toestanden:</p>
+
+    <div class="card">
+      <p><span class="badge">Concept</span> Alles is nog aan te passen en de dag is te verwijderen. Er is nog <strong>geen scorekaart</strong>.</p>
+      <p><span class="badge badge-green">Gestart</span> De scorekaart staat open. De instellingen liggen vast.</p>
+      <p><span class="badge badge-gold">Afgesloten</span> De scores liggen vast en de uitslag is geteld.</p>
+    </div>
+
+    <p>Heen en terug:</p>
+
+    <div class="card-step">
+      <div class="step-num">▶</div>
+      <div class="step-body"><p><strong>Dag N starten</strong> — van concept naar gestart. De scorekaart gaat open.</p></div>
+    </div>
+    <div class="card-step">
+      <div class="step-num">↩</div>
+      <div class="step-body"><p><strong>Dag N terugzetten naar concept</strong> — om alsnog iets te wijzigen. De scorekaart gaat dicht, <strong>ingevulde scores blijven bewaard</strong>.</p></div>
+    </div>
+    <div class="card-step">
+      <div class="step-num">✓</div>
+      <div class="step-body"><p><strong>Dag N afsluiten</strong> — de scores liggen vast.</p></div>
+    </div>
+    <div class="card-step">
+      <div class="step-num">↩</div>
+      <div class="step-body"><p><strong>Dag N heropenen</strong> — een afgesloten dag weer openzetten.</p></div>
+    </div>
+
+    <div class="warn">
+      <p>Zet je een dag met scores terug naar concept en wijzig je daarna het <strong>aantal holes</strong>, dan gaan die scores verloren. De app waarschuwt en zegt om hoeveel scores het gaat — lees die vraag.</p>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="spelen">
+    <div class="section-header">
+      <div class="section-icon">👀</div>
+      <h2>Tijdens het spelen</h2>
+    </div>
+
+    <h3>Markers</h3>
+    <p>Binnen elke flight houdt iedereen de kaart bij van één medespeler. Wie dat is bepaalt de app zelf in een kring; je kunt het per speler ook vastleggen. Haal je iemand uit de flight, dan valt zijn kaart terug op de kring — niemand blijft zonder marker.</p>
+
+    <h3>De kleuren op de scorekaart</h3>
+    <div class="card">
+      <p><strong>Leeg</strong> — nog niemand heeft iets ingevuld.</p>
+      <p><strong>Oranje</strong> — pas één van de twee heeft ingevuld: de speler óf zijn marker.</p>
+      <p><strong>Zwart</strong> — speler en marker hebben hetzelfde getal. Dat is de score.</p>
+      <p><strong>Rood</strong> — speler en marker hebben <em>verschillende</em> getallen. Daar moet iemand naar kijken.</p>
+    </div>
+
+    <p>Vult de <strong>wedstrijdleiding</strong> een getal in, dan is dat het laatste woord: die hole staat vast en wordt zwart.</p>
+
+    <h3>Twee schakelaars</h3>
+    <div class="card">
+      <p><strong>Toernooi-modus</strong> — deelnemers zien alleen de Toernooi-tab en de titelbalk toont de toernooinaam. Handig zodat niemand per ongeluk een ladderpartij start.</p>
+      <p><strong>Stand tonen aan deelnemers</strong> — uit betekent dat het klassement én de onderlinge stand alleen bij jou staan. Jij ziet ze altijd.</p>
+    </div>
+
+    <p>Met <strong>🔗 Live meekijklink kopiëren</strong> geef je een link door waarmee iemand kan meekijken zonder in te loggen.</p>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="gastlogins">
+    <div class="section-header">
+      <div class="section-icon">⌨</div>
+      <h2>Gastlogins</h2>
+    </div>
+
+    <p>Een gastspeler is iemand zonder eigen account. Vul je op het tabblad <strong>Spelers</strong> een wachtwoord in, dan krijgt elke gast bij het starten een inlog voor dit ene toernooi. Ze loggen in met hun <strong>voor- en achternaam</strong> plus dat wachtwoord.</p>
+
+    <div class="card">
+      <p><strong>⌨ Gastlogins tonen</strong> — het lijstje dat je doorgeeft aan je gasten.</p>
+      <p><strong>⌨ Gastlogins aanmaken</strong> — verschijnt als er gasten zonder inlog zijn. Maakt ze alsnog aan; hun al ingevulde scores blijven staan.</p>
+    </div>
+
+    <div class="warn">
+      <p>Laat je het wachtwoord leeg, dan vraagt de app er bij het starten uitdrukkelijk naar. Zonder wachtwoord krijgen de gasten <strong>geen inlog</strong> en kunnen ze nergens in.</p>
+    </div>
+
+    <div class="note">
+      <p>Na afloop van het toernooi werkt zo'n gastinlog niet meer.</p>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="standen">
+    <div class="section-header">
+      <div class="section-icon">📊</div>
+      <h2>Standen en klassement</h2>
+    </div>
+
+    <p>In een lopend toernooi staat één rij tabbladen:</p>
+
+    <div class="formula-box">Toernooi &nbsp;·&nbsp; Dag 1 &nbsp;·&nbsp; Dag 2 &nbsp;·&nbsp; + Dag toevoegen</div>
+
+    <div class="card">
+      <p><strong>Tabblad Toernooi</strong> — het klassement over alle dagen, de meekijklink, de gastlogins en het afsluiten.</p>
+      <p><strong>Tabblad Dag N</strong> — de dagstand, de onderlinge stand, de scorekaart en de knoppen van die dag.</p>
+    </div>
+
+    <p>Je landt op de <strong>actieve dag</strong>, zodat de scorekaart meteen in beeld staat.</p>
+
+    <div class="note">
+      <p>De <strong>onderlinge stand</strong> is het rooster wie van wie won. Het <strong>klassement</strong> telt de plaatspunten van alle dagen bij elkaar.</p>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="afsluiten">
+    <div class="section-header">
+      <div class="section-icon">🏅</div>
+      <h2>Afsluiten</h2>
+    </div>
+
+    <div class="card-step">
+      <div class="step-num">1</div>
+      <div class="step-body"><p><strong>📊 Uitslag dag N</strong> — geeft de uitslag van die dag vrij. De knop is grijs zolang niet alle scores ingevuld zijn.</p></div>
+    </div>
+    <div class="card-step">
+      <div class="step-num">2</div>
+      <div class="step-body"><p><strong>✓ Dag N afsluiten</strong> — de scores van die dag liggen vast.</p></div>
+    </div>
+    <div class="card-step">
+      <div class="step-num">3</div>
+      <div class="step-body"><p><strong>🏅 Toernooi afsluiten</strong> — verschijnt zodra alle dagen zijn afgesloten. Staat er een ranking ladder ingesteld en zijn alle dagen matchplay, dan wordt de ladderstand meteen bijgewerkt.</p></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <section id="misgaat">
+    <div class="section-header">
+      <div class="section-icon">🛟</div>
+      <h2>Als er iets misgaat</h2>
+    </div>
+
+    <div class="card">
+      <p><strong>Toernooi annuleren</strong> — het toernooi verdwijnt uit beeld en komt in de lijst <em>Oud</em>. Het is daar te herstellen of definitief te verwijderen. De gastlogins blijven werken.</p>
+      <p><strong>↺ Toernooi opnieuw instellen</strong> — gooit het toernooi weg en zet alle instellingen terug in het aanmaakscherm. Alleen mogelijk zolang er nog geen scores zijn.</p>
+      <p><strong>✏️ Dag N wijzigen</strong> — datum, baan, holes en de rest. Alleen zolang de dag op concept staat.</p>
+    </div>
+
+    <div class="warn">
+      <p>Herstellen van een oud toernooi kan <strong>niet</strong> zolang er een ander toernooi loopt. Sluit of annuleer dat eerst.</p>
+    </div>
+
+    <div class="tip">
+      <p>Ziet een speler zijn medespelers niet, of "Geen actief toernooi"? Controleer eerst of iedereen in <strong>dezelfde omgeving</strong> zit. De balk rechtsboven zegt TEST of niets.</p>
+    </div>
+  </section>
+
+</main>
+
+</body>
+</html>

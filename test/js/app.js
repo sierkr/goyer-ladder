@@ -223,7 +223,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v5.34.1';
+  const VERSION = 'v5.35.0';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -267,7 +267,7 @@ window.kiesTRankingLadder = kiesTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v5.34.1';
+  const LOKALE_VERSIE = 'v5.35.0';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 
@@ -355,3 +355,15 @@ try {
 } catch(e) {
   console.error('initApp mislukt:', e);
 }
+
+// v5.35.0: de HELP-tab heeft twee handleidingen — Partij & Ronde en Toernooi.
+// Eén venster dat van bron wisselt, zodat er geen tweede scherm bijkomt.
+window.kiesHandleiding = function (welke) {
+  const frame = document.getElementById('help-frame');
+  if (!frame) return;
+  frame.src = welke === 'toernooi' ? 'handleiding-toernooi.html' : 'handleiding-partij-ronde.html';
+  const aan = document.getElementById('help-knop-' + welke);
+  const uit = document.getElementById('help-knop-' + (welke === 'toernooi' ? 'partij' : 'toernooi'));
+  if (aan) { aan.classList.remove('btn-ghost'); }
+  if (uit) { uit.classList.add('btn-ghost'); }
+};
