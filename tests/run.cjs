@@ -8,6 +8,7 @@ const suites = [
   ['Activiteitssysteem',         './activiteit.test.cjs'],
   ['Partijverwerking (ladder)',  './partij.test.cjs'],
   ['Toernooi',                   './toernooi.test.cjs'],
+  ['Weergavestijl',               './stijl.test.cjs'],
   ['Knockout',                   './knockout.test.cjs'],
   ['Korte unieke namen',         './namen.test.cjs'],
   ['Markers en scorelagen',      './marker.test.cjs'],

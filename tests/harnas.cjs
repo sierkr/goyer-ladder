@@ -283,6 +283,31 @@ function maakChecker() {
   return { staat, check };
 }
 
-module.exports = { laadToernooiKern, laadLadderKern, laadHcpKern, laadScoreKern,
+// ============================================================
+//  v5.34.1 — WELKE CLUBSTIJL IS DIT?
+// ------------------------------------------------------------
+//  Deze regel stond op twee plekken en liep uit de pas: de meeluisteraar op
+//  ladder/config kende Papier niet en zette het scherm terug op Helder. Nu één
+//  bron, en die wordt hier uit de ECHTE code geknipt — samen met de lijst
+//  stijlen, zodat een vierde stijl de test meteen meeneemt.
+function laadStijlKern() {
+  const bron = `
+    ${knipConstanteRegel('js/config.js', 'STIJLEN')}
+    ${knip('js/config.js', ['normaliseerClubStijl'], 'export ')}
+    return { STIJLEN, normaliseerClubStijl };
+  `;
+  return new Function(bron)();
+}
+
+// Knipt een eenregelige `const NAAM = ...;` uit een module.
+function knipConstanteRegel(bestand, naam) {
+  const src = fs.readFileSync(path.join(wortel, bestand), 'utf8');
+  const re = new RegExp('^(?:export )?const ' + naam + ' = .*;$', 'm');
+  const m = src.match(re);
+  if (!m) throw new Error(`Constante '${naam}' niet gevonden in ${bestand}.`);
+  return m[0].replace(/^export /, '');
+}
+
+module.exports = { laadStijlKern, laadToernooiKern, laadLadderKern, laadHcpKern, laadScoreKern,
                    laadKnockoutScoreKern,
                    laadNaamKern, laadMarkerKern, laadGastloginKern, maakChecker };

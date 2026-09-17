@@ -272,7 +272,7 @@ export async function laadUiStijl(storeRef) {
     // v5.6.0: de standaard voor de club is nu Helder (matchcheck). Alleen een
     // uitdrukkelijke 'club' in ladder/config levert nog de klassieke stijl.
     // v5.27.0: 'papier' is er als derde stijl bijgekomen.
-    storeRef.uiStijl = STIJLEN.includes(waarde) ? waarde : 'matchcheck';
+    storeRef.uiStijl = normaliseerClubStijl(waarde);
   } catch(e) {
     console.warn('laadUiStijl mislukt, val terug op de standaardstijl:', e);
     storeRef.uiStijl = 'matchcheck';
@@ -350,6 +350,31 @@ export async function laadBanen(storeRef, { vanServer = false } = {}) {
 //  v5.27.0: 'papier' erbij — de derde stand. Eén lijst, zodat een vierde stijl
 //  later op één plek wordt toegevoegd in plaats van op vier.
 const STIJLEN = ['club', 'matchcheck', 'papier'];
+
+// ============================================================
+//  WELKE CLUBSTIJL IS DIT?  (v5.34.1)
+// ------------------------------------------------------------
+//  Zet een opgeslagen waarde om naar een geldige clubstijl, met terugval op
+//  Helder als er onzin of niets staat.
+//
+//  ⚠ WAT ER MIS WAS. Deze regel stond op TWEE plekken. In laadUiStijl()
+//  hieronder klopte hij, maar de meeluisteraar op ladder/config in js/auth.js
+//  had zijn eigen versie uit v5.6.0:
+//
+//      const nieuweStijl = (snap.data().uiStijl === 'club') ? 'club' : 'matchcheck';
+//
+//  Die kende maar twee stijlen. Toen Papier er in v5.27.0 bij kwam werd deze
+//  lijst bijgewerkt en die regel niet. Gevolg: je koos Papier in Beheer, het
+//  werd opgeslagen, de meeluisteraar zag de wijziging, vertaalde 'papier' naar
+//  'matchcheck' en zette het scherm terug op Helder. Elke keer opnieuw — en ook
+//  bij het opstarten, want een meeluisteraar vuurt meteen met de huidige
+//  inhoud. Sierk, 16 september 2026: "in beheer springt het UI continu terug
+//  naar helder."
+//
+//  Nu één bron. Komt er ooit een vierde stijl, dan werkt hij overal tegelijk.
+export function normaliseerClubStijl(waarde) {
+  return STIJLEN.includes(waarde) ? waarde : 'matchcheck';
+}
 
 const WEERGAVE_SLEUTEL = 'goyer-weergave';
 
