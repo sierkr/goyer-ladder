@@ -7,7 +7,7 @@ import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
   INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB_MIGRATIE, esc, escAttr,
   EMAIL_SUFFIX, DEFAULT_HCP, CONFIG_DOC, IS_TEST, laadInitieelWachtwoord,
-  laadUiStijl, pasUiStijlToe, laadBanen, effectieveStijl,
+  laadUiStijl, pasUiStijlToe, laadBanen, effectieveStijl, normaliseerClubStijl,
   genereerEmail, loginNaamVan, functions, httpsCallable } from './config.js';
 import { store, DEFAULT_LADDER_CONFIG,
   alleLadders, activeLadderId, alleSpelersData, huidigeBruiker,
@@ -816,7 +816,11 @@ async function initFirestore() {
     // v5.6.0: de clubinstelling mag een eigen keuze niet overrulen. Zonder deze
     // omweg sprong het scherm van een speler terug zodra de beheerder de
     // standaard wijzigde — hij had dan wel gekozen, maar merkte er niets van.
-    const nieuweStijl = (snap.data().uiStijl === 'club') ? 'club' : 'matchcheck';
+    // ⚠ v5.34.1: hier stond `(uiStijl === 'club') ? 'club' : 'matchcheck'` —
+    // een eigen kopie die maar twee stijlen kende. Papier (v5.27.0) werd
+    // daardoor meteen weer teruggezet naar Helder. Nu via dezelfde functie als
+    // laadUiStijl(); zie de toelichting bij normaliseerClubStijl in js/config.js.
+    const nieuweStijl = normaliseerClubStijl(snap.data().uiStijl);
     if (nieuweStijl !== store.uiStijl) {
       store.uiStijl = nieuweStijl;
       pasUiStijlToe(effectieveStijl(nieuweStijl));
