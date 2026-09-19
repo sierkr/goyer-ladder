@@ -62,6 +62,10 @@ function laadToernooiKern() {
     // v5.11.0: _liveScoresVanDag lost nu de drie scorelagen op en heeft deze
     // drie nodig. Ze worden ECHT uit de app geknipt, net als de rest.
     '_laagVanDag', 'lagenVanDag', 'scoreOordeel',
+    // v5.36.0: celWaarde bepaalt WELK getal ieder in zijn vakje ziet. De
+    // wedstrijdleiding hoort het getal te zien dat meetelt, ook als alleen de
+    // marker heeft ingevuld — anders tikt zij een leeg vakje over.
+    'celWaarde',
     // v5.11.8: de volgorde bij een gelijke stand in matchplay.
     'matchplayVolgorde', 'hcpVan',
     // v5.12.0: speelwijze per dag en de dagpunten die twee speelwijzen
@@ -90,7 +94,7 @@ function laadToernooiKern() {
       verdeelNieuweTegenstanders, getTHcpSlagen, berekenTPuntenVoorDag, berekenStrokeplayRanglijstVoorDag,
       berekenStrokeplayTotaal, countback, getDag, actieveDag, heeftGeenScores,
       alleScoresIngevuld, berekenFlightTijd, berekenTPunten, _liveScoresVanDag,
-      matchplayVolgorde, hcpVan,
+      matchplayVolgorde, hcpVan, celWaarde, scoreOordeel,
       dagModus, heeftStrokeplayDag, gemengdeSpeelwijzen,
       dagPuntenUitSleutels, dagPunten, dagPuntenTotaal,
       toernooiModusVanSpeelwijzen, zichtbaarheidVanSpeelwijzen,

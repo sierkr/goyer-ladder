@@ -754,12 +754,13 @@
   /* ============================================================
      v5.11.0 — DE KLEUREN VAN DE TOERNOOIKAART
      ------------------------------------------------------------
-     zwart  = klopt (vastgesteld, of speler en marker gelijk)
-     oranje = één van de twee heeft ingevuld, de ander nog niet
-     rood   = allebei ingevuld, verschillend
+     gewone rand  = klopt (vastgesteld, of speler en marker gelijk)
+     stippellijn  = één van de twee heeft ingevuld, de ander nog niet
+     dubbele rand = allebei ingevuld, verschillend
 
-     Naast de kleur ook een andere RAND: oranje tegen zwart is op een telefoon
-     in de zon slecht te zien, en niet iedereen onderscheidt kleuren even goed.
+     v5.36.0: de stippellijn was oranje en is nu zwart. Alleen de RAND verschilt
+     dus nog — dat is met opzet: kleur alleen is op een telefoon in de zon
+     slecht te zien, en niet iedereen onderscheidt kleuren even goed.
 
      ⚠ !important is hier nodig, niet netjes-bedoeld. Hierboven staat
      `html[data-theme="matchcheck"] .scorecard input[type=number] { border: ...
@@ -1209,10 +1210,16 @@
   html .scorecard span.t-cel.t-cel-vast {
     border: 1.5px solid var(--green) !important;
   }
+  /* v5.36.0 — de stippellijn blijft, de oranje kleur is eruit. Oranje las als
+     "deze score doet nog niet mee", en daardoor tikte de wedstrijdleiding hem
+     over. Hij doet wél mee: zolang de wedstrijdleiding niets vaststelt telt
+     het getal van de speler. De stippellijn zegt alleen: pas één van de twee
+     heeft ingevuld. De klasse heet intern nog t-cel-oranje; alleen het
+     uiterlijk is veranderd. */
   html .scorecard input[type=number].t-cel.t-cel-oranje,
   html .scorecard span.t-cel.t-cel-oranje {
-    border: 2px dashed #e8a33d !important;
-    color: #b26a00 !important;
+    border: 2px dashed var(--dark) !important;
+    color: var(--dark) !important;
   }
   html .scorecard input[type=number].t-cel.t-cel-rood,
   html .scorecard span.t-cel.t-cel-rood {
@@ -2036,7 +2043,7 @@
       <p style="margin-bottom:6px"><strong>De kleuren:</strong></p>
       <ul style="margin:0 0 10px 18px;padding:0">
         <li style="margin-bottom:4px">leeg — nog niets ingevuld</li>
-        <li style="margin-bottom:4px"><span style="color:#e67e22;font-weight:600">oranje</span> — pas één van jullie heeft ingevuld</li>
+        <li style="margin-bottom:4px"><strong>gestippeld</strong> — pas één van jullie heeft ingevuld. Jouw getal telt al mee; de stippellijn verdwijnt zodra de ander hetzelfde intikt.</li>
         <li style="margin-bottom:4px"><strong>zwart</strong> — jullie hebben hetzelfde getal: dat is de score</li>
         <li style="margin-bottom:4px"><span style="color:var(--red);font-weight:600">rood</span> — jullie getallen verschillen; overleg even</li>
       </ul>
