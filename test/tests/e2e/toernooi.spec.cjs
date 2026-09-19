@@ -925,7 +925,23 @@ test.describe('Toernooi — de hele route', () => {
     const wie  = page.locator('#t-prijzen-vak select[data-prijs="longest"][data-veld="uid"]').first();
     await expect(hole).toBeVisible();
     await hole.selectOption('7');
+
+    // ⚠ v5.39.1 — DE KAART MOET OPEN BLIJVEN.
+    //  Sierk: "iedere keer als ik een selectie doe dan klapt het veld in."
+    //  Het opslaan tekent het dagscherm opnieuw, en de kaart kwam terug in zijn
+    //  standaardstand. Deze regel is de hele reden dat die vlag bestaat; haal
+    //  hem weg en het gebrek sluipt er ongemerkt weer in.
+    //  Het wachten is met opzet LANGER dan de opslagvertraging van 600 ms —
+    //  anders meet je het moment vóór de hertekening en slaagt de test altijd.
+    await page.waitForTimeout(2500);
+    const kopNaKeuze = page.locator('#toernooi-detail .card-header:has-text("Handmatige prijzen")');
+    await expect(kopNaKeuze, 'na het kiezen van een hole blijft de kaart open')
+      .not.toHaveClass(/ingeklapt/);
+
     await wie.selectOption({ label: 'Anna Speler' });
+    await page.waitForTimeout(2500);
+    await expect(kopNaKeuze, 'en na het kiezen van een speler ook')
+      .not.toHaveClass(/ingeklapt/);
 
     // Hij hoort in de database te staan, bij DEZE dag.
     await expect.poll(async () => {
@@ -939,10 +955,19 @@ test.describe('Toernooi — de hele route', () => {
     // daarna op het startscherm uit — niet meteen in het toernooi.
     await page.reload();
     await naarToernooi(page);
-    await openLopendToernooi(page);
+    // ⚠ Op NAAM openen, niet "de eerste die loopt". In de volle reeks staan er
+    // meer toernooien in de lijst en dan opende deze proef een andere — hij
+    // viel om op een kaart die in dát toernooi niet stond.
+    const startWrap = page.locator('#toernooi-start-wrap');
+    if (await startWrap.isVisible().catch(() => false)) {
+      await page.click('#toernooi-start-wrap div:has-text("Prijzen") >> button:has-text("Openen")');
+    }
+    await expect(page.locator('#toernooi-detail')).toBeVisible({ timeout: 15000 });
     await naarDagTab(page, 1);
     const kopNa = page.locator('#toernooi-detail .card-header:has-text("Handmatige prijzen")');
     await expect(kopNa).toBeVisible({ timeout: 25000 });
+    await expect(kopNa, 'na het herladen van de app is hij weer dicht, zoals gevraagd')
+      .toHaveClass(/ingeklapt/);
     await kopNa.click();
     await expect(page.locator('#t-prijzen-vak select[data-prijs="longest"][data-veld="hole"]').first(),
       'de hole staat er na het verversen nog').toHaveValue('7');
@@ -953,6 +978,9 @@ test.describe('Toernooi — de hele route', () => {
     await page.click('#t-prijzen-vak button:has-text("+ regel toevoegen") >> nth=0');
     await expect(page.locator('#t-prijzen-vak select[data-prijs="longest"][data-veld="hole"]'),
       'er staat een tweede regel').toHaveCount(2);
+    await page.waitForTimeout(2500);
+    await expect(page.locator('#toernooi-detail .card-header:has-text("Handmatige prijzen")'),
+      'en ook na een regel erbij blijft de kaart open').not.toHaveClass(/ingeklapt/);
     await page.locator('#t-prijzen-vak button[title="Regel weghalen"]').nth(1).click();
     await expect(page.locator('#t-prijzen-vak select[data-prijs="longest"][data-veld="hole"]'),
       'en hij is er weer af').toHaveCount(1);

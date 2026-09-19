@@ -3884,6 +3884,26 @@ function prijzenVakHtml(t, dag) {
   }).join('');
 }
 
+// ⚠ v5.39.1 — DE KAART MOET ONTHOUDEN OF HIJ OPENSTAAT.
+//
+//  WAT ER MIS WAS. Sierk, 19 september 2026: "iedere keer als ik een selectie
+//  doe dan klapt het veld in." Gemeten met een merkteken op de kaart: dat was
+//  na één keuze verdwenen — de kaart wordt dus niet dichtgeklapt maar HELEMAAL
+//  OPNIEUW GETEKEND, en kwam terug in zijn standaardstand.
+//
+//  Die hertekening komt van het opslaan, en die willen we houden: langs
+//  dezelfde weg komt binnen wat de flightgenoten intikken. De kaart moet zich
+//  dus aanpassen, niet het scherm. Vandaar deze vlag.
+//
+//  Hij staat op `window` en niet in het toernooidocument: het is een
+//  schermstand, geen gegeven. Bij het openen van de app is hij vanzelf weer
+//  dicht — precies zoals gevraagd.
+function togglePrijzenKaart(kop) {
+  window._tPrijzenOpen = kop.classList.contains('ingeklapt');
+  toggleAdminKaart(kop);
+}
+window.togglePrijzenKaart = togglePrijzenKaart;
+
 function renderPrijzenVak() {
   const vak = document.getElementById('t-prijzen-vak');
   const dag = actieveDag();
@@ -4234,11 +4254,11 @@ function renderToernooiActief() {
            uitslagbalk. Overgenomen uit MatchCheck; zie PRIJS_SOORTEN. -->
       ${gestart ? `
       <div class="card" style="margin-bottom:8px">
-        <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+        <div class="card-header inklapbaar ${window._tPrijzenOpen ? '' : 'ingeklapt'}" onclick="togglePrijzenKaart(this)">
           <h2>Handmatige prijzen</h2>
           <span style="font-size:12px;color:var(--mid)">dag ${dagNr}</span>
         </div>
-        <div class="card-collapse ingeklapt">
+        <div class="card-collapse ${window._tPrijzenOpen ? '' : 'ingeklapt'}">
           <div class="card-body" style="padding:10px 16px 14px">
             <p style="font-size:11px;color:var(--light);margin:0 0 10px">
               Kies per prijs de hole en de speler. Wordt bewaard bij deze dag.
