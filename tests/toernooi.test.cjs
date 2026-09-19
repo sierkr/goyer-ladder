@@ -788,4 +788,93 @@ check('zichtbaarheid en heeftStrokeplayDag zijn het eens',
   K.zichtbaarheidVanSpeelwijzen(['strokeplay', 'matchplay']).ranking,
   !K.heeftStrokeplayDag(gemengdToernooi));
 
+// ============================================================
+//  v5.39.0 — DE BALK ONDERAAN HET AANMAAKSCHERM
+// ------------------------------------------------------------
+//  Sierk: "noem die balk naar dag 1 en als je klikt opent dag 1." De balk
+//  wijst nu naar de volgende stap. Gaat dit stuk, dan kom je via het
+//  aanmaakscherm niet meer bij de flightindeling — en dan kun je geen toernooi
+//  meer starten.
+// ============================================================
+console.log('\n══ DE BALK WIJST NAAR DE VOLGENDE STAP ══\n');
+
+check('op Toernooi wijst hij naar Spelers',
+  K.setupVolgendeStap('toernooi'), { label: 'Spelers →', doel: 'spelers' });
+check('op Spelers wijst hij naar dag 1',
+  K.setupVolgendeStap('spelers'), { label: 'Dag 1 →', doel: 'dag1' });
+check('op dag 1 wijst hij naar de flightindeling',
+  K.setupVolgendeStap(1), { label: 'Flight indeling →', doel: 'flights' });
+check('op dag 3 ook',
+  K.setupVolgendeStap(3), { label: 'Flight indeling →', doel: 'flights' });
+// Vóór de eerste hertekening staat er nog niets in `_tSetupTab`. Dat mag geen
+// dood spoor opleveren.
+check('zonder tabblad valt hij niet stil',
+  K.setupVolgendeStap(undefined).doel, 'flights');
+
+// ============================================================
+//  v5.39.0 — HANDMATIGE PRIJZEN PER DAG
+// ------------------------------------------------------------
+//  Overgenomen uit MatchCheck. Het belangrijkste hier is de scheiding PER DAG:
+//  een tweedaags toernooi heeft twee keer een longest drive.
+// ============================================================
+console.log('\n══ HANDMATIGE PRIJZEN ══\n');
+
+const leegDagMetHoles = () => ({ dagNr: 1, holes: holes2, scores: {}, afgerond: false });
+
+let pd = leegDagMetHoles();
+check('een dag zonder prijzen geeft een lege lijst',
+  K.prijsRegels(pd, 'longest'), []);
+check('en een dag die helemaal niet bestaat ook',
+  K.prijsRegels(null, 'longest'), []);
+check('een onbekende soort valt niet om',
+  K.prijsRegels(pd, 'bestaatniet'), []);
+
+K.prijsRegelToe(pd, 'longest');
+check('een regel erbij',
+  K.prijsRegels(pd, 'longest'), [{ hole: '', uid: '' }]);
+K.prijsRegelWijzig(pd, 'longest', 0, 'hole', '7');
+K.prijsRegelWijzig(pd, 'longest', 0, 'uid', 'uid_a');
+check('hole en speler invullen',
+  K.prijsRegels(pd, 'longest'), [{ hole: '7', uid: 'uid_a' }]);
+
+K.prijsRegelToe(pd, 'longest');
+K.prijsRegelWijzig(pd, 'longest', 1, 'uid', 'uid_b');
+check('een tweede regel raakt de eerste niet',
+  K.prijsRegels(pd, 'longest'), [{ hole: '7', uid: 'uid_a' }, { hole: '', uid: 'uid_b' }]);
+
+K.prijsRegelWeg(pd, 'longest', 0);
+check('de eerste regel weghalen laat de tweede staan',
+  K.prijsRegels(pd, 'longest'), [{ hole: '', uid: 'uid_b' }]);
+check('de andere soorten zijn ongemoeid gebleven',
+  [K.prijsRegels(pd, 'neary'), K.prijsRegels(pd, 'leary')], [[], []]);
+
+// ⚠ Een keuzelijst kan een regel raken die er niet meer is — bijvoorbeeld als
+// er tussendoor een regel is weggehaald. Dat mag niet omvallen.
+K.prijsRegelWijzig(pd, 'neary', 3, 'hole', '2');
+check('wijzigen buiten de lijst vult aan in plaats van omvallen',
+  K.prijsRegels(pd, 'neary').length, 4);
+check('en zet de waarde op de goede plek',
+  K.prijsRegels(pd, 'neary')[3], { hole: '2', uid: '' });
+check('een regel weghalen die niet bestaat valt ook niet om',
+  (() => { K.prijsRegelWeg(pd, 'leary', 5); return K.prijsRegels(pd, 'leary'); })(), []);
+
+// De scheiding per dag: dit is waar het om begonnen was.
+const pDag1 = leegDagMetHoles();
+const pDag2 = { ...leegDagMetHoles(), dagNr: 2 };
+K.prijsRegelToe(pDag1, 'longest');
+K.prijsRegelWijzig(pDag1, 'longest', 0, 'uid', 'uid_a');
+check('dag 2 heeft niets van dag 1 geërfd',
+  K.prijsRegels(pDag2, 'longest'), []);
+check('en dag 1 houdt zijn eigen prijs',
+  K.prijsRegels(pDag1, 'longest'), [{ hole: '', uid: 'uid_a' }]);
+
+// Wie staat er in de keuzelijst? Dezelfde regel als bij de uitslagknop: wie in
+// een flight staat, en anders iedereen.
+const tPrijs = maakT([A, B], { dagen: [leegDagMetHoles()] });
+check('zonder flights staat iedereen in de lijst',
+  K.prijsSpelers(tPrijs, tPrijs.dagen[0]).map(sp => sp.uid).sort(), ['a', 'b']);
+const dagMetFlight = { ...leegDagMetHoles(), flights: [{ id: 1, spelerIds: ['a'] }] };
+check('met flights alleen wie die dag meedoet',
+  K.prijsSpelers(maakT([A, B], { dagen: [dagMetFlight] }), dagMetFlight).map(sp => sp.uid), ['a']);
+
 module.exports = staat;

@@ -1258,8 +1258,45 @@ function renderSetupTabs() {
   toon('t-setup-paneel-toernooi', huidig === 'toernooi');
   toon('t-setup-paneel-spelers',  huidig === 'spelers');
   toon('t-setup-paneel-dagen',    typeof huidig === 'number');
+
+  // v5.39.0: de balk onderaan wijst naar de volgende stap.
+  const volgende = document.getElementById('t-setup-volgende');
+  if (volgende) volgende.textContent = setupVolgendeStap(huidig).label;
 }
 window.renderSetupTabs = renderSetupTabs;
+
+// ============================================================
+//  DE BALK ONDERAAN HET AANMAAKSCHERM — v5.39.0
+// ------------------------------------------------------------
+//  Sierk, 19 september 2026: "Bij toernooi spelers staat een balk flight
+//  indeling, noem die balk naar dag 1 en als je klikt opent dag 1."
+//
+//  De balk heette altijd "Flight indeling →" en sprong overal vandaan meteen
+//  naar het indelingsscherm van dag 1 — ook vanaf het tabblad Spelers, waar je
+//  de dag zelf (datum, baan, holes) dan overslaat. Nu wijst hij naar de
+//  VOLGENDE STAP in de rij tabbladen:
+//
+//      Toernooi  ->  Spelers      ->  Dag 1        ->  Flight indeling
+//
+//  Het indelingsscherm blijft vanaf elk dagblad bereikbaar; alleen de sprong
+//  eroverheen is weg.
+//
+//  Aparte functie zodat de rekentest hem kan natellen zonder scherm: welke
+//  tekst hoort bij welk tabblad, en waar gaat de klik heen.
+// ============================================================
+function setupVolgendeStap(huidig) {
+  if (huidig === 'toernooi') return { label: 'Spelers →',         doel: 'spelers' };
+  if (huidig === 'spelers')  return { label: 'Dag 1 →',           doel: 'dag1' };
+  return                            { label: 'Flight indeling →', doel: 'flights' };
+}
+
+function klikSetupVolgende() {
+  const { doel } = setupVolgendeStap(window._tSetupTab ?? 'toernooi');
+  if (doel === 'spelers') { selecteerSetupTab('spelers'); return; }
+  if (doel === 'dag1')    { selecteerSetupDag(1); return; }
+  openFlightIndeling();
+}
+window.klikSetupVolgende = klikSetupVolgende;
 
 function voegSetupDagToe() {
   const el = document.getElementById('t-aantal-dagen');
@@ -3742,6 +3779,175 @@ function alleScoresIngevuld(t, dag) {
 }
 
 // ============================================================
+//  HANDMATIGE PRIJZEN PER DAG — v5.39.0
+// ------------------------------------------------------------
+//  Sierk, 19 september 2026: "In matchcheck app zit bij de prijsuitreiking ook
+//  nog een vlak handmatige prijzen. Die moeten ook per dag in het toernooi
+//  komen van goyer-ladder. Denk boven uitslag dag balk en standaard ingeklapt."
+//
+//  Overgenomen uit MatchCheck (`renderPrijsManueel` in app-deel.html): drie
+//  soorten, per soort regels met een HOLE en een SPELER, een ✕ per regel en
+//  een knop om er een bij te zetten. Daar heten ze Longest, Neary en Leary; dat
+//  is hier hetzelfde gehouden, want het zijn de namen die op de baan gebruikt
+//  worden.
+//
+//  ⚠ PER DAG. De prijzen staan op de DAG (`dag.prijzen`), niet op het toernooi.
+//  Een tweedaags toernooi heeft twee keer een longest drive, en die van dag 1
+//  hoort niet mee te verhuizen naar dag 2.
+//
+//  ⚠ Alleen de wedstrijdleiding ziet dit. Dat volgt uit de plek: het hele
+//  knoppenblok waar de uitslagbalk in staat, wordt alleen voor haar getekend.
+// ============================================================
+const PRIJS_SOORTEN = [
+  { key: 'longest', label: 'Longest' },
+  { key: 'neary',   label: 'Neary' },
+  { key: 'leary',   label: 'Leary' },
+];
+
+// De regels van één soort op één dag. Altijd een array, ook als er nooit iets
+// is ingevuld — elke lezer hieronder rekent daarop.
+function prijsRegels(dag, key) {
+  const rijen = dag?.prijzen?.[key];
+  return Array.isArray(rijen) ? rijen : [];
+}
+
+// De drie mutaties, als pure bewerkingen op een dag. Ze staan los van het
+// scherm zodat de rekentest ze kan natellen zonder browser.
+function prijsRegelToe(dag, key) {
+  if (!dag) return dag;
+  if (!dag.prijzen) dag.prijzen = {};
+  if (!Array.isArray(dag.prijzen[key])) dag.prijzen[key] = [];
+  dag.prijzen[key].push({ hole: '', uid: '' });
+  return dag;
+}
+
+function prijsRegelWeg(dag, key, idx) {
+  if (!Array.isArray(dag?.prijzen?.[key])) return dag;
+  dag.prijzen[key].splice(idx, 1);
+  return dag;
+}
+
+function prijsRegelWijzig(dag, key, idx, veld, waarde) {
+  if (!dag) return dag;
+  if (!dag.prijzen) dag.prijzen = {};
+  if (!Array.isArray(dag.prijzen[key])) dag.prijzen[key] = [];
+  // Een keuzelijst kan een regel raken die er (nog) niet is als er tussendoor
+  // iets is verwijderd. Aanvullen in plaats van omvallen.
+  while (dag.prijzen[key].length <= idx) dag.prijzen[key].push({ hole: '', uid: '' });
+  dag.prijzen[key][idx][veld] = waarde;
+  return dag;
+}
+
+// Wie speelt er die dag? Dezelfde regel als bij alleScoresIngevuld(): wie in
+// een flight staat, en staat er niemand in een flight, dan iedereen.
+function prijsSpelers(t, dag) {
+  const ingedeeld = new Set((dag?.flights || []).flatMap(f => f.spelerIds || []));
+  const spelers = (t?.spelers || []);
+  const lijst = ingedeeld.size > 0 ? spelers.filter(sp => ingedeeld.has(sp.uid)) : spelers;
+  return lijst.slice().sort((a, b) => String(a.naam || '').localeCompare(String(b.naam || ''), 'nl'));
+}
+
+function prijsRegelHtml(t, dag, key, idx, rij) {
+  const holes = (dag?.holes || []).map((_, i) => i + 1);
+  const holeOpties = ['<option value="">hole —</option>']
+    .concat(holes.map(nr =>
+      `<option value="${nr}"${String(rij.hole) === String(nr) ? ' selected' : ''}>hole ${nr}</option>`))
+    .join('');
+  const spelerOpties = ['<option value="">— speler —</option>']
+    .concat(prijsSpelers(t, dag).map(sp =>
+      `<option value="${escAttr(sp.uid)}"${rij.uid === sp.uid ? ' selected' : ''}>${esc(sp.naam || '')}</option>`))
+    .join('');
+  return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <select data-prijs="${key}" data-idx="${idx}" data-veld="hole" style="width:110px"
+        onchange="prijsWijzig('${key}',${idx},'hole',this.value)">${holeOpties}</select>
+      <select data-prijs="${key}" data-idx="${idx}" data-veld="uid" style="flex:1;min-width:120px"
+        onchange="prijsWijzig('${key}',${idx},'uid',this.value)">${spelerOpties}</select>
+      <button class="btn btn-sm btn-ghost" title="Regel weghalen"
+        onclick="prijsWeg('${key}',${idx})" style="flex-shrink:0">✕</button>
+    </div>`;
+}
+
+// De inhoud van de kaart. Apart van de kaart zelf, zodat één wijziging alleen
+// dit stukje hertekent: een volledige hertekening zou de kaart dichtklappen en
+// je keuzelijst onder je vinger vandaan halen.
+function prijzenVakHtml(t, dag) {
+  return PRIJS_SOORTEN.map(soort => {
+    const rijen = prijsRegels(dag, soort.key);
+    const regels = rijen.length === 0
+      ? prijsRegelHtml(t, dag, soort.key, 0, {})
+      : rijen.map((rij, i) => prijsRegelHtml(t, dag, soort.key, i, rij)).join('');
+    return `<div style="margin-bottom:14px">
+        <div style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">${esc(soort.label)}</div>
+        ${regels}
+        <button class="btn btn-sm btn-ghost" onclick="prijsErbij('${soort.key}')">+ regel toevoegen</button>
+      </div>`;
+  }).join('');
+}
+
+// ⚠ v5.39.1 — DE KAART MOET ONTHOUDEN OF HIJ OPENSTAAT.
+//
+//  WAT ER MIS WAS. Sierk, 19 september 2026: "iedere keer als ik een selectie
+//  doe dan klapt het veld in." Gemeten met een merkteken op de kaart: dat was
+//  na één keuze verdwenen — de kaart wordt dus niet dichtgeklapt maar HELEMAAL
+//  OPNIEUW GETEKEND, en kwam terug in zijn standaardstand.
+//
+//  Die hertekening komt van het opslaan, en die willen we houden: langs
+//  dezelfde weg komt binnen wat de flightgenoten intikken. De kaart moet zich
+//  dus aanpassen, niet het scherm. Vandaar deze vlag.
+//
+//  Hij staat op `window` en niet in het toernooidocument: het is een
+//  schermstand, geen gegeven. Bij het openen van de app is hij vanzelf weer
+//  dicht — precies zoals gevraagd.
+function togglePrijzenKaart(kop) {
+  window._tPrijzenOpen = kop.classList.contains('ingeklapt');
+  toggleAdminKaart(kop);
+}
+window.togglePrijzenKaart = togglePrijzenKaart;
+
+function renderPrijzenVak() {
+  const vak = document.getElementById('t-prijzen-vak');
+  const dag = actieveDag();
+  if (!vak || !dag || !toernooiData) return;
+  vak.innerHTML = prijzenVakHtml(toernooiData, dag);
+}
+
+// De drie knoppen op het scherm. Ze schrijven met een kleine vertraging weg —
+// wie drie regels achter elkaar invult, stuurt niet drie keer het hele
+// toernooi naar de database.
+async function _prijsBewaar() {
+  try { await slaToernooiOp(600); }
+  catch (e) { toernooiFout('Prijzen opslaan', e); }
+}
+
+function prijsErbij(key) {
+  const dag = actieveDag();
+  if (!dag) return;
+  prijsRegelToe(dag, key);
+  renderPrijzenVak();
+  _prijsBewaar();
+}
+window.prijsErbij = prijsErbij;
+
+function prijsWeg(key, idx) {
+  const dag = actieveDag();
+  if (!dag) return;
+  prijsRegelWeg(dag, key, idx);
+  renderPrijzenVak();
+  _prijsBewaar();
+}
+window.prijsWeg = prijsWeg;
+
+function prijsWijzig(key, idx, veld, waarde) {
+  const dag = actieveDag();
+  if (!dag) return;
+  prijsRegelWijzig(dag, key, idx, veld, waarde);
+  // Geen hertekening: de keuzelijst die je net aanraakte staat nog open en
+  // hertekenen zou hem dichtklappen. De waarde staat al in het scherm.
+  _prijsBewaar();
+}
+window.prijsWijzig = prijsWijzig;
+
+// ============================================================
 //  NAVIGATIE HELPERS
 // ============================================================
 
@@ -4044,6 +4250,24 @@ function renderToernooiActief() {
         ✏️ Dag ${dagNr} wijzigen (datum, baan, holes)
       </button>
       ` : ''}
+      <!-- v5.39.0: handmatige prijzen, standaard ingeklapt, direct boven de
+           uitslagbalk. Overgenomen uit MatchCheck; zie PRIJS_SOORTEN. -->
+      ${gestart ? `
+      <div class="card" style="margin-bottom:8px">
+        <div class="card-header inklapbaar ${window._tPrijzenOpen ? '' : 'ingeklapt'}" onclick="togglePrijzenKaart(this)">
+          <h2>Handmatige prijzen</h2>
+          <span style="font-size:12px;color:var(--mid)">dag ${dagNr}</span>
+        </div>
+        <div class="card-collapse ${window._tPrijzenOpen ? '' : 'ingeklapt'}">
+          <div class="card-body" style="padding:10px 16px 14px">
+            <p style="font-size:11px;color:var(--light);margin:0 0 10px">
+              Kies per prijs de hole en de speler. Wordt bewaard bij deze dag.
+            </p>
+            <div id="t-prijzen-vak"></div>
+          </div>
+        </div>
+      </div>
+      ` : ''}
       ${gestart && !dagAfgerond && !uitslag ? `
       <button id="t-uitslag-btn" class="btn btn-primary btn-block"
         style="margin-bottom:8px;${!allesIngevuld ? 'opacity:0.5;cursor:not-allowed' : ''}"
@@ -4218,6 +4442,7 @@ function renderToernooiActief() {
   }
 
   renderTScorecard();
+  renderPrijzenVak();   // v5.39.0
 
   // v5.13.1: het klassement volgt het tabblad — 0 is het totaal over alle dagen.
   if (toonToernooiTab || uitslag || dagAfgerond || dagModus(t, dag) === 'strokeplay') {
@@ -6740,4 +6965,5 @@ export function getActiefToernooiMetModus() {
 }
 
 
-export { alleScoresIngevuld, annuleerToernooi, toernooiLoopt, hashPinTekst, behoudLiveScores, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, herlaadToernooiListeners, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerSpelersTab, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, kiesTRankingLadder, toggleTScorecard, toggleTSpeler, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
+export { alleScoresIngevuld, annuleerToernooi, toernooiLoopt, hashPinTekst, setupVolgendeStap,
+  prijsRegels, prijsRegelToe, prijsRegelWeg, prijsRegelWijzig, prijsSpelers, behoudLiveScores, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, herlaadToernooiListeners, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerSpelersTab, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, kiesTRankingLadder, toggleTScorecard, toggleTSpeler, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
