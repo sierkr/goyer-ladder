@@ -79,6 +79,9 @@ function laadToernooiKern() {
     // v5.22.0: wacht dit toernooi nog, of loopt het? Die twee bepalen welk
     // toernooi een speler te zien krijgt.
     'toernooiIsConcept', 'toernooiLoopt',
+    // v5.39.0: de balk onderaan het aanmaakscherm en de handmatige prijzen.
+    'setupVolgendeStap',
+    'prijsRegels', 'prijsRegelToe', 'prijsRegelWeg', 'prijsRegelWijzig', 'prijsSpelers',
   ]);
   const k = knip('js/knockout.js', ['rondesNaarObj', 'objNaarRondes', 'verwerkKnockoutVoortgang']);
   const bron = `
@@ -99,6 +102,8 @@ function laadToernooiKern() {
       dagPuntenUitSleutels, dagPunten, dagPuntenTotaal,
       toernooiModusVanSpeelwijzen, zichtbaarheidVanSpeelwijzen,
       toernooiIsConcept, toernooiLoopt,
+      setupVolgendeStap,
+      prijsRegels, prijsRegelToe, prijsRegelWeg, prijsRegelWijzig, prijsSpelers,
       rondesNaarObj, objNaarRondes, verwerkKnockoutVoortgang,
       _zetToernooi: (v) => { toernooiData = v; },
       _zetLive:     (v) => { _liveScores = v || {}; },

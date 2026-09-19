@@ -135,8 +135,18 @@ async function slaOpEnStart(page, dagNr = 1) {
   await expect(page.locator('#t-scorecard-wrap')).toBeVisible({ timeout: 20000 });
 }
 
+// v5.39.0: de balk onderaan springt niet meer vanaf élk tabblad rechtstreeks
+// naar de flightindeling — hij wijst naar de VOLGENDE stap
+// (Toernooi → Spelers → Dag 1 → Flight indeling). Deze helper doet wat een mens
+// nu ook doet: doorklikken tot de balk op de indeling staat.
 async function naarFlightIndeling(page) {
-  await page.click('#toernooi-setup-wrap button:has-text("Flight indeling")');
+  const balk = page.locator('#t-setup-volgende');
+  for (let i = 0; i < 4; i++) {
+    const tekst = (await balk.textContent().catch(() => '')) || '';
+    if (tekst.includes('Flight indeling')) break;
+    await balk.click();
+  }
+  await balk.click();
   await page.waitForSelector('#modal-flight-indeling.open', { timeout: 10000 });
 }
 
@@ -871,6 +881,81 @@ test.describe('Toernooi — de hele route', () => {
     await expect.poll(async () =>
       (await haalAlleToernooien()).filter(t => t.naam === 'Toestand').length,
       { timeout: 25000, message: 'het toernooi is uit de database verdwenen' }).toBe(0);
+  });
+
+  // ============================================================
+  //  v5.39.0 — DE BALK EN DE HANDMATIGE PRIJZEN
+  // ------------------------------------------------------------
+  //  Twee dingen die de rekentests niet kunnen zien: of de balk onderaan het
+  //  aanmaakscherm echt naar het volgende tabblad springt, en of een ingevulde
+  //  prijs de verversing overleeft. Dat laatste is het hele punt — een prijs
+  //  die je invult en die bij het sluiten van de kaart verdwijnt, is erger dan
+  //  geen prijzenvak.
+  // ============================================================
+  test('PRIJZEN: de balk wijst naar dag 1 en een handmatige prijs blijft staan', async ({ page }) => {
+    test.setTimeout(240000);
+    jaOpAlles(page);
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Prijzen', 1);
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+
+    // ── De balk onderaan wijst naar de volgende stap ──────────
+    await naarSetupTab(page, 'spelers');
+    const balk = page.locator('#t-setup-volgende');
+    await expect(balk, 'op het tabblad Spelers heet de balk Dag 1').toHaveText(/Dag 1/);
+    await balk.click();
+    await expect(balk, 'en daarna staat hij op de flightindeling').toHaveText(/Flight indeling/);
+
+    await naarFlightIndeling(page);
+    await slaOpEnStart(page);
+    await expect(page.locator('#toernooi-detail')).toContainText('Prijzen', { timeout: 25000 });
+    await naarDagTab(page, 1);
+
+    // ── De kaart staat er, ingeklapt ──────────────────────────
+    const kop = page.locator('#toernooi-detail .card-header:has-text("Handmatige prijzen")');
+    await expect(kop, 'de kaart staat boven de uitslagbalk').toBeVisible({ timeout: 20000 });
+    await expect(kop, 'en is standaard ingeklapt').toHaveClass(/ingeklapt/);
+    await kop.click();
+    await expect(kop).not.toHaveClass(/ingeklapt/);
+
+    // ── Een prijs invullen ────────────────────────────────────
+    const hole = page.locator('#t-prijzen-vak select[data-prijs="longest"][data-veld="hole"]').first();
+    const wie  = page.locator('#t-prijzen-vak select[data-prijs="longest"][data-veld="uid"]').first();
+    await expect(hole).toBeVisible();
+    await hole.selectOption('7');
+    await wie.selectOption({ label: 'Anna Speler' });
+
+    // Hij hoort in de database te staan, bij DEZE dag.
+    await expect.poll(async () => {
+      const t = await haalToernooi('Prijzen');
+      const r = (t.dagen[0].prijzen || {}).longest || [];
+      return r.length === 1 && r[0].hole === '7' && !!r[0].uid;
+    }, { timeout: 25000, message: 'de prijs staat bij dag 1 in de database' }).toBe(true);
+
+    // ── En hij overleeft een verversing ───────────────────────
+    // Na een verversing begint de app op de ladder, en een coordinator komt
+    // daarna op het startscherm uit — niet meteen in het toernooi.
+    await page.reload();
+    await naarToernooi(page);
+    await openLopendToernooi(page);
+    await naarDagTab(page, 1);
+    const kopNa = page.locator('#toernooi-detail .card-header:has-text("Handmatige prijzen")');
+    await expect(kopNa).toBeVisible({ timeout: 25000 });
+    await kopNa.click();
+    await expect(page.locator('#t-prijzen-vak select[data-prijs="longest"][data-veld="hole"]').first(),
+      'de hole staat er na het verversen nog').toHaveValue('7');
+    await expect(page.locator('#t-prijzen-vak select[data-prijs="longest"][data-veld="uid"]').first(),
+      'en de speler ook').not.toHaveValue('');
+
+    // ── Een regel erbij en weer weg ───────────────────────────
+    await page.click('#t-prijzen-vak button:has-text("+ regel toevoegen") >> nth=0');
+    await expect(page.locator('#t-prijzen-vak select[data-prijs="longest"][data-veld="hole"]'),
+      'er staat een tweede regel').toHaveCount(2);
+    await page.locator('#t-prijzen-vak button[title="Regel weghalen"]').nth(1).click();
+    await expect(page.locator('#t-prijzen-vak select[data-prijs="longest"][data-veld="hole"]'),
+      'en hij is er weer af').toHaveCount(1);
   });
 
   // ============================================================

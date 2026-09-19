@@ -2309,7 +2309,11 @@
           <div id="t-dag-blokken"></div>
         </div>
 
-        <button class="btn btn-primary btn-block" onclick="openFlightIndeling()">Flight indeling →</button>
+        <!-- v5.39.0: deze balk wijst naar de VOLGENDE stap; de tekst wordt
+             gezet door renderSetupTabs(). Zie setupVolgendeStap() in
+             js/toernooi.js. De tekst hier is alleen wat je ziet vóór de eerste
+             hertekening. -->
+        <button id="t-setup-volgende" class="btn btn-primary btn-block" onclick="klikSetupVolgende()">Spelers →</button>
         </div>
       </div>
     </div>
