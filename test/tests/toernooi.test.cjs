@@ -412,6 +412,59 @@ check('staat er niemand in een flight, dan tellen alle spelers (zoals voorheen)'
   K.alleScoresIngevuld(t, t.dagen[0]), true);
 
 // ============================================================
+//  v5.36.0 — DE KNOP MAG NIET IETS ANDERS ZEGGEN DAN DE KAART
+// ------------------------------------------------------------
+//  Sierk, 19 september 2026: "het systeem geeft aan dat niet alle scores zijn
+//  ingevuld als er geen markerscore is."
+//
+//  De controle keek alleen naar dag.scores, en dat is een KOPIE die door de
+//  meeluisteraar op de live-submap wordt gevuld. Komt die niet op gang of
+//  loopt hij achter, dan staan de scores wel op de kaart maar zegt de knop
+//  "(scores onvolledig)" — en blijft de uitslag op slot zonder uitleg.
+//  Hieronder is die kopie LEEG en staan de scores alleen in de lagen, precies
+//  zoals tijdens het spelen.
+// ============================================================
+const leegDag = (holes) => ({dagNr:1, holes, scores:{}, afgerond:false});
+
+// Iedereen vult zijn eigen kaart in; niemand markeert. Dat mag de uitslag niet
+// tegenhouden — zonder vaststelling telt het getal van de speler.
+K._zetLive({ a:{dagen:{'1':[3,4]}}, b:{dagen:{'1':[4,4]}} });
+t = maakT([A,B], {dagen:[leegDag(holes2)]});
+check('speler vult alles in, marker niets -> uitslag mag open',
+  K.alleScoresIngevuld(t, t.dagen[0]), true);
+
+// En andersom: alleen de marker hield de kaart bij. Ook dat is een complete
+// kaart — dat getal telt mee en wordt zo weggeschreven bij dag afsluiten.
+K._zetLive({ a:{markerDagen:{'1':[3,4]}}, b:{markerDagen:{'1':[4,4]}} });
+t = maakT([A,B], {dagen:[leegDag(holes2)]});
+check('alleen de marker vulde in -> uitslag mag open',
+  K.alleScoresIngevuld(t, t.dagen[0]), true);
+
+// Een echt gat blijft een gat, ook in de lagen.
+K._zetLive({ a:{dagen:{'1':[3,null]}}, b:{dagen:{'1':[4,4]}} });
+t = maakT([A,B], {dagen:[leegDag(holes2)]});
+check('een gat in de lagen -> nog steeds onvolledig',
+  K.alleScoresIngevuld(t, t.dagen[0]), false);
+K._zetLive({});
+
+// ── Wat de wedstrijdleiding in haar vakje ziet ───────────────
+//  Zag zij `oordeel.speler`, dan bleef haar vakje leeg als alleen de marker
+//  had ingevuld — en tikte zij die score over, waarmee de hole op slot ging.
+const zicht = (sp, mk, bh, rol) => K.celWaarde(K.scoreOordeel(sp, mk, bh), rol);
+check('beheer ziet het getal van de speler',
+  zicht(5, null, null, 'beheer'), 5);
+check('beheer ziet de marker als de speler niets invulde',
+  zicht(null, 5, null, 'beheer'), 5);
+check('beheer ziet bij verschil het getal van de speler',
+  zicht(5, 6, null, 'beheer'), 5);
+check('na vaststelling ziet iedereen hetzelfde',
+  [zicht(5,6,4,'beheer'), zicht(5,6,4,'speler'), zicht(5,6,4,'marker')], [4,4,4]);
+check('speler en marker zien elkaars getal nog steeds niet',
+  [zicht(5, 6, null, 'speler'), zicht(5, 6, null, 'marker')], [5, 6]);
+check('de marker ziet niets als hij zelf niets invulde',
+  zicht(5, null, null, 'marker'), null);
+
+// ============================================================
 //  v5.22.0 — WACHT HET, OF LOOPT HET?
 // ------------------------------------------------------------
 //  Deze twee bepalen welk toernooi een speler te zien krijgt en of je er nog

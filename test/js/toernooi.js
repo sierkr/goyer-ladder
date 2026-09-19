@@ -468,6 +468,10 @@ function lagenVanDag(data, dagNr) {
 //   rood    allebei ingevuld, verschillend
 //   leeg    nog niemand
 //
+// ⚠ v5.36.0: 'oranje' is alleen nog een NAAM. Op het scherm is dat vakje zwart
+// met een stippellijn — zie index.html. Die score telt gewoon mee; de
+// stippellijn zegt niet meer dan "de ander moet dit nog bevestigen".
+//
 // `vast` betekent: de wedstrijdleiding heeft het laatste woord gesproken.
 // Speler en marker kunnen die hole dan niet meer wijzigen — anders kan een
 // gecontroleerde score weer opengetrokken worden.
@@ -3667,12 +3671,26 @@ function alleScoresIngevuld(t, dag) {
   const ingedeeld = new Set((dag.flights || []).flatMap(f => f.spelerIds || []));
   const meedoen = ingedeeld.size > 0 ? t.spelers.filter(s => ingedeeld.has(s.uid)) : t.spelers;
   if (meedoen.length === 0) return false;
-  return meedoen.every(s =>
-    (dag.holes || []).every((_, i) => {
+  // ⚠ v5.36.0 — KIJK NAAR DEZELFDE BRON ALS DE SCOREKAART.
+  // Hier stond alleen `dag.scores`, en dat is een KOPIE: hij wordt gevuld door
+  // de meeluisteraar op de live-submap. Komt die niet op gang of loopt hij
+  // achter — de wedstrijdleiding opent het scherm terwijl de scores al binnen
+  // zijn — dan stond er op de kaart een getal terwijl de knop zei "(scores
+  // onvolledig)". Twee schermen die elkaar tegenspreken; de uitslag bleef dan
+  // op slot zonder dat iets vertelde waarom.
+  // Nu leest deze controle eerst de drie lagen, net als celOordeel() op de
+  // kaart, en valt pas daarna terug op de kopie (afgesloten dagen en oudere
+  // toernooien staan alleen daar). Wat je ziet en wat de knop zegt kunnen
+  // daardoor niet meer uit elkaar lopen.
+  return meedoen.every(s => {
+    const l = lagenVanDag(_liveScores[s.uid], dag.dagNr);
+    return (dag.holes || []).every((_, i) => {
+      const tel = scoreOordeel(l.speler[i], l.marker[i], l.beheer[i]).tel;
+      if (tel !== null && tel !== undefined) return true;
       const val = dag.scores?.[s.uid]?.[i];
       return val !== null && val !== undefined && val !== '';
-    })
-  );
+    });
+  });
 }
 
 // ============================================================
@@ -4202,18 +4220,30 @@ function celOordeel(spelerUid, holeIdx, dag) {
 }
 
 // Welk getal krijgt DEZE kijker te zien? Ieder ziet wat hij zelf intikte; de
-// wedstrijdleiding ziet dat van de speler. Zodra zij iets vaststelt, ziet
+// wedstrijdleiding ziet het getal dat MEETELT. Zodra zij iets vaststelt, ziet
 // iedereen hetzelfde getal.
+//
+// ⚠ v5.36.0 — WAT ER MIS WAS. De wedstrijdleiding kreeg hier `oordeel.speler`
+// te zien. Heeft alleen de MARKER ingevuld — en dat is de gewone gang van
+// zaken in golf, je houdt de kaart van je medespeler bij — dan stond er bij
+// haar een LEEG vakje, terwijl die score wel degelijk meetelde en bij "dag
+// afsluiten" ook zo werd weggeschreven. Gevolg: de score werd overgetikt, en
+// daarmee ging de hole onnodig op slot.
+// Nu staat er het getal dat meetelt: dat van de speler, en is dat er niet, dat
+// van de marker. Overtikken hoeft dus nergens meer.
 function celWaarde(oordeel, rol) {
   if (oordeel.vast) return oordeel.beheer;
-  return rol === 'marker' ? oordeel.marker : oordeel.speler;
+  if (rol === 'marker') return oordeel.marker;
+  if (rol === 'beheer') return oordeel.tel;
+  return oordeel.speler;
 }
 
 // De opmaak van één vakje zit in CSS-klassen, niet in een stijl hier. Dat moet
 // ook: de clubstijl geeft elk invoerveld op een scorekaart een eigen rand mét
 // !important, en die wint van een losse stijl op het element. Zie het blok
 // "DE KLEUREN VAN DE TOERNOOIKAART" onderaan de opmaak in index.html.
-//   zwart = gewone rand, oranje = stippellijn, rood = dubbele rand
+//   zwart = gewone rand, oranje = zwarte stippellijn, rood = dubbele rand
+// (v5.36.0: 'oranje' heet zo, maar is niet meer oranje — zie index.html.)
 function celKlasse(kleur, vast) {
   const stand = kleur === 'rood' ? 't-cel-rood' : (kleur === 'oranje' ? 't-cel-oranje' : 't-cel-zwart');
   return 't-cel ' + stand + (vast ? ' t-cel-vast' : '');
