@@ -264,7 +264,13 @@ function laadGastloginKern() {
       'uniekeGastCode', 'gastloginTekst',
       // v5.18.0: het uitlezen van een geplakte gastenlijst.
       'gastenUitTekst'])}
-    return { splitsNaam, gastLoginVan, toernooiCodeVan, uniekeGastCode, gastloginTekst, gastenUitTekst };
+    // v5.38.0: hashPinTekst is async. Het voorvoegsel moet dus mee, anders
+    // vindt knip() hem niet.
+    // LET OP: geen accolade-aanhalingstekens in dit commentaar — het staat
+    // binnen een sjabloontekst en breekt die af.
+    ${knip('js/toernooi.js', ['hashPinTekst'], 'async ')}
+    return { splitsNaam, gastLoginVan, toernooiCodeVan, uniekeGastCode, gastloginTekst,
+             gastenUitTekst, hashPinTekst };
   `)();
   // v5.12.3: gastLoginUitToernooi zoekt de ECHTE inlognaam op in het toernooi,
   // in plaats van hem uit te rekenen. Het is de tegenhanger van gastLoginVan:

@@ -21,11 +21,20 @@ const stil = process.argv.includes('--stil');
 const echteLog = console.log;
 const resultaten = [];
 
+// v5.38.0: een suite mag ook een BELOFTE teruggeven. Nodig sinds er een test
+// is die crypto.subtle gebruikt — die is per se asynchroon.
+//
+// ⚠ WAT ER MIS WAS. De afdruk-tests van de toernooi-pincode werden maar half
+// meegeteld: require() kwam terug voordat ze klaar waren, en de teller stond
+// dan op een willekeurig getal. Een test die soms telt is erger dan geen test,
+// want hij wekt vertrouwen zonder iets vast te houden.
+async function draaiAlles() {
 for (const [naam, pad] of suites) {
   if (stil) console.log = () => {};
   let staat;
   try {
     staat = require(pad);
+    if (staat && typeof staat.then === 'function') staat = await staat;
   } catch (e) {
     console.log = echteLog;
     console.log(`\n✗ ${naam}: suite kon niet draaien\n  ${e.message}`);
@@ -50,3 +59,6 @@ console.log('─'.repeat(58));
 console.log(` TOTAAL: ${totOk} geslaagd, ${totFout} mislukt`);
 console.log('─'.repeat(58) + '\n');
 process.exit(totFout ? 1 : 0);
+}
+
+draaiAlles();

@@ -18,7 +18,7 @@ import { renderLadder } from './ladder.js';
 import { toonUitdagingBadge } from './archief.js';
 import { closeModal, renderAdmin, renderProfiel } from './admin.js';
 import { renderRonde } from './ronde.js';
-import { renderToernooi, getActiefToernooiMetModus, herlaadToernooiListeners, behoudLiveScores } from './toernooi.js';
+import { renderToernooi, getActiefToernooiMetModus, herlaadToernooiListeners, behoudLiveScores, toernooiLoopt } from './toernooi.js';
 import { renderUitslagen } from './uitslagen.js';
 import { leesScores } from './scores.js';
 import { startAlleStandenListeners, stopAlleStandenListeners,
@@ -27,7 +27,8 @@ import { startAlleStandenListeners, stopAlleStandenListeners,
 import * as S from './store.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
   GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, updatePassword,
-  EmailAuthProvider, reauthenticateWithCredential, createUserWithEmailAndPassword }
+  EmailAuthProvider, reauthenticateWithCredential, createUserWithEmailAndPassword,
+  signInWithCustomToken }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc,
   deleteDoc, getDocs, addDoc, query, where, orderBy, writeBatch }
@@ -264,7 +265,20 @@ async function slaEersteLoginOp() {
 // ============================================================
 function pasToernooiModusNavToe() {
   if (!huidigeBruiker) return;
-  if (isBeheerderRol() || isCoordinatorRol()) return; // beheerders altijd volledig zicht
+  // v5.38.0: wie met de toernooi-pincode binnenkwam ziet ALLEEN het toernooi.
+  // Hij heeft zijn eigen wachtwoord niet gebruikt, dus de rest van de app is
+  // niet van hem.
+  //
+  // ⚠ Dit is het SCHERM. Het slot zit in firestore.rules en in de
+  // serverfuncties; tabbladen verbergen is geen beveiliging.
+  //
+  // ⚠ En het is met opzet geen eigen tak met een `return`. Zo'n tak had ik
+  // eerst, en toen sloeg hij het staartstuk hieronder over — dat de
+  // toernooipagina actief zet en tekent. De deelnemer keek daardoor tegen het
+  // lege "Nieuw Toernooi"-scherm aan in plaats van tegen zijn scorekaart.
+  // Gevonden door de browsertest, niet door nadenken.
+  const isPin = isPinSessie();
+  if (!isPin && (isBeheerderRol() || isCoordinatorRol())) return; // beheerders altijd volledig zicht
 
   // v3.0.0-11.74: twee paden — toernooiSpeler-vlag op profiel (batch-import)
   // of deelnemer van een actief toernooi met toernooiModus aan.
@@ -273,7 +287,7 @@ function pasToernooiModusNavToe() {
   const isDeelnemerViaToernooiModus = actief &&
     (actief.spelers || []).some(s => s.uid === huidigeBruiker.uid);
 
-  if (!isToernooiSpeler && !isDeelnemerViaToernooiModus) {
+  if (!isPin && !isToernooiSpeler && !isDeelnemerViaToernooiModus) {
     // v3.0.9: geen actieve toernooi-modus (meer) → herstel de normale tabs.
     // Voorheen een early-return, waardoor eerder verborgen tabs verborgen bleven
     // en de deelnemer na einde/annulering met alleen 'Profiel' achterbleef (app onbruikbaar).
@@ -314,7 +328,9 @@ window.addEventListener('toernooiModusGewijzigd', () => {
   pasToernooiModusNavToe();
 });
 
-function vervolgIngelogd() {
+// v5.38.0: async geworden. Vóór de schermopbouw moet vaststaan of deze sessie
+// met de toernooi-pincode binnenkwam; dat is één vraag aan het inlogtoken.
+async function vervolgIngelogd() {
   document.getElementById('login-scherm').classList.remove('actief');
   document.getElementById('login-fout').style.display = 'none';
   document.getElementById('login-pass').value = '';
@@ -345,6 +361,10 @@ function vervolgIngelogd() {
   const versieBadge = document.getElementById('versie-badge');
   if (versieBadge) versieBadge.style.display = isBeheerderRol() ? '' : 'none';
 
+  // v5.38.0: eerst vaststellen of deze sessie via de pincode binnenkwam. Dat
+  // stuurt hieronder de tabbladen én het eerste-login-scherm.
+  await sessieViaPin();
+
   // v3.0.0-11.74: herstart per-doc toernooi-listeners na login zodat ze
   // huidigeBruiker correct hebben voor toernooiModus etc.
   herlaadToernooiListeners();
@@ -358,7 +378,13 @@ function vervolgIngelogd() {
   updateSiteTitel();
 
   // v3.0.0-11: als eerste login, dwing speler naar verplicht profiel-scherm
-  if (huidigeBruiker.eersteLogin) {
+  //
+  // ⚠ v5.38.0: niet bij een pincode-sessie. Dat scherm laat je een handicap en
+  // een nieuw wachtwoord kiezen voor een ACCOUNT dat niet van jou is — je bent
+  // binnen op een gedeeld getal van vier cijfers. De serverfunctie
+  // voltooiEersteLogin weigert zo'n sessie trouwens ook, dus zonder deze regel
+  // zou de speler vastlopen op een scherm dat niet af te maken is.
+  if (huidigeBruiker.eersteLogin && !isPinSessie()) {
     toonEersteLoginScherm();
   }
 
@@ -534,6 +560,110 @@ async function _probeerGastLogin(invoer, wachtwoord) {
   }
 }
 
+// ============================================================
+//  MEEDOEN AAN HET TOERNOOI — v5.38.0
+// ------------------------------------------------------------
+//  Sierk, 19 september 2026: "Je kunt alleen maar meedoen met een toernooi als
+//  je naam voorkomt en het toernooi gestart is. Om die reden wil ik het
+//  inloggen vereenvoudigen. Is het mogelijk om een dropdown te maken waaruit
+//  je je naam kunt selecteren en een vier cijferige pin als wachtwoord?"
+//
+//  De namen mogen hier staan zonder dat iemand is ingelogd: toernooidocumenten
+//  zijn openbaar leesbaar voor het live meekijken (firestore.rules), en de
+//  oude gastlogin las ze al net zo op. Het geheim is de pincode, niet de lijst.
+//
+//  ⚠ De pincode wordt hier NIET gecontroleerd. Dat gebeurt in de serverfunctie
+//  wisselToernooiPin — daar zit de foutteller, en daar wordt een coordinator
+//  geweigerd. Een controle in de app is geen controle: die slaat iedereen over
+//  die de app niet gebruikt.
+// ============================================================
+
+let _toernooiInlog = null;   // { id, naam } van het toernooi dat nu loopt
+
+async function vulToernooiInlog() {
+  const blok = document.getElementById('toernooi-inlog');
+  if (!blok) return;
+  blok.style.display = 'none';
+  _toernooiInlog = null;
+  try {
+    const snap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
+    // `toernooiLoopt` is dezelfde toets die het toernooischerm gebruikt: niet
+    // meer in concept, nog niet afgerond. Een toernooi dat klaarstaat voor
+    // volgende week hoort hier niet te staan — daar kun je nog niet aan meedoen.
+    const lopend = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(t => toernooiLoopt(t) && (t.spelers || []).length > 0);
+    if (lopend.length !== 1) return;   // geen, of meerdere: dan geen gok doen
+
+    const t = lopend[0];
+    const keuze = document.getElementById('toernooi-inlog-speler');
+    const naam  = document.getElementById('toernooi-inlog-naam');
+    if (!keuze || !naam) return;
+
+    naam.textContent = t.naam || 'het toernooi';
+    keuze.innerHTML = '<option value="">— kies je naam —</option>'
+      + (t.spelers || [])
+          .slice()
+          .sort((a, b) => String(a.naam || '').localeCompare(String(b.naam || ''), 'nl'))
+          .map(sp => `<option value="${escAttr(sp.uid)}">${esc(sp.naam || '')}</option>`)
+          .join('');
+    _toernooiInlog = { id: t.id, naam: t.naam || '' };
+    blok.style.display = '';
+  } catch (e) {
+    // Lukt het niet, dan blijft het gewone inlogscherm staan. Dat is de veilige
+    // afloop: niemand raakt buitengesloten doordat dit blok niet kon laden.
+    console.warn('toernooi-inlog vullen mislukt:', e?.code || e?.message);
+  }
+}
+
+async function toernooiPinInloggen() {
+  const keuze = document.getElementById('toernooi-inlog-speler');
+  const pinEl = document.getElementById('toernooi-inlog-pin');
+  const spelerUid = keuze?.value || '';
+  const pin = (pinEl?.value || '').trim();
+
+  if (!_toernooiInlog)      { toonLoginFout('Er loopt op dit moment geen toernooi'); return; }
+  if (!spelerUid)           { toonLoginFout('Kies eerst je naam uit de lijst'); return; }
+  if (!/^\d{4}$/.test(pin)) { toonLoginFout('De pincode bestaat uit 4 cijfers'); return; }
+
+  document.getElementById('login-fout').style.display = 'none';
+  try {
+    const fn = httpsCallable(functions, 'wisselToernooiPin');
+    const uit = await fn({ toernooiId: _toernooiInlog.id, spelerUid, pin, isTest: IS_TEST });
+    const token = uit?.data?.customToken;
+    if (!token) throw new Error('geen token ontvangen');
+    if (pinEl) pinEl.value = '';
+    await signInWithCustomToken(auth, token);
+  } catch (e) {
+    // De serverfunctie schrijft zelf een leesbare reden ("Die pincode klopt
+    // niet", "Te veel mislukte pogingen"). Die tonen we letterlijk; alleen als
+    // hij ontbreekt vallen we terug op een algemene regel.
+    const reden = e?.message && !/internal/i.test(e.message)
+      ? e.message
+      : 'Inloggen mislukt, probeer het opnieuw';
+    toonLoginFout(reden);
+    console.warn('toernooi-pincode mislukt:', e?.code || e?.message);
+  }
+}
+window.toernooiPinInloggen = toernooiPinInloggen;
+
+// v5.38.0: is DEZE sessie met de toernooi-pincode binnengekomen? De stempel
+// zit in het inlogtoken en is door de app niet te vervalsen — firestore.rules
+// en de serverfuncties kijken naar dezelfde stempel.
+let _viaPinSessie = false;
+
+async function sessieViaPin() {
+  try {
+    const res = await auth.currentUser?.getIdTokenResult();
+    _viaPinSessie = res?.claims?.viaPin === true;
+  } catch (_) { _viaPinSessie = false; }
+  return _viaPinSessie;
+}
+
+// Synchroon op te vragen nadat sessieViaPin() één keer is gedraaid. De
+// schermopbouw kan niet wachten op een belofte.
+function isPinSessie() { return _viaPinSessie === true; }
+
 async function loginMetGoogle() {
   document.getElementById('login-fout').style.display = 'none';
   try {
@@ -555,6 +685,7 @@ function uitloggen() {
   store.huidigeBruiker = null;
   store._usersCache    = null;
   document.getElementById('login-scherm').classList.add('actief');
+      vulToernooiInlog();
   document.getElementById('nav-admin-btn').style.display    = 'none';
   document.getElementById('nav-archief-btn').style.display  = 'none';
   document.getElementById('nav-toernooi-btn').style.display = 'none';
@@ -708,6 +839,7 @@ async function initFirestore() {
     if (!heeftInvite && !hersteldeSessie && !huidigeBruiker) {
       toonLaadOverlay(false);
       document.getElementById('login-scherm').classList.add('actief');
+      vulToernooiInlog();
     }
   }, 3000);
 
@@ -1091,7 +1223,8 @@ async function initFirestore() {
       store.huidigeBruiker = null;
       const heeftInvite = new URLSearchParams(location.search).has('invite');
       if (heeftInvite) { await checkInviteLink(); }
-      else { document.getElementById('login-scherm').classList.add('actief'); }
+      else { document.getElementById('login-scherm').classList.add('actief');
+      vulToernooiInlog(); }
     }
   });
 }

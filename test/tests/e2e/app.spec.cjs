@@ -15,7 +15,7 @@ const WACHTWOORD = 'test1234';
 // dan te klikken ('resolved to 2 elements'), waardoor elke test die inlogt
 // omvalt nog voordat er iets getest is. btn-primary komt precies een keer
 // voor in het loginscherm.
-const klikInloggen = (page) => page.click('#login-scherm button.btn-primary');
+const klikInloggen = (page) => page.click('#login-knop');   // v5.38.0: eigen id
 
 const inloggen = async (page, login) => {
   await page.goto('/index.html');

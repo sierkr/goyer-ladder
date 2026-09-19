@@ -1991,8 +1991,12 @@ async function startToernooi() {
     const modus    = toernooiModusUitFormulier();   // v5.12.1
     const starttijd = _d1.starttijd || '09:00';   // v5.13.0: alleen nog terugval
     const interval  = _d1.interval ?? 0;
-    // v5.10.0: leeg laten mag — dan krijgen gastspelers geen inlog.
-    const gastWachtwoord = document.getElementById('t-gast-wachtwoord')?.value.trim() || '';
+    // v5.38.0: hier stond een vrij wachtwoord van minstens zes tekens. Dat is
+    // nu een pincode van vier cijfers — het enige dat nog wordt rondverteld.
+    // Het ACCOUNT-wachtwoord van een gast wordt willekeurig en hoeft niemand
+    // te kennen; inloggen gaat via de naamlijst plus deze pincode.
+    const toernooiPin = document.getElementById('t-toernooi-pin')?.value.trim() || '';
+    const gastWachtwoord = toernooiPin ? willekeurigWachtwoord() : '';
 
     if (!naam) { toast('Voer een naam in'); return; }
 
@@ -2005,15 +2009,15 @@ async function startToernooi() {
     // gasten konden niet inloggen. Sierk, 13 september 2026: "omdat er geen
     // inlognamen zijn kunnen spelers ook niet inloggen."
     const gastenZonderWw = _tGeselecteerdeSpelers.filter(sp => sp.gast).length;
-    if (!gastWachtwoord && gastenZonderWw > 0 && !IS_TEST) {
+    if (!toernooiPin && gastenZonderWw > 0 && !IS_TEST) {
       if (!confirm(
         `Er ${gastenZonderWw === 1 ? 'zit 1 gastspeler' : `zitten ${gastenZonderWw} gastspelers`} in dit ` +
-        `toernooi, maar er is geen wachtwoord ingevuld.\n\n` +
-        `Zonder wachtwoord krijgen zij GEEN inlog en kunnen ze niet meedoen op hun eigen telefoon.\n\n` +
+        `toernooi, maar er is geen pincode ingevuld.\n\n` +
+        `Zonder pincode krijgen zij GEEN inlog en kunnen ze niet meedoen op hun eigen telefoon.\n\n` +
         `Toch opslaan?`)) return;
     }
-    if (gastWachtwoord && gastWachtwoord.length < 6) {
-      toast('Het gastwachtwoord moet minstens 6 tekens hebben');
+    if (toernooiPin && !/^\d{4}$/.test(toernooiPin)) {
+      toast('De pincode bestaat uit precies 4 cijfers');
       return;
     }
     if (gastWachtwoord && _gastBeheerGeblokkeerdInTest()) return;
@@ -2172,8 +2176,23 @@ async function startToernooi() {
     // beter dan geen toernooi.
     if (gastWachtwoord) {
       try {
+        // v5.38.0: `pinHash` is waar de serverfunctie naar kijkt. `wachtwoord`
+        // blijft erbij staan: dat is het willekeurige accountwachtwoord, en
+        // zonder dat kunnen er later geen gastlogins meer bij (zie
+        // maakOntbrekendeGastlogins). Beide staan in dezelfde afgeschermde
+        // submap waar alleen de coordinator bij kan.
         await setDoc(doc(db, 'toernooien', newRef.id, 'beheer', 'gastlogin'),
-          { wachtwoord: gastWachtwoord, code: gastCode });
+          { wachtwoord: gastWachtwoord, code: gastCode,
+            pinHash: await hashPinTekst(toernooiPin),
+            // ⚠ De pincode staat hier ook in gewone cijfers, en dat is een
+            // bewuste keuze. Vier cijfers zijn 10.000 mogelijkheden: wie de
+            // AFDRUK heeft, heeft ze binnen een oogwenk allemaal doorgerekend.
+            // De afdruk beschermt dus niets tegen iemand die in deze map kan
+            // kijken — en daar kan alleen de coordinator bij. Wat de pincode
+            // wél beschermt is de foutteller op de server. Door hem leesbaar te
+            // bewaren kan de wedstrijdleiding hem halverwege de ronde opzoeken
+            // in plaats van het toernooi opnieuw in te stellen.
+            pin: toernooiPin });
       } catch (e) {
         console.error('gastwachtwoord opslaan mislukt:', e);
         toast('Let op: het gastwachtwoord kon niet worden bewaard — ' + toernooiFoutTekst(e), 9000);
@@ -2387,6 +2406,35 @@ function openNieuweDagModal() {
 //  ene toernooi. Dat is de prijs van "alleen je naam intikken"; daarom is het
 //  wachtwoord per toernooi en worden de accounts na afloop opgeruimd.
 // ============================================================
+
+// ============================================================
+//  v5.38.0 — DE PINCODE VAN HET TOERNOOI
+// ------------------------------------------------------------
+//  Vier cijfers, en dat is het enige wat de wedstrijdleiding nog hoeft door te
+//  geven. De pincode zelf wordt NERGENS bewaard: alleen deze afdruk gaat de
+//  database in, in de afgeschermde submap beheer/gastlogin. De serverfunctie
+//  wisselToernooiPin maakt dezelfde afdruk en vergelijkt die.
+//
+//  ⚠ Dezelfde berekening aan beide kanten. De server doet
+//  `crypto.createHash('sha256').update(String(pin),'utf8').digest('hex')`.
+//  Wijk je hier af, dan komt niemand meer binnen en zegt de app alleen "die
+//  pincode klopt niet" — een fout die je uren kost. Er staat een test op.
+// ============================================================
+async function hashPinTekst(pin) {
+  const bytes = new TextEncoder().encode(String(pin));
+  const buf = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Het wachtwoord van een gast-ACCOUNT. Dat hoeft niemand meer te kennen sinds
+// de pincode bestaat, dus het is lang en willekeurig. Bewust niet afgeleid van
+// de pincode: dan zou je vier cijfers rechtstreeks bij Google kunnen proberen,
+// buiten de app en buiten de foutteller om.
+function willekeurigWachtwoord() {
+  const ruw = new Uint8Array(18);
+  crypto.getRandomValues(ruw);
+  return [...ruw].map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 24);
+}
 
 // Toernooinaam -> code die in de inlognaam past. Alleen kleine letters en
 // cijfers; accenten eraf, zodat "Café 2026" niet op een raar teken stukloopt.
@@ -5658,14 +5706,17 @@ async function bewerkToernooi() {
     // kregen de gasten dus GEEN nieuwe inlog. Ze konden nergens meer in.
     // Liever een oud account te veel dan een speler die buiten staat.
     //
-    // Het wachtwoord komt uit het toernooi zelf en gaat terug in het formulier,
-    // zodat opnieuw starten vanzelf weer werkt.
+    // Het accountwachtwoord komt uit het toernooi zelf; daarmee kunnen de oude
+    // gastaccounts netjes worden opgeruimd.
+    //
+    // ⚠ v5.38.0: het stond hier vroeger ook terug in het invulveld. Dat veld
+    // bestaat niet meer — er staat nu een PINCODE, en die is met opzet niet
+    // terug te lezen: van de pincode is alleen een afdruk bewaard. De
+    // coordinator tikt dus een (desnoods dezelfde) pincode opnieuw in. Laat
+    // hij het veld leeg terwijl er gasten meedoen, dan waarschuwt het
+    // opslaan daarvoor — dezelfde grendel als in v5.12.4.
     const geheim = await _leesGastWachtwoord(actieveToernooiId);
-    const wwVeld = document.getElementById('t-gast-wachtwoord');
-    if (geheim?.wachtwoord && wwVeld && !wwVeld.value.trim()) {
-      wwVeld.value = geheim.wachtwoord;
-    }
-    const wwInHanden = (wwVeld?.value || '').trim() || geheim?.wachtwoord || '';
+    const wwInHanden = geheim?.wachtwoord || '';
     if (wwInHanden) {
       try { await ruimGastloginsOp(t, { stil: true }); }
       catch (e) { console.warn('gastlogins opruimen bij opnieuw instellen:', e); }
@@ -6378,15 +6429,21 @@ async function maakOntbrekendeGastlogins() {
     const zonder = (t.spelers || []).filter(sp => sp.gast && !sp.login);
     if (zonder.length === 0) { toast('Alle gastspelers hebben al een inlog'); return; }
 
+    // v5.38.0: hier werd om een WACHTWOORD gevraagd. Dat is een pincode van
+    // vier cijfers geworden. Het accountwachtwoord wordt willekeurig gekozen —
+    // niemand hoeft het te kennen, want inloggen gaat via de naamlijst plus de
+    // pincode. Bestond er al een pincode voor dit toernooi, dan blijft die.
     const geheim = await _leesGastWachtwoord(toernooiId);
     let wachtwoord = geheim?.wachtwoord || '';
-    if (!wachtwoord) {
-      wachtwoord = (prompt(
-        `Wachtwoord voor de gastspelers (minstens 6 tekens).\n\n` +
-        `Dit is één wachtwoord voor iedereen; ze loggen in met hun eigen naam.`) || '').trim();
-      if (!wachtwoord) return;
-      if (wachtwoord.length < 6) { toast('Het gastwachtwoord moet minstens 6 tekens hebben'); return; }
+    let pin = geheim?.pin || '';
+    if (!pin) {
+      pin = (prompt(
+        `Pincode voor de deelnemers (4 cijfers).\n\n` +
+        `Iedereen kiest zijn naam uit de lijst op het inlogscherm en tikt deze pincode.`) || '').trim();
+      if (!pin) return;
+      if (!/^\d{4}$/.test(pin)) { toast('De pincode bestaat uit precies 4 cijfers'); return; }
     }
+    if (!wachtwoord) wachtwoord = willekeurigWachtwoord();
 
     // Zonder gastcode is er nog nooit een inlog uitgegeven voor dit toernooi.
     let code = t.gastCode;
@@ -6406,7 +6463,7 @@ async function maakOntbrekendeGastlogins() {
 
     try {
       await setDoc(doc(db, 'toernooien', toernooiId, 'beheer', 'gastlogin'),
-        { wachtwoord, code });
+        { wachtwoord, code, pinHash: await hashPinTekst(pin), pin });
     } catch (e) {
       console.error('gastwachtwoord opslaan mislukt:', e);
       toast('Let op: het wachtwoord kon niet worden bewaard — ' + toernooiFoutTekst(e), 9000);
@@ -6509,7 +6566,14 @@ window.maakOntbrekendeGastlogins = maakOntbrekendeGastlogins;
 // ("Karel  —  inlog: karel"), dus de tip vertelde de naam ook nog eens na.
 // Sierk, 14 september 2026: "die tekst klopt niet omdat je ook spelers met
 // alleen een voornaam aanmaakt."
-function gastloginTekst({ adres, wachtwoord, regels }) {
+function gastloginTekst({ adres, wachtwoord, pincode, regels }) {
+  // v5.38.0: is er een pincode, dan is dát het briefje. Je naam staat in een
+  // lijst op het inlogscherm, dus de inlognamen hoeven er niet meer bij — dat
+  // was juist het gedoe dat eruit moest.
+  if (pincode) {
+    return `Meedoen op ${adres}\n`
+      + `Kies je naam uit de lijst en tik pincode: ${pincode}`;
+  }
   const breedte = Math.max(0, ...(regels || []).map(r => String(r.naam || '').length));
   const lijst = (regels || [])
     .map(r => `${String(r.naam).padEnd(breedte)}  —  inlog: ${r.inlog}`)
@@ -6527,7 +6591,8 @@ async function toonGastlogins() {
     if (gasten.length === 0) { toast('Geen gastlogins in dit toernooi'); return; }
 
     const geheim = await _leesGastWachtwoord(actieveToernooiId);
-    const ww = geheim?.wachtwoord || '(wachtwoord niet gevonden)';
+    const ww  = geheim?.wachtwoord || '(wachtwoord niet gevonden)';
+    const pin = geheim?.pin || '';   // v5.38.0
     // v5.11.5: één inlognaam, en overal dezelfde — op het scherm én in de
     // lijst die je doorstuurt. Zonder toernooicode: die hoort in de database,
     // niet op papier.
@@ -6541,10 +6606,21 @@ async function toonGastlogins() {
     const tekst = gastloginTekst({
       adres: `${window.location.origin}${window.location.pathname}`,
       wachtwoord: ww,
+      pincode: pin,
       regels: gasten.map(g => ({ naam: g.naam, inlog: inlogVan(g) })),
     });
 
     const html = `
+      ${pin ? `
+      <p style="font-size:13px;color:var(--mid);margin-bottom:10px">
+        Iedereen die meedoet kiest op het inlogscherm zijn naam uit de lijst en tikt
+        deze pincode. Na afloop van het toernooi werkt hij niet meer.
+      </p>
+      <div style="background:var(--soft-bg);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+        <div style="font-size:11px;color:var(--mid);text-transform:uppercase;font-weight:600">Pincode</div>
+        <div style="font-family:'DM Mono',monospace;font-size:26px;letter-spacing:.3em">${esc(pin)}</div>
+      </div>
+      ` : `
       <p style="font-size:13px;color:var(--mid);margin-bottom:10px">
         Deze spelers loggen in met de <strong>inlognaam</strong> die achter hun naam
         staat, plus het wachtwoord hieronder. Na afloop van het toernooi werkt de
@@ -6554,6 +6630,7 @@ async function toonGastlogins() {
         <div style="font-size:11px;color:var(--mid);text-transform:uppercase;font-weight:600">Wachtwoord</div>
         <div style="font-family:'DM Mono',monospace;font-size:16px">${esc(ww)}</div>
       </div>
+      `}
       ${gasten.map(g => `
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
           <span style="font-size:15px;color:var(--dark)">${esc(g.naam)}</span>
@@ -6663,4 +6740,4 @@ export function getActiefToernooiMetModus() {
 }
 
 
-export { alleScoresIngevuld, annuleerToernooi, behoudLiveScores, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, herlaadToernooiListeners, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerSpelersTab, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, kiesTRankingLadder, toggleTScorecard, toggleTSpeler, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
+export { alleScoresIngevuld, annuleerToernooi, toernooiLoopt, hashPinTekst, behoudLiveScores, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, herlaadToernooiListeners, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerSpelersTab, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, kiesTRankingLadder, toggleTScorecard, toggleTSpeler, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };

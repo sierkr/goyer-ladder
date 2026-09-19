@@ -70,7 +70,7 @@ test.beforeEach(async () => {
 });
 
 const WACHTWOORD = 'test1234';
-const klikInloggen = (page) => page.click('#login-scherm button.btn-primary');
+const klikInloggen = (page) => page.click('#login-knop');   // v5.38.0: eigen id
 
 const inloggen = async (page, login) => {
   await page.goto('/index.html');
@@ -213,6 +213,22 @@ async function kiesSetupDag(page, dagNr) {
 async function naarSetupTab(page, tab) {
   const knop = page.locator(`#t-setup-tabs button[onclick="selecteerSetupTab('${tab}')"]`);
   if (await knop.count()) await knop.click();
+}
+
+// ============================================================
+//  v5.38.0 — INLOGGEN MET NAAM UIT DE LIJST EN EEN PINCODE
+// ------------------------------------------------------------
+//  Dit is sinds v5.38.0 de weg naar binnen voor een deelnemer. Het blok staat
+//  er alleen als er een toernooi LOOPT, dus het wachten erop is meteen de
+//  proef dat die voorwaarde klopt.
+// ============================================================
+async function pinInloggen(pagina, naam, pin) {
+  await pagina.goto('/index.html');
+  await pagina.waitForSelector('#login-scherm', { state: 'visible' });
+  await pagina.waitForSelector('#toernooi-inlog', { state: 'visible', timeout: 25000 });
+  await pagina.selectOption('#toernooi-inlog-speler', { label: naam });
+  await pagina.fill('#toernooi-inlog-pin', pin);
+  await pagina.click('#toernooi-inlog button.btn-primary');
 }
 
 // v5.13.1: de toernooibrede knoppen en schakelaars staan nu op het tabblad
@@ -1144,7 +1160,7 @@ test.describe('Toernooi — de hele route', () => {
     expect(fouten, 'geen JavaScript-fouten tijdens dagbeheer').toEqual([]);
   });
 
-  test('GASTLOGIN: gast logt in met alleen zijn naam en het toernooiwachtwoord', async ({ page, browser }) => {
+  test('GASTLOGIN: gast kiest zijn naam uit de lijst en tikt de pincode', async ({ page, browser }) => {
     test.setTimeout(240000);
     const fouten = [];
     page.on('pageerror', e => fouten.push(e.message));
@@ -1166,7 +1182,7 @@ test.describe('Toernooi — de hele route', () => {
 
     await vulAanmaakformulier(page, 'Gastentoernooi', 1);
     await kiesSpeler(page, 'Anna Speler');
-    await page.fill('#t-gast-wachtwoord', 'goyer2026');
+    await page.fill('#t-toernooi-pin', '1234');   // v5.38.0: pincode i.p.v. wachtwoord
 
     await page.click('#toernooi-setup-wrap button:has-text("Gastspeler toevoegen")');
     await expect(page.locator('#t-geselecteerde-spelers')).toContainText('Karel Gast');
@@ -1200,20 +1216,20 @@ test.describe('Toernooi — de hele route', () => {
       .toBe('bep.gastentoernooi');
     expect(String(gast.uid).startsWith('gast_'), 'heeft een echte uid, geen tijdelijke').toBe(false);
 
-    // Het wachtwoord staat NIET op het openbare toernooidocument.
-    expect(JSON.stringify(t)).not.toContain('goyer2026');
+    // Het geheim staat NIET op het openbare toernooidocument. v5.38.0: dat geldt
+    // nu voor de pincode — het openbare document draagt alleen namen.
+    expect(JSON.stringify(t)).not.toContain('1234');
 
     // En de gast zit in geen enkele ladder.
     const ladder = await beheerDb.doc('ladders/mp').get();
     expect((ladder.data().spelerIds || []).includes(gast.uid), 'staat niet in de ladder').toBe(false);
 
-    // ── De gast logt in met ALLEEN zijn naam en het wachtwoord ──
+    // ── De gast kiest zijn naam uit de lijst en tikt de pincode ──
+    // v5.38.0: hier tikte hij zijn naam plus het toernooiwachtwoord. Dat
+    // wachtwoord bestaat niet meer als mensenwachtwoord — het account krijgt
+    // een willekeurig getal dat niemand hoeft te kennen.
     const gastPagina = await (await browser.newContext()).newPage();
-    await gastPagina.goto('/index.html');
-    await gastPagina.waitForSelector('#login-scherm', { state: 'visible' });
-    await gastPagina.fill('#login-email', 'Karel Gast');
-    await gastPagina.fill('#login-pass', 'goyer2026');
-    await gastPagina.click('#login-scherm button.btn-primary');
+    await pinInloggen(gastPagina, 'Karel Gast', '1234');
     await gastPagina.waitForSelector('#login-scherm', { state: 'hidden', timeout: 25000 });
 
     // Geen verplicht wijzigscherm, en alleen de toernooitab.
@@ -1231,28 +1247,23 @@ test.describe('Toernooi — de hele route', () => {
       .toContainText('Bezig');
     await gastPagina.close();
 
-    // v5.11.4: dezelfde gast logt ook in met de PUNT-schrijfwijze — dat is wat
-    // het beheerscherm hem als inlognaam toont, dus dat moet werken.
-    const punt = await (await browser.newContext()).newPage();
-    await punt.goto('/index.html');
-    await punt.waitForSelector('#login-scherm', { state: 'visible' });
-    await punt.fill('#login-email', 'Karel.Gast');
-    await punt.fill('#login-pass', 'goyer2026');
-    await punt.click('#login-scherm button.btn-primary');
-    await punt.waitForSelector('#login-scherm', { state: 'hidden', timeout: 25000 });
-    await expect(punt.locator('#page-toernooi')).toContainText('Jouw scorekaart', { timeout: 20000 });
-    await punt.close();
-
-    // v5.11.7: en de gast met alleen een voornaam komt er ook in.
+    // v5.11.7 / v5.38.0: een gast met ALLEEN een voornaam komt er ook in. Vroeger
+    // ging dat mis omdat één woord buiten de naamherkenning viel; met een lijst
+    // valt er niets meer te herkennen, maar hij moet er wel in STAAN.
     const eenNaam = await (await browser.newContext()).newPage();
-    await eenNaam.goto('/index.html');
-    await eenNaam.waitForSelector('#login-scherm', { state: 'visible' });
-    await eenNaam.fill('#login-email', 'Bep');
-    await eenNaam.fill('#login-pass', 'goyer2026');
-    await eenNaam.click('#login-scherm button.btn-primary');
+    await pinInloggen(eenNaam, 'Bep', '1234');
     await eenNaam.waitForSelector('#login-scherm', { state: 'hidden', timeout: 25000 });
     await expect(eenNaam.locator('#page-toernooi')).toContainText('Jouw scorekaart', { timeout: 20000 });
     await eenNaam.close();
+
+    // ⚠ En de andere kant: een verkeerde pincode komt er NIET in. Zonder deze
+    // proef zou een fout in de foutafhandeling ongemerkt iedereen binnenlaten.
+    const fout = await (await browser.newContext()).newPage();
+    await pinInloggen(fout, 'Karel Gast', '9999');
+    await expect(fout.locator('#login-fout'), 'een verkeerde pincode wordt gemeld')
+      .toBeVisible({ timeout: 20000 });
+    await expect(fout.locator('#login-scherm'), 'en je blijft buiten').toBeVisible();
+    await fout.close();
 
     // En het beheerscherm toont precies dát: karel.gast, zonder toernooicode.
     await openSpelersBeheer(page);
@@ -1274,7 +1285,9 @@ test.describe('Toernooi — de hele route', () => {
     await expect(briefje).toBeVisible({ timeout: 10000 });
     await expect(briefje, 'de inlognaam staat erop').toContainText('karel.gast');
     await expect(briefje, 'zonder toernooicode').not.toContainText('karel.gast.gastentoernooi');
-    await expect(briefje, 'met het wachtwoord erbij').toContainText('goyer2026');
+    // v5.38.0: hier stond het gastwachtwoord. Dat is nu een willekeurig getal
+    // dat niemand hoeft te kennen; op het briefje staat de PINCODE.
+    await expect(briefje, 'met de pincode erbij').toContainText('1234');
 
     // v5.11.5: en de markerindeling draagt geen TIJDELIJKE gast-sleutels meer.
     // Die werden bij het starten overal vervangen behalve hier.
@@ -1609,7 +1622,7 @@ test.describe('Toernooi — de hele route', () => {
     await naarToernooi(page);
     await vulAanmaakformulier(page, 'Herstartgast', 1);
     await kiesSpeler(page, 'Anna Speler');
-    await page.fill('#t-gast-wachtwoord', 'goyer2026');
+    await page.fill('#t-toernooi-pin', '1234');   // v5.38.0: pincode i.p.v. wachtwoord
     await page.click('#toernooi-setup-wrap button:has-text("Gastspeler toevoegen")');
     await expect(page.locator('#t-geselecteerde-spelers')).toContainText('Karel Gast');
     await naarFlightIndeling(page);
@@ -1645,11 +1658,7 @@ test.describe('Toernooi — de hele route', () => {
     expect(profiel.exists, 'en zijn profiel staat er nog').toBe(true);
 
     const gast = await (await browser.newContext()).newPage();
-    await gast.goto('/index.html');
-    await gast.waitForSelector('#login-scherm', { state: 'visible' });
-    await gast.fill('#login-email', 'Karel Gast');
-    await gast.fill('#login-pass', 'goyer2026');
-    await gast.click('#login-scherm button.btn-primary');
+    await pinInloggen(gast, 'Karel Gast', '1234');   // v5.38.0
     await gast.waitForSelector('#login-scherm', { state: 'hidden', timeout: 25000 });
     await expect(gast.locator('#page-toernooi'), 'de gast komt er na het herstel gewoon weer in')
       .toContainText('Jouw scorekaart', { timeout: 25000 });
@@ -1804,7 +1813,7 @@ test.describe('Toernooi — de hele route', () => {
     await naarToernooi(pagina);
     await vulAanmaakformulier(pagina, toernooinaam, 1);
     await kiesSpeler(pagina, 'Anna Speler');
-    await pagina.fill('#t-gast-wachtwoord', wachtwoord);
+    await pagina.fill('#t-toernooi-pin', wachtwoord);   // v5.38.0: dit is nu een pincode
     await pagina.click('#toernooi-setup-wrap button:has-text("Gastspeler toevoegen")');
     await expect(pagina.locator('#t-geselecteerde-spelers')).toContainText(gastnaam.split(' ')[0]);
     await naarFlightIndeling(pagina);
@@ -1843,10 +1852,10 @@ test.describe('Toernooi — de hele route', () => {
     // Vorig jaar Clubkampioenschap, dit jaar weer — zelfde naam, zelfde
     // wachtwoord. Het oude toernooi wordt geannuleerd, niet verwijderd, dus het
     // oude account van Harry blijft bestaan.
-    const t1 = await toernooiMetGast(page, 'Clubkampioenschap', 'Harry', 'goyer2026');
+    const t1 = await toernooiMetGast(page, 'Clubkampioenschap', 'Harry', '1234');
     const uid1 = t1.spelers.find(sp => sp.gast).uid;
     await annuleerLopend(page);
-    const t2 = await toernooiMetGast(page, 'Clubkampioenschap', 'Harry', 'goyer2026');
+    const t2 = await toernooiMetGast(page, 'Clubkampioenschap', 'Harry', '1234');
     const gast2 = t2.spelers.find(sp => sp.gast);
     expect(gast2.uid, 'de nieuwe Harry is een ander account').not.toBe(uid1);
 
@@ -1854,12 +1863,11 @@ test.describe('Toernooi — de hele route', () => {
     // uit (`harry.<code>`) in plaats van hem op te zoeken. Die naam was bezet
     // door het OUDE toernooi, dus kwam Harry daar binnen — met het juiste
     // wachtwoord, dus zonder één waarschuwing — en las "Geen actief toernooi".
+    // v5.38.0: met een lijst valt er niets meer uit te rekenen — de lijst hoort
+    // bij het toernooi dat LOOPT, dus je kunt niet meer in het oude belanden.
+    // Deze proef bewaakt nu dat de lijst inderdaad van het lopende toernooi is.
     const harry = await (await browser.newContext()).newPage();
-    await harry.goto('/index.html');
-    await harry.waitForSelector('#login-scherm', { state: 'visible' });
-    await harry.fill('#login-email', 'Harry');
-    await harry.fill('#login-pass', 'goyer2026');
-    await harry.click('#login-scherm button.btn-primary');
+    await pinInloggen(harry, 'Harry', '1234');
     await harry.waitForSelector('#login-scherm', { state: 'hidden', timeout: 25000 });
     await expect(harry.locator('#page-toernooi'), 'Harry komt in het LOPENDE toernooi')
       .toContainText('Jouw scorekaart', { timeout: 25000 });
@@ -1876,7 +1884,7 @@ test.describe('Toernooi — de hele route', () => {
     });
     await inloggen(page, 'coord@MPladder.stb');
 
-    const t1 = await toernooiMetGast(page, 'Voorjaarscup', 'Sierk', 'goyer2026');
+    const t1 = await toernooiMetGast(page, 'Voorjaarscup', 'Sierk', '1234');
     expect(t1.spelers.find(sp => sp.gast).login, 'de eerste keer gewoon zijn naam')
       .toBe('sierk.voorjaarscup');
 
@@ -1894,7 +1902,7 @@ test.describe('Toernooi — de hele route', () => {
     // v5.21.1: het gastwachtwoord staat op het tabblad Spelers, en na "opnieuw
     // instellen" komt het scherm terug op Toernooi.
     await naarSetupTab(page, 'spelers');
-    await page.fill('#t-gast-wachtwoord', 'goyer2026');
+    await page.fill('#t-toernooi-pin', '1234');   // v5.38.0: pincode i.p.v. wachtwoord
     await naarFlightIndeling(page);
     await page.click('#flight-modal-start-btn');
     await expect.poll(async () => {
@@ -1952,7 +1960,7 @@ test.describe('Toernooi — de hele route', () => {
   //  inlogs stilzwijgend over. Geen melding, geen inlognamen, geen knop.
   // ============================================================
 
-  test('GASTWACHTWOORD: starten zonder wachtwoord gaat niet stilletjes', async ({ page }) => {
+  test('GASTWACHTWOORD: starten zonder pincode gaat niet stilletjes', async ({ page }) => {
     test.setTimeout(200000);
     const gevraagd = [];
     const antwoorden = ['Karel Gast', '15'];
@@ -1973,7 +1981,8 @@ test.describe('Toernooi — de hele route', () => {
     await page.click('#flight-modal-start-btn');
     await expect(page.locator('#toernooi-detail')).toContainText('Zonderww', { timeout: 25000 });
 
-    expect(gevraagd.some(m => /geen wachtwoord ingevuld/i.test(m)),
+    // v5.38.0: de waarschuwing gaat over de PINCODE; het veld heet zo.
+    expect(gevraagd.some(m => /geen pincode ingevuld/i.test(m)),
       'de app waarschuwt dat de gast dan niet kan inloggen').toBe(true);
 
     // En dan staat de reparatieknop klaar — de enige uitweg was tot v5.12.3 de
@@ -1985,7 +1994,7 @@ test.describe('Toernooi — de hele route', () => {
 
   test('GASTWACHTWOORD: de reparatieknop geeft alsnog een inlog, scores blijven', async ({ page, browser }) => {
     test.setTimeout(300000);
-    const antwoorden = ['Karel Gast', '15', 'goyer2026'];
+    const antwoorden = ['Karel Gast', '15', '1234'];   // v5.38.0: de derde is nu een pincode
     page.on('dialog', async d => {
       if (d.type() === 'prompt') return d.accept(antwoorden.shift() ?? '');
       return d.accept();
@@ -2035,11 +2044,7 @@ test.describe('Toernooi — de hele route', () => {
 
     // En de gast komt binnen met zijn eigen naam.
     const gast = await (await browser.newContext()).newPage();
-    await gast.goto('/index.html');
-    await gast.waitForSelector('#login-scherm', { state: 'visible' });
-    await gast.fill('#login-email', 'Karel Gast');
-    await gast.fill('#login-pass', 'goyer2026');
-    await gast.click('#login-scherm button.btn-primary');
+    await pinInloggen(gast, 'Karel Gast', '1234');   // v5.38.0
     await gast.waitForSelector('#login-scherm', { state: 'hidden', timeout: 25000 });
     await expect(gast.locator('#page-toernooi')).toContainText('Jouw scorekaart', { timeout: 25000 });
     await gast.close();

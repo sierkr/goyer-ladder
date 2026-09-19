@@ -369,6 +369,72 @@ async function main() {
   await R.magNiet('zelfs de beheerder niet zonder puntenBeheerder-vlag',
     () => roepAan('pasPuntenAan', { ladderId: 'mp', uid: SPELER_A, score: 9999999 }, tokenBeh));
 
+  // ══ v5.38.0 — DE TOERNOOI-PINCODE ══════════════════════════
+  //  Dit IS de inlog van een deelnemer. Gaat hier iets mis, dan staat er
+  //  iemand voor een dichte deur op de eerste tee — of staat er juist iemand
+  //  binnen die er niet hoort.
+  const crypto = require('crypto');
+  const afdruk = (pin) => crypto.createHash('sha256').update(String(pin), 'utf8').digest('hex');
+
+  await db.doc('toernooien/t_pin').set({
+    naam: 'Pincode Cup', status: 'actief',
+    dagen: [{ dagNr: 1, gestart: true, afgerond: false, holes: HOLES, flights: [], scores: {} }],
+    spelers: [
+      { uid: SPELER_A,  naam: 'Anna', hcp: 10, gast: false },
+      { uid: BEHEERDER, naam: 'Bea',  hcp: 10, gast: false },
+    ],
+  });
+  await db.doc('toernooien/t_pin/beheer/gastlogin').set({
+    wachtwoord: 'willekeurig-en-lang', code: 'pincodecup', pinHash: afdruk('1234'), pin: '1234',
+  });
+
+  await R.magNiet('een pincode van drie cijfers wordt geweigerd',
+    () => roepAan('wisselToernooiPin', { toernooiId: 't_pin', spelerUid: SPELER_A, pin: '123' }, null));
+  await R.magNiet('zonder naam kom je er niet in',
+    () => roepAan('wisselToernooiPin', { toernooiId: 't_pin', spelerUid: '', pin: '1234' }, null));
+  await R.magNiet('een naam die niet meedoet komt er niet in',
+    () => roepAan('wisselToernooiPin', { toernooiId: 't_pin', spelerUid: BUITEN, pin: '1234' }, null));
+  await R.magNiet('een verkeerde pincode komt er niet in',
+    () => roepAan('wisselToernooiPin', { toernooiId: 't_pin', spelerUid: SPELER_A, pin: '9999' }, null));
+
+  // ⚠ De belangrijkste van allemaal. Zou dit lukken, dan is dat ene getal dat
+  // op de eerste tee wordt rondverteld de sleutel tot het hele beheerscherm.
+  await R.magNiet('de WEDSTRIJDLEIDING komt er niet in met de pincode',
+    () => roepAan('wisselToernooiPin', { toernooiId: 't_pin', spelerUid: BEHEERDER, pin: '1234' }, null));
+
+  // En dan de goede afloop: een deelnemer met de juiste pincode.
+  const pinUit = await roepAan('wisselToernooiPin',
+    { toernooiId: 't_pin', spelerUid: SPELER_A, pin: '1234' }, null);
+  R.check('een deelnemer krijgt een inlogtoken', typeof pinUit?.customToken, 'string');
+  R.check('en het gaat om de juiste speler', pinUit?.uid, SPELER_A);
+  R.check('met zijn naam erbij', pinUit?.naam, 'Anna');
+
+  // Het token moet de stempel dragen waar firestore.rules op kijkt. Ontbreekt
+  // die, dan staat de deelnemer binnen MET alle rechten van een clublid.
+  const ontcijferd = JSON.parse(
+    Buffer.from(String(pinUit.customToken).split('.')[1], 'base64').toString('utf8'));
+  R.check('het token draagt de stempel viaPin', ontcijferd?.claims?.viaPin, true);
+  R.check('en weet bij welk toernooi het hoort', ontcijferd?.claims?.toernooiId, 't_pin');
+
+  // Een pincode-sessie mag geen enkele serverfunctie aanroepen.
+  const pinCustom = await admin.auth().createCustomToken(SPELER_A, { viaPin: true, toernooiId: 't_pin' });
+  const pinAanmeld = await fetch(
+    'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=fake-api-key',
+    { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: pinCustom, returnSecureToken: true }) });
+  const pinToken = (await pinAanmeld.json()).idToken;
+  await R.magNiet('een pincode-sessie kan GEEN partijuitslag verwerken',
+    () => roepAan('verwerkPartijUitslag', { ladderId: 'mp', partijId: 'p1' }, pinToken));
+  await R.magNiet('een pincode-sessie kan GEEN horloge-pincode maken',
+    () => roepAan('maakWatchPin', {}, pinToken));
+  await R.magNiet('een pincode-sessie kan de eerste login niet voltooien',
+    () => roepAan('voltooiEersteLogin', { hcp: 1 }, pinToken));
+
+  // Een toernooi dat niet meer loopt, geeft geen toegang meer.
+  await db.doc('toernooien/t_pin').update({ status: 'afgerond' });
+  await R.magNiet('een afgesloten toernooi laat niemand meer binnen',
+    () => roepAan('wisselToernooiPin', { toernooiId: 't_pin', spelerUid: SPELER_A, pin: '1234' }, null));
+
   return toonRapport(R);
 }
 
