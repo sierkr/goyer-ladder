@@ -858,6 +858,58 @@ test.describe('Toernooi — de hele route', () => {
   });
 
   // ============================================================
+  //  v5.37.0 — DE QR-CODE STAAT ER EN GAAT OPEN
+  // ------------------------------------------------------------
+  //  De rekentests controleren het patroon zelf (vierkant, zoekblokken,
+  //  liniaal). Wat zij NIET kunnen zien is of de knop er staat en of het
+  //  venster opengaat — dat is bedrading tussen drie bestanden, en juist daar
+  //  gaat het mis. Deze test klikt hem aan zoals Sierk dat doet.
+  //
+  //  ⚠ Of een telefoon de code léést blijft buiten bereik: er is geen QR-lezer
+  //  op de testmachine en Chromium heeft er ook geen (BarcodeDetector ontbreekt,
+  //  nagemeten op 19 september 2026).
+  // ============================================================
+  test('QR-CODE: de knop staat op het Toernooi-tabblad en het venster gaat open', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'QR', 1);
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    await slaToernooiOp(page);
+    await expect(page.locator('#toernooi-detail')).toContainText('QR', { timeout: 20000 });
+
+    await naarDagTab(page, 1);
+    await page.click('#toernooi-detail button:has-text("Dag 1 starten")');
+    await expect(page.locator('#t-scorecard-wrap')).toBeVisible({ timeout: 20000 });
+
+    await naarToernooiTab(page);
+    const knop = page.locator('#toernooi-detail button:has-text("QR-code tonen")');
+    await expect(knop, 'de knop staat naast de meekijklink').toBeVisible({ timeout: 20000 });
+    await knop.click();
+
+    const venster = page.locator('#modal-qr-code');
+    await expect(venster, 'het venster gaat open').toHaveClass(/open/, { timeout: 10000 });
+    await expect(venster.locator('svg'), 'er staat een getekende code in').toBeVisible();
+
+    // Een QR-code van dit adres heeft 29x29 vakjes; ruim 400 daarvan zijn
+    // zwart. Is het er één, dan is er iets misgegaan in het tekenen.
+    const vakjes = await venster.locator('svg rect').count();
+    expect(vakjes, 'de code bestaat uit honderden vakjes').toBeGreaterThan(300);
+
+    // Het adres hoort er in gewone letters onder te staan, zodat je altijd zelf
+    // kunt zien waar de code heen wijst. De testwebserver draait niet onder
+    // /test/, dus hier hoort het live-adres te staan.
+    await expect(venster.locator('#qr-code-adres'))
+      .toHaveText('https://sierkr.github.io/goyer-ladder/');
+
+    await venster.locator('button:has-text("Sluiten")').click();
+    await expect(venster, 'en weer dicht').not.toHaveClass(/open/, { timeout: 10000 });
+  });
+
+  // ============================================================
   //  v5.22.0 — TWEE KEER OPSLAAN MAAKT ÉÉN TOERNOOI
   // ------------------------------------------------------------
   //  Gemeten op LIVE, 14 september 2026: twee toernooien "Cie on tour 2026",

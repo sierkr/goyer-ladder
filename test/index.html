@@ -2034,6 +2034,28 @@
 <!-- ==================== UITLEG SCOREKAART (v5.35.0) ====================
      Korte hulp voor de DEELNEMER, achter het ?-knopje op de scorekaart.
      Bewust een venster en geen pagina: je staat midden in een ronde. -->
+<!-- ==================== QR-CODE NAAR DE SITE (v5.37.0) ====================
+     De code zelf wordt hier niet opgehaald maar getekend door qrSvg() in
+     js/toernooi.js. Geen internetdienst en geen extra bibliotheek: op de baan
+     is er lang niet altijd bereik, en dan hoort dit venster het juist te doen.
+     Het adres staat er in gewone letters onder — zo zie je altijd zelf waar de
+     code heen wijst, ook als je op de testomgeving kijkt.
+     ========================================================================= -->
+<div class="modal-overlay" id="modal-qr-code">
+  <div class="modal">
+    <h3>QR-code naar de app</h3>
+    <div style="font-size:14px;line-height:1.5;color:var(--dark);margin-bottom:12px">
+      Laat dit scherm zien; wie zijn telefooncamera erop richt, komt op de
+      inlogpagina van de Matchplay Ladder.
+    </div>
+    <div id="qr-code-vak" style="width:100%;max-width:260px;margin:0 auto;background:#ffffff;border-radius:8px"></div>
+    <div id="qr-code-adres" style="text-align:center;font-family:'DM Mono',monospace;font-size:11px;color:var(--mid);margin-top:10px;word-break:break-all"></div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-primary btn-block" onclick="closeModal('modal-qr-code')">Sluiten</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-scorekaart-hulp">
   <div class="modal">
     <h3>Zo werkt de scorekaart</h3>

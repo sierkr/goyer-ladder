@@ -13,6 +13,7 @@ const suites = [
   ['Korte unieke namen',         './namen.test.cjs'],
   ['Markers en scorelagen',      './marker.test.cjs'],
   ['Gastlogins',                 './gastlogin.test.cjs'],
+  ['QR-code',                    './qr.test.cjs'],
 ];
 
 let totOk = 0, totFout = 0;

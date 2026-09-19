@@ -3939,10 +3939,17 @@ function renderToernooiActief() {
       </div>
     </div>`;
 
+  // v5.37.0: de QR-code staat hier, naast de meekijklink — twee manieren om
+  // iemand naar deze app te krijgen, op dezelfde plek. Iedereen op dit tabblad
+  // ziet hem, net als de meekijklink: de wedstrijdleiding om hem te laten zien,
+  // een speler om hem aan een medespeler door te geven.
   const liveLinkKnop = `
     <div style="padding:0 0 12px">
       <button onclick="kopieerLiveLink()" class="btn btn-ghost btn-block" style="font-size:13px">
         🔗 Live meekijklink kopiëren
+      </button>
+      <button onclick="toonToernooiQR()" class="btn btn-ghost btn-block" style="font-size:13px;margin-top:8px">
+        📱 QR-code tonen
       </button>
     </div>`;
 
@@ -6149,6 +6156,140 @@ window.pasSpeelwijzeToe = pasSpeelwijzeToe;
 // ============================================================
 //  LIVE LINK
 // ============================================================
+// ============================================================
+//  DE QR-CODE NAAR DE SITE — v5.37.0
+// ============================================================
+//  Sierk: "kan je ook een QR code maken van de site? Als ik op 'QR code' klik
+//  dan verschijnt de code zodat spelers deze kunnen scannen."
+//
+//  BEWUST GEEN INTERNETDIENST EN GEEN EXTRA BIBLIOTHEEK. Een dienst als
+//  api.qrserver.com zou het adres van de club naar een vreemde server sturen
+//  en het venster leeg laten zodra er geen bereik is — op een golfbaan precies
+//  het moment dat je hem nodig hebt. Het patroon staat daarom hieronder
+//  gewoon uitgeschreven; je kunt de code in dit bestand met het blote oog zien.
+//
+//  Het adres verandert niet vanzelf, dus het patroon ook niet. Verandert het
+//  toch, reken het dan opnieuw uit met (python3 met het pakket `qrcode`):
+//
+//      python3 -c "
+//      import qrcode
+//      q=qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M,border=0)
+//      q.add_data('<het nieuwe adres>'); q.make(fit=True)
+//      print('\n'.join(''.join('#' if v else '.' for v in r) for r in q.get_matrix()))"
+//
+//  Foutcorrectie M: tot ongeveer een zevende van de code mag beschadigd of
+//  afgedekt zijn en hij leest nog steeds. De rand van vier lege vakjes eromheen
+//  hoort erbij — zonder die rand vindt een telefoon de code niet. Die rand zit
+//  in het tekenwerk hieronder (viewBox), niet in het patroon zelf.
+//
+//  ⚠ De code volgt de omgeving. Kijk je op test, dan wijst hij naar test.
+//  Anders stuur je vanaf het testscherm spelers naar de echte site zonder dat
+//  je het ziet. Het adres staat er in gewone letters onder, zodat je het
+//  altijd zelf kunt nakijken.
+// ============================================================
+const QR_LIVE_URL = 'https://sierkr.github.io/goyer-ladder/';
+const QR_TEST_URL = 'https://sierkr.github.io/goyer-ladder/test/';
+
+const QR_LIVE = `
+#######.#.##.#.####...#######
+#.....#..#..#.#.#.###.#.....#
+#.###.#..##.#..#.####.#.###.#
+#.###.#.##.#.#.##.##..#.###.#
+#.###.#.###...#####.#.#.###.#
+#.....#.#..#.....#.##.#.....#
+#######.#.#.#.#.#.#.#.#######
+........#####.##.###.........
+#...#.###....##..#########..#
+####...###..#.#####...#######
+.#...###....#####.#.##.##...#
+###....#..#..#.#.##.#..#.#.##
+....#.##..#.##...#.#.#.#...#.
+..###...#..#.####.#..########
+##.##.#..####..#..#..##..##.#
+##.#.#.#..#...#####..#.....##
+##.#####.....##..#..#......#.
+#.#..#.##......####...####.##
+..#...#.#...#####.#.......#.#
+..#..#.##.#.##.#.##.##.##..##
+##.##.####..##.#.#.#######..#
+........####.#####..#...#...#
+#######.#.#.#..#.#.##.#.###.#
+#.....#...##..##.####...#..#.
+#.###.#.#.#..###.#.#######.#.
+#.###.#..#..#..#..#.##......#
+#.###.#...#..######.##...####
+#.....#...##.#..###.#.#.##.##
+#######.###.#...##..###.#..#.`;
+
+const QR_TEST = `
+#######....#..#.#.##.###..#######
+#.....#..##....##.#..#....#.....#
+#.###.#.#..#..###..#.####.#.###.#
+#.###.#.###.#..#..#..#.##.#.###.#
+#.###.#.##.#..####..###...#.###.#
+#.....#.#...##...#.#...##.#.....#
+#######.#.#.#.#.#.#.#.#.#.#######
+........#.#.....#.####.#.........
+#.#####..#.###...#.#...##.#####..
+#.####...##..#..#####..#..##.##.#
+##...####..#######..#.#.##..#.##.
+#.####.......#.#.##.#..##...####.
+....#.#.###.#.#.#...###.##..##...
+##.....##..#...#.##.....#.#..####
+.#..###.....##.##.#.#.#..##.#.##.
+#.####.###.##.##.....#.#.##.###..
+.##..##..###.#####..#.##.#.##...#
+..#.##.#.#......#.####.#.###.##.#
+#..#######.##.###.#..#...#.##.##.
+####.#...#.###..#....##..#.####..
+#....##....#.##...##.#..##.###.##
+##...#.##.##.#.###..########.##.#
+#....##..#..#.#..#.#..#.#..##.##.
+#.##...###..###.#..####..###.####
+#.#...#....####..###..#.#####...#
+........##.###..#####...#...#.#.#
+#######..#...#.###....###.#.#.##.
+#.....#.##.#....###.#..##...####.
+#.###.#.####...##...###.######.##
+#.###.#.########.##....###..###.#
+#.###.#.###....###..##....##.##..
+#.....#.....#.##.....###....###..
+#######.#...#.##.#..#.######.#.#.`;
+
+// Tekent een patroon als SVG. Eén vierkantje per zwart vakje, en een witte
+// ondergrond die vier vakjes verder doorloopt: dat is de verplichte rustrand.
+// `crispEdges` houdt de randen hard — zonder dat vervaagt een telefoon de
+// vakjes tot grijs en haalt de camera er niets meer uit.
+function qrSvg(patroon) {
+  const rijen = patroon.trim().split('\n');
+  const n = rijen.length;
+  const rand = 4;
+  let vakjes = '';
+  rijen.forEach((rij, y) => {
+    [...rij].forEach((teken, x) => {
+      if (teken === '#') vakjes += `<rect x="${x}" y="${y}" width="1" height="1"/>`;
+    });
+  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-rand} ${-rand} ${n + rand * 2} ${n + rand * 2}"`
+       + ` width="100%" height="100%" shape-rendering="crispEdges" role="img"`
+       + ` aria-label="QR-code naar de Goyer Matchplay Ladder">`
+       + `<rect x="${-rand}" y="${-rand}" width="${n + rand * 2}" height="${n + rand * 2}" fill="#ffffff"/>`
+       + `<g fill="#000000">${vakjes}</g></svg>`;
+}
+
+// ▶ Het venster met de code. Staat in de Toernooi-tab, naast de meekijklink.
+function toonToernooiQR() {
+  const url  = IS_TEST ? QR_TEST_URL : QR_LIVE_URL;
+  const code = IS_TEST ? QR_TEST     : QR_LIVE;
+  const vak  = document.getElementById('qr-code-vak');
+  const adres = document.getElementById('qr-code-adres');
+  if (!vak || !adres) { toast('Het QR-venster ontbreekt in dit scherm'); return; }
+  vak.innerHTML = qrSvg(code);
+  adres.textContent = url;
+  document.getElementById('modal-qr-code').classList.add('open');
+}
+window.toonToernooiQR = toonToernooiQR;
+
 function kopieerLiveLink() {
   if (!actieveToernooiId) { toast('Geen actief toernooi'); return; }
   const base = window.location.href.split('/').slice(0, -1).join('/');
