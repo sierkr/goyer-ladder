@@ -55,6 +55,28 @@ function hashPin(pin) {
   return crypto.createHash('sha256').update(String(pin), 'utf8').digest('hex');
 }
 
+// ============================================================
+//  v5.38.0 — EEN PINCODE-SESSIE MAG GEEN SERVERFUNCTIE AANROEPEN
+// ------------------------------------------------------------
+//  Wie via de toernooi-pincode binnenkwam draagt de stempel `viaPin`. Zo
+//  iemand heeft zijn eigen wachtwoord niet gebruikt en hoort dus alleen aan
+//  het toernooi te komen. firestore.rules houdt hem weg bij de ladder; deze
+//  wacht doet hetzelfde voor de serverfuncties, want die werken met de Admin
+//  SDK en gaan dwars door die regels heen.
+//
+//  Nagemeten op 19 september 2026: het toernooi roept zelf geen enkele van
+//  deze functies aan (alle scores gaan rechtstreeks naar Firestore). De wacht
+//  kan dus overal staan zonder iets in de weg te zitten. `wisselToernooiPin`
+//  en `wisselWatchPin` zijn de uitzonderingen — dat ZIJN de inlogfuncties.
+// ============================================================
+function weigerPinSessie(request) {
+  if (request?.auth?.token?.viaPin === true) {
+    throw new HttpsError('permission-denied',
+      'Je bent ingelogd met de toernooi-pincode. Daarmee kun je alleen het '
+      + 'toernooi bijhouden. Log in met je eigen wachtwoord voor de rest.');
+  }
+}
+
 // Cryptografisch veilige 6-cijferige PIN (100000..999999).
 function genereerPin() {
   return String(100000 + (crypto.randomInt(0, 900000)));
@@ -70,6 +92,7 @@ function genereerPin() {
 exports.maakWatchPin = onCall(
   { region: 'europe-west1' },
   async (request) => {
+    weigerPinSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
 
@@ -290,6 +313,151 @@ const DEFAULT_LADDER_CONFIG = {
 //
 // Dit is bewust niet gerepareerd: een echte scheiding vraagt twee Firebase-
 // projecten, en dat raakt ook de inlogaccounts. Zie OPENSTAAND.md.
+// ============================================================
+//  DE TOERNOOI-PINCODE — v5.38.0
+// ------------------------------------------------------------
+//  Sierk, 19 september 2026: "Je kunt alleen maar meedoen met een toernooi als
+//  je naam voorkomt en het toernooi gestart is. Om die reden wil ik het
+//  inloggen vereenvoudigen." Een uitklaplijst met namen en vier cijfers.
+//
+//  WAAROM DIT NIET GEWOON EEN WACHTWOORD IS. Firebase eist minstens zes tekens
+//  voor een wachtwoord, en een wachtwoord van vier cijfers zou bovendien
+//  rechtstreeks bij Google te proberen zijn — buiten deze app om, zonder enige
+//  rem. Daarom werkt het als de horloge-PIN die hier al jaren draait: de app
+//  stuurt de pincode hierheen, de server kijkt hem na en geeft bij goedkeuring
+//  een custom token terug. Alleen hier zit de rem, en de rem kan niet omzeild
+//  worden omdat de pincode nergens anders geldig is.
+//
+//  DRIE GRENDELS, en ze zijn geen van drieën optioneel:
+//
+//   1. De pincode staat NERGENS. Alleen een SHA-256-afdruk, in
+//      toernooien/{id}/beheer/gastlogin — een map waar alleen de coordinator
+//      bij kan (firestore.rules).
+//   2. Een COORDINATOR of BEHEERDER komt hier NOOIT doorheen. Anders is dat
+//      ene getal, dat op de eerste tee wordt rondverteld, de sleutel tot het
+//      hele beheerscherm. Zij gebruiken hun eigen wachtwoord.
+//   3. Het token draagt de stempel `viaPin`. firestore.rules laat zo'n sessie
+//      alleen aan het toernooi komen en nergens anders aan. Knoppen verbergen
+//      in de app is géén vervanging daarvan.
+//
+//  ⚠ DE FOUTTELLER IS EEN AFWEGING, GEEN GRATIS BEVEILIGING. Vier cijfers zijn
+//  10.000 mogelijkheden. Met TOERNOOI_PIN_MAX_FOUT pogingen per venster duurt
+//  raden bij elkaar opgeteld dagen, en een toernooi duurt een dag. De prijs:
+//  wie moedwillig fout tikt, zet de pincode voor iedereen even op slot. Dat is
+//  bewust zo gekozen — een dichte deur is beter dan een deur die opengaat voor
+//  wie lang genoeg rammelt. De coordinator kan altijd zelf inloggen en een
+//  nieuwe pincode instellen.
+// ============================================================
+
+const TOERNOOI_PIN_MAX_FOUT     = 15;             // mislukte pogingen per venster
+const TOERNOOI_PIN_FOUT_VENSTER = 10 * 60 * 1000; // en dat venster is 10 minuten
+
+/**
+ * Wissel de pincode van een lopend toernooi om voor een inlog.
+ * Bewust NIET authenticatie-plichtig: dit ÍS de login.
+ *
+ * Input:  { toernooiId, spelerUid, pin: "1234", isTest?: boolean }
+ * Output: { customToken, uid, naam }
+ */
+exports.wisselToernooiPin = onCall(
+  { region: 'europe-west1' },
+  async (request) => {
+    const data       = request.data || {};
+    const pin        = String(data.pin ?? '').trim();
+    const toernooiId = String(data.toernooiId ?? '').trim();
+    const spelerUid  = String(data.spelerUid ?? '').trim();
+    const isTest     = data.isTest === true;
+
+    if (!/^\d{4}$/.test(pin)) {
+      throw new HttpsError('invalid-argument', 'De pincode bestaat uit 4 cijfers.');
+    }
+    if (!toernooiId || !spelerUid) {
+      throw new HttpsError('invalid-argument', 'Kies eerst je naam uit de lijst.');
+    }
+
+    const fs    = fsVoor(isTest);
+    const tRef  = fs.collection('toernooien').doc(toernooiId);
+    const tSnap = await tRef.get();
+    if (!tSnap.exists) {
+      throw new HttpsError('not-found', 'Dit toernooi bestaat niet meer.');
+    }
+    const toernooi = tSnap.data() || {};
+
+    // Alleen een LOPEND toernooi. Is het afgesloten of geannuleerd, dan is de
+    // pincode niets meer waard — precies wat Sierk bedoelde met "en het
+    // toernooi gestart is".
+    if (toernooi.status !== 'actief') {
+      throw new HttpsError('failed-precondition', 'Dit toernooi loopt op dit moment niet.');
+    }
+
+    const speler = (toernooi.spelers || []).find(sp => sp && sp.uid === spelerUid);
+    if (!speler) {
+      throw new HttpsError('permission-denied', 'Deze naam doet niet mee aan dit toernooi.');
+    }
+
+    // Grendel 2. Let op de volgorde: dit gebeurt VÓÓR de foutteller, zodat een
+    // poging op een coordinator niet de pincode voor de hele flight op slot zet.
+    const spelerSnap = await fs.collection('spelers').doc(spelerUid).get();
+    const rol = spelerSnap.exists ? (spelerSnap.data() || {}).rol : null;
+    if (rol === 'coordinator' || rol === 'beheerder') {
+      throw new HttpsError('permission-denied',
+        'Wedstrijdleiding logt in met het eigen wachtwoord, niet met de pincode.');
+    }
+
+    const pinRef  = tRef.collection('beheer').doc('gastlogin');
+    const foutRef = tRef.collection('beheer').doc('pinPogingen');
+    const hash    = hashPin(pin);
+    const nu      = Date.now();
+
+    // Foutteller nakijken en de afdruk vergelijken in één transactie, zodat
+    // twintig pogingen tegelijk de teller niet kunnen omzeilen.
+    await fs.runTransaction(async (tx) => {
+      const [foutSnap, pinSnap] = await Promise.all([tx.get(foutRef), tx.get(pinRef)]);
+
+      const fout          = foutSnap.exists ? (foutSnap.data() || {}) : {};
+      const vensterStart  = typeof fout.venster === 'number' ? fout.venster : 0;
+      const binnenVenster = (nu - vensterStart) < TOERNOOI_PIN_FOUT_VENSTER;
+      const fouten        = binnenVenster ? (fout.fouten || 0) : 0;
+      if (fouten >= TOERNOOI_PIN_MAX_FOUT) {
+        throw new HttpsError('resource-exhausted',
+          'Te veel mislukte pogingen. Probeer het over 10 minuten opnieuw.');
+      }
+
+      const opgeslagen = pinSnap.exists ? (pinSnap.data() || {}).pinHash : null;
+      if (!opgeslagen) {
+        throw new HttpsError('failed-precondition',
+          'Voor dit toernooi is nog geen pincode ingesteld. Vraag de wedstrijdleiding.');
+      }
+      if (opgeslagen !== hash) {
+        tx.set(foutRef, { fouten: fouten + 1, venster: binnenVenster ? vensterStart : nu },
+               { merge: true });
+        throw new HttpsError('permission-denied', 'Die pincode klopt niet.');
+      }
+
+      tx.set(foutRef, { fouten: 0, venster: nu }, { merge: true });
+    });
+
+    // Grendel 3. `viaPin` is waar firestore.rules op kijkt; `toernooiId` staat
+    // erbij zodat een volgende versie de sessie ook aan DIT toernooi kan binden
+    // zonder dat de inlog opnieuw op de schop hoeft.
+    let customToken;
+    try {
+      customToken = await admin.auth().createCustomToken(spelerUid, { viaPin: true, toernooiId });
+    } catch (e) {
+      console.error('createCustomToken mislukt:', e);
+      if (String(e?.errorInfo?.code || '').includes('insufficient-permission')
+          || String(e?.message || '').includes('signBlob')) {
+        throw new HttpsError('failed-precondition',
+          'De server mag nog geen inlogtokens maken. Geef het serviceaccount de rol ' +
+          '"Service Account Token Creator" in Google Cloud IAM.');
+      }
+      throw new HttpsError('internal', 'Inloggen mislukt, probeer het opnieuw.');
+    }
+
+    return { customToken, uid: spelerUid, naam: speler.naam || '' };
+  }
+);
+
 function fsVoor(isTest) {
   return getFirestore(admin.app(), isTest ? 'test' : '(default)');
 }
@@ -634,6 +802,7 @@ async function getInitieelWachtwoord(isTest) {
 exports.resetSpelerWachtwoord = onCall(
   { region: 'europe-west1' },
   async (request) => {
+    weigerPinSessie(request);
     const { auth, data } = request;
 
     // Stap 1: ingelogd?
@@ -706,6 +875,7 @@ exports.resetSpelerWachtwoord = onCall(
 exports.voltooiEersteLogin = onCall(
   { region: 'europe-west1' },
   async (request) => {
+    weigerPinSessie(request);
     const { auth, data } = request;
 
     // Stap 1: ingelogd?
@@ -902,6 +1072,7 @@ function _berekenStand(matchup, holes, scoresA, scoresB, plaatsing) {
 exports.verwerkPartijUitslag = onCall(
   { region: 'europe-west1' },
   async (request) => {
+    weigerPinSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
 
@@ -1297,6 +1468,7 @@ exports.verwerkPartijUitslag = onCall(
 exports.draaiPartijTerug = onCall(
   { region: 'europe-west1' },
   async (request) => {
+    weigerPinSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
 
@@ -1379,6 +1551,7 @@ exports.draaiPartijTerug = onCall(
 exports.pasPuntenAan = onCall(
   { region: 'europe-west1' },
   async (request) => {
+    weigerPinSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
 
@@ -1500,6 +1673,7 @@ exports.verwerkActiviteitPeriodiek = onSchedule(
 exports.verwerkActiviteitNu = onCall(
   { region: 'europe-west1' },
   async (request) => {
+    weigerPinSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
     const ladderId = data?.ladderId;
@@ -1678,6 +1852,7 @@ async function _leesLadderStaat(fs, ladderId) {
 exports.maakLadderSnapshot = onCall(
   { region: 'europe-west1' },
   async (request) => {
+    weigerPinSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
     const ladderId = data?.ladderId;
@@ -1718,6 +1893,7 @@ exports.maakLadderSnapshot = onCall(
 exports.herstelLadderSnapshot = onCall(
   { region: 'europe-west1' },
   async (request) => {
+    weigerPinSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
     const snapshotId = data?.snapshotId;
@@ -1798,6 +1974,7 @@ exports.herstelLadderSnapshot = onCall(
 exports.exporteerBackupExtra = onCall(
   { region: 'europe-west1', timeoutSeconds: 300 },
   async (request) => {
+    weigerPinSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
     const isTest = data?.isTest === true;
@@ -1844,6 +2021,7 @@ exports.exporteerBackupExtra = onCall(
 exports.importeerBackupExtra = onCall(
   { region: 'europe-west1', timeoutSeconds: 300 },
   async (request) => {
+    weigerPinSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
     const isTest = data?.isTest === true;
@@ -1949,6 +2127,7 @@ async function _wisPartijen(ladderRef) {
 exports.verwerkToernooiStanden = onCall(
   { region: 'europe-west1' },
   async (request) => {
+    weigerPinSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
     const ladderId = data?.ladderId;
@@ -2004,6 +2183,7 @@ exports.verwerkToernooiStanden = onCall(
 exports.resetLadderSeizoen = onCall(
   { region: 'europe-west1', timeoutSeconds: 300 },
   async (request) => {
+    weigerPinSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
     const ladderId = data?.ladderId;
@@ -2047,6 +2227,7 @@ exports.resetLadderSeizoen = onCall(
 exports.verwijderLadderVolledig = onCall(
   { region: 'europe-west1', timeoutSeconds: 300 },
   async (request) => {
+    weigerPinSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
     const ladderId = data?.ladderId;
@@ -2083,6 +2264,7 @@ exports.verwijderLadderVolledig = onCall(
 exports.verwijderWeesAccount = onCall(
   { region: 'europe-west1' },
   async (request) => {
+    weigerPinSessie(request);
     // v5.12.3 — TWEE WIJZIGINGEN, allebei omdat het opruimen half bleef steken.
     //
     // 1. Ook een COORDINATOR mag dit. Gemeten op 13 september 2026: de
@@ -2156,6 +2338,7 @@ exports.verwijderWeesAccount = onCall(
 exports.scanScorekaart = onCall(
   { region: 'europe-west1', secrets: [anthropicKey], timeoutSeconds: 30 },
   async (request) => {
+    weigerPinSessie(request);
     const { auth, data } = request;
 
     if (!auth?.uid) {

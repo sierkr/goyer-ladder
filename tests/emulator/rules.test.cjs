@@ -79,6 +79,10 @@ async function main() {
   const coord   = testEnv.authenticatedContext(COORDINATOR).firestore();
   const beheer  = testEnv.authenticatedContext(BEHEERDER).firestore();
   const punten  = testEnv.authenticatedContext(PUNTENBAAS).firestore();
+  // v5.38.0: dezelfde speler, maar binnengekomen met de toernooi-pincode. De
+  // stempel `viaPin` komt van de server (createCustomToken) en zit in het
+  // inlogtoken — een client kan hem niet zelf zetten.
+  const pinSessie = testEnv.authenticatedContext(SPELER, { viaPin: true }).firestore();
 
   // ══ watchPins — het lek van v5.0.0 ═════════════════════════
   await R.magNiet('anoniem kan watchPins NIET lezen',
@@ -246,6 +250,49 @@ async function main() {
     () => coord.doc(`toernooien/t1/live/${SPELER2}`).set({ beheerDagen: { '1': [4] } }, { merge: true }));
   await R.magNiet('speler kan een live-document niet verwijderen',
     () => speler.doc(`toernooien/t1/live/${SPELER2}`).delete());
+
+  // ══ v5.38.0 — DE TOERNOOI-PINCODE ══════════════════════════
+  //  Wie met de pincode binnenkwam heeft zijn EIGEN wachtwoord niet gebruikt:
+  //  één getal van vier cijfers, gedeeld met de hele flight, was genoeg. Zo
+  //  iemand mag daarom precies één ding — het toernooi bijhouden.
+  //
+  //  ⚠ Dit is de grendel die dat gedeelde getal draaglijk maakt. In de app
+  //  worden de andere tabbladen ook verborgen, maar dat is geen slot: het
+  //  houdt niemand tegen die de database rechtstreeks aanroept. Deze proeven
+  //  doen dat wél rechtstreeks.
+  await R.magWel('pincode-sessie mag het toernooi lezen',
+    () => pinSessie.doc('toernooien/t1').get());
+  await R.magWel('pincode-sessie mag scores in het toernooi schrijven',
+    () => pinSessie.doc(`toernooien/t1/live/${SPELER}`).set({ dagen: { '1': [4] } }, { merge: true }));
+  await R.magWel('pincode-sessie mag ook de kaart van zijn flightgenoot bijhouden',
+    () => pinSessie.doc(`toernooien/t1/live/${SPELER2}`).set({ markerDagen: { '1': [5] } }, { merge: true }));
+  await R.magNiet('pincode-sessie kan de wedstrijdleidingslaag niet schrijven',
+    () => pinSessie.doc(`toernooien/t1/live/${SPELER2}`).set({ beheerDagen: { '1': [3] } }, { merge: true }));
+
+  //  En nu de andere kant: alles buiten het toernooi is dicht.
+  await R.magNiet('pincode-sessie kan NIET aan de ladder schrijven',
+    () => pinSessie.doc('ladders/mp').set({ naam: 'gehackt' }, { merge: true }));
+  await R.magNiet('pincode-sessie kan GEEN partij starten of wijzigen',
+    () => pinSessie.doc('ladders/mp/partijen/p_test').set({ spelers: [] }, { merge: true }));
+  await R.magNiet('pincode-sessie kan GEEN partijscores schrijven',
+    () => pinSessie.doc(`ladders/mp/partijen/p_test/scores/${SPELER}`).set({ holes: { '0': 2 } }));
+  await R.magNiet('pincode-sessie kan zijn EIGEN handicap niet wijzigen',
+    () => pinSessie.doc(`spelers/${SPELER}`).update({ hcp: 1 }));
+  await R.magNiet('pincode-sessie kan zijn stand in de ladder niet aanraken',
+    () => pinSessie.doc(`ladders/mp/standen/${SPELER}`).update({ hcp: 1 }));
+  await R.magNiet('pincode-sessie kan GEEN uitslag aanmaken',
+    () => pinSessie.collection('uitslagen').add({ ladderId: 'mp', datum: '2026-09-19' }));
+  await R.magNiet('pincode-sessie kan GEEN momentopname maken',
+    () => pinSessie.collection('snapshots').add({ ladderId: 'mp', spelers: [] }));
+  await R.magNiet('pincode-sessie komt niet bij het geheim van het toernooi',
+    () => pinSessie.doc('toernooien/t1/beheer/gastlogin').get());
+
+  //  De gewone speler mag dit allemaal nog steeds — anders is de grendel te
+  //  ruim afgesteld en breekt hij de app voor iedereen.
+  await R.magWel('een gewone speler kan nog wel aan de ladder schrijven',
+    () => speler.doc('ladders/mp').set({ naam: 'MP' }, { merge: true }));
+  await R.magWel('een gewone speler kan nog wel zijn handicap wijzigen',
+    () => speler.doc(`spelers/${SPELER}`).update({ hcp: 17 }));
 
   // ══ uitslagen ══════════════════════════════════════════════
   await R.magWel('speler kan uitslagen lezen',

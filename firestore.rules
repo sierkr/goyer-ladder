@@ -71,6 +71,27 @@ service cloud.firestore {
         (getSpelerData(request.auth.uid).rol == 'coordinator' ||
          getSpelerData(request.auth.uid).rol == 'beheerder');
     }
+    // ============================================================
+    //  v5.38.0 — DE TOERNOOI-PINCODE
+    // ------------------------------------------------------------
+    //  Wie via de pincode van een toernooi binnenkomt, krijgt van de server
+    //  een sessie met de stempel `viaPin`. Zo iemand heeft NIET zijn eigen
+    //  wachtwoord gebruikt: één getal van vier cijfers, gedeeld met de hele
+    //  flight, gaf toegang. Daarom mag zo'n sessie alleen aan het toernooi
+    //  komen en nergens anders aan.
+    //
+    //  ⚠ Dit is de grendel die het gedeelde getal draaglijk maakt. Verdwijnt
+    //  hij, dan kan iedereen die de pincode hoort onder de naam van een clublid
+    //  de ladderstand veranderen. Het verbergen van knoppen in de app is geen
+    //  vervanging: dat houdt niemand tegen die de database rechtstreeks aanroept.
+    //
+    //  `.get('viaPin', false)`: een claim die niet bestaat opvragen is in
+    //  Firestore-regels een FOUT en geen lege waarde — en een regel die een
+    //  fout geeft, weigert. Dat zou elke gewone inlog blokkeren.
+    // ============================================================
+    function viaToernooiPin() {
+      return isIngelogd() && request.auth.token.get('viaPin', false) == true;
+    }
     // v4.2.0: puntensysteem — losstaand van rol, apart vlag op spelers/{uid}.
     // Alleen dit account mag de ruwe punten (score) lezen. Instellen kan
     // alleen handmatig in de Firebase console (eenmalige bootstrap), zodat
@@ -114,10 +135,13 @@ service cloud.firestore {
     match /spelers/{uid} {
       allow read:   if isIngelogd();
       // Create: zelf-registratie OF beheerder voegt speler handmatig toe via admin UI
-      allow create: if request.auth.uid == uid || isBeheerder();
-      allow update: if (request.auth.uid == uid && (onlyHcp() || isEersteLoginVoltooien()))
-                     || isBeheerder();
-      allow delete: if isBeheerder();
+      // v5.38.0: `!viaToernooiPin()` staat vooraan bij elke schrijfregel buiten
+      // /toernooien. Zie viaToernooiPin() hierboven.
+      allow create: if !viaToernooiPin() && (request.auth.uid == uid || isBeheerder());
+      allow update: if !viaToernooiPin() &&
+                       ((request.auth.uid == uid && (onlyHcp() || isEersteLoginVoltooien()))
+                        || isBeheerder());
+      allow delete: if !viaToernooiPin() && isBeheerder();
     }
 
     // --- ladders ----------------------------------------------
@@ -128,9 +152,9 @@ service cloud.firestore {
       // (nodig voor startPartij / bevestigUitslag). Eerder alleen coordinator,
       // waardoor schrijfpogingen van gewone spelers door Firestore werden
       // afgewezen en de partij nooit in de ronde verscheen.
-      allow write: if isCoordinator()
+      allow write: if !viaToernooiPin() && (isCoordinator()
                    || (isIngelogd() && isInLadder(ladderId))
-                   || (isIngelogd() && heeftGeldigeInvite(ladderId));
+                   || (isIngelogd() && heeftGeldigeInvite(ladderId)));
 
       // Stand per speler in deze ladder.
       // v5.0.0 (punt 3): rank is niet langer door gewone spelers te wijzigen.
@@ -152,10 +176,10 @@ service cloud.firestore {
       // hcp-veld op het eigen document via onlyHcp().
       match /standen/{uid} {
         allow read:   if isIngelogd();
-        allow create: if request.auth.uid == uid || isCoordinator();
-        allow update: if isCoordinator()
-                     || (request.auth.uid == uid && onlyHcp());
-        allow delete: if isCoordinator();
+        allow create: if !viaToernooiPin() && (request.auth.uid == uid || isCoordinator());
+        allow update: if !viaToernooiPin() && (isCoordinator()
+                     || (request.auth.uid == uid && onlyHcp()));
+        allow delete: if !viaToernooiPin() && isCoordinator();
       }
 
       // v5.0.0 (punt 4): partijen als eigen documenten i.p.v. een array in het
@@ -165,8 +189,8 @@ service cloud.firestore {
         allow read:   if isIngelogd();
         // Aanmaken/wijzigen van een partij mag elk ladderlid (partij starten,
         // speler toevoegen/verwijderen) - net als voorheen op het ladderdoc.
-        allow create, update: if isCoordinator() || isInLadder(ladderId);
-        allow delete: if isCoordinator() || isInLadder(ladderId);
+        allow create, update: if !viaToernooiPin() && (isCoordinator() || isInLadder(ladderId));
+        allow delete: if !viaToernooiPin() && (isCoordinator() || isInLadder(ladderId));
 
         // Scores: elke ingelogde speler die in de ladder zit mag schrijven.
         // Bewust niet beperkt tot de eigen uid: flightgenoten houden elkaars
@@ -175,7 +199,7 @@ service cloud.firestore {
         // raakt, niet de scores van de hele ladder.
         match /scores/{spelerUid} {
           allow read:  if isIngelogd();
-          allow write: if isCoordinator() || isInLadder(ladderId);
+          allow write: if !viaToernooiPin() && (isCoordinator() || isInLadder(ladderId));
         }
       }
 
@@ -279,9 +303,9 @@ service cloud.firestore {
     // Scorekaarten van afgelopen partijen (30 dagen bewaard)
     match /uitslagen/{doc} {
       allow read:   if isIngelogd();
-      allow create: if isIngelogd();
+      allow create: if !viaToernooiPin() && isIngelogd();
       // Update/delete alleen coordinator - voorkomt dat speler andermans uitslag overschrijft
-      allow update, delete: if isCoordinator();
+      allow update, delete: if !viaToernooiPin() && isCoordinator();
     }
 
     // --- snapshots --------------------------------------------
@@ -290,8 +314,8 @@ service cloud.firestore {
     // (auto-snapshot na partij-bevestiging wordt door de speler getriggerd).
     match /snapshots/{doc} {
       allow read:   if isCoordinator();
-      allow create: if isIngelogd();
-      allow update, delete: if isCoordinator();
+      allow create: if !viaToernooiPin() && isIngelogd();
+      allow update, delete: if !viaToernooiPin() && isCoordinator();
     }
 
     // --- ladder/{doc} -----------------------------------------
@@ -362,12 +386,12 @@ service cloud.firestore {
       // OR gecombineerd), dus het weren gebeurt in de read-regel hierboven.
 
       // invite_{ladderId}: genereren alleen coordinator; teller ophogen iedere ingelogde
-      allow create: if doc.matches('invite_.*') && isCoordinator();
-      allow update: if doc.matches('invite_.*') && (
+      allow create: if !viaToernooiPin() && doc.matches('invite_.*') && isCoordinator();
+      allow update: if !viaToernooiPin() && doc.matches('invite_.*') && (
                        isCoordinator() ||
                        (isIngelogd() && isInviteTellerUpdate())
                      );
-      allow delete: if doc.matches('invite_.*') && isCoordinator();
+      allow delete: if !viaToernooiPin() && doc.matches('invite_.*') && isCoordinator();
     }
 
     // --- Alle overige paden: dicht ----------------------------

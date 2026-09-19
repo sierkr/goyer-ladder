@@ -264,7 +264,13 @@ function laadGastloginKern() {
       'uniekeGastCode', 'gastloginTekst',
       // v5.18.0: het uitlezen van een geplakte gastenlijst.
       'gastenUitTekst'])}
-    return { splitsNaam, gastLoginVan, toernooiCodeVan, uniekeGastCode, gastloginTekst, gastenUitTekst };
+    // v5.38.0: hashPinTekst is async. Het voorvoegsel moet dus mee, anders
+    // vindt knip() hem niet.
+    // LET OP: geen accolade-aanhalingstekens in dit commentaar — het staat
+    // binnen een sjabloontekst en breekt die af.
+    ${knip('js/toernooi.js', ['hashPinTekst'], 'async ')}
+    return { splitsNaam, gastLoginVan, toernooiCodeVan, uniekeGastCode, gastloginTekst,
+             gastenUitTekst, hashPinTekst };
   `)();
   // v5.12.3: gastLoginUitToernooi zoekt de ECHTE inlognaam op in het toernooi,
   // in plaats van hem uit te rekenen. Het is de tegenhanger van gastLoginVan:
@@ -274,6 +280,33 @@ function laadGastloginKern() {
     return { gastKernVan, gastLoginUitToernooi };
   `)();
   return { ...maak, ...herken };
+}
+
+// ============================================================
+//  v5.37.0 — DE QR-CODE
+// ------------------------------------------------------------
+//  Het patroon van zwarte vakjes staat uitgeschreven in js/toernooi.js. Een
+//  telefoon die hem niet leest is hier niet na te meten — daar is geen QR-lezer
+//  op de machine, en de browser van de tests heeft er ook geen. Wat wél na te
+//  meten is: of het patroon de vorm HEEFT van een geldige QR-code (vierkant,
+//  drie zoekblokken) en of het tekenwerk eromheen klopt. Gaat daar iets stuk,
+//  dan is er ook niets meer te scannen.
+// ============================================================
+function laadQrKern() {
+  const src = fs.readFileSync(path.join(wortel, 'js/toernooi.js'), 'utf8');
+  const patroon = (naam) => {
+    const m = src.match(new RegExp('^const ' + naam + ' = `([\\s\\S]*?)`;', 'm'));
+    if (!m) throw new Error(`Patroon '${naam}' niet gevonden in js/toernooi.js.`);
+    return m[1];
+  };
+  const url = (naam) => {
+    const m = src.match(new RegExp("^const " + naam + " = '([^']*)';", 'm'));
+    if (!m) throw new Error(`Adres '${naam}' niet gevonden in js/toernooi.js.`);
+    return m[1];
+  };
+  const f = new Function(`${knip('js/toernooi.js', ['qrSvg'])}\nreturn { qrSvg };`)();
+  return { ...f, QR_LIVE: patroon('QR_LIVE'), QR_TEST: patroon('QR_TEST'),
+           QR_LIVE_URL: url('QR_LIVE_URL'), QR_TEST_URL: url('QR_TEST_URL') };
 }
 
 // ─── Kleine assertie-helper ──────────────────────────────────
@@ -314,4 +347,4 @@ function knipConstanteRegel(bestand, naam) {
 
 module.exports = { laadStijlKern, laadToernooiKern, laadLadderKern, laadHcpKern, laadScoreKern,
                    laadKnockoutScoreKern,
-                   laadNaamKern, laadMarkerKern, laadGastloginKern, maakChecker };
+                   laadNaamKern, laadMarkerKern, laadGastloginKern, laadQrKern, maakChecker };

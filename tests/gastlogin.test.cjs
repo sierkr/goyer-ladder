@@ -208,4 +208,67 @@ check('lege invoer valt niet om',
 check('niets doorgeven valt ook niet om',
   G.gastenUitTekst(null).spelers, []);
 
-module.exports = staat;
+// ============================================================
+//  v5.38.0 — DE PINCODE VAN HET TOERNOOI
+// ------------------------------------------------------------
+//  Sierk wilde inloggen met een naam uit een lijst en vier cijfers. Twee
+//  dingen zijn hier na te meten, en ze zijn allebei eerder misgegaan in dit
+//  soort koppelingen:
+//
+//   1. Het briefje dat de wedstrijdleiding uitdeelt moet over de PINCODE gaan,
+//      niet meer over inlognamen — die staan nu in een lijst op het scherm.
+//   2. De app en de server moeten dezelfde afdruk van de pincode uitrekenen.
+//      Lopen ze uit de pas, dan komt niemand binnen en zegt het scherm alleen
+//      "die pincode klopt niet". Dat is een fout die je uren zoekt.
+// ============================================================
+console.log('\n══ HET BRIEFJE MET DE PINCODE ══\n');
+
+const briefjeMetPin = G.gastloginTekst({
+  adres: 'https://sierkr.github.io/goyer-ladder/',
+  wachtwoord: 'x7q2m9vb4t',
+  pincode: '1234',
+  regels: [{ naam: 'Karel Jansen', inlog: 'karel.jansen' }],
+});
+check('het briefje noemt de pincode',
+  briefjeMetPin.includes('pincode: 1234'), true);
+check('en verwijst naar de lijst met namen',
+  /kies je naam uit de lijst/i.test(briefjeMetPin), true);
+// Het accountwachtwoord is sinds v5.38.0 willekeurig en hoeft niemand te
+// kennen. Staat het toch op het briefje, dan deelt de wedstrijdleiding een
+// geheim uit dat ze niet hoeft te delen.
+check('het willekeurige accountwachtwoord staat er NIET op',
+  briefjeMetPin.includes('x7q2m9vb4t'), false);
+check('en de inlognamen ook niet meer',
+  briefjeMetPin.includes('karel.jansen'), false);
+
+// Zonder pincode — een toernooi van vóór v5.38.0 — blijft het briefje precies
+// zoals het was. Daar draaien toernooien op.
+const briefjeOud = G.gastloginTekst({
+  adres: 'https://sierkr.github.io/goyer-ladder/',
+  wachtwoord: 'geheim123',
+  regels: [{ naam: 'Karel Jansen', inlog: 'karel.jansen' }],
+});
+check('een ouder toernooi houdt het oude briefje',
+  briefjeOud.includes('Wachtwoord: geheim123') && briefjeOud.includes('karel.jansen'), true);
+
+console.log('\n══ APP EN SERVER REKENEN DEZELFDE AFDRUK UIT ══\n');
+
+// Zo doet de server het, letterlijk zoals in functions/index.js:
+const crypto = require('crypto');
+const serverHash = (pin) =>
+  crypto.createHash('sha256').update(String(pin), 'utf8').digest('hex');
+
+// De app rekent met crypto.subtle. Dit is de ECHTE functie uit js/toernooi.js.
+// crypto.subtle is per se asynchroon, dus deze suite geeft een BELOFTE terug.
+// run.cjs wacht daarop; zonder dat werden deze proeven maar half meegeteld.
+module.exports = (async () => {
+  for (const pin of ['1234', '0000', '9999', '0042']) {
+    check(`pincode ${pin}: app en server komen op dezelfde afdruk uit`,
+      await G.hashPinTekst(pin), serverHash(pin));
+  }
+  check('een andere pincode geeft een andere afdruk',
+    (await G.hashPinTekst('1234')) === (await G.hashPinTekst('1235')), false);
+  check('de afdruk is 64 tekens hex',
+    /^[0-9a-f]{64}$/.test(await G.hashPinTekst('1234')), true);
+  return staat;
+})();
