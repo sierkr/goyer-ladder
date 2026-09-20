@@ -266,6 +266,22 @@ test.describe.serial('Partij en scores', () => {
       const gast = await ctxGast.newPage();
       await gast.goto(adres);
 
+      // ⚠ v5.40.1 — DE ANDERE TABBLADEN MOGEN GEEN MOMENT IN BEELD KOMEN.
+      //  Sierk zag ze eerst een seconde of tien staan. Gemeten voor de
+      //  reparatie: het laddertabblad stond van 971 ms tot 4321 ms in beeld.
+      //  Hieronder wordt dat vier seconden lang tien keer per seconde
+      //  nagekeken, dwars door het inloggen heen. Eén waarneming is genoeg om
+      //  deze proef te laten vallen.
+      const gezien = [];
+      for (let i = 0; i < 40; i++) {
+        if (await gast.locator('#nav-ladder-btn').isVisible().catch(() => false)) {
+          gezien.push(i * 100);
+        }
+        await gast.waitForTimeout(100);
+      }
+      expect(gezien, `het laddertabblad was zichtbaar op ${gezien.join(', ')} ms na het scannen`)
+        .toEqual([]);
+
       // Geen inlogscherm: hij hoort meteen in de ronde te staan.
       await expect(gast.locator('#page-ronde'), 'de gast staat in de ronde')
         .toHaveClass(/active/, { timeout: 30000 });

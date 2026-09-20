@@ -282,13 +282,8 @@ function pasToernooiModusNavToe() {
   // pincode-sessie hieronder: deze tak doet zelf wat het staartstuk doet —
   // de pagina activeren én tekenen. Dat was daar juist de fout.
   if (rondeVanSessie()) {
-    ['ladder', 'partij', 'uitslagen', 'help', 'archief', 'profiel', 'admin', 'toernooi']
-      .forEach(tab => {
-        const b = document.getElementById(`nav-${tab}-btn`);
-        if (b) b.style.display = 'none';
-      });
+    beperkNavTotRonde();   // v5.40.1: één plek, ook gebruikt vóór het inloggen
     const rondeBtn = document.getElementById('nav-ronde-btn');
-    if (rondeBtn) rondeBtn.style.display = '';
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
     document.getElementById('page-ronde')?.classList.add('active');
@@ -702,6 +697,60 @@ function rondeVanSessie() { return _viaRondePartij; }
 //  geschiedenis van de telefoon en in elke schermafdruk die iemand deelt, en
 //  blijft hij daar staan tot de partij verwerkt is.
 // ============================================================
+// ⚠ v5.40.1 — HET SCHERM MOET METEEN KLOPPEN, NIET NA TIEN SECONDEN.
+//
+//  WAT ER MIS WAS. Sierk, 20 september 2026: "in eerste instantie ziet de gast
+//  alle tabs die een ladder speler ook ziet, na ong 10 sec blijft alleen de
+//  ronde tab zichtbaar." Nagemeten in de browsertest: het laddertabblad stond
+//  van 971 ms tot 4321 ms in beeld — op een telefoon via mobiel netwerk zijn
+//  dat de tien seconden die hij zag.
+//
+//  De oorzaak: `onAuthStateChanged` haalt het laadscherm meteen weg, en de
+//  beperking werd pas aan het eind van het inloggen toegepast. Daartussen zie
+//  je de hele app.
+//
+//  De oplossing zit NIET in het inlogtoken maar in het ADRES: staat er een
+//  ronde-code in, dan weten we al vóór het inloggen dat dit een gast is. De
+//  echte grendel blijft de stempel in het token plus firestore.rules; dit is
+//  alleen het moment waarop het scherm zich aanpast.
+let _rondeQrBezig = false;
+
+function beperkNavTotRonde() {
+  ['ladder', 'partij', 'uitslagen', 'help', 'archief', 'profiel', 'admin', 'toernooi']
+    .forEach(tab => {
+      const b = document.getElementById(`nav-${tab}-btn`);
+      if (b) b.style.display = 'none';
+    });
+  const rondeBtn = document.getElementById('nav-ronde-btn');
+  if (rondeBtn) rondeBtn.style.display = '';
+  // De uitlogknop blijft staan: een gast moet weg kunnen. vervolgIngelogd()
+  // zet hem verderop toch weer aan, dus hem hier verbergen zou alleen maar
+  // knipperen.
+}
+
+// Het laadscherm blijft staan tot de scorekaart er is. Zo ziet de gast één keer
+// "Verbinden met database…" en daarna zijn kaart, in plaats van een half
+// scherm dat onder zijn handen verandert.
+//
+// ⚠ Met een harde bovengrens van 30 seconden. Blijft het hangen — slecht
+// bereik op de baan, trage server — dan gaat het laadscherm weg en ziet hij
+// wat er wél is. Een scherm dat nooit opengaat is erger dan een leeg scherm.
+const RONDE_QR_GEDULD_MS = 30000;
+
+function wachtOpRondeScherm() {
+  const begin = Date.now();
+  const kijk = () => {
+    const klaar = !!document.querySelector('#scorecard-body input');
+    if (klaar || Date.now() - begin > RONDE_QR_GEDULD_MS) {
+      _rondeQrBezig = false;
+      toonLaadOverlay(false);
+      return;
+    }
+    setTimeout(kijk, 200);
+  };
+  setTimeout(kijk, 200);
+}
+
 function rondeQrUitAdres() {
   const q = new URLSearchParams(location.search);
   const partijId = q.get('r'), ladderId = q.get('l'), sleutel = q.get('k');
@@ -711,6 +760,9 @@ function rondeQrUitAdres() {
 async function checkRondeQrLink() {
   const gegevens = rondeQrUitAdres();
   if (!gegevens) return false;
+  _rondeQrBezig = true;
+  beperkNavTotRonde();
+  wachtOpRondeScherm();
   try {
     const fn = httpsCallable(functions, 'wisselRondeSleutel');
     const uit = await fn({ ...gegevens, isTest: IS_TEST });
@@ -721,6 +773,7 @@ async function checkRondeQrLink() {
     return true;
   } catch (e) {
     history.replaceState(null, '', location.pathname);
+    _rondeQrBezig = false;
     toonLaadOverlay(false);
     document.getElementById('login-scherm').classList.add('actief');
     vulToernooiInlog();
@@ -1212,11 +1265,13 @@ async function initFirestore() {
   // zodat er geen permission-denied optreedt voor inloggen
 
   store._firestoreReady = true;
-  setTimeout(() => toonLaadOverlay(false), 10000);
+  // v5.40.1: het vangnet van 10 seconden geldt niet terwijl een gescande
+  // ronde-code wordt afgehandeld; die heeft zijn eigen grens van 30 seconden.
+  setTimeout(() => { if (!_rondeQrBezig) toonLaadOverlay(false); }, 10000);
 
   onAuthStateChanged(auth, async (user) => {
     if (store._bezigMetRegistratie) return;
-    toonLaadOverlay(false);
+    if (!_rondeQrBezig) toonLaadOverlay(false);
     if (user) {
       if (huidigeBruiker && huidigeBruiker.uid === user.uid) return;
       await setIngelogd(user);
