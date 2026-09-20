@@ -31,7 +31,7 @@ import {
 import { slaSnapshotOp } from './beheer.js';
 import { verwerkKnockoutUitslag } from './knockout.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { autoAdvance } from './auth.js';
+import { autoAdvance, rondeVanSessie } from './auth.js';
 import { renderUitslagen } from './uitslagen.js';
 
 
@@ -114,6 +114,53 @@ function ontkoppelScoreListener() {
   _scoreUnsubObj = null;
 }
 
+// ============================================================
+//  DE QR-CODE VAN DEZE RONDE — v5.40.0
+// ------------------------------------------------------------
+//  Sierk: "een unieke QR per ronde en scan je die dan zit je in die ronde."
+//
+//  De code wordt op de SERVER getekend (maakRondeQr). Twee redenen: de sleutel
+//  hoort niet in de app te worden bedacht, en zo komt er geen code van buiten
+//  in de browser. De app toont alleen wat ze terugkrijgt.
+//
+//  ⚠ Het adres gaat mee vanuit de app (`basis`), want alleen de browser weet of
+//  hij op de test- of de live-omgeving draait. De server controleert dat het
+//  een http(s)-adres is; hij bouwt er de rest zelf omheen.
+// ============================================================
+const _maakRondeQrFn = httpsCallable(functions, 'maakRondeQr');
+
+async function toonRondeQr() {
+  const p = mijnPartij();
+  if (!p) { toast('Er loopt geen ronde'); return; }
+  const vak   = document.getElementById('ronde-qr-vak');
+  const adres = document.getElementById('ronde-qr-adres');
+  if (!vak || !adres) return;
+
+  vak.innerHTML = '<div style="padding:18px;text-align:center;color:var(--mid);font-size:13px">Code maken…</div>';
+  adres.textContent = '';
+  document.getElementById('modal-ronde-qr').classList.add('open');
+
+  try {
+    const uit = await _maakRondeQrFn({
+      ladderId: p.ladderId,
+      partijId: p.partijId,
+      basis: `${window.location.origin}${window.location.pathname}`,
+      isTest: IS_TEST,
+    });
+    const svg = uit?.data?.svg;
+    if (!svg) throw new Error('geen code ontvangen');
+    // De server stuurt een volledige <svg>. Die krijgt hier een vaste breedte
+    // mee; zonder dat komt hij op sommige telefoons als postzegel binnen.
+    vak.innerHTML = svg.replace('<svg', '<svg style="width:100%;height:auto;display:block"');
+    adres.textContent = uit.data.url || '';
+  } catch (e) {
+    vak.innerHTML = '<div style="padding:18px;text-align:center;color:var(--alert-text);font-size:13px">'
+      + 'De code kon niet gemaakt worden.</div>';
+    console.warn('ronde-QR mislukt:', e?.code || e?.message);
+  }
+}
+window.toonRondeQr = toonRondeQr;
+
 function renderRonde() {
   const p = mijnPartij();
   if (!p) {
@@ -123,6 +170,9 @@ function renderRonde() {
     return;
   }
   koppelScoreListener(p);
+  // v5.40.0: wie zelf met de QR binnenkwam hoeft hem niet door te geven.
+  const qrBtn = document.getElementById('ronde-qr-btn');
+  if (qrBtn) qrBtn.style.display = rondeVanSessie() ? 'none' : '';
   document.getElementById('ronde-empty').style.display = 'none';
   document.getElementById('ronde-content').style.display = 'block';
   document.getElementById('ronde-baan-naam').textContent = p.baan;

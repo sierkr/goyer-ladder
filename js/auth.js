@@ -277,6 +277,26 @@ function pasToernooiModusNavToe() {
   // toernooipagina actief zet en tekent. De deelnemer keek daardoor tegen het
   // lege "Nieuw Toernooi"-scherm aan in plaats van tegen zijn scorekaart.
   // Gevonden door de browsertest, niet door nadenken.
+  // v5.40.0: wie met de QR van een ronde binnenkwam ziet ALLEEN die ronde.
+  // ⚠ Hier mag wél een eigen tak met `return` staan, anders dan bij de
+  // pincode-sessie hieronder: deze tak doet zelf wat het staartstuk doet —
+  // de pagina activeren én tekenen. Dat was daar juist de fout.
+  if (rondeVanSessie()) {
+    ['ladder', 'partij', 'uitslagen', 'help', 'archief', 'profiel', 'admin', 'toernooi']
+      .forEach(tab => {
+        const b = document.getElementById(`nav-${tab}-btn`);
+        if (b) b.style.display = 'none';
+      });
+    const rondeBtn = document.getElementById('nav-ronde-btn');
+    if (rondeBtn) rondeBtn.style.display = '';
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-ronde')?.classList.add('active');
+    rondeBtn?.classList.add('active');
+    renderRonde();
+    return;
+  }
+
   const isPin = isPinSessie();
   if (!isPin && (isBeheerderRol() || isCoordinatorRol())) return; // beheerders altijd volledig zicht
 
@@ -651,18 +671,67 @@ window.toernooiPinInloggen = toernooiPinInloggen;
 // zit in het inlogtoken en is door de app niet te vervalsen — firestore.rules
 // en de serverfuncties kijken naar dezelfde stempel.
 let _viaPinSessie = false;
+let _viaRondePartij = null;   // v5.40.0: partijnummer uit de ronde-QR
 
 async function sessieViaPin() {
   try {
     const res = await auth.currentUser?.getIdTokenResult();
-    _viaPinSessie = res?.claims?.viaPin === true;
-  } catch (_) { _viaPinSessie = false; }
+    _viaPinSessie   = res?.claims?.viaPin === true;
+    _viaRondePartij = res?.claims?.viaRonde || null;
+  } catch (_) { _viaPinSessie = false; _viaRondePartij = null; }
   return _viaPinSessie;
 }
 
 // Synchroon op te vragen nadat sessieViaPin() één keer is gedraaid. De
 // schermopbouw kan niet wachten op een belofte.
 function isPinSessie() { return _viaPinSessie === true; }
+
+// v5.40.0: in welke ronde zit deze sessie, als hij met een QR binnenkwam?
+// Geeft het partijnummer of null. De ronde-tab zoekt normaal de partij waar je
+// ZELF in speelt; een gast staat daar niet in en zou een leeg scherm zien.
+function rondeVanSessie() { return _viaRondePartij; }
+
+// ============================================================
+//  BINNENKOMEN MET DE QR VAN EEN RONDE — v5.40.0
+// ------------------------------------------------------------
+//  De gescande link ziet eruit als  ...?r=<partij>&l=<ladder>&k=<sleutel>.
+//  De sleutel wordt hier NIET beoordeeld — dat doet wisselRondeSleutel op de
+//  server, die als enige het geheim kent waaruit hij is uitgerekend.
+//
+//  ⚠ De adresbalk wordt daarna schoongeveegd. Anders staat de sleutel in de
+//  geschiedenis van de telefoon en in elke schermafdruk die iemand deelt, en
+//  blijft hij daar staan tot de partij verwerkt is.
+// ============================================================
+function rondeQrUitAdres() {
+  const q = new URLSearchParams(location.search);
+  const partijId = q.get('r'), ladderId = q.get('l'), sleutel = q.get('k');
+  return (partijId && ladderId && sleutel) ? { partijId, ladderId, sleutel } : null;
+}
+
+async function checkRondeQrLink() {
+  const gegevens = rondeQrUitAdres();
+  if (!gegevens) return false;
+  try {
+    const fn = httpsCallable(functions, 'wisselRondeSleutel');
+    const uit = await fn({ ...gegevens, isTest: IS_TEST });
+    const token = uit?.data?.customToken;
+    if (!token) throw new Error('geen token ontvangen');
+    await signInWithCustomToken(auth, token);
+    history.replaceState(null, '', location.pathname);
+    return true;
+  } catch (e) {
+    history.replaceState(null, '', location.pathname);
+    toonLaadOverlay(false);
+    document.getElementById('login-scherm').classList.add('actief');
+    vulToernooiInlog();
+    // De server schrijft zelf een leesbare reden ("Deze ronde is afgelopen").
+    toonLoginFout(e?.message && !/internal/i.test(e.message)
+      ? e.message
+      : 'Deze QR-code werkt niet (meer)');
+    console.warn('ronde-QR mislukt:', e?.code || e?.message);
+    return false;
+  }
+}
 
 async function loginMetGoogle() {
   document.getElementById('login-fout').style.display = 'none';
@@ -816,6 +885,10 @@ async function initFirestore() {
     toonLaadOverlay(false);
     checkInviteLink();
   }
+  // v5.40.0: een gescande ronde-QR. De laadoverlay blijft staan tot het
+  // inloggen klaar is — je hebt net gescand en hoort geen inlogscherm te zien.
+  const heeftRondeQr = !!rondeQrUitAdres();
+  if (heeftRondeQr) checkRondeQrLink();
 
   // v3.0.6: bepaal de auth-status VÓÓR de zware Firestore-init. authStateReady()
   // wacht tot Firebase de persistente sessie lokaal heeft ingelezen (snelle,
@@ -836,7 +909,7 @@ async function initFirestore() {
   // sowieso weg zodra de auth-status definitief is; de 10s-veiligheidstimer vangt
   // extreme gevallen op.
   const loginFallback = setTimeout(() => {
-    if (!heeftInvite && !hersteldeSessie && !huidigeBruiker) {
+    if (!heeftInvite && !heeftRondeQr && !hersteldeSessie && !huidigeBruiker) {
       toonLaadOverlay(false);
       document.getElementById('login-scherm').classList.add('actief');
       vulToernooiInlog();
@@ -1223,6 +1296,7 @@ async function initFirestore() {
       store.huidigeBruiker = null;
       const heeftInvite = new URLSearchParams(location.search).has('invite');
       if (heeftInvite) { await checkInviteLink(); }
+      else if (rondeQrUitAdres()) { /* v5.40.0: het omwisselen loopt nog */ }
       else { document.getElementById('login-scherm').classList.add('actief');
       vulToernooiInlog(); }
     }
@@ -1862,7 +1936,7 @@ export {
   updateSiteTitel, toonLoginFout,
   genereerInviteLink, kopieerInviteLink, checkInviteLink,
   registreerSpeler, laadInviteStatus, autoAdvance,
-  isCoordinatorRol, isBeheerderRol,
+  isCoordinatorRol, isBeheerderRol, rondeVanSessie, isPinSessie,
   toast, foutTekst, meldFout, registreerNotificatieToken, laadUitdagingen,
   slaEersteLoginOp,
 };

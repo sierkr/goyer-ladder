@@ -16,6 +16,10 @@ const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const { getFirestore } = require('firebase-admin/firestore');
 const crypto = require('crypto');
+// v5.40.0: de QR-code van een ronde wordt HIER getekend, niet in de app. Zo
+// komt er geen code van buiten in de browser terecht, en hoeft de app niets te
+// kunnen wat ze nu niet al kan.
+const QRCode = require('qrcode');
 
 admin.initializeApp();
 
@@ -69,6 +73,18 @@ function hashPin(pin) {
 //  kan dus overal staan zonder iets in de weg te zitten. `wisselToernooiPin`
 //  en `wisselWatchPin` zijn de uitzonderingen — dat ZIJN de inlogfuncties.
 // ============================================================
+// v5.40.0: hetzelfde voor wie met een ronde-QR binnenkwam. Zo'n sessie hoort
+// alleen scores in zijn eigen partij te schrijven — niet de uitslag indienen,
+// niet de ladder aanraken. Nagemeten: de ronde zelf roept geen enkele
+// serverfunctie aan, dus deze wacht zit niemand in de weg.
+function weigerRondeSessie(request) {
+  if (request?.auth?.token?.viaRonde) {
+    throw new HttpsError('permission-denied',
+      'Je bent met de QR-code van een ronde binnengekomen. Daarmee kun je alleen '
+      + 'de scores van die ronde bijhouden.');
+  }
+}
+
 function weigerPinSessie(request) {
   if (request?.auth?.token?.viaPin === true) {
     throw new HttpsError('permission-denied',
@@ -93,6 +109,7 @@ exports.maakWatchPin = onCall(
   { region: 'europe-west1' },
   async (request) => {
     weigerPinSessie(request);
+    weigerRondeSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
 
@@ -458,6 +475,177 @@ exports.wisselToernooiPin = onCall(
   }
 );
 
+// ============================================================
+//  DE QR-CODE VAN EEN RONDE — v5.40.0
+// ------------------------------------------------------------
+//  Sierk, 20 september 2026: "Het maakt volgens mij niet uit wie je bent,
+//  iedereen in de ronde kan de score van iedereen invullen. Dus een unieke QR
+//  per ronde en scan je die dan zit je in die ronde."
+//
+//  Nagemeten en hij heeft gelijk: firestore.rules staat elke speler in de
+//  ladder toe om ELK scoredocument van een partij te schrijven, en de
+//  scorekaart tekent alle kolommen zonder slot. Er valt dus niets te kiezen na
+//  het scannen — je bent gewoon "iemand in deze ronde".
+//
+//  ⚠ DE SLEUTEL WORDT NERGENS BEWAARD, OOK NIET ALS AFDRUK.
+//  Hij wordt elke keer opnieuw UITGEREKEND uit één serverlijk geheim plus het
+//  partijnummer:  sleutel = HMAC(geheim, partijId).
+//
+//  Waarom niet gewoon opslaan? Omdat de lopende partijen in het LADDERDOCUMENT
+//  staan (`ladders/{id}.actievePartijen`), en dat document mag elke ingelogde
+//  speler lezen — ook een gast die net met een QR is binnengekomen. Sla je de
+//  sleutel daar op, dan kan die gast de sleutel van een ANDERE partij lezen en
+//  zich daar ook naar binnen scannen. Door hem uit te rekenen bestaat hij
+//  nergens: niet in de database, alleen in de QR-code zelf.
+//
+//  Het geheim staat in ladder/qrGeheim, een document dat in firestore.rules
+//  volledig dicht staat (read én write op false) — net als ladder/watchPins.
+//  Alleen deze functies komen er via de Admin SDK bij.
+// ============================================================
+
+const QR_SLEUTEL_LENGTE = 22;
+
+// Het serverlijke geheim. Wordt bij het eerste gebruik aangemaakt en daarna
+// nooit meer gewijzigd: een nieuw geheim zou elke QR die al is uitgedeeld in
+// één klap ongeldig maken, midden in een ronde.
+async function _qrGeheim(fs) {
+  const ref = fs.collection('ladder').doc('qrGeheim');
+  const snap = await ref.get();
+  const bestaand = snap.exists ? (snap.data() || {}).geheim : null;
+  if (typeof bestaand === 'string' && bestaand.length >= 32) return bestaand;
+  const nieuw = crypto.randomBytes(32).toString('hex');
+  await ref.set({ geheim: nieuw, gemaakt: Date.now() }, { merge: true });
+  return nieuw;
+}
+
+function _qrSleutel(geheim, partijId) {
+  return crypto.createHmac('sha256', geheim)
+    .update(String(partijId), 'utf8')
+    .digest('base64url')
+    .slice(0, QR_SLEUTEL_LENGTE);
+}
+
+// Loopt deze partij nog? Een afgeronde of verdwenen partij geeft geen toegang.
+function _lopendePartij(ladderDoc, partijId) {
+  const partijen = (ladderDoc || {}).actievePartijen || [];
+  return partijen.find(p => p && p.partijId === partijId) || null;
+}
+
+/**
+ * De QR-code van een ronde. Alleen voor wie al is ingelogd — je moet de ronde
+ * kunnen zien om hem te kunnen laten zien.
+ *
+ * Input:  { ladderId, partijId, basis, isTest? }
+ * Output: { url, svg }
+ */
+exports.maakRondeQr = onCall(
+  { region: 'europe-west1' },
+  async (request) => {
+    weigerPinSessie(request);
+    weigerRondeSessie(request);
+    const { auth, data } = request;
+    if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
+
+    const ladderId = String(data?.ladderId ?? '').trim();
+    const partijId = String(data?.partijId ?? '').trim();
+    const basis    = String(data?.basis ?? '').trim();
+    if (!ladderId || !partijId) {
+      throw new HttpsError('invalid-argument', 'Onbekende ronde.');
+    }
+    // Alleen een http(s)-adres van de app zelf. Zonder deze toets zou iemand
+    // een QR laten maken die ergens anders heen wijst.
+    if (!/^https?:\/\/[^\s"']+$/.test(basis)) {
+      throw new HttpsError('invalid-argument', 'Ongeldig webadres.');
+    }
+
+    const fs = fsVoor(data?.isTest === true);
+    const ladderSnap = await fs.collection('ladders').doc(ladderId).get();
+    if (!ladderSnap.exists) throw new HttpsError('not-found', 'Deze ladder bestaat niet.');
+    if (!_lopendePartij(ladderSnap.data(), partijId)) {
+      throw new HttpsError('failed-precondition', 'Deze ronde loopt niet meer.');
+    }
+
+    const sleutel = _qrSleutel(await _qrGeheim(fs), partijId);
+    const scheiding = basis.includes('?') ? '&' : '?';
+    const url = `${basis}${scheiding}r=${encodeURIComponent(partijId)}`
+              + `&l=${encodeURIComponent(ladderId)}&k=${encodeURIComponent(sleutel)}`;
+
+    // Foutcorrectie M en een rustrand van 4 vakjes: dezelfde keuzes als bij de
+    // vaste QR uit v5.37.0, en om dezelfde reden.
+    const svg = await QRCode.toString(url, {
+      type: 'svg', errorCorrectionLevel: 'M', margin: 4,
+      color: { dark: '#000000', light: '#ffffff' },
+    });
+    return { url, svg };
+  }
+);
+
+/**
+ * Wissel een gescande sleutel om voor een inlog in die ronde.
+ * Bewust NIET authenticatie-plichtig: dit ÍS de login.
+ *
+ * Input:  { ladderId, partijId, sleutel, isTest? }
+ * Output: { customToken, partijId }
+ */
+exports.wisselRondeSleutel = onCall(
+  { region: 'europe-west1' },
+  async (request) => {
+    const data     = request.data || {};
+    const ladderId = String(data.ladderId ?? '').trim();
+    const partijId = String(data.partijId ?? '').trim();
+    const sleutel  = String(data.sleutel ?? '').trim();
+    if (!ladderId || !partijId || !sleutel) {
+      throw new HttpsError('invalid-argument', 'Deze link is niet compleet.');
+    }
+
+    const fs = fsVoor(data.isTest === true);
+    const ladderSnap = await fs.collection('ladders').doc(ladderId).get();
+    if (!ladderSnap.exists) throw new HttpsError('not-found', 'Deze ronde bestaat niet meer.');
+    const partij = _lopendePartij(ladderSnap.data(), partijId);
+    if (!partij) {
+      throw new HttpsError('failed-precondition',
+        'Deze ronde is afgelopen. De code werkt niet meer.');
+    }
+
+    // Geen foutteller nodig: de sleutel is 22 tekens uit een HMAC. Raden kost
+    // meer tijd dan er ronden gespeeld worden. Wel in vaste tijd vergelijken,
+    // zodat de duur van het antwoord niets verraadt.
+    const verwacht = _qrSleutel(await _qrGeheim(fs), partijId);
+    const a = Buffer.from(sleutel);
+    const b = Buffer.from(verwacht);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      throw new HttpsError('permission-denied', 'Deze code hoort niet bij deze ronde.');
+    }
+
+    // ⚠ EÉN TIJDELIJK PROFIEL PER RONDE, niet per gast.
+    // Zonder profiel gooit de app je meteen weer uit ("Je hebt geen toegang") —
+    // dat zit in setIngelogd() en geldt voor iedereen. Het profiel draagt
+    // `rondeGast: true` zodat het opruimen het herkent, en het staat NIET in
+    // een ladder, dus het duikt nergens in een spelerslijst op.
+    const uid = 'rondegast_' + partijId;
+    await fs.collection('spelers').doc(uid).set({
+      uid,
+      naam: 'Gast',
+      rol: 'speler',
+      hcp: 0,
+      eersteLogin: false,
+      rondeGast: true,
+      partijId,
+      ladderId,
+      gemaakt: Date.now(),
+    }, { merge: true });
+
+    let customToken;
+    try {
+      customToken = await admin.auth().createCustomToken(uid, { viaRonde: partijId, ladderId });
+    } catch (e) {
+      console.error('createCustomToken mislukt:', e);
+      throw new HttpsError('internal', 'Inloggen mislukt, probeer het opnieuw.');
+    }
+    return { customToken, partijId };
+  }
+);
+
 function fsVoor(isTest) {
   return getFirestore(admin.app(), isTest ? 'test' : '(default)');
 }
@@ -803,6 +991,7 @@ exports.resetSpelerWachtwoord = onCall(
   { region: 'europe-west1' },
   async (request) => {
     weigerPinSessie(request);
+    weigerRondeSessie(request);
     const { auth, data } = request;
 
     // Stap 1: ingelogd?
@@ -876,6 +1065,7 @@ exports.voltooiEersteLogin = onCall(
   { region: 'europe-west1' },
   async (request) => {
     weigerPinSessie(request);
+    weigerRondeSessie(request);
     const { auth, data } = request;
 
     // Stap 1: ingelogd?
@@ -1073,6 +1263,7 @@ exports.verwerkPartijUitslag = onCall(
   { region: 'europe-west1' },
   async (request) => {
     weigerPinSessie(request);
+    weigerRondeSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
 
@@ -1448,6 +1639,15 @@ exports.verwerkPartijUitslag = onCall(
                changes: d.changes || [], spelerRegels: d.spelerRegels || [] };
     }
 
+    // v5.40.0: het tijdelijke gastprofiel van deze ronde opruimen. De partij is
+    // verwerkt, dus de QR-code hoort niets meer te openen — en een profiel dat
+    // blijft slingeren is precies hoe die dingen zich opstapelen.
+    // Mislukt het, dan is dat geen reden om de uitslag te laten mislukken: de
+    // QR werkt sowieso niet meer, want wisselRondeSleutel kijkt of de partij
+    // nog LOOPT.
+    try { await fs.collection('spelers').doc('rondegast_' + partijId).delete(); }
+    catch (e) { console.warn('gastprofiel opruimen mislukt:', e?.message); }
+
     return { success: true, changes, spelerRegels };
   }
 );
@@ -1469,6 +1669,7 @@ exports.draaiPartijTerug = onCall(
   { region: 'europe-west1' },
   async (request) => {
     weigerPinSessie(request);
+    weigerRondeSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
 
@@ -1552,6 +1753,7 @@ exports.pasPuntenAan = onCall(
   { region: 'europe-west1' },
   async (request) => {
     weigerPinSessie(request);
+    weigerRondeSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
 
@@ -1674,6 +1876,7 @@ exports.verwerkActiviteitNu = onCall(
   { region: 'europe-west1' },
   async (request) => {
     weigerPinSessie(request);
+    weigerRondeSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
     const ladderId = data?.ladderId;
@@ -1853,6 +2056,7 @@ exports.maakLadderSnapshot = onCall(
   { region: 'europe-west1' },
   async (request) => {
     weigerPinSessie(request);
+    weigerRondeSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
     const ladderId = data?.ladderId;
@@ -1894,6 +2098,7 @@ exports.herstelLadderSnapshot = onCall(
   { region: 'europe-west1' },
   async (request) => {
     weigerPinSessie(request);
+    weigerRondeSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
     const snapshotId = data?.snapshotId;
@@ -1975,6 +2180,7 @@ exports.exporteerBackupExtra = onCall(
   { region: 'europe-west1', timeoutSeconds: 300 },
   async (request) => {
     weigerPinSessie(request);
+    weigerRondeSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
     const isTest = data?.isTest === true;
@@ -2022,6 +2228,7 @@ exports.importeerBackupExtra = onCall(
   { region: 'europe-west1', timeoutSeconds: 300 },
   async (request) => {
     weigerPinSessie(request);
+    weigerRondeSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
     const isTest = data?.isTest === true;
@@ -2128,6 +2335,7 @@ exports.verwerkToernooiStanden = onCall(
   { region: 'europe-west1' },
   async (request) => {
     weigerPinSessie(request);
+    weigerRondeSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
     const ladderId = data?.ladderId;
@@ -2184,6 +2392,7 @@ exports.resetLadderSeizoen = onCall(
   { region: 'europe-west1', timeoutSeconds: 300 },
   async (request) => {
     weigerPinSessie(request);
+    weigerRondeSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
     const ladderId = data?.ladderId;
@@ -2228,6 +2437,7 @@ exports.verwijderLadderVolledig = onCall(
   { region: 'europe-west1', timeoutSeconds: 300 },
   async (request) => {
     weigerPinSessie(request);
+    weigerRondeSessie(request);
     const { auth, data } = request;
     if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
     const ladderId = data?.ladderId;
@@ -2265,6 +2475,7 @@ exports.verwijderWeesAccount = onCall(
   { region: 'europe-west1' },
   async (request) => {
     weigerPinSessie(request);
+    weigerRondeSessie(request);
     // v5.12.3 — TWEE WIJZIGINGEN, allebei omdat het opruimen half bleef steken.
     //
     // 1. Ook een COORDINATOR mag dit. Gemeten op 13 september 2026: de
@@ -2339,6 +2550,7 @@ exports.scanScorekaart = onCall(
   { region: 'europe-west1', secrets: [anthropicKey], timeoutSeconds: 30 },
   async (request) => {
     weigerPinSessie(request);
+    weigerRondeSessie(request);
     const { auth, data } = request;
 
     if (!auth?.uid) {

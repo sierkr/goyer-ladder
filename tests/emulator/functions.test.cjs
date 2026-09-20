@@ -435,6 +435,89 @@ async function main() {
   await R.magNiet('een afgesloten toernooi laat niemand meer binnen',
     () => roepAan('wisselToernooiPin', { toernooiId: 't_pin', spelerUid: SPELER_A, pin: '1234' }, null));
 
+  // ══ v5.40.0 — DE QR-CODE VAN EEN RONDE ═════════════════════
+  //  Dit is de inlog van een gast op de baan. Gaat het mis, dan staat er
+  //  iemand met een telefoon in zijn hand die nergens in komt — of juist
+  //  iemand binnen die er niet hoort.
+  await zetLadderKlaar();
+  await db.doc('ladders/mp').set({
+    actievePartijen: [{ partijId: 'p1', ladderId: 'mp', baan: 'De Goyer',
+                        spelers: [{ uid: SPELER_A, naam: 'Anna' }] }],
+  }, { merge: true });
+
+  const BASIS = 'https://sierkr.github.io/goyer-ladder/';
+  await R.magNiet('zonder inlog kun je geen QR laten maken',
+    () => roepAan('maakRondeQr', { ladderId: 'mp', partijId: 'p1', basis: BASIS }, null));
+  await R.magNiet('een adres dat geen webadres is wordt geweigerd',
+    () => roepAan('maakRondeQr', { ladderId: 'mp', partijId: 'p1', basis: 'javascript:alert(1)' }, tokenA));
+  await R.magNiet('een partij die niet loopt heeft geen QR',
+    () => roepAan('maakRondeQr', { ladderId: 'mp', partijId: 'p_bestaat_niet', basis: BASIS }, tokenA));
+
+  const qr = await roepAan('maakRondeQr', { ladderId: 'mp', partijId: 'p1', basis: BASIS }, tokenA);
+  R.check('er komt een tekening terug', (qr?.svg || '').startsWith('<?xml') || (qr?.svg || '').includes('<svg'), true);
+  R.check('en een adres dat naar deze ronde wijst', /[?&]r=p1(&|$)/.test(qr?.url || ''), true);
+  R.check('met de ladder erbij', /[?&]l=mp(&|$)/.test(qr?.url || ''), true);
+
+  const sleutel = new URL(qr.url).searchParams.get('k');
+  R.check('de sleutel is lang genoeg om niet te raden', (sleutel || '').length, 22);
+
+  // ⚠ Twee keer vragen moet DEZELFDE sleutel geven. Anders is de code die je
+  // net hebt laten zien ineens niets meer waard zodra iemand anders hem opent.
+  const qr2 = await roepAan('maakRondeQr', { ladderId: 'mp', partijId: 'p1', basis: BASIS }, tokenA);
+  R.check('twee keer vragen geeft dezelfde sleutel',
+    new URL(qr2.url).searchParams.get('k'), sleutel);
+
+  // En de sleutel hoort NERGENS in de database te staan — niet in de partij,
+  // niet in het ladderdocument. Daar staan de lopende partijen, en dat
+  // document mag elke ingelogde speler lezen.
+  const ladderRuw = JSON.stringify((await db.doc('ladders/mp').get()).data() || {});
+  R.check('de sleutel staat niet in het ladderdocument', ladderRuw.includes(sleutel), false);
+
+  await R.magNiet('een verzonnen sleutel komt er niet in',
+    () => roepAan('wisselRondeSleutel', { ladderId: 'mp', partijId: 'p1', sleutel: 'x'.repeat(22) }, null));
+  await R.magNiet('een sleutel van een andere lengte ook niet',
+    () => roepAan('wisselRondeSleutel', { ladderId: 'mp', partijId: 'p1', sleutel: 'kort' }, null));
+  await R.magNiet('een onvolledige link wordt geweigerd',
+    () => roepAan('wisselRondeSleutel', { ladderId: 'mp', partijId: 'p1' }, null));
+
+  const binnen = await roepAan('wisselRondeSleutel',
+    { ladderId: 'mp', partijId: 'p1', sleutel }, null);
+  R.check('met de juiste sleutel krijg je een inlog', typeof binnen?.customToken, 'string');
+  const claims = JSON.parse(
+    Buffer.from(String(binnen.customToken).split('.')[1], 'base64').toString('utf8'));
+  R.check('het token draagt het partijnummer', claims?.claims?.viaRonde, 'p1');
+
+  // Het tijdelijke profiel moet bestaan (anders gooit de app je er meteen weer
+  // uit) én herkenbaar zijn voor het opruimen.
+  const gastProfiel = await db.doc('spelers/rondegast_p1').get();
+  R.check('er is een tijdelijk gastprofiel', gastProfiel.exists, true);
+  R.check('het is herkenbaar als ronde-gast', gastProfiel.data()?.rondeGast, true);
+  // ⚠ En het staat in GEEN ENKELE ladder. Daar gaat zoiets mis: een profiel dat
+  // in de spelerslijst opduikt en dan in het klassement belandt.
+  const ladderNa = (await db.doc('ladders/mp').get()).data() || {};
+  R.check('het gastprofiel staat niet in de ladder',
+    (ladderNa.spelerIds || []).includes('rondegast_p1'), false);
+  const standNa = await db.doc('ladders/mp/standen/rondegast_p1').get();
+  R.check('en heeft geen stand', standNa.exists, false);
+
+  // Een ronde-sessie mag geen enkele serverfunctie aanroepen.
+  const rondeAanmeld = await fetch(
+    'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=fake-api-key',
+    { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: binnen.customToken, returnSecureToken: true }) });
+  const rondeToken = (await rondeAanmeld.json()).idToken;
+  await R.magNiet('een ronde-sessie kan GEEN uitslag indienen',
+    () => roepAan('verwerkPartijUitslag', { ladderId: 'mp', partijId: 'p1' }, rondeToken));
+  await R.magNiet('een ronde-sessie kan GEEN nieuwe QR laten maken',
+    () => roepAan('maakRondeQr', { ladderId: 'mp', partijId: 'p1', basis: BASIS }, rondeToken));
+  await R.magNiet('een ronde-sessie kan GEEN horloge-pincode maken',
+    () => roepAan('maakWatchPin', {}, rondeToken));
+
+  // Is de partij niet meer actief, dan is de code niets meer waard.
+  await db.doc('ladders/mp').set({ actievePartijen: [] }, { merge: true });
+  await R.magNiet('een afgelopen ronde laat niemand meer binnen',
+    () => roepAan('wisselRondeSleutel', { ladderId: 'mp', partijId: 'p1', sleutel }, null));
+
   return toonRapport(R);
 }
 
