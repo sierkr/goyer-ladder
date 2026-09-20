@@ -3,7 +3,7 @@
 // ============================================================
 import { db, BANEN_DOC, LADDERS_COL, DEFAULT_STATE, esc, escAttr, functions, httpsCallable, laadBanen } from './config.js';
 import { store, alleLadders, activeLadderId, alleToernooien, huidigeBruiker, playerSlotCount, aangepasteBanen } from './store.js';
-import { slaActievePartijenOp, getLadderData, isBeheerderRol, isCoordinatorRol, toast, meldFout } from './auth.js';
+import { slaActievePartijenOp, getLadderData, isBeheerderRol, isCoordinatorRol, toast, meldFout, rondeVanSessie } from './auth.js';
 import { objNaarRondes } from './knockout.js';
 import { getLadderSpelers, isInLadder } from './ladder-view.js';
 // v5.0.0 (punt 4): partijen krijgen een eigen document met scores per speler.
@@ -833,6 +833,22 @@ async function verwijderAangepasteBaan() {
 // Geeft de actieve partij terug waar de ingelogde speler in zit
 function mijnPartij() {
   if (!huidigeBruiker?.uid) return null;
+
+  // ⚠ v5.40.0 — EEN GAST MET EEN RONDE-QR STAAT NIET IN DE SPELERSLIJST.
+  //  Hieronder wordt de partij gezocht waar JIJ in speelt. Een gast die de
+  //  QR van een ronde scant, staat daar niet in — die zou dus tegen een leeg
+  //  ronde-scherm aankijken. Zijn sessie draagt het partijnummer; dat is waar
+  //  hij hoort te zijn, en het komt uit het INLOGTOKEN, niet uit iets dat de
+  //  app zelf kan verzinnen.
+  const rondeUitQr = rondeVanSessie();
+  if (rondeUitQr) {
+    for (const l of alleLadders) {
+      const p = (l.actievePartijen || []).find(x => x.partijId === rondeUitQr);
+      if (p) return p;
+    }
+    return null;
+  }
+
   const uid = huidigeBruiker.uid;
 
   // v3.0.0-9c: match alleen op uid. Entries uit de view-laag hebben een uid veld.

@@ -92,6 +92,34 @@ service cloud.firestore {
     function viaToernooiPin() {
       return isIngelogd() && request.auth.token.get('viaPin', false) == true;
     }
+    // ============================================================
+    //  v5.40.0 — DE QR-CODE VAN EEN RONDE
+    // ------------------------------------------------------------
+    //  Wie een ronde-QR scant krijgt een sessie met de stempel `viaRonde`,
+    //  met daarin het partijnummer. Zo iemand is een GAST: hij heeft geen
+    //  clublid-account gebruikt, alleen een code die op tafel lag.
+    //
+    //  Hij mag precies één ding — de scores van díé ronde bijhouden, van alle
+    //  spelers, want zo wordt er op de baan geteld (nagemeten: een ladderlid
+    //  mag dat ook voor iedereen in zijn partij). Al het andere is dicht:
+    //  andere partijen, de ladder, standen, profielen, uitslagen.
+    //
+    //  ⚠ Lezen mag hij wel wat elke ingelogde speler mag lezen. Dat is met
+    //  opzet: hij moet het ladderdocument kunnen lezen om zijn eigen ronde te
+    //  vinden (de lopende partijen staan daarin). Er staat geen geheim in —
+    //  de QR-sleutel wordt uitgerekend en nergens bewaard, juist hierom.
+    // ============================================================
+    function viaRondeSessie() {
+      return isIngelogd() && request.auth.token.get('viaRonde', '') != '';
+    }
+    function inEigenRonde(partijId) {
+      return isIngelogd() && request.auth.token.get('viaRonde', '') == partijId;
+    }
+    // Eén naam voor "een sessie die maar één ding mag". Beide soorten zijn
+    // binnengekomen op een gedeeld geheim in plaats van een eigen wachtwoord.
+    function viaBeperkteSessie() {
+      return viaToernooiPin() || viaRondeSessie();
+    }
     // v4.2.0: puntensysteem — losstaand van rol, apart vlag op spelers/{uid}.
     // Alleen dit account mag de ruwe punten (score) lezen. Instellen kan
     // alleen handmatig in de Firebase console (eenmalige bootstrap), zodat
@@ -137,11 +165,11 @@ service cloud.firestore {
       // Create: zelf-registratie OF beheerder voegt speler handmatig toe via admin UI
       // v5.38.0: `!viaToernooiPin()` staat vooraan bij elke schrijfregel buiten
       // /toernooien. Zie viaToernooiPin() hierboven.
-      allow create: if !viaToernooiPin() && (request.auth.uid == uid || isBeheerder());
-      allow update: if !viaToernooiPin() &&
+      allow create: if !viaBeperkteSessie() && (request.auth.uid == uid || isBeheerder());
+      allow update: if !viaBeperkteSessie() &&
                        ((request.auth.uid == uid && (onlyHcp() || isEersteLoginVoltooien()))
                         || isBeheerder());
-      allow delete: if !viaToernooiPin() && isBeheerder();
+      allow delete: if !viaBeperkteSessie() && isBeheerder();
     }
 
     // --- ladders ----------------------------------------------
@@ -152,7 +180,7 @@ service cloud.firestore {
       // (nodig voor startPartij / bevestigUitslag). Eerder alleen coordinator,
       // waardoor schrijfpogingen van gewone spelers door Firestore werden
       // afgewezen en de partij nooit in de ronde verscheen.
-      allow write: if !viaToernooiPin() && (isCoordinator()
+      allow write: if !viaBeperkteSessie() && (isCoordinator()
                    || (isIngelogd() && isInLadder(ladderId))
                    || (isIngelogd() && heeftGeldigeInvite(ladderId)));
 
@@ -176,10 +204,10 @@ service cloud.firestore {
       // hcp-veld op het eigen document via onlyHcp().
       match /standen/{uid} {
         allow read:   if isIngelogd();
-        allow create: if !viaToernooiPin() && (request.auth.uid == uid || isCoordinator());
-        allow update: if !viaToernooiPin() && (isCoordinator()
+        allow create: if !viaBeperkteSessie() && (request.auth.uid == uid || isCoordinator());
+        allow update: if !viaBeperkteSessie() && (isCoordinator()
                      || (request.auth.uid == uid && onlyHcp()));
-        allow delete: if !viaToernooiPin() && isCoordinator();
+        allow delete: if !viaBeperkteSessie() && isCoordinator();
       }
 
       // v5.0.0 (punt 4): partijen als eigen documenten i.p.v. een array in het
@@ -189,8 +217,8 @@ service cloud.firestore {
         allow read:   if isIngelogd();
         // Aanmaken/wijzigen van een partij mag elk ladderlid (partij starten,
         // speler toevoegen/verwijderen) - net als voorheen op het ladderdoc.
-        allow create, update: if !viaToernooiPin() && (isCoordinator() || isInLadder(ladderId));
-        allow delete: if !viaToernooiPin() && (isCoordinator() || isInLadder(ladderId));
+        allow create, update: if !viaBeperkteSessie() && (isCoordinator() || isInLadder(ladderId));
+        allow delete: if !viaBeperkteSessie() && (isCoordinator() || isInLadder(ladderId));
 
         // Scores: elke ingelogde speler die in de ladder zit mag schrijven.
         // Bewust niet beperkt tot de eigen uid: flightgenoten houden elkaars
@@ -199,7 +227,11 @@ service cloud.firestore {
         // raakt, niet de scores van de hele ladder.
         match /scores/{spelerUid} {
           allow read:  if isIngelogd();
-          allow write: if !viaToernooiPin() && (isCoordinator() || isInLadder(ladderId));
+          // v5.40.0: een ronde-sessie mag hier schrijven, maar alleen in de
+          // partij die in zijn eigen stempel staat. `partijId` komt uit het
+          // pad, niet uit iets dat de client meestuurt.
+          allow write: if inEigenRonde(partijId)
+                       || (!viaBeperkteSessie() && (isCoordinator() || isInLadder(ladderId)));
         }
       }
 
@@ -288,11 +320,17 @@ service cloud.firestore {
       // ⚠ hasAny() op affectedKeys() is hier de juiste vraag: "verandert deze
       // schrijfactie beheerDagen?" Een create heeft geen resource.data, vandaar
       // de aparte tak.
+      //
+      // ⚠ v5.40.0: `!viaRondeSessie()` erbij. Wie met de QR van een LADDERRONDE
+      // binnenkwam is hier ingelogd, en `isIngelogd()` alleen zou hem dus
+      // toernooiscores laten schrijven van een toernooi waar hij niets mee te
+      // maken heeft. De toernooi-pincode mag hier juist wél schrijven — dat is
+      // precies waarvoor die sessie bestaat.
       match /live/{uid} {
         allow read:   if true;
-        allow create: if isIngelogd() &&
+        allow create: if isIngelogd() && !viaRondeSessie() &&
                         (!request.resource.data.keys().hasAny(['beheerDagen']) || isCoordinator());
-        allow update: if isIngelogd() &&
+        allow update: if isIngelogd() && !viaRondeSessie() &&
                         (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['beheerDagen'])
                          || isCoordinator());
         allow delete: if isCoordinator();
@@ -303,9 +341,9 @@ service cloud.firestore {
     // Scorekaarten van afgelopen partijen (30 dagen bewaard)
     match /uitslagen/{doc} {
       allow read:   if isIngelogd();
-      allow create: if !viaToernooiPin() && isIngelogd();
+      allow create: if !viaBeperkteSessie() && isIngelogd();
       // Update/delete alleen coordinator - voorkomt dat speler andermans uitslag overschrijft
-      allow update, delete: if !viaToernooiPin() && isCoordinator();
+      allow update, delete: if !viaBeperkteSessie() && isCoordinator();
     }
 
     // --- snapshots --------------------------------------------
@@ -314,10 +352,13 @@ service cloud.firestore {
     // (auto-snapshot na partij-bevestiging wordt door de speler getriggerd).
     match /snapshots/{doc} {
       allow read:   if isCoordinator();
-      allow create: if !viaToernooiPin() && isIngelogd();
-      allow update, delete: if !viaToernooiPin() && isCoordinator();
+      allow create: if !viaBeperkteSessie() && isIngelogd();
+      allow update, delete: if !viaBeperkteSessie() && isCoordinator();
     }
 
+    // v5.40.0: ladder/qrGeheim draagt het geheim waaruit de QR-sleutels worden
+    // uitgerekend. Volledig dicht, net als ladder/watchPins — alleen de Cloud
+    // Functions komen erbij via de Admin SDK. Zie de read-regel hieronder.
     // --- ladder/{doc} -----------------------------------------
     // Meerdere singleton-documents onder /ladder - splitsen per doc-type
     match /ladder/{doc} {
@@ -336,9 +377,14 @@ service cloud.firestore {
       //    ELKE ingelogde speler, ondanks de beheerder-only regel verderop -
       //    precies door dit OR-gedrag. Elke speler kon dus het initiele
       //    wachtwoord van alle nieuwe accounts opvragen.
+      // ⚠ v5.40.0: `qrGeheim` staat in dezelfde rij uitzonderingen. Daaruit
+      // worden ALLE ronde-sleutels uitgerekend; wie dat geheim leest kan zich
+      // in elke lopende ronde naar binnen scannen. Alleen de Cloud Functions
+      // komen erbij, via de Admin SDK.
       allow read: if (isIngelogd()
                       && doc != 'watchPins'
                       && doc != 'watchPinPogingen'
+                      && doc != 'qrGeheim'
                       && doc != 'config')
                    || doc.matches('invite_.*');
 
@@ -347,13 +393,13 @@ service cloud.firestore {
 
       // uitdagingen: lijst met uitdagingen - iedere ingelogde speler mag wijzigen
       // (eigen uitdagingen sturen, accepteren, weigeren, verwijderen)
-      allow write: if doc == 'uitdagingen' && isIngelogd();
+      allow write: if doc == 'uitdagingen' && isIngelogd() && !viaBeperkteSessie();
 
       // ladderVolgorde: display-volgorde van ladders - alleen coordinator
       allow write: if doc == 'ladderVolgorde' && isCoordinator();
 
       // banen: custom banen - iedere ingelogde speler mag toevoegen/verwijderen
-      allow write: if doc == 'banen' && isIngelogd();
+      allow write: if doc == 'banen' && isIngelogd() && !viaBeperkteSessie();
 
       // state: legacy main-state doc - alleen coordinator (wordt uitgefaseerd)
       allow write: if doc == 'state' && isCoordinator();
@@ -386,12 +432,12 @@ service cloud.firestore {
       // OR gecombineerd), dus het weren gebeurt in de read-regel hierboven.
 
       // invite_{ladderId}: genereren alleen coordinator; teller ophogen iedere ingelogde
-      allow create: if !viaToernooiPin() && doc.matches('invite_.*') && isCoordinator();
-      allow update: if !viaToernooiPin() && doc.matches('invite_.*') && (
+      allow create: if !viaBeperkteSessie() && doc.matches('invite_.*') && isCoordinator();
+      allow update: if !viaBeperkteSessie() && doc.matches('invite_.*') && (
                        isCoordinator() ||
                        (isIngelogd() && isInviteTellerUpdate())
                      );
-      allow delete: if !viaToernooiPin() && doc.matches('invite_.*') && isCoordinator();
+      allow delete: if !viaBeperkteSessie() && doc.matches('invite_.*') && isCoordinator();
     }
 
     // --- Alle overige paden: dicht ----------------------------

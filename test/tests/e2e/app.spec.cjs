@@ -220,6 +220,101 @@ test.describe.serial('Partij en scores', () => {
     await expect(naHerladen).toHaveValue('4', { timeout: 20000 });
   });
 
+  // ============================================================
+  //  v5.40.0 — DE QR-CODE VAN EEN RONDE, VAN BEGIN TOT EIND
+  // ------------------------------------------------------------
+  //  Sierk: "een unieke QR per ronde en scan je die dan zit je in die ronde."
+  //  Deze proef loopt precies dat: een speler start een partij en opent de QR,
+  //  een tweede venster gaat naar het adres uit die code (dat is wat scannen
+  //  doet) en komt zonder inloggen in dezelfde ronde uit — en kan scoren.
+  //
+  //  ⚠ De rekentests en de regeltests kunnen dit niet zien: dit is bedrading
+  //  tussen de app, een serverfunctie, het inlogtoken en de databaseregels.
+  // ============================================================
+  test('RONDE-QR: een gast scant en staat in dezelfde ronde', async ({ browser }) => {
+    test.setTimeout(240000);
+    const ctxLid = await browser.newContext();
+    const lid = await ctxLid.newPage();
+    try {
+      // ⚠ Cees en Nina, niet Anna en Bram. Die twee zitten in de volle reeks al
+      // in een partij van een eerdere proef, en dan weigert "Partij starten"
+      // met "zit al in een actieve partij" — de proef viel daar eerst op om.
+      await inloggen(lid, 'cees');
+      await expect(lid.locator('#ladder-list-mp')).toContainText('Nina Nieuw', { timeout: 25000 });
+
+      await lid.click('#nav-partij-btn');
+      await lid.selectOption('#partij-ladder-select', 'mp').catch(() => {});
+      await lid.selectOption('#baan-select', 'De Goyer');
+      await lid.fill('#player-2', 'Nina');
+      await lid.locator('#speler-lijst-2 .speler-zoek-item', { hasText: 'Nina Nieuw' })
+        .first().click();
+      await expect(lid.locator('#slot-2')).toHaveAttribute('data-speler-id', /\S/);
+      await lid.locator('#page-partij button:has-text("Partij starten")').first().click();
+      await expect(lid.locator('#page-ronde')).toHaveClass(/active/, { timeout: 20000 });
+
+      // ── De QR opvragen en het adres eruit lezen ──────────────
+      await lid.click('#ronde-qr-btn');
+      await expect(lid.locator('#modal-ronde-qr')).toHaveClass(/open/, { timeout: 15000 });
+      await expect(lid.locator('#ronde-qr-vak svg'), 'er staat een getekende code')
+        .toBeVisible({ timeout: 25000 });
+      const adres = (await lid.locator('#ronde-qr-adres').textContent() || '').trim();
+      expect(adres, 'het adres wijst naar deze ronde').toMatch(/[?&]r=/);
+      expect(adres, 'en draagt een sleutel').toMatch(/[?&]k=.{10,}/);
+
+      // ── Het tweede venster doet wat scannen doet ─────────────
+      const ctxGast = await browser.newContext();
+      const gast = await ctxGast.newPage();
+      await gast.goto(adres);
+
+      // Geen inlogscherm: hij hoort meteen in de ronde te staan.
+      await expect(gast.locator('#page-ronde'), 'de gast staat in de ronde')
+        .toHaveClass(/active/, { timeout: 30000 });
+      await expect(gast.locator('#login-scherm'), 'en heeft niets hoeven intikken')
+        .not.toHaveClass(/actief/);
+      await expect(gast.locator('#scorecard-body input[type=number]').first())
+        .toBeVisible({ timeout: 20000 });
+
+      // ⚠ De sleutel hoort uit de adresbalk te zijn gepoetst. Anders staat hij
+      // in de geschiedenis van de telefoon en op elke schermafdruk.
+      expect(gast.url(), 'de sleutel staat niet meer in de adresbalk').not.toMatch(/[?&]k=/);
+
+      // Alleen de ronde: de rest van de app is niet van hem.
+      await expect(gast.locator('#nav-ladder-btn')).toBeHidden();
+      await expect(gast.locator('#nav-partij-btn')).toBeHidden();
+      await expect(gast.locator('#nav-toernooi-btn')).toBeHidden();
+      await expect(gast.locator('#nav-ronde-btn')).toBeVisible();
+      // En hij hoeft de code niet door te geven, dus die knop is er niet.
+      await expect(gast.locator('#ronde-qr-btn')).toBeHidden();
+
+      // ── En hij kan scoren; dat komt bij de ander binnen ──────
+      const vak = gast.locator('#scorecard-body input[type=number]').first();
+      await vak.fill('6');
+      await vak.blur();
+      await expect(lid.locator('#scorecard-body input[type=number]').first(),
+        'de score van de gast komt bij het clublid binnen').toHaveValue('6', { timeout: 25000 });
+
+      // ⚠ HET TIJDELIJKE GASTPROFIEL MAG NERGENS OPDUIKEN.
+      //  Daar gaat zoiets mis: een profiel dat in de spelerslijst belandt en
+      //  daarna in het klassement staat. Het lid kijkt nu naar de ladder en
+      //  naar de spelerskeuzelijst van het partijformulier.
+      // Eerst het QR-venster dicht: zolang dat openstaat vangt het elke klik op.
+      await lid.click('#modal-ronde-qr button:has-text("Sluiten")');
+      await expect(lid.locator('#modal-ronde-qr')).not.toHaveClass(/open/, { timeout: 10000 });
+      await lid.click('#nav-ladder-btn');
+      await expect(lid.locator('#ladder-list-mp')).toContainText('Cees Speler', { timeout: 20000 });
+      await expect(lid.locator('#ladder-list-mp'), 'geen gastprofiel in de ladderstand')
+        .not.toContainText('Gast');
+      await lid.click('#nav-partij-btn');
+      await lid.fill('#player-2', 'Gast');
+      await expect(lid.locator('#speler-lijst-2'), 'en niet in de spelerskeuzelijst')
+        .not.toContainText('Gast');
+
+      await ctxGast.close();
+    } finally {
+      await ctxLid.close();
+    }
+  });
+
   test('twee spelers scoren tegelijk zonder elkaar te overschrijven', async ({ browser }) => {
     // Dit is de kern van de omzetting in v5.0.0: scores staan per speler in
     // een eigen document, dus gelijktijdig invoeren mag niets wissen.

@@ -52,6 +52,9 @@ async function main() {
     await db.doc(`ladders/mp/standen/${SPELER2}`).set({ rank: 2, partijen: 3, gewonnen: 1, hcp: 20 });
     await db.doc(`ladders/mp/punten/${SPELER}`).set({ score: 1000000, basisScore: 1000000, activiteitVerschuiving: 0 });
     await db.doc('ladders/mp/partijen/p_test').set({ partijId: 'p_test', spelers: [{ uid: SPELER }] });
+    // v5.40.0: een TWEEDE partij, om te toetsen dat een ronde-gast daar niet bij kan.
+    await db.doc('ladders/mp/partijen/p_ander').set({ partijId: 'p_ander', spelers: [{ uid: SPELER2 }] });
+    await db.doc('ladder/qrGeheim').set({ geheim: 'x'.repeat(64), gemaakt: Date.now() });
     await db.doc(`ladders/mp/partijen/p_test/scores/${SPELER}`).set({ holes: { '0': 4 } });
     await db.doc('ladders/mp/verwerkt/p_test').set({ partijId: 'p_test' });
     await db.doc('ladders/mp/teruggedraaid/p_oud').set({ partijId: 'p_oud' });
@@ -83,6 +86,10 @@ async function main() {
   // stempel `viaPin` komt van de server (createCustomToken) en zit in het
   // inlogtoken — een client kan hem niet zelf zetten.
   const pinSessie = testEnv.authenticatedContext(SPELER, { viaPin: true }).firestore();
+  // v5.40.0: een gast die de QR van ronde p_test scande. Uid is het tijdelijke
+  // profiel dat de serverfunctie aanmaakt; de stempel draagt het partijnummer.
+  const rondeGast = testEnv.authenticatedContext('rondegast_p_test',
+    { viaRonde: 'p_test', ladderId: 'mp' }).firestore();
 
   // ══ watchPins — het lek van v5.0.0 ═════════════════════════
   await R.magNiet('anoniem kan watchPins NIET lezen',
@@ -293,6 +300,57 @@ async function main() {
     () => speler.doc('ladders/mp').set({ naam: 'MP' }, { merge: true }));
   await R.magWel('een gewone speler kan nog wel zijn handicap wijzigen',
     () => speler.doc(`spelers/${SPELER}`).update({ hcp: 17 }));
+
+  // ══ v5.40.0 — DE QR-CODE VAN EEN RONDE ═════════════════════
+  //  Een gast die een ronde-QR scande mag precies één ding: de scores van díé
+  //  ronde bijhouden, van álle spelers — zo wordt er op de baan geteld. Al het
+  //  andere is dicht. Zonder deze proeven is die code een sleutel tot de hele
+  //  app in plaats van tot één partij.
+  await R.magWel('ronde-gast mag de scores van ZIJN partij schrijven',
+    () => rondeGast.doc(`ladders/mp/partijen/p_test/scores/${SPELER}`).set({ holes: { '0': 5 } }));
+  await R.magWel('ook die van een medespeler in dezelfde partij',
+    () => rondeGast.doc(`ladders/mp/partijen/p_test/scores/${SPELER2}`).set({ holes: { '0': 4 } }));
+  await R.magWel('en hij mag de partij lezen',
+    () => rondeGast.doc('ladders/mp/partijen/p_test').get());
+  await R.magWel('en het ladderdocument, anders vindt hij zijn eigen ronde niet',
+    () => rondeGast.doc('ladders/mp').get());
+
+  //  En nu alles wat NIET mag.
+  await R.magNiet('ronde-gast kan GEEN scores in een andere partij schrijven',
+    () => rondeGast.doc(`ladders/mp/partijen/p_ander/scores/${SPELER}`).set({ holes: { '0': 9 } }));
+  await R.magNiet('ronde-gast kan de partij zelf niet wijzigen',
+    () => rondeGast.doc('ladders/mp/partijen/p_test').set({ status: 'klaar' }, { merge: true }));
+  await R.magNiet('ronde-gast kan NIET aan de ladder schrijven',
+    () => rondeGast.doc('ladders/mp').set({ naam: 'gehackt' }, { merge: true }));
+  await R.magNiet('ronde-gast kan geen stand wijzigen',
+    () => rondeGast.doc(`ladders/mp/standen/${SPELER}`).update({ rank: 1 }));
+  await R.magNiet('ronde-gast kan geen profiel wijzigen',
+    () => rondeGast.doc(`spelers/${SPELER}`).update({ hcp: 1 }));
+  await R.magNiet('ronde-gast kan GEEN uitslag aanmaken',
+    () => rondeGast.collection('uitslagen').add({ ladderId: 'mp', datum: '2026-09-20' }));
+  await R.magNiet('ronde-gast kan geen uitdaging wegschrijven',
+    () => rondeGast.doc('ladder/uitdagingen').set({ lijst: [] }));
+  await R.magNiet('ronde-gast kan geen baan toevoegen',
+    () => rondeGast.doc('ladder/banen').set({ lijst: ['gehackt'] }));
+
+  //  ⚠ En hij hoort niet bij een TOERNOOI te kunnen. Hij is wel "ingelogd", en
+  //  die regel stond daar tot v5.40.0 alleen op.
+  await R.magNiet('ronde-gast kan GEEN toernooiscores schrijven',
+    () => rondeGast.doc(`toernooien/t1/live/${SPELER}`).set({ dagen: { '1': [3] } }, { merge: true }));
+
+  //  Het geheim waaruit alle ronde-sleutels worden uitgerekend is voor niemand.
+  await R.magNiet('niemand kan het QR-geheim lezen',
+    () => speler.doc('ladder/qrGeheim').get());
+  await R.magNiet('ook de beheerder niet',
+    () => beheer.doc('ladder/qrGeheim').get());
+  await R.magNiet('en niemand kan het overschrijven',
+    () => coord.doc('ladder/qrGeheim').set({ geheim: 'van mij' }));
+
+  //  De gewone speler mag dit allemaal nog steeds.
+  await R.magWel('een gewone speler kan nog scores in een partij schrijven',
+    () => speler.doc(`ladders/mp/partijen/p_test/scores/${SPELER}`).set({ holes: { '0': 4 } }));
+  await R.magWel('en nog steeds een baan toevoegen',
+    () => speler.doc('ladder/banen').set({ lijst: [] }));
 
   // ══ uitslagen ══════════════════════════════════════════════
   await R.magWel('speler kan uitslagen lezen',

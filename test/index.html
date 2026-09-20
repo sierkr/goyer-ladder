@@ -1994,6 +1994,11 @@
            blijven daarbij staan. -->
       <div class="card-body" style="padding-top:10px">
         <button class="btn btn-ghost btn-block btn-sm" onclick="bewerkPartijInstellingen()">⚙ Partij-instellingen aanpassen</button>
+        <!-- v5.40.0: de QR waarmee een gast in DEZE ronde komt. Staat er niet
+             voor wie zelf met zo'n QR binnen is — die hoeft hem niet door te
+             geven en het zou hem alleen maar in verwarring brengen. -->
+        <button id="ronde-qr-btn" class="btn btn-ghost btn-block btn-sm" style="margin-top:8px"
+          onclick="toonRondeQr()">📱 QR-code voor gasten</button>
       </div>
     </div>
 
@@ -2084,6 +2089,27 @@
      Het adres staat er in gewone letters onder — zo zie je altijd zelf waar de
      code heen wijst, ook als je op de testomgeving kijkt.
      ========================================================================= -->
+<!-- ==================== QR-CODE VAN EEN RONDE (v5.40.0) ====================
+     Anders dan de vaste QR hierboven kan deze niet vooraf worden uitgerekend:
+     hij draagt een sleutel die bij DEZE ronde hoort. Hij wordt daarom op de
+     server getekend en hier alleen getoond.
+     ========================================================================= -->
+<div class="modal-overlay" id="modal-ronde-qr">
+  <div class="modal">
+    <h3>QR-code voor gasten</h3>
+    <div style="font-size:14px;line-height:1.5;color:var(--dark);margin-bottom:12px">
+      Laat dit scherm zien aan je gast. Wie hem scant komt meteen in deze ronde
+      en kan scores invullen — ook die van jou. Zodra de partij is verwerkt
+      werkt de code niet meer.
+    </div>
+    <div id="ronde-qr-vak" style="width:100%;max-width:260px;margin:0 auto;background:#ffffff;border-radius:8px;min-height:120px"></div>
+    <div id="ronde-qr-adres" style="text-align:center;font-family:'DM Mono',monospace;font-size:10px;color:var(--mid);margin-top:10px;word-break:break-all"></div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-primary btn-block" onclick="closeModal('modal-ronde-qr')">Sluiten</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-qr-code">
   <div class="modal">
     <h3>QR-code naar de app</h3>
