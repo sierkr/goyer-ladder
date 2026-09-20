@@ -170,9 +170,21 @@ function renderRonde() {
     return;
   }
   koppelScoreListener(p);
-  // v5.40.0: wie zelf met de QR binnenkwam hoeft hem niet door te geven.
-  const qrBtn = document.getElementById('ronde-qr-btn');
-  if (qrBtn) qrBtn.style.display = rondeVanSessie() ? 'none' : '';
+  // v5.40.0 / v5.40.2: wat een gast met een ronde-QR niet hoort te zien.
+  //
+  //  De QR zelf hoeft hij niet door te geven. De andere drie waren voor hem
+  //  doodlopend: de server weigert een ronde-sessie bij het verwerken van een
+  //  uitslag en bij de horloge-pincode, en de databaseregels laten hem de
+  //  partij niet wijzigen. Hij kreeg dus een knop die alleen een foutmelding
+  //  kon geven. Sierk, 20 september 2026, na de eerste echte ronde.
+  //
+  //  ⚠ Dit is opruimen, geen beveiliging. Die staat in firestore.rules en in
+  //  de serverfuncties, en blijft daar staan.
+  const isGast = !!rondeVanSessie();
+  ['ronde-qr-btn', 'ronde-instellingen-btn', 'ronde-afsluiten-btn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isGast ? 'none' : '';
+  });
   document.getElementById('ronde-empty').style.display = 'none';
   document.getElementById('ronde-content').style.display = 'block';
   document.getElementById('ronde-baan-naam').textContent = p.baan;
@@ -1779,6 +1791,9 @@ async function renderWatchPin() {
   const badge = document.getElementById('ronde-watch-pin');
   if (!badge) return;
   if (!store.huidigeBruiker?.uid) { badge.style.display = 'none'; return; }
+  // v5.40.2: een gast met een ronde-QR koppelt geen horloge — de serverfunctie
+  // weigert zijn sessie, dus die badge kan alleen teleurstellen.
+  if (rondeVanSessie()) { badge.style.display = 'none'; return; }
 
   const nu = Date.now();
   if (_watchPinVerlooptOp > nu && badge.dataset.pin) {

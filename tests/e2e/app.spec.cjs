@@ -299,8 +299,29 @@ test.describe.serial('Partij en scores', () => {
       await expect(gast.locator('#nav-partij-btn')).toBeHidden();
       await expect(gast.locator('#nav-toernooi-btn')).toBeHidden();
       await expect(gast.locator('#nav-ronde-btn')).toBeVisible();
-      // En hij hoeft de code niet door te geven, dus die knop is er niet.
-      await expect(gast.locator('#ronde-qr-btn')).toBeHidden();
+      // ⚠ v5.40.2 — WAT EEN GAST NIET HOORT TE ZIEN.
+      //  Deze drie waren voor hem doodlopend: de server weigert zijn sessie bij
+      //  het verwerken van een uitslag en bij de horloge-pincode, en de regels
+      //  laten hem de partij niet wijzigen. Een knop die alleen een foutmelding
+      //  kan geven hoort er niet te staan.
+      await expect(gast.locator('#ronde-qr-btn'), 'de QR hoeft hij niet door te geven')
+        .toBeHidden();
+      await expect(gast.locator('#ronde-instellingen-btn'), 'geen partij-instellingen')
+        .toBeHidden();
+      await expect(gast.locator('#ronde-afsluiten-btn'), 'hij sluit de partij niet af')
+        .toBeHidden();
+      await expect(gast.locator('#ronde-watch-pin'), 'en koppelt geen horloge')
+        .toBeHidden();
+
+      // ⚠ En de andere kant, in hetzelfde venster: bij het CLUBLID staan ze er
+      // wél. Zonder deze regel zou ik ze voor iedereen kunnen verbergen en zou
+      // niemand het merken tot de eerste partij niet meer af te sluiten is.
+      await expect(lid.locator('#ronde-instellingen-btn'), 'het lid houdt zijn instellingen')
+        .toBeVisible();
+      await expect(lid.locator('#ronde-afsluiten-btn'), 'en kan de partij afsluiten')
+        .toBeVisible();
+      await expect(lid.locator('#ronde-qr-btn'), 'en de QR-knop')
+        .toBeVisible();
 
       // ── En hij kan scoren; dat komt bij de ander binnen ──────
       const vak = gast.locator('#scorecard-body input[type=number]').first();
