@@ -8,7 +8,8 @@ import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB_MIGRATIE, esc, escAttr,
   EMAIL_SUFFIX, DEFAULT_HCP, CONFIG_DOC, IS_TEST, laadInitieelWachtwoord,
   laadUiStijl, pasUiStijlToe, laadBanen, effectieveStijl, normaliseerClubStijl,
-  genereerEmail, loginNaamVan, functions, httpsCallable } from './config.js';
+  genereerEmail, loginNaamVan, functions, httpsCallable,
+  isVerbindingGesloten } from './config.js';
 import { store, DEFAULT_LADDER_CONFIG,
   alleLadders, activeLadderId, alleSpelersData, huidigeBruiker,
   _usersCache, archiefData, uitdagingenData, toernooiData, alleToernooien,
@@ -31,7 +32,7 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
   signInWithCustomToken }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc,
-  deleteDoc, getDocs, addDoc, query, where, orderBy, writeBatch }
+  deleteDoc, getDocs, addDoc, query, where, orderBy, writeBatch, enableNetwork }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ============================================================
@@ -1750,8 +1751,91 @@ function foutTekst(e) {
 // meldFout('Ladder verwijderen', e)  ->  "Ladder verwijderen mislukt: ..."
 function meldFout(waar, e) {
   try { console.error(waar + ' mislukt:', e); } catch (_) {}
+  // v5.41.3: is de databaseverbinding gesloten, dan zegt de oorzaak van DEZE
+  // handeling niets — élke handeling zou stuk zijn gegaan. Herstellen dus, in
+  // plaats van een Engelse zin tonen waar niemand iets mee kan.
+  if (isVerbindingGesloten(e)) { herstelVerbinding(waar); return; }
   try { toast(waar + ' mislukt: ' + foutTekst(e), 9000); }
   catch (_) { /* zelfs de melding mag de app niet omver trekken */ }
+}
+
+// ============================================================
+//  v5.41.3 — DE VERBINDING HERSTELLEN
+// ------------------------------------------------------------
+//  Een gesloten Firestore-verbinding is niet te heropenen: de enige weg terug
+//  is de app opnieuw laden. Dat is hier geen noodgreep maar de reparatie.
+//
+//  ⚠ Er gaat niets verloren. Wat al is ingevuld staat in de offline-opslag op
+//  de telefoon (persistentLocalCache, zie js/config.js) en wordt na het
+//  herladen alsnog verstuurd; een half ingevuld partijformulier wordt net als
+//  altijd uit sessionStorage hersteld.
+//
+//  ⚠ Hooguit één keer per halve minuut. Zonder die grendel zou een storing die
+//  meteen terugkomt de app in een kringetje kunnen sturen — en dan is hij niet
+//  eens meer lang genoeg open om de melding te lezen.
+// ============================================================
+const HERSTEL_SLEUTEL = 'goyer_verbindingsherstel';
+const HERSTEL_PAUZE_MS = 30000;
+
+// Puur: mag er op dit moment hersteld worden? Los van het scherm en van de
+// klok, zodat de rekentest hem kan natellen.
+function magHerstellen(vorigeTs, nu) {
+  if (!vorigeTs) return true;
+  return (nu - vorigeTs) > HERSTEL_PAUZE_MS;
+}
+
+// Het spoor. De oorzaak is niet vastgesteld (zie js/config.js), en op een
+// iPhone is het logboek van de browser onbereikbaar. Daarom blijft er één
+// regel achter op het toestel zelf, zichtbaar onderaan Beheer.
+function leesHerstelSpoor() {
+  try {
+    const rauw = localStorage.getItem(HERSTEL_SLEUTEL);
+    if (!rauw) return null;
+    const spoor = JSON.parse(rauw);
+    return (spoor && typeof spoor.ts === 'number') ? spoor : null;
+  } catch (_) { return null; }
+}
+
+function schrijfHerstelSpoor(waar, ts) {
+  try {
+    localStorage.setItem(HERSTEL_SLEUTEL, JSON.stringify({
+      ts, waar: String(waar || 'onbekend').slice(0, 60),
+    }));
+  } catch (_) { /* privémodus: dan maar zonder spoor */ }
+}
+
+let _herstelBezig = false;
+
+function herstelVerbinding(waar) {
+  if (_herstelBezig) return;
+  const vorige = leesHerstelSpoor();
+  const nu = Date.now();
+  schrijfHerstelSpoor(waar, nu);
+
+  if (!magHerstellen(vorige && vorige.ts, nu)) {
+    // Kort geleden al herteld — niet opnieuw, anders blijft hij rondjes draaien.
+    try { toast('Verbinding met de database verbroken. Sluit de app en open hem opnieuw.', 9000); } catch (_) {}
+    return;
+  }
+
+  _herstelBezig = true;
+  try { console.error('[verbinding] gesloten tijdens:', waar, '— app wordt opnieuw geladen'); } catch (_) {}
+  try { toast('Verbinding met de database verbroken — de app wordt opnieuw geladen…', 9000); } catch (_) {}
+  setTimeout(() => { try { location.reload(); } catch (_) {} }, 1200);
+}
+
+// v5.41.3: de goedkoopste manier om te weten of de verbinding nog leeft.
+// enableNetwork() doet geen enkele leesactie op de database, maar loopt wél
+// langs dezelfde controle die de fout gooit als de verbinding gesloten is.
+async function controleerVerbinding(waar) {
+  try {
+    await enableNetwork(db);
+    return true;
+  } catch (e) {
+    if (isVerbindingGesloten(e)) { herstelVerbinding(waar || 'terugkomen uit de achtergrond'); return false; }
+    console.warn('verbindingscontrole mislukt:', e?.code || e?.message || e);
+    return true;   // iets anders aan de hand — daar gaat deze reparatie niet over
+  }
 }
 
 function registreerNotificatieToken() {}
@@ -1999,5 +2083,6 @@ export {
   registreerSpeler, laadInviteStatus, autoAdvance,
   isCoordinatorRol, isBeheerderRol, rondeVanSessie, isPinSessie,
   toast, foutTekst, meldFout, registreerNotificatieToken, laadUitdagingen,
+  herstelVerbinding, controleerVerbinding, leesHerstelSpoor, magHerstellen,
   slaEersteLoginOp,
 };

@@ -197,3 +197,29 @@ const _inLadder = new Set(['g1']);
 const _zichtbaar = (users) => users.filter(u => !_isGast(u) || _inLadder.has(u.uid));
 const _alle = [{uid:'u1',naam:'Sierk'},{uid:'g1',toernooiGast:true},{uid:'g2',rondeGast:true}];
 check('gasten eruit, lid blijft',    _zichtbaar(_alle).map(u=>u.uid), ['u1','g1']);
+
+console.log('\n══ VERBROKEN DATABASEVERBINDING (v5.41.3) ══');
+// Sierk zag "FOUT: THE CLIENT HAS ALREADY BEEN TERMINATED." bij het resetten van
+// een speler. De app moet de TOESTAND herkennen, niet de handeling.
+const _gesloten = new Function(
+  require('fs').readFileSync(require('path').join(__dirname,'..','js','config.js'),'utf8')
+    .match(/^export function isVerbindingGesloten[\s\S]*?\n\}/m)[0].replace('export ','') + 'return isVerbindingGesloten;')();
+check('de echte melding wordt herkend',
+  _gesloten({ message: 'The client has already been terminated.' }), true);
+check('ook met een code ervoor',
+  _gesloten({ code: 'failed-precondition', message: 'FIRESTORE: The client has already been terminated.' }), true);
+check('als losse tekst ook',
+  _gesloten('The client has already been terminated.'), true);
+check('een gewone fout niet',
+  _gesloten({ code: 'permission-denied', message: 'Missing or insufficient permissions.' }), false);
+check('geen fout valt niet om', _gesloten(null), false);
+
+// De lus-beveiliging: hooguit één keer per halve minuut herladen.
+const _mag = new Function(
+  'const HERSTEL_PAUZE_MS = 30000;\n' +
+  require('fs').readFileSync(require('path').join(__dirname,'..','js','auth.js'),'utf8')
+    .match(/^function magHerstellen[\s\S]*?\n\}/m)[0] + 'return magHerstellen;')();
+check('eerste keer mag altijd',        _mag(null, 100000), true);
+check('meteen daarna niet',            _mag(100000, 100500), false);
+check('na precies 30 seconden nog niet', _mag(100000, 130000), false);
+check('na 31 seconden weer wel',       _mag(100000, 131000), true);
