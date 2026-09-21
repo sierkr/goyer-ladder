@@ -877,4 +877,72 @@ const dagMetFlight = { ...leegDagMetHoles(), flights: [{ id: 1, spelerIds: ['a']
 check('met flights alleen wie die dag meedoet',
   K.prijsSpelers(maakT([A, B], { dagen: [dagMetFlight] }), dagMetFlight).map(sp => sp.uid), ['a']);
 
+console.log('\n══ TEAMS (v5.42.0) ══');
+// De rekenregel: per dag de beste N van het team, dan de dagen opgeteld.
+const TEAMS = [{ id: 1, naam: 'Rood' }, { id: 2, naam: 'Blauw' }];
+const TSP = [
+  { uid: 'r1', teamId: 1 }, { uid: 'r2', teamId: 1 }, { uid: 'r3', teamId: 1 },
+  { uid: 'b1', teamId: 2 }, { uid: 'b2', teamId: 2 }, { uid: 'b3', teamId: 2 },
+  { uid: 'x1' },                                   // zonder team
+];
+const totaalVan = (stand, naam) => stand.find(t => t.naam === naam).totaal;
+
+// Hoog wint (stableford/dagpunten): beste 2 van 3.
+let st = K.teamStand(TEAMS, TSP, [[10, 8, 1, 9, 9, 9, 99]], { hoogWint: true, besteN: 2 });
+check('beste 2 van 3, hoogste telt',  totaalVan(st, 'Rood'), 18);
+check('het andere team ook',          totaalVan(st, 'Blauw'), 18);
+check('speler zonder team telt niet', st.length, 2);
+
+// Twee dagen worden opgeteld.
+st = K.teamStand(TEAMS, TSP, [[10, 8, 1, 9, 9, 9, 0], [5, 5, 5, 1, 1, 1, 0]], { hoogWint: true, besteN: 2 });
+check('dagen worden opgeteld', totaalVan(st, 'Rood'), 28);
+check('en bij het andere team', totaalVan(st, 'Blauw'), 20);
+check('hoogste staat bovenaan', st[0].naam, 'Rood');
+
+// ⚠ Laag wint: een ontbrekende score wordt aangevuld met de SLECHTSTE van die
+// dag. Zonder die regel wint het team met de minste spelers automatisch.
+st = K.teamStand(TEAMS, [{ uid: 'r1', teamId: 1 }, { uid: 'b1', teamId: 2 }, { uid: 'b2', teamId: 2 }],
+  [[80, 90, 95]], { hoogWint: false, besteN: 2 });
+check('laag wint: kort team wordt aangevuld met de slechtste', totaalVan(st, 'Rood'), 175);
+check('laag wint: voltallig team telt zijn beste twee',        totaalVan(st, 'Blauw'), 185);
+check('laagste staat bovenaan',                                st[0].naam, 'Rood');
+
+// ⚠ Bij hoog wint is een ontbrekende speler vanzelf 0 — geen aanvulling nodig.
+st = K.teamStand(TEAMS, [{ uid: 'r1', teamId: 1 }, { uid: 'b1', teamId: 2 }, { uid: 'b2', teamId: 2 }],
+  [[10, 6, 6]], { hoogWint: true, besteN: 2 });
+check('hoog wint: ontbrekende speler levert 0 op', totaalVan(st, 'Rood'), 10);
+check('hoog wint: voltallig team telt allebei',    totaalVan(st, 'Blauw'), 12);
+
+// Leeg gelaten "beste N" = zo groot als het grootste team.
+st = K.teamStand(TEAMS, [{ uid: 'r1', teamId: 1 }, { uid: 'b1', teamId: 2 }, { uid: 'b2', teamId: 2 }],
+  [[10, 6, 6]], { hoogWint: true });
+check('leeg = grootste team (2)', st[0].telt, 2);
+
+check('geen teams geeft een lege stand', K.teamStand([], TSP, [[1,2,3]], {}).length, 0);
+check('geen dagen geeft totaal 0', K.teamStand(TEAMS, TSP, [], { hoogWint: true }).every(t => t.totaal === 0), true);
+
+// De telling: één matchplay-dag en het MOET op dagpunten.
+const dagS = { dagNr: 1, modus: 'strokeplay', holes: [], scores: {} };
+const dagM = { dagNr: 2, modus: 'matchplay',  holes: [], scores: {} };
+check('alleen strokeplay: keuze telt',     K.teamTellingVan({ dagen: [dagS], teamTelling: 'netto' }), 'netto');
+check('met een matchplay-dag: dagpunten',  K.teamTellingVan({ dagen: [dagS, dagM], teamTelling: 'netto' }), 'dagpunten');
+check('zonder keuze: dagpunten',           K.teamTellingVan({ dagen: [dagS] }), 'dagpunten');
+check('zonder dagen: dagpunten',           K.teamTellingVan({ dagen: [] }), 'dagpunten');
+check('dagpunten: hoogste wint',   K.teamHoogWint('dagpunten'), true);
+check('stableford: hoogste wint',  K.teamHoogWint('stableford'), true);
+check('bruto: laagste wint',       K.teamHoogWint('brutto'), false);
+check('netto: laagste wint',       K.teamHoogWint('netto'), false);
+
+// ⚠ De meekijkpagina heeft een LETTERLIJKE kopie van teamStand. Die twee mogen
+// nooit uit de pas lopen — zie de toelichting in toernooi-live.html.
+const _fs = require('fs'), _pad = require('path');
+const _knipTeam = (bestand) => {
+  const src = _fs.readFileSync(_pad.join(__dirname, '..', bestand), 'utf8');
+  const m = src.match(/^function teamStand\([\s\S]*?\n\}/m);
+  if (!m) throw new Error(`teamStand niet gevonden in ${bestand}`);
+  return m[0];
+};
+check('app en meekijkpagina rekenen met dezelfde teamStand',
+  _knipTeam('js/toernooi.js') === _knipTeam('toernooi-live.html'), true);
+
 module.exports = staat;

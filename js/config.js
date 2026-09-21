@@ -124,6 +124,31 @@ setPersistence(auth, indexedDBLocalPersistence).catch(() =>
   setPersistence(auth, browserLocalPersistence).catch(() => {})
 );
 
+// ============================================================
+//  v5.41.3 — DE DATABASEVERBINDING IS GESLOTEN
+// ------------------------------------------------------------
+//  Sierk, 21 september 2026, met een schermafdruk: "FOUT: THE CLIENT HAS
+//  ALREADY BEEN TERMINATED." bij het resetten van een speler. Het lag niet aan
+//  resetten — élke handeling zou die melding hebben gegeven.
+//
+//  ⚠ ONZE EIGEN CODE SLUIT DIE VERBINDING NERGENS. Het hele project is
+//  doorzocht op `terminate` en `clearIndexedDbPersistence`: geen enkele regel.
+//  Firebase sluit hem dus zelf af. In de bundel van 10.12.0 staat een
+//  afsluiter op `pagehide`, met een extra harde variant voor Safari op een
+//  telefoon — maar Sierk was op dat moment onafgebroken in de app bezig, dus
+//  DE AANLEIDING IS NIET VASTGESTELD. Schrijf hier geen verklaring op die niet
+//  gemeten is; er staan er al twee foute in de geschiedenis van deze avond.
+//
+//  Daarom herkent de app de TOESTAND in plaats van de oorzaak: waar deze fout
+//  ook opduikt, hij leidt tot hetzelfde herstel. Zie herstelVerbinding() in
+//  js/auth.js.
+// ============================================================
+export function isVerbindingGesloten(e) {
+  if (!e) return false;
+  const tekst = typeof e === 'string' ? e : String(e.message || '');
+  return /already been terminated/i.test(tekst);
+}
+
 export const googleProvider = new GoogleAuthProvider();
 
 // v3.0.0-11.2: Cloud Functions in europe-west1 voor reset-wachtwoord

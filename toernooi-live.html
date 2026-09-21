@@ -497,6 +497,118 @@ function actieveDagLive(t, dagNrOverride) {
   return (t.dagen || [])[dagNr - 1] || null;
 }
 
+// ============================================================
+//  v5.42.0 — DE TEAMSTAND (LETTERLIJKE KOPIE UIT js/toernooi.js)
+// ------------------------------------------------------------
+//  ⚠ NIET AANPASSEN ZONDER js/toernooi.js MEE TE NEMEN. Deze pagina staat
+//  bewust los van de app — hij moet openen zonder inloggen en kan de modules
+//  van de app dus niet importeren, net als bij kortNaam() (v5.11.9) en de
+//  gastlogins (v5.11.7). De suite "Toernooi" knipt beide kopieën uit de bron
+//  en legt ze naast elkaar; lopen ze uit de pas, dan valt die test om.
+//
+//  ⚠ Deze pagina kent alleen bruto, netto en stableford. Dagpunten vragen de
+//  hele matchplay-motor, en die staat hier niet. Bij een toernooi met een
+//  matchplay-dag wordt hier dus geen teamstand getoond — precies zoals het
+//  klassement daar ook niet wordt getoond.
+// ============================================================
+function teamStand(teams, spelers, perDagScores, opties) {
+  const hoogWint = opties?.hoogWint !== false;
+  const teamsLijst = Array.isArray(teams) ? teams : [];
+  const sp = Array.isArray(spelers) ? spelers : [];
+  const dagen = Array.isArray(perDagScores) ? perDagScores : [];
+
+  const ledenVan = new Map();
+  teamsLijst.forEach(team => ledenVan.set(team.id, []));
+  sp.forEach((s, i) => {
+    if (s && ledenVan.has(s.teamId)) ledenVan.get(s.teamId).push(i);
+  });
+
+  const grootste = teamsLijst.reduce((m, team) => Math.max(m, ledenVan.get(team.id).length), 0);
+  const gevraagd = Number(opties?.besteN);
+  const n = (Number.isFinite(gevraagd) && gevraagd > 0) ? Math.floor(gevraagd) : grootste;
+
+  const uit = teamsLijst.map(team => ({
+    id: team.id,
+    naam: team.naam,
+    leden: ledenVan.get(team.id).length,
+    telt: n,                    // hoeveel scores er per dag meetellen
+    perDag: [],
+    totaal: 0,
+  }));
+
+  dagen.forEach(scores => {
+    const lijst = Array.isArray(scores) ? scores : [];
+    const geldig = lijst.filter(v => Number.isFinite(v));
+    const slechtste = hoogWint ? 0 : (geldig.length ? Math.max.apply(null, geldig) : 0);
+
+    uit.forEach(team => {
+      const eigen = ledenVan.get(team.id)
+        .map(i => lijst[i])
+        .filter(v => Number.isFinite(v))
+        .sort((a, b) => hoogWint ? b - a : a - b);
+      while (eigen.length < n) eigen.push(slechtste);
+      const dagTotaal = eigen.slice(0, n).reduce((som, v) => som + v, 0);
+      team.perDag.push(dagTotaal);
+      team.totaal += dagTotaal;
+    });
+  });
+
+  uit.sort((a, b) => hoogWint ? b.totaal - a.totaal : a.totaal - b.totaal);
+  return uit;
+}
+
+// v5.42.0: de teamstand op de meekijkpagina. Volgt de dag en de kolom die de
+// bezoeker bekijkt (bruto / netto / stableford), met dezelfde regel als in de
+// app: per dag de beste N, dan de dagen opgeteld.
+function teamStandHtmlLive(t, rlDagNr, sorteerOp) {
+  const teams = teamsVanLive(t);
+  if (teams.length === 0) return '';
+
+  const hoogWint = sorteerOp === 'stableford';
+  const dagen = rlDagNr === 0 ? (t.dagen || []) : [actieveDagLive(t, rlDagNr)].filter(Boolean);
+  const perDagScores = dagen.map(dag => {
+    const res = berekenStrokeplayRanglijst(t, dag.dagNr);
+    return (t.spelers || []).map((s, i) => {
+      const r = res[i];
+      return (r && r.holes > 0) ? r[sorteerOp] : null;
+    });
+  });
+
+  const stand = teamStand(teams, t.spelers || [], perDagScores, { hoogWint, besteN: t.teamBesteN });
+  if (stand.length === 0) return '';
+
+  const label = { brutto: 'bruto slagen', netto: 'netto slagen', stableford: 'stableford' }[sorteerOp] || 'bruto slagen';
+  const wat = rlDagNr === 0 ? 'Totaal' : `Dag ${rlDagNr}`;
+
+  let h = `<div style="font-size:11px;color:#777;padding:6px 10px;border-bottom:1px solid #ddd">
+    <strong>Teams &middot; ${escLive(wat)}</strong> &middot; op ${escLive(label)} (${hoogWint ? 'hoogste' : 'laagste'} wint) &middot; beste ${stand[0].telt} per dag
+  </div>`;
+  h += '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;margin-bottom:10px"><tbody>';
+  stand.forEach((team, i) => {
+    h += `<tr style="${i % 2 ? 'background:#f7f7f5' : ''}">
+      <td style="padding:6px 4px;text-align:center;font-size:12px;width:24px;font-weight:700">${i + 1}</td>
+      <td style="padding:6px 8px;font-size:13px;font-weight:600">${escLive(team.naam)}</td>
+      <td style="padding:6px 4px;text-align:center;font-size:11px;color:#777">${team.leden}</td>
+      <td style="padding:6px 8px;text-align:right;font-size:13px;font-weight:700;font-family:monospace">${team.totaal}</td>
+    </tr>`;
+  });
+  h += '</tbody></table></div>';
+  return h;
+}
+
+// v5.42.0: deze pagina zette tot nu toe alles rechtstreeks in de HTML. Een
+// teamnaam wordt door de wedstrijdleiding ingetikt en komt op een OPENBARE
+// pagina terecht, dus die gaat hier wel door een ontsnapping heen. De rest van
+// de pagina is bewust niet omgebouwd — dat is een aparte opruiming.
+function escLive(v) {
+  return String(v ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function teamsVanLive(t) {
+  return Array.isArray(t?.teams) ? t.teams : [];
+}
+
 function berekenStrokeplayRanglijst(t, dagNrOverride) {
   // dagNrOverride=0 → totaal over alle dagen
   if (dagNrOverride === 0) {
@@ -560,6 +672,7 @@ function renderRanglijst() {
 
   if (t.modus === 'strokeplay') {
     const sorteerOp = t._ranglijstModus || 'brutto';
+    html += teamStandHtmlLive(t, rlDagNr, sorteerOp);
     const sorteerLabel = { brutto: 'Brutto (laag wint)', netto: 'Netto (laag wint)', stableford: 'Stableford (hoog wint)' }[sorteerOp] || 'Brutto (laag wint)';
     const dagNaam = rlDagNr === 0 ? 'Totaal' : `Dag ${rlDagNr}`;
 

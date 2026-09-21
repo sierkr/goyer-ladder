@@ -7,7 +7,7 @@ import { initApp, uitloggen, loginSubmit, loginMetGoogle, autoAdvance,
   genereerInviteLink, kopieerInviteLink, registreerSpeler,
   laadInviteStatus, registreerNotificatieToken,
   wisselLadder, toonLaadOverlay, checkInviteLink,
-  slaEersteLoginOp, herlaadNaResume } from './auth.js';
+  slaEersteLoginOp, herlaadNaResume, controleerVerbinding } from './auth.js';
 
 import { showPage } from './nav.js';
 import { renderLadder, toggleLadderKaart } from './ladder.js';
@@ -52,7 +52,8 @@ import { renderToernooi, herlaadToernooien, selecteerToernooi, gaNaarToernooiOve
   updateTScoreAndAdvance, updateTScore, editToernooiHcp,
   toggleTScorecard, openToernooiAfsluiten, bevestigToernooiAfsluiten,
   annuleerToernooi, kiesTRankingLadder,
-  selecteerDag, selecteerSpelersTab, openNieuweDagModal, voegDagToe, sluitDagAf, renderDagBlokken } from './toernooi.js';
+  selecteerDag, selecteerSpelersTab, openNieuweDagModal, voegDagToe, sluitDagAf, renderDagBlokken,
+  voegTeamToe, hernoemTeam, verwijderTeam, zetSpelerTeam, zetTeamTelling, zetTeamBesteN } from './toernooi.js';
 import { openLadderInstellingen, slaLadderInstellingenOp,
   openNieuweLadderModal, maakNieuweLadder, verschuifLadder,
   verwijderLadder, openLadderSpelersModal, slaLadderSpelersOp,
@@ -180,6 +181,13 @@ window.bevestigToernooiAfsluiten = bevestigToernooiAfsluiten;
 window.annuleerToernooi = annuleerToernooi;
 window.gaNaarToernooiOverzicht = gaNaarToernooiOverzicht;
 window.selecteerDag = selecteerDag;
+// v5.42.0 — teams in een toernooi
+window.voegTeamToe = voegTeamToe;
+window.hernoemTeam = hernoemTeam;
+window.verwijderTeam = verwijderTeam;
+window.zetSpelerTeam = zetSpelerTeam;
+window.zetTeamTelling = zetTeamTelling;
+window.zetTeamBesteN = zetTeamBesteN;
 window.selecteerSpelersTab = selecteerSpelersTab;   // v5.17.0: tabblad Spelers
 window.openNieuweDagModal = openNieuweDagModal;
 window.voegDagToe = voegDagToe;
@@ -223,7 +231,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v5.41.2';
+  const VERSION = 'v5.42.0';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -267,7 +275,7 @@ window.kiesTRankingLadder = kiesTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v5.41.2';
+  const LOKALE_VERSIE = 'v5.42.0';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 
@@ -328,6 +336,13 @@ window.kiesTRankingLadder = kiesTRankingLadder;
   // c) Check zodra app vanuit achtergrond terugkomt (tab focus / PWA resume)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
+      // v5.41.3: eerst kijken of de databaseverbinding nog leeft. Is hij dicht,
+      // dan mislukt alles wat hierna komt tóch, en herstelt controleerVerbinding
+      // de app zelf — dan hoeft de speler niet eerst ergens op te drukken om
+      // erachter te komen dat het stuk is. Dit kost geen enkele leesactie.
+      Promise.resolve(controleerVerbinding('terugkomen uit de achtergrond'))
+        .then(levend => { if (!levend) return; })
+        .catch(() => {});
       checkVersie();
       // v3.0.6: forceer een verse read + her-render van de actieve pagina zodat
       // scores die via de watch zijn ingevuld terwijl de telefoon in de

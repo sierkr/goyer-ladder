@@ -9,7 +9,8 @@ import { db, auth, firebaseConfig, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAG
   EMAIL_SUFFIX, DEFAULT_HCP,
   genereerEmail, loginNaamVan, pasUiStijlToe,
   functions, httpsCallable,
-  leesEigenWeergave, bewaarEigenWeergave, effectieveStijl } from './config.js';
+  leesEigenWeergave, bewaarEigenWeergave, effectieveStijl,
+  isVerbindingGesloten } from './config.js';
 // v5.18.0: hier stond `_verwijderWeesAccountFn`. Die ruimde een Auth-account op
 // waarvan het profiel niet kon worden aangemaakt tijdens de bulk-import. De
 // bulk-import is weg en daarmee de enige plek die accounts in bulk aanmaakte,
@@ -27,7 +28,8 @@ import { store, alleLadders, activeLadderId,
   huidigeBruiker, uitdagingenData, isGastProfiel } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers,
   isBeheerderRol, isCoordinatorRol, toast, meldFout, laadUitdagingen,
-  normaliseerLadderRangen, ladderIntegriteitsRapport, herstelLadderIntegriteit } from './auth.js';
+  normaliseerLadderRangen, ladderIntegriteitsRapport, herstelLadderIntegriteit,
+  herstelVerbinding, leesHerstelSpoor } from './auth.js';
 
 // v3.0.0-11.103: gebruikersbeheer (aanmaken/verwijderen/wachtwoord-reset) loopt
 // via de gedeelde Firebase Auth — die is voor test én productie hetzelfde project.
@@ -78,6 +80,33 @@ function renderAdmin() {
   if (!isCoord) return;
   if (isBeheerder) renderAdminSpelersEnAccounts();
   renderAdminLadders();
+  toonHerstelSpoor();
+}
+
+// ============================================================
+//  v5.41.3 — HET SPOOR VAN EEN VERBROKEN VERBINDING
+// ------------------------------------------------------------
+//  De oorzaak is niet vastgesteld (zie js/config.js). Op een telefoon is het
+//  logboek van de browser onbereikbaar, dus zonder dit regeltje weten we bij
+//  een volgende keer nog steeds niets. Het staat op het TOESTEL zelf, dus het
+//  gaat over deze telefoon en niet over de club.
+// ============================================================
+function toonHerstelSpoor() {
+  const pagina = document.getElementById('page-admin');
+  if (!pagina) return;
+  let el = document.getElementById('admin-herstel-spoor');
+  const spoor = leesHerstelSpoor();
+  if (!spoor) { if (el) el.remove(); return; }
+
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'admin-herstel-spoor';
+    el.style.cssText = 'font-size:11px;color:var(--light);padding:10px 16px;text-transform:none';
+    pagina.appendChild(el);
+  }
+  const d = new Date(spoor.ts);
+  const tijd = d.toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  el.textContent = `Laatste verbindingsherstel op dit toestel: ${tijd} — bij ${spoor.waar || 'onbekend'}`;
 }
 
 // Render spelerslijst — gebruikt spelers/ collectie als primaire bron
@@ -556,6 +585,10 @@ async function vraagResetWachtwoord(uid, naam) {
       : e.code === 'functions/not-found'
       ? 'Cloud Function niet gedeployed — run firebase deploy'
       : 'Fout: ' + (e.message || e.code);
+    // v5.41.3: is de databaseverbinding gesloten, dan zegt deze fout niets over
+    // resetten — élke knop zou hier zijn gestrand. Sierk zag hier "THE CLIENT
+    // HAS ALREADY BEEN TERMINATED" en zocht de fout bij het resetten.
+    if (isVerbindingGesloten(e)) { herstelVerbinding('wachtwoord resetten'); return; }
     toast(msg);
   }
 }
