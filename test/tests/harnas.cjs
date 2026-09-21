@@ -82,6 +82,12 @@ function laadToernooiKern() {
     // v5.39.0: de balk onderaan het aanmaakscherm en de handmatige prijzen.
     'setupVolgendeStap',
     'prijsRegels', 'prijsRegelToe', 'prijsRegelWeg', 'prijsRegelWijzig', 'prijsSpelers',
+    // v5.42.0: teams. teamScoresPerDag leunt op dagPunten en
+    // berekenStrokeplayRanglijstVoorDag, die hierboven al meegeknipt worden —
+    // ⚠ knip een nieuwe hulpfunctie ALTIJD mee, anders valt de hele
+    // toernooisuite om op "x is not defined". Dat is nu vijf keer gebeurd.
+    'teamStand', 'teamsVan', 'teamTellingVan', 'heeftAlleenStrokeplay',
+    'teamHoogWint', 'teamScoresPerDag',
   ]);
   const k = knip('js/knockout.js', ['rondesNaarObj', 'objNaarRondes', 'verwerkKnockoutVoortgang']);
   const bron = `
@@ -98,6 +104,8 @@ function laadToernooiKern() {
       berekenStrokeplayTotaal, countback, getDag, actieveDag, heeftGeenScores,
       alleScoresIngevuld, berekenFlightTijd, berekenTPunten, _liveScoresVanDag,
       matchplayVolgorde, hcpVan, celWaarde, scoreOordeel,
+      teamStand, teamsVan, teamTellingVan, heeftAlleenStrokeplay,
+      teamHoogWint, teamScoresPerDag,
       dagModus, heeftStrokeplayDag, gemengdeSpeelwijzen,
       dagPuntenUitSleutels, dagPunten, dagPuntenTotaal,
       toernooiModusVanSpeelwijzen, zichtbaarheidVanSpeelwijzen,

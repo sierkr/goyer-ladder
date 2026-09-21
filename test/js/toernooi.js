@@ -3326,13 +3326,106 @@ function spelerRijenHtml(t) {
   if (!t || !(t.spelers || []).length) {
     return '<div style="padding:10px 0;font-size:13px;color:var(--light)">Nog geen spelers in dit toernooi</div>';
   }
+  // v5.42.0: de teamkeuze staat ALLEEN in de rij als er teams zijn. Zonder
+  // teams verandert dit scherm dus niet.
+  const teams = teamsVan(t);
+  const teamKeuze = (s) => teams.length === 0 ? '' : `
+      <select onchange="zetSpelerTeam('${escAttr(s.uid)}', this.value)"
+        style="flex-shrink:0;max-width:120px;font-size:12px;padding:4px 6px;margin-right:8px">
+        <option value="">— geen team —</option>
+        ${teams.map(team => `<option value="${escAttr(String(team.id))}" ${s.teamId === team.id ? 'selected' : ''}>${esc(team.naam)}</option>`).join('')}
+      </select>`;
   return t.spelers.map(s => `
     <div style="display:flex;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
       <span style="flex:1;font-size:14px">${esc(s.naam)}${s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}<br>${inlogRegel(s)}</span>
+      ${teamKeuze(s)}
       <button class="btn btn-sm" style="background:var(--alert-bg);color:var(--alert-text);border:none;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:12px"
         onclick="verwijderToernooiSpelerNieuw('${escAttr(s.uid)}')">✕</button>
     </div>
   `).join('');
+}
+
+// ============================================================
+//  v5.42.0 — TEAMS BEHEREN (tabblad Spelers)
+// ------------------------------------------------------------
+//  Sierk, 21 september 2026: "ik denk in de spelers tab ook een team kunnen
+//  toewijzen. die teams hebben namen die toegevoegd moeten worden."
+//
+//  ⚠ Een team wordt bijgehouden op NUMMER, niet op naam. Hernoem je "De Rooien"
+//  naar "Rood", dan hoeft er bij geen enkele speler iets bij te werken. Met de
+//  naam als sleutel zou dat wel moeten, en dat is precies het soort bijwerken
+//  dat een keer vergeten wordt.
+// ============================================================
+function volgendTeamId(t) {
+  return teamsVan(t).reduce((m, team) => Math.max(m, Number(team.id) || 0), 0) + 1;
+}
+
+function teamRijenHtml(t) {
+  const teams = teamsVan(t);
+  if (teams.length === 0) {
+    return '<div style="padding:8px 0;font-size:13px;color:var(--light)">Nog geen teams. Voeg er een toe om met teams te spelen.</div>';
+  }
+  return teams.map(team => {
+    const aantal = (t.spelers || []).filter(s => s.teamId === team.id).length;
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border)">
+        <span style="flex:1;font-size:14px;font-weight:600">${esc(team.naam)}</span>
+        <span style="font-size:11px;color:var(--light)">${aantal} speler${aantal === 1 ? '' : 's'}</span>
+        <button class="btn btn-sm btn-ghost" style="padding:4px 8px;font-size:12px"
+          onclick="hernoemTeam('${escAttr(String(team.id))}')">✏️</button>
+        <button class="btn btn-sm" style="background:var(--alert-bg);color:var(--alert-text);border:none;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:12px"
+          onclick="verwijderTeam('${escAttr(String(team.id))}')">✕</button>
+      </div>`;
+  }).join('');
+}
+
+function teamKaartHtml(t) {
+  const teams = teamsVan(t);
+  const telling = teamTellingVan(t);
+  const alleenStroke = heeftAlleenStrokeplay(t);
+  const zonderTeam = (t.spelers || []).filter(s => !teams.some(team => team.id === s.teamId)).length;
+
+  const rijen = teamRijenHtml(t);
+
+  return `
+    <div class="card">
+      <div class="card-header">
+        <h2>Teams</h2>
+        <span style="font-size:12px;color:var(--mid)">${teams.length}</span>
+      </div>
+      <div class="card-body" style="padding:4px 16px 14px">
+        <div id="t-teams-lijst">${rijen}</div>
+        <button class="btn btn-ghost btn-block" style="margin-top:12px" onclick="voegTeamToe()">+ Team toevoegen</button>
+        ${teams.length === 0 ? '' : `
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+          <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Waarop wordt de teamscore geteld</label>
+          <select id="t-team-telling" onchange="zetTeamTelling(this.value)" style="margin-top:6px;width:100%" ${alleenStroke ? '' : 'disabled'}>
+            <option value="dagpunten"  ${telling === 'dagpunten'  ? 'selected' : ''}>Dagpunten (9-8-7) — hoogste wint</option>
+            <option value="brutto"     ${telling === 'brutto'     ? 'selected' : ''}>Bruto slagen — laagste wint</option>
+            <option value="netto"      ${telling === 'netto'      ? 'selected' : ''}>Netto slagen — laagste wint</option>
+            <option value="stableford" ${telling === 'stableford' ? 'selected' : ''}>Stableford — hoogste wint</option>
+          </select>
+          <p style="font-size:11px;color:var(--light);margin:6px 0 0">
+            ${alleenStroke
+              ? 'Alle dagen zijn strokeplay, dus je mag zelf kiezen.'
+              : 'Er zit een matchplay-dag in dit toernooi, dus het gaat op dagpunten — slagen en stableford zijn daar niet mee op te tellen.'}
+          </p>
+
+          <label style="display:block;margin-top:12px;font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Beste hoeveel tellen mee per dag</label>
+          <input type="number" id="t-team-beste-n" min="1" max="20" value="${t.teamBesteN ?? ''}"
+            placeholder="alle" onchange="zetTeamBesteN(this.value)"
+            style="margin-top:6px;width:90px;text-align:center">
+          <p style="font-size:11px;color:var(--light);margin:6px 0 0">
+            Bijvoorbeeld 3: van elk team tellen per dag de drie beste scores.
+            Leeg laten betekent: zoveel als het grootste team groot is.
+          </p>
+          ${zonderTeam > 0 ? `
+          <p style="font-size:11px;color:var(--gold);margin:10px 0 0">
+            ⚠ ${zonderTeam} speler${zonderTeam === 1 ? '' : 's'} ${zonderTeam === 1 ? 'zit' : 'zitten'} nog in geen enkel team en ${zonderTeam === 1 ? 'speelt' : 'spelen'} individueel mee.
+          </p>` : ''}
+        </div>`}
+      </div>
+    </div>`;
 }
 
 function openToernooiSpelersBeheer() {
@@ -3459,6 +3552,95 @@ async function voegBestaandeSpelerToeAanToernooi() {
     renderToernooiActief();
     toast(`${speler.naam.split(' ')[0]} toegevoegd ✓`);
   } catch(e) { toernooiFout('Speler toevoegen', e); }
+}
+
+// ============================================================
+//  v5.42.0 — DE KNOPPEN VAN HET TEAMBLOK
+// ------------------------------------------------------------
+//  ⚠ Na elke prompt() of confirm() worden de gegevens OPNIEUW uit
+//  `toernooiData` gepakt. Staat die vraag open terwijl de meeluisteraar het
+//  toernooi vervangt door een verse serverkopie, dan zou je de weggegooide
+//  kopie wijzigen en de nieuwe wegschrijven — met de oude inhoud erin. Dat is
+//  precies wat er in v5.12.4 en bij de dagknoppen misging; zie CLAUDE.md.
+// ============================================================
+async function voegTeamToe() {
+  const naam = (prompt('Naam van het team?') || '').trim();
+  if (!naam) return;
+  const t = toernooiData;                       // NA de vraag opnieuw pakken
+  if (!t) return;
+  if (!Array.isArray(t.teams)) t.teams = [];
+  if (t.teams.some(team => team.naam.toLowerCase() === naam.toLowerCase())) {
+    toast('Er is al een team met die naam');
+    return;
+  }
+  t.teams.push({ id: volgendTeamId(t), naam });
+  await slaToernooiOp();
+  renderToernooiActief();
+}
+
+async function hernoemTeam(idTekst) {
+  const id = Number(idTekst);
+  const huidig = teamsVan(toernooiData).find(team => team.id === id);
+  if (!huidig) return;
+  const naam = (prompt('Nieuwe naam voor dit team?', huidig.naam) || '').trim();
+  if (!naam) return;
+  const t = toernooiData;                       // NA de vraag opnieuw pakken
+  const team = teamsVan(t).find(x => x.id === id);
+  if (!team) return;
+  team.naam = naam;
+  await slaToernooiOp();
+  renderToernooiActief();
+}
+
+async function verwijderTeam(idTekst) {
+  const id = Number(idTekst);
+  const team = teamsVan(toernooiData).find(x => x.id === id);
+  if (!team) return;
+  const aantal = (toernooiData.spelers || []).filter(sp => sp.teamId === id).length;
+  if (!confirm(`Team "${team.naam}" verwijderen?` +
+      (aantal ? `\n\n${aantal} speler${aantal === 1 ? '' : 's'} ${aantal === 1 ? 'komt' : 'komen'} zonder team te staan en ${aantal === 1 ? 'speelt' : 'spelen'} individueel verder.` : ''))) return;
+  const t = toernooiData;                       // NA de vraag opnieuw pakken
+  if (!t) return;
+  t.teams = teamsVan(t).filter(x => x.id !== id);
+  (t.spelers || []).forEach(sp => { if (sp.teamId === id) delete sp.teamId; });
+  await slaToernooiOp();
+  renderToernooiActief();
+}
+
+async function zetSpelerTeam(uid, idTekst) {
+  const t = toernooiData;
+  if (!t) return;
+  const sp = (t.spelers || []).find(x => x.uid === uid);
+  if (!sp) return;
+  const id = Number(idTekst);
+  if (Number.isFinite(id) && teamsVan(t).some(team => team.id === id)) sp.teamId = id;
+  else delete sp.teamId;
+  // ⚠ Geen renderToernooiActief() hier: de keuzelijst die je net aanraakte staat
+  // op een telefoon nog open, en hertekenen klapt hem onder je vinger dicht —
+  // dezelfde reden als bij prijsWijzig() in v5.39.0. Alleen het teamblok en de
+  // stand worden bijgewerkt.
+  await slaToernooiOp(600);
+  const teamLijst = document.getElementById('t-teams-lijst');
+  if (teamLijst) teamLijst.innerHTML = teamRijenHtml(t);
+  renderTTeamstand();
+}
+
+async function zetTeamTelling(waarde) {
+  const t = toernooiData;
+  if (!t) return;
+  t.teamTelling = ['dagpunten', 'brutto', 'netto', 'stableford'].includes(waarde) ? waarde : 'dagpunten';
+  await slaToernooiOp(600);
+  renderTTeamstand();
+}
+
+async function zetTeamBesteN(waarde) {
+  const t = toernooiData;
+  if (!t) return;
+  const n = Number(waarde);
+  if (Number.isFinite(n) && n > 0) t.teamBesteN = Math.floor(n);
+  else delete t.teamBesteN;
+  await slaToernooiOp(600);
+  renderTTeamstand();
 }
 
 async function voegGastspelerToeAanToernooi() {
@@ -4084,6 +4266,10 @@ function renderToernooiActief() {
       <!-- v5.13.1: hier stond een TWEEDE rij dagtabbladen. Het klassement volgt
            nu het tabblad bovenaan: op "Toernooi" het totaal over alle dagen, op
            een dagtabblad de stand van die dag. -->
+      <!-- v5.42.0: de teamstand staat BOVEN het individuele klassement en volgt
+           hetzelfde tabblad: op "Toernooi" het totaal, op een dagtabblad die dag.
+           Zonder teams tekent renderTTeamstand() hier niets. -->
+      <div id="t-teamstand"></div>
       <div id="t-ranglijst"></div>
     </div>` : '';
 
@@ -4432,7 +4618,9 @@ function renderToernooiActief() {
     // v5.17.0: geen scorekaart en geen klassement op dit tabblad. De renderaars
     // hieronder zoeken hun eigen element op en doen niets als het er niet is —
     // precies zoals op het tabblad Toernooi.
-    detail.innerHTML = dagTabsHtml + titelKaart + spelersKaart;
+    // v5.42.0: het teamblok staat onder de spelerslijst, op hetzelfde tabblad —
+    // daar wijs je teams toe, dus daar horen de teams zelf ook.
+    detail.innerHTML = dagTabsHtml + titelKaart + spelersKaart + teamKaartHtml(t);
   } else if (toonToernooiTab) {
     detail.innerHTML = dagTabsHtml + titelKaart + ranglijstKaart + liveLinkKnop + toernooiKnoppen;
   } else if (isBeheerder) {
@@ -5201,6 +5389,124 @@ function dagPunten(t, dag) {
     (res.won[i] + res.tied[i] + res.lost[i]) > 0 ? -res.punten[i] : null));
 }
 
+// ============================================================
+//  v5.42.0 — TEAMS: DE REKENREGEL
+// ------------------------------------------------------------
+//  Sierk, 21 september 2026: "er is voor een toernooi het idee ontstaan dat
+//  spelers in een team spelen. er is een individuele score maar ook een team
+//  score."
+//
+//  DE REGEL, in één zin: de teamscore van een DAG is de beste N scores van dat
+//  team bij elkaar; het totaal is die dagen opgeteld.
+//
+//  ⚠ WAAROM PER DAG EN NIET OVER HET TOTAAL. "Beste 3 van 4" moet per dag
+//  gelden, anders telt een speler die één dag schitterde mee voor het hele
+//  toernooi terwijl hij de andere dagen niet kwam opdagen.
+//
+//  ⚠ WAAROM DEZE FUNCTIE NIETS WEET VAN GOLF. Hij krijgt alleen getallen: per
+//  dag één score per speler. Daardoor kan hij zowel op dagpunten als op bruto,
+//  netto of stableford werken — én kan `toernooi-live.html`, die de app niet mag
+//  importeren, er een LETTERLIJKE kopie van houden. De test in
+//  tests/toernooi.test.cjs knipt beide kopieën uit de bron en legt ze naast
+//  elkaar; lopen ze uit de pas, dan valt die test om.
+//
+//  ⚠ AANVULLEN BIJ "LAAG WINT". Bij bruto en netto wint de laagste score, dus
+//  een team met een speler minder zou automatisch winnen. Een ontbrekende score
+//  wordt daarom aangevuld met de SLECHTSTE score van die dag — de gangbare
+//  golfregel. Bij stableford en dagpunten (hoog wint) is een ontbrekende speler
+//  vanzelf 0 en is aanvullen niet nodig.
+//
+//  ⚠ LEEG GELATEN "BESTE N" betekent: het grootste team. Zo weegt elk team even
+//  zwaar zonder dat er iets ingesteld hoeft te worden, en kan de instelling niet
+//  vergeten worden — wat bij "laag wint" het kleinste team zou laten winnen.
+// ============================================================
+function teamStand(teams, spelers, perDagScores, opties) {
+  const hoogWint = opties?.hoogWint !== false;
+  const teamsLijst = Array.isArray(teams) ? teams : [];
+  const sp = Array.isArray(spelers) ? spelers : [];
+  const dagen = Array.isArray(perDagScores) ? perDagScores : [];
+
+  const ledenVan = new Map();
+  teamsLijst.forEach(team => ledenVan.set(team.id, []));
+  sp.forEach((s, i) => {
+    if (s && ledenVan.has(s.teamId)) ledenVan.get(s.teamId).push(i);
+  });
+
+  const grootste = teamsLijst.reduce((m, team) => Math.max(m, ledenVan.get(team.id).length), 0);
+  const gevraagd = Number(opties?.besteN);
+  const n = (Number.isFinite(gevraagd) && gevraagd > 0) ? Math.floor(gevraagd) : grootste;
+
+  const uit = teamsLijst.map(team => ({
+    id: team.id,
+    naam: team.naam,
+    leden: ledenVan.get(team.id).length,
+    telt: n,                    // hoeveel scores er per dag meetellen
+    perDag: [],
+    totaal: 0,
+  }));
+
+  dagen.forEach(scores => {
+    const lijst = Array.isArray(scores) ? scores : [];
+    const geldig = lijst.filter(v => Number.isFinite(v));
+    const slechtste = hoogWint ? 0 : (geldig.length ? Math.max.apply(null, geldig) : 0);
+
+    uit.forEach(team => {
+      const eigen = ledenVan.get(team.id)
+        .map(i => lijst[i])
+        .filter(v => Number.isFinite(v))
+        .sort((a, b) => hoogWint ? b - a : a - b);
+      while (eigen.length < n) eigen.push(slechtste);
+      const dagTotaal = eigen.slice(0, n).reduce((som, v) => som + v, 0);
+      team.perDag.push(dagTotaal);
+      team.totaal += dagTotaal;
+    });
+  });
+
+  uit.sort((a, b) => hoogWint ? b.totaal - a.totaal : a.totaal - b.totaal);
+  return uit;
+}
+
+// De teams van een toernooi. Altijd een lijst, ook als er nog geen zijn.
+function teamsVan(t) {
+  return Array.isArray(t?.teams) ? t.teams : [];
+}
+
+// Waarop wordt geteld? Zit er ook maar één matchplay-dag in, dan kan het niet
+// anders dan op dagpunten — bruto en stableford zijn niet op te tellen met een
+// matchplay-uitslag. Dat is dezelfde regel als bij het klassement (v5.12.0).
+function teamTellingVan(t) {
+  const gekozen = t?.teamTelling;
+  if (!heeftAlleenStrokeplay(t)) return 'dagpunten';
+  return ['brutto', 'netto', 'stableford'].includes(gekozen) ? gekozen : 'dagpunten';
+}
+
+function heeftAlleenStrokeplay(t) {
+  const dagen = t?.dagen || [];
+  return dagen.length > 0 && dagen.every(d => dagModus(t, d) === 'strokeplay');
+}
+
+function teamHoogWint(telling) {
+  return telling === 'dagpunten' || telling === 'stableford';
+}
+
+// De scores per dag, in de gekozen telling. `dagNr` 0 betekent alle dagen.
+function teamScoresPerDag(t, dagNr) {
+  const telling = teamTellingVan(t);
+  const dagen = (dagNr === 0 || dagNr == null)
+    ? (t?.dagen || [])
+    : [getDag(t, dagNr)].filter(Boolean);
+
+  return dagen.map(dag => {
+    if (telling === 'dagpunten') return dagPunten(t, dag);
+    const res = berekenStrokeplayRanglijstVoorDag(t, dag);
+    return (t.spelers || []).map((s, i) => {
+      const r = res[i];
+      if (!r || !(r.holes > 0)) return null;
+      return telling === 'stableford' ? r.stableford : r[telling];
+    });
+  });
+}
+
 // Dagpunten van alle dagen, plus het totaal per speler.
 function dagPuntenTotaal(t) {
   const n = (t?.spelers || []).length;
@@ -5441,7 +5747,62 @@ function renderTDagpuntenRanglijst(t, el) {
       </div>`).join('');
 }
 
+// ============================================================
+//  v5.42.0 — DE TEAMSTAND TEKENEN
+// ------------------------------------------------------------
+//  Volgt het tabblad dat openstaat: op "Toernooi" (dagNr 0) het totaal over
+//  alle dagen, op een dagtabblad de stand van díé dag. Zijn er geen teams, dan
+//  wordt er niets getekend — een toernooi zonder teams ziet dus niets nieuws.
+// ============================================================
+function renderTTeamstand() {
+  const el = document.getElementById('t-teamstand');
+  if (!el) return;
+  const t = toernooiData;
+  const teams = teamsVan(t);
+  if (!t || teams.length === 0) { el.innerHTML = ''; return; }
+
+  const rlDag = window._ranglijstDagNr ?? (t.actiefDagNr || 1);
+  const telling = teamTellingVan(t);
+  const hoogWint = teamHoogWint(telling);
+  const stand = teamStand(teams, t.spelers || [], teamScoresPerDag(t, rlDag), {
+    hoogWint, besteN: t.teamBesteN,
+  });
+
+  const naam = { dagpunten: 'dagpunten', brutto: 'bruto slagen', netto: 'netto slagen', stableford: 'stableford' }[telling];
+  const wat = rlDag === 0 ? 'Totaal' : `Dag ${rlDag}`;
+  const nTelt = stand[0]?.telt ?? 0;
+
+  const thStyle = 'padding:6px 4px;background:var(--gold);color:white;text-align:center;font-size:11px;white-space:nowrap';
+  const tdStyle = 'padding:6px 4px;text-align:center;font-size:12px;font-family:"DM Mono",monospace;border-bottom:1px solid var(--border)';
+
+  let html = `<div style="font-size:11px;color:var(--light);padding:6px 10px;border-bottom:1px solid var(--border)">
+    <strong>Teams \u00b7 ${esc(wat)}</strong> \u00b7 op ${esc(naam)} (${hoogWint ? 'hoogste' : 'laagste'} wint)
+    \u00b7 beste ${nTelt} per dag
+  </div>`;
+  html += '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%"><thead><tr>';
+  html += `<th style="${thStyle};text-align:left;width:24px">#</th>`;
+  html += `<th style="${thStyle};text-align:left">Team</th>`;
+  html += `<th style="${thStyle}">Spelers</th>`;
+  html += `<th style="${thStyle}">Score</th>`;
+  html += '</tr></thead><tbody>';
+  stand.forEach((team, i) => {
+    const trStyle = i % 2 === 0 ? '' : 'background:var(--subtle-bg)';
+    html += `<tr style="${trStyle}">
+      <td style="${tdStyle};font-weight:700;color:${i < 3 ? 'var(--gold)' : 'var(--light)'}">${i + 1}</td>
+      <td style="padding:6px 8px;font-size:13px;font-weight:600;border-bottom:1px solid var(--border)">${esc(team.naam)}</td>
+      <td style="${tdStyle};color:var(--light);font-size:11px">${team.leden}</td>
+      <td style="${tdStyle};font-weight:700">${team.totaal}</td>
+    </tr>`;
+  });
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
+}
+
 function renderTRanglijst() {
+  // v5.42.0: de teamstand hangt aan dezelfde aanroepen als het klassement, zodat
+  // er geen tweede lijst plekken ontstaat die bijgewerkt moet worden.
+  renderTTeamstand();
+
   const el = document.getElementById('t-ranglijst');
   if (!el) return;
   const t = toernooiData;
@@ -6966,4 +7327,6 @@ export function getActiefToernooiMetModus() {
 
 
 export { alleScoresIngevuld, annuleerToernooi, toernooiLoopt, hashPinTekst, setupVolgendeStap,
+  voegTeamToe, hernoemTeam, verwijderTeam, zetSpelerTeam, zetTeamTelling, zetTeamBesteN,
+  teamStand, teamsVan, teamTellingVan, renderTTeamstand,
   prijsRegels, prijsRegelToe, prijsRegelWeg, prijsRegelWijzig, prijsSpelers, behoudLiveScores, berekenFlightTijd, berekenTPunten, bevestigToernooiAfsluiten, editToernooiHcp, gaNaarToernooiOverzicht, getTHcpSlagen, getToernooiSpelersPool, herlaadToernooien, herlaadToernooiListeners, initToernooiSetup, openFlightIndeling, openFlightIndelingDag, openNieuweDagModal, openToernooiAfsluiten, openToernooiSpelersBeheer, openVerwijderToernooiSpeler, refreshToernooiScorekaart, renderDagBlokken, renderFlightLijst, renderTGeselecteerdeSpelers, renderTMatrix, renderTRanglijst, renderTScorecard, renderToernooi, renderToernooiActief, selecteerDag, selecteerSpelersTab, selecteerFlightTab, selecteerToernooi, selecteerToernooiSpeler, selecteerToernooiSpelerModal, sluitDagAf, sluitToernooiSpelerLijst, sluitToernooiSpelerModal, slaFlightIndelingDagOp, startToernooi, toggleHolesCustom, kiesTRankingLadder, toggleTScorecard, toggleTSpeler, toggleToernooiMatrix, toonToernooiUitslag, updateTScore, updateTScoreAndAdvance, updateTTotaalRijInline, updateTTotalen, verplaatsSpelerFlight, verwijderFlight, verwijderToernooiSpelerNieuw, verwijderToernooiSpelerSelectie, voegBestaandeSpelerToeAanToernooi, voegDagToe, voegFlightToe, voegGastspelerToe, voegGastspelerToeAanToernooi, wijzigFlightHcp, wijzigFlightNaam, wijzigFlightStarthole, wijzigFlightStarttijd, zoekToernooiSpeler, zoekToernooiSpelerModal };
