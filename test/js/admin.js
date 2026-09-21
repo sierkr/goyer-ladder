@@ -24,7 +24,7 @@ import { db, auth, firebaseConfig, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAG
 // Hij verwijdert uitsluitend accounts ZONDER profiel; die veiligheidsklep is
 // precies waarom het profiel er eerst af moet.
 import { store, alleLadders, activeLadderId,
-  huidigeBruiker, uitdagingenData } from './store.js';
+  huidigeBruiker, uitdagingenData, isGastProfiel } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers,
   isBeheerderRol, isCoordinatorRol, toast, meldFout, laadUitdagingen,
   normaliseerLadderRangen, ladderIntegriteitsRapport, herstelLadderIntegriteit } from './auth.js';
@@ -104,7 +104,8 @@ async function renderAdminSpelersEnAccounts() {
   //  verwerkt te worden laat zijn profiel staan. Ziet niemand dat ooit, dan
   //  merkt de club het pas als er honderd staan. Vandaar de dichtgeklapte
   //  regel onderaan, met een knop om er één op te ruimen.
-  const isGastProfiel = (u) => u.toernooiGast === true || u.rondeGast === true;
+  //  v5.41.2: de regel staat nu in store.js, want dit scherm was niet het
+  //  enige dat hem nodig had — zie de toelichting daar.
   const leden  = users.filter(u => !isGastProfiel(u));
   const gasten = users.filter(isGastProfiel);
 
@@ -326,7 +327,7 @@ async function openAddPlayer() {
     const zonderLadder = users.filter(u =>
       // v5.40.3: gasten horen hier ook niet in — ze zitten per definitie in
       // geen enkele ladder en zouden deze lijst dus vullen.
-      !(u.toernooiGast === true || u.rondeGast === true) &&
+      !isGastProfiel(u) &&
       !alleLadders.some(l =>
         (l.spelerIds || []).includes(u.uid)
       )

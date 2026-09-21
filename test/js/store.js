@@ -141,6 +141,22 @@ export function spelvormTeltMee(cfg, speltype) {
   return mee[String(speltype || 'matchplay')] !== false;
 }
 
+// ============================================================
+//  v5.41.2 — IS DIT EEN GASTPROFIEL?
+// ------------------------------------------------------------
+//  Twee soorten tijdelijk profiel staan in dezelfde collectie `spelers/` als
+//  de clubleden: de toernooigast (sinds v5.10.0) en de rondegast van een QR
+//  (sinds v5.40.0). Elk scherm dat spelers opsomt moet ze eruit laten.
+//
+//  ⚠ WAAROM DIT HIER STAAT. In v5.40.3 werd deze regel in de ledenlijst
+//  ingetypt, en alleen daar. Een dag later bleken de gasten nog gewoon in het
+//  scherm "Spelers in <ladder>" te staan — dat scherm kende de regel niet.
+//  Zolang de regel op één plek staat, kan een volgend scherm hem niet missen.
+// ============================================================
+export function isGastProfiel(u) {
+  return !!u && (u.toernooiGast === true || u.rondeGast === true);
+}
+
 // ─── Aangepaste banen ───────────────────────────────────────
 export let aangepasteBanen = [];
 export let _verwijderdePartijIds = new Set();
