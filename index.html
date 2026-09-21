@@ -1569,6 +1569,32 @@
       </label>
     </div>
 
+    <!-- v5.41.0: welke spelvormen meetellen voor de stand van DEZE ladder.
+         Kiezen kan in het partijformulier altijd; dit gaat over de telling. -->
+    <div class="divider"></div>
+    <div class="form-group" style="margin-top:12px">
+      <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Welke spelvormen tellen mee voor de stand</label>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark)">
+          <input type="checkbox" id="cfg-mee-matchplay" style="width:18px;height:18px;accent-color:var(--green)">
+          Matchplay
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark)">
+          <input type="checkbox" id="cfg-mee-amerikaantje" style="width:18px;height:18px;accent-color:var(--green)">
+          Amerikaantje
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark)">
+          <input type="checkbox" id="cfg-mee-highlow" style="width:18px;height:18px;accent-color:var(--green)">
+          High-Low
+        </label>
+      </div>
+      <p style="font-size:11px;color:var(--light);margin:6px 0 0">
+        Spelers kunnen elke spelvorm blijven kiezen. Staat er een uit, dan wordt die
+        partij wel gespeeld en bewaard, maar verschuift er niemand op deze ladder en
+        telt hij niet mee voor de frequentie- en diversiteitsbonus.
+      </p>
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-ladder-instellingen')">Annuleren</button>
       <button class="btn btn-primary" style="flex:2" onclick="slaLadderInstellingenOp()">Opslaan</button>

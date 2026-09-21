@@ -153,3 +153,17 @@ check('partij zonder teams is schoon',
   _zoek({ partijId:'p1', spelers:[{uid:'a'}], holes:[{par:4,si:1}],
           matchups:[{spelerA:{uid:'a'},spelerB:{uid:'b'}}], scores:{} }), []);
 
+
+console.log('\n══ SPELVORMEN DIE MEETELLEN (v5.41.0) ══');
+// Eén regel beslist of een partij de ladderstand mag bewegen. Hij wordt op drie
+// plekken aangeroepen, dus hij wordt hier uit de ECHTE code geknipt.
+const _teltMee = new Function(
+  require('fs').readFileSync(require('path').join(__dirname,'..','js','store.js'),'utf8')
+    .match(/^export function spelvormTeltMee[\s\S]*?\n\}/m)[0].replace('export ','') + 'return spelvormTeltMee;')();
+const _uit = { spelvormenMee: { matchplay: true, amerikaantje: false, highlow: true } };
+check('ladder van vóór v5.41.0 telt alles mee', _teltMee({}, 'amerikaantje'), true);
+check('geen config: telt mee',                  _teltMee(undefined, 'matchplay'), true);
+check('uitgezette spelvorm telt niet mee',      _teltMee(_uit, 'amerikaantje'), false);
+check('aangezette spelvorm telt wel mee',       _teltMee(_uit, 'matchplay'), true);
+check('onbekende spelvorm telt mee',            _teltMee({spelvormenMee:{matchplay:false}}, 'watdanook'), true);
+check('leeg speltype geldt als matchplay',      _teltMee({spelvormenMee:{matchplay:false}}, undefined), false);

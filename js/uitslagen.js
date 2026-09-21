@@ -218,6 +218,14 @@ function renderUitslagen() {
     }).join('');
   }
 
+  // v5.41.0: een uitslag van een spelvorm die voor die ladder niet meetelt.
+  // De partij is echt gespeeld en de scorekaart staat er gewoon bij; alleen de
+  // stand bewoog niet. Er valt dan ook niets terug te draaien — de knop
+  // Terugdraaien is hieronder verborgen, want de server kent deze partij niet.
+  const telMeeLabel = (u) => u.teltMee === false
+    ? `<div style="display:inline-block;font-size:11px;color:var(--mid);background:var(--border);border-radius:6px;padding:2px 8px;margin-bottom:8px">telt niet mee voor de stand</div>`
+    : '';
+
   // Gespeelde partijen
   const list = document.getElementById('uitslagen-list');
   // v5.0.0: ladderId meenemen zodat de coordinator een uitslag kan terugdraaien.
@@ -239,10 +247,11 @@ function renderUitslagen() {
         <span style="font-size:12px;color:var(--light)">${esc(u.datum)}</span>
       </div>
       <div style="font-size:12px;color:var(--mid);margin-bottom:8px">${u.spelers.map(n => esc(n)).join(' · ')}</div>
+      ${telMeeLabel(u)}
       ${_uitslagRegels(u)}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
         ${heeftScorekaart && !ouderDan30Dagen ? `<button class="btn btn-sm btn-ghost" onclick="openScorekaartDetail(${JSON.stringify(u).replace(/"/g,'&quot;')})">📋 Scorekaart</button>` : ''}
-        ${isBeheerder && u.partijId ? `<button class="btn btn-sm btn-ghost" style="color:var(--red);border-color:#f5c6cb" onclick="draaiUitslagTerug('${escAttr(u.ladderId || '')}','${escAttr(u.partijId)}')" title="Zet de ladderstand terug naar vóór deze partij">↩ Terugdraaien</button>` : ''}
+        ${isBeheerder && u.partijId && u.teltMee !== false ? `<button class="btn btn-sm btn-ghost" style="color:var(--red);border-color:#f5c6cb" onclick="draaiUitslagTerug('${escAttr(u.ladderId || '')}','${escAttr(u.partijId)}')" title="Zet de ladderstand terug naar vóór deze partij">↩ Terugdraaien</button>` : ''}
       </div>
     </div>`;
   }).join('');

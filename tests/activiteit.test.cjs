@@ -60,4 +60,11 @@ const statNieuw=F.berekenActiviteitsStats(
   [mk(dezeMaand,['a','b','c']), mk(vorigJaar,['d','e','f','g','h','i','j'])],[],cfg,nu,{});
 check('oude tegenstanders tellen niet meer mee', statNieuw['u1'].opp.size, 3);
 
+// ── v5.41.0: een spelvorm die niet meetelt, telt ook hier niet ──
+// Anders verschuift zo'n partij de speler alsnog, via de bonus.
+const statMee = F.berekenActiviteitsStats(
+  [mk(dezeMaand,['a','b','c']), { ...mk(dezeMaand,['d','e']), teltMee:false }],[],cfg,nu,{});
+check('teltMee:false geeft geen tegenstanders', statMee['u1'].opp.size, 3);
+check('teltMee:false telt niet als partij',     statMee['u1'].maand, 1);
+
 module.exports = staat;

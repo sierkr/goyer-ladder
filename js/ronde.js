@@ -2,7 +2,7 @@
 //  ronde.js
 // ============================================================
 import { db, auth, functions, httpsCallable, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
-import { store, alleLadders, activeLadderId, _usersCache, _verwijderdePartijIds } from './store.js';
+import { store, alleLadders, activeLadderId, _usersCache, _verwijderdePartijIds, spelvormTeltMee } from './store.js';
 import { slaActievePartijenOp, slaUitslagenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { closeModal } from './admin.js';
 import { kortNaamMap, mijnPartij, renderHcpBlok } from './partij.js';
@@ -1176,29 +1176,41 @@ function skipMatchup(idx) {
 // ============================================================
 async function _rondSpelvormAf(p, eindstand, archief, meldingKlaar) {
   let spelerRegels = [];
-  try {
-    const res = await _verwerkPartijUitslagFn({
-      ladderId: p.ladderId,
-      partijId: p.partijId,
-      isTest: IS_TEST,
-      eindstand,
-    });
-    spelerRegels = res?.data?.spelerRegels || [];
 
-    // v5.7.0: alleen een uitslag wegschrijven als de server hem ECHT verwerkt
-    // heeft. Bevestigen twee spelers uit dezelfde flight, dan meldt de server
-    // "al verwerkt" en bleef de ladder terecht ongemoeid — maar de client
-    // schreef daarna alsnog een uitslagvermelding weg, en die telde mee als
-    // extra gespeelde partij en extra ontmoetingen voor de activiteitsbonus.
-    if (!res?.data?.alVerwerkt) {
-      _schrijfSpelvormUitslag(p, archief);
+  // v5.41.0: telt deze spelvorm mee voor DEZE ladder? Zo niet, dan wordt de
+  // Cloud Function niet aangeroepen — er is dan niets te verschuiven. De
+  // scorekaart en de vermelding op het uitslagenscherm blijven wél, want de
+  // partij is echt gespeeld.
+  const telt = spelvormTeltMee(
+    alleLadders.find(l => l.id === p.ladderId)?.config, p.speltype);
+
+  if (telt) {
+    try {
+      const res = await _verwerkPartijUitslagFn({
+        ladderId: p.ladderId,
+        partijId: p.partijId,
+        isTest: IS_TEST,
+        eindstand,
+      });
+      spelerRegels = res?.data?.spelerRegels || [];
+
+      // v5.7.0: alleen een uitslag wegschrijven als de server hem ECHT verwerkt
+      // heeft. Bevestigen twee spelers uit dezelfde flight, dan meldt de server
+      // "al verwerkt" en bleef de ladder terecht ongemoeid — maar de client
+      // schreef daarna alsnog een uitslagvermelding weg, en die telde mee als
+      // extra gespeelde partij en extra ontmoetingen voor de activiteitsbonus.
+      if (!res?.data?.alVerwerkt) {
+        _schrijfSpelvormUitslag(p, archief, true);
+      }
+    } catch (e) {
+      console.error('verwerkPartijUitslag (spelvorm) mislukt:', e);
+      toast(e?.message && e.code !== 'internal'
+        ? e.message
+        : 'Ladderstand bijwerken mislukt — de partij blijft staan. Probeer opnieuw.');
+      return false;
     }
-  } catch (e) {
-    console.error('verwerkPartijUitslag (spelvorm) mislukt:', e);
-    toast(e?.message && e.code !== 'internal'
-      ? e.message
-      : 'Ladderstand bijwerken mislukt — de partij blijft staan. Probeer opnieuw.');
-    return false;
+  } else {
+    _schrijfSpelvormUitslag(p, archief, false);
   }
 
   // Scorekaart bewaren (30 dagen) — niet kritisch voor de ladder.
@@ -1216,7 +1228,9 @@ async function _rondSpelvormAf(p, eindstand, archief, meldingKlaar) {
 
   closeModal('modal-uitslag');
   renderRonde();
-  if (spelerRegels.length) {
+  if (!telt) {
+    showLadderChanges([], [], 'Deze spelvorm telt niet mee voor deze ladder — de stand blijft zoals hij was.');
+  } else if (spelerRegels.length) {
     showLadderChanges([], spelerRegels);
   } else {
     document.querySelectorAll('.page').forEach(pg => pg.classList.remove('active'));
@@ -1225,7 +1239,7 @@ async function _rondSpelvormAf(p, eindstand, archief, meldingKlaar) {
     document.querySelector('nav button').classList.add('active');
     renderLadder();
   }
-  toast(meldingKlaar);
+  toast(telt ? meldingKlaar : 'Afgerond — telt niet mee voor deze ladder');
   return true;
 }
 
@@ -1233,7 +1247,7 @@ async function _rondSpelvormAf(p, eindstand, archief, meldingKlaar) {
 // activiteitssysteem "gespeelde partij" (spelerUids) en "ontmoetingen"
 // (matchupUids). Gasten blijven eruit: die zouden anders als telkens nieuwe
 // unieke tegenstander tellen en de diversiteitsbonus opblazen.
-function _schrijfSpelvormUitslag(p, archief) {
+function _schrijfSpelvormUitslag(p, archief, teltMee) {
   const echteUids = (p.spelers || []).map(s => s.uid)
     .filter(u => u && !String(u).startsWith('gast_'));
   const paren = [];
@@ -1253,6 +1267,9 @@ function _schrijfSpelvormUitslag(p, archief) {
     matchups: [],           // geen verzonnen partijtjes op het uitslagenscherm
     matchupUids: paren,     // wel de ontmoetingen voor de diversiteitsbonus
     eindstand: archief.eindstandRegels || [],
+    // v5.41.0: alleen wegschrijven als het NIET meetelt. Zo blijven bestaande
+    // uitslagen ongemoeid en betekent "veld ontbreekt" gewoon: telt mee.
+    ...(teltMee === false ? { teltMee: false } : {}),
   };
   const idx = alleLadders.findIndex(l => l.id === p.ladderId);
   if (idx >= 0) {
@@ -1399,8 +1416,14 @@ async function bevestigUitslag() {
       winnaarUid: p._modalWinnaars[idx] === 'A' ? m.spelerA.uid : m.spelerB.uid,
     }));
 
+  // v5.41.0: telt matchplay mee voor DEZE ladder? Zo niet, dan slaan we de
+  // Cloud Function over — de stand blijft zoals hij was. De scorekaart en de
+  // vermelding op het uitslagenscherm worden hieronder gewoon bewaard.
+  const telt = spelvormTeltMee(
+    alleLadders.find(l => l.id === p.ladderId)?.config, 'matchplay');
+
   let changes = [];
-  if (matchupsPayload.length > 0) {
+  if (matchupsPayload.length > 0 && telt) {
     // v5.0.0 (punt 4): eerst zeker weten dat elke ingevulde hole is
     // weggeschreven. Anders zou de server de laatste hole nog niet zien bij
     // de uitslagcontrole hieronder.
@@ -1477,7 +1500,9 @@ async function bevestigUitslag() {
           a: m.spelerA.uid, b: m.spelerB.uid,
           winnaar: p._modalWinnaars[origIdx] === 'A' ? m.spelerA.uid : m.spelerB.uid
         };
-      })
+      }),
+    // v5.41.0: zie _schrijfSpelvormUitslag — alleen zetten als het NIET meetelt.
+    ...(telt ? {} : { teltMee: false }),
   };
 
   // Sla uitslag op in alleLadders[idx] en naar Firestore
@@ -1529,7 +1554,9 @@ async function bevestigUitslag() {
   // Update knockout bracket als dit een knockout ladder is
   await verwerkKnockoutUitslag(p);
 
-  showLadderChanges(changes);
+  showLadderChanges(changes, null, telt
+    ? undefined
+    : 'Matchplay telt niet mee voor deze ladder — de stand blijft zoals hij was.');
 }
 
 // v3.0.0-11.24: helper die garandeert dat een actieve partij uit Firestore is.
@@ -1597,7 +1624,7 @@ function _deltaBadge(oud, nieuw) {
   return `<span style="color:var(--mid)">— (${oud})</span>`;
 }
 
-function showLadderChanges(changes, spelerRegels) {
+function showLadderChanges(changes, spelerRegels, melding) {
   // ────────────────────────────────────────────────────────────
   // v5.6.1 — WAT ER MIS WAS AAN DIT SCHERM.
   //
@@ -1684,6 +1711,15 @@ function showLadderChanges(changes, spelerRegels) {
           🏆 <strong>${esc(c.winnaar)}</strong> won van ${esc(c.verliezer)}
         </div>`;
     });
+  }
+
+  // v5.41.0: er was één geval waarin dit scherm leeg opende — geen enkele
+  // matchup verwerkt. Sinds een spelvorm ook níet mee kan tellen komt dat vaker
+  // voor, en een leeg scherm laat de speler raden of er iets misging.
+  if (!html) {
+    html = `<div style="padding:12px;background:var(--green-pale);border-radius:10px;font-size:13px;color:var(--dark)">`
+         + esc(melding || 'Deze partij veranderde niets aan de ladderstand.')
+         + `</div>`;
   }
 
   document.getElementById('ladder-changes').innerHTML = html;

@@ -825,6 +825,11 @@ function berekenActiviteitsStats(uitslagen, toernooien, cfg, nu, naamNaarUid = {
   };
 
   for (const u of (uitslagen || [])) {
+    // v5.41.0: een spelvorm die voor deze ladder niet meetelt, telt ook niet
+    // mee voor de frequentie- en diversiteitsbonus. Anders verschuift zo'n
+    // partij de speler alsnog — langs de achterdeur van de activiteitscorrectie.
+    // Ontbreekt het veld (alles van vóór v5.41.0), dan telt de uitslag gewoon.
+    if (u && u.teltMee === false) continue;
     const ts = _uitslagTs(u);
     if (ts == null) continue;
     const d = new Date(ts);
