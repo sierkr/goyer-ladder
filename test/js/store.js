@@ -111,11 +111,35 @@ export const DEFAULT_LADDER_CONFIG = {
   diversiteitsBonusDrempel: 6,      // v5.1.0: > dit aantal unieke tegenstanders DEZE MAAND geeft de bonus
   diversiteitsBonusPlekken: 2,      // aantal plekken bonus bij diversiteit
   icoonAan: true,
+  // v5.41.0: welke spelvormen meetellen voor de ladderstand. Kiezen mag altijd —
+  // dit gaat alleen over de TELLING. Staat een spelvorm hier uit, dan wordt de
+  // partij gewoon gespeeld en bewaard, maar verschuift er niemand op de ladder
+  // en telt hij niet mee voor de activiteitsbonussen.
+  spelvormenMee: { matchplay: true, amerikaantje: true, highlow: true },
   // v5.1.0: de activiteitscorrectie draait niet meer bij elke partij, maar
   // periodiek op maandagochtend 04:00 (Cloud Function verwerkActiviteitPeriodiek).
   // 'maand' = eerste maandag van de maand · 'week' = elke maandag.
   activiteitPeriode: 'maand',
 };
+
+// ============================================================
+//  v5.41.0 — TELT DEZE SPELVORM MEE VOOR DE LADDERSTAND?
+// ------------------------------------------------------------
+//  Eén plek waar dit besloten wordt, want het antwoord is op drie momenten
+//  nodig: bij het afronden van een matchplay-partij, bij het afronden van een
+//  Amerikaantje of High-Low, en op het uitslagenscherm.
+//
+//  ⚠ De terugval is bewust "telt mee". Ladders die vóór v5.41.0 zijn gemaakt
+//  hebben het veld niet; die moeten zich precies gedragen als voorheen. Een
+//  onbekende spelvorm telt om dezelfde reden mee: liever een partij die telt
+//  terwijl dat niet de bedoeling was, dan een stand die stilletjes niet
+//  bijwerkt.
+// ============================================================
+export function spelvormTeltMee(cfg, speltype) {
+  const mee = cfg && cfg.spelvormenMee;
+  if (!mee || typeof mee !== 'object') return true;
+  return mee[String(speltype || 'matchplay')] !== false;
+}
 
 // ─── Aangepaste banen ───────────────────────────────────────
 export let aangepasteBanen = [];

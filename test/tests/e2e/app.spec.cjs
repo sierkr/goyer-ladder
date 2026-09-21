@@ -8,6 +8,13 @@
 // ============================================================
 const { test, expect } = require('./hulp-browser.cjs');
 
+// v5.40.3: een directe ingang naast de app, om gastprofielen klaar te zetten
+// zonder er eerst een heel toernooi of een hele ronde voor te spelen.
+process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
+const admin = require('firebase-admin');
+if (!admin.apps.length) admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT || 'demo-goyer' });
+const beheerDb = admin.firestore();
+
 const WACHTWOORD = 'test1234';
 // v5.4.3: de inlogknop op EEN plek. Niet op tekst zoeken: in #login-scherm
 // staan twee knoppen met het woord Inloggen erin ('Inloggen met Google',
@@ -299,8 +306,29 @@ test.describe.serial('Partij en scores', () => {
       await expect(gast.locator('#nav-partij-btn')).toBeHidden();
       await expect(gast.locator('#nav-toernooi-btn')).toBeHidden();
       await expect(gast.locator('#nav-ronde-btn')).toBeVisible();
-      // En hij hoeft de code niet door te geven, dus die knop is er niet.
-      await expect(gast.locator('#ronde-qr-btn')).toBeHidden();
+      // ⚠ v5.40.2 — WAT EEN GAST NIET HOORT TE ZIEN.
+      //  Deze drie waren voor hem doodlopend: de server weigert zijn sessie bij
+      //  het verwerken van een uitslag en bij de horloge-pincode, en de regels
+      //  laten hem de partij niet wijzigen. Een knop die alleen een foutmelding
+      //  kan geven hoort er niet te staan.
+      await expect(gast.locator('#ronde-qr-btn'), 'de QR hoeft hij niet door te geven')
+        .toBeHidden();
+      await expect(gast.locator('#ronde-instellingen-btn'), 'geen partij-instellingen')
+        .toBeHidden();
+      await expect(gast.locator('#ronde-afsluiten-btn'), 'hij sluit de partij niet af')
+        .toBeHidden();
+      await expect(gast.locator('#ronde-watch-pin'), 'en koppelt geen horloge')
+        .toBeHidden();
+
+      // ⚠ En de andere kant, in hetzelfde venster: bij het CLUBLID staan ze er
+      // wél. Zonder deze regel zou ik ze voor iedereen kunnen verbergen en zou
+      // niemand het merken tot de eerste partij niet meer af te sluiten is.
+      await expect(lid.locator('#ronde-instellingen-btn'), 'het lid houdt zijn instellingen')
+        .toBeVisible();
+      await expect(lid.locator('#ronde-afsluiten-btn'), 'en kan de partij afsluiten')
+        .toBeVisible();
+      await expect(lid.locator('#ronde-qr-btn'), 'en de QR-knop')
+        .toBeVisible();
 
       // ── En hij kan scoren; dat komt bij de ander binnen ──────
       const vak = gast.locator('#scorecard-body input[type=number]').first();
@@ -468,6 +496,91 @@ test.describe('Beheer', () => {
     } finally {
       await ctxSpeler.close();
       await ctxCoord.close();
+    }
+  });
+
+  // ============================================================
+  //  v5.40.3 — GASTEN HOREN NIET IN DE LEDENLIJST
+  // ------------------------------------------------------------
+  //  Sierk: "Spelers die zijn aangemaakt zijn te zien in beheer, spelers. Dat
+  //  is niet de bedoeling." De lijst toonde elk document uit `spelers/`.
+  //
+  //  ⚠ Deze proef toetst BEIDE kanten. Alleen "de gast is weg" zou ook slagen
+  //  met een filter die per ongeluk halve ledenlijst opslokt, en dat merkt
+  //  niemand tot er iemand gezocht wordt.
+  // ============================================================
+  test('BEHEER: gastaccounts staan apart en zijn op te ruimen', async ({ page }) => {
+    test.setTimeout(180000);
+    page.on('dialog', d => d.accept());
+
+    // ⚠ De kaart "Spelers" in Beheer is alleen voor een BEHEERDER, en de
+    // proefdatabase heeft er geen. Coen wordt hier tijdelijk verhoogd en aan
+    // het eind weer teruggezet — anders erven de volgende proeven een
+    // coordinator met te veel rechten.
+    const coordRef = beheerDb.collection('spelers')
+      .where('naam', '==', 'Coen Coordinator');
+    const coordDocs = await coordRef.get();
+    const coordId = coordDocs.docs[0]?.id;
+    expect(coordId, 'Coen staat in de proefdatabase').toBeTruthy();
+    await beheerDb.doc(`spelers/${coordId}`).update({ rol: 'beheerder' });
+
+    try {
+    await beheerDb.doc('spelers/gast_test_beheer').set({
+      uid: 'gast_test_beheer', naam: 'Gerrit Gast', rol: 'speler', hcp: 0,
+      email: 'gerrit.gast.proef@MPladder.stb', eersteLogin: false,
+      toernooiSpeler: true, toernooiGast: true, toernooiNaam: 'Proeftoernooi',
+    });
+    await beheerDb.doc('spelers/rondegast_proef').set({
+      uid: 'rondegast_proef', naam: 'Gast', rol: 'speler', hcp: 0,
+      eersteLogin: false, rondeGast: true, partijId: 'proefpartij', ladderId: 'mp',
+    });
+
+    await inloggen(page, 'coord');
+    await page.click('#nav-admin-btn');
+    const kop = page.locator('#admin-sectie-spelers .card-header').first();
+    await kop.click();
+    const lijst = page.locator('#admin-player-list');
+    await expect(lijst).toContainText('Coen Coordinator', { timeout: 25000 });
+
+    // ── De ledenlijst zelf ───────────────────────────────────
+    const ledenLijst = lijst.locator('> .admin-row');
+    await expect(ledenLijst.filter({ hasText: 'Gerrit Gast' }),
+      'de toernooigast staat niet tussen de leden').toHaveCount(0);
+    await expect(ledenLijst.filter({ hasText: 'Anna Speler' }),
+      'en een gewoon clublid staat er nog gewoon in').toHaveCount(1);
+
+    // ── Maar ze zijn wél te vinden ───────────────────────────
+    const blok = page.locator('#admin-gasten-blok');
+    await expect(blok, 'er is een regel met de tijdelijke gastaccounts').toBeVisible();
+    // ⚠ Niet op een exact aantal toetsen. In de volle reeks laten eerdere
+    // proeven ook gastprofielen achter; dan staat er (5) in plaats van (2) en
+    // valt deze proef om op iets dat niets met het beheerscherm te maken heeft.
+    await expect(blok).toContainText(/Tijdelijke gastaccounts \(\d+\)/);
+    await blok.locator('.card-header').click();
+    await expect(blok).toContainText('Gerrit Gast');
+    await expect(blok).toContainText('Proeftoernooi');
+    await expect(blok.locator('button[data-gast-weg="rondegast_proef"]'),
+      'de rondegast staat er ook in').toHaveCount(1);
+
+    // ── En op te ruimen ──────────────────────────────────────
+    await blok.locator('button[data-gast-weg="gast_test_beheer"]').click();
+    await expect.poll(async () =>
+      (await beheerDb.doc('spelers/gast_test_beheer').get()).exists,
+      { timeout: 25000, message: 'het gastprofiel is opgeruimd' }).toBe(false);
+    await expect.poll(async () =>
+      (await beheerDb.doc('spelers/uid_speler_a_00000000000').get()).exists ||
+      (await beheerDb.collection('spelers').get()).size > 3,
+      { timeout: 10000, message: 'de clubleden staan er nog' }).toBe(true);
+
+    // De rij van die ene gast is weg; de rondegast staat er nog.
+    await expect(blok.locator('button[data-gast-weg="gast_test_beheer"]'),
+      'de opgeruimde gast staat niet meer in de lijst').toHaveCount(0, { timeout: 25000 });
+    await expect(blok.locator('button[data-gast-weg="rondegast_proef"]'),
+      'en de andere gast is niet meegegaan').toHaveCount(1);
+    } finally {
+      await beheerDb.doc('spelers/rondegast_proef').delete().catch(() => {});
+      await beheerDb.doc('spelers/gast_test_beheer').delete().catch(() => {});
+      await beheerDb.doc(`spelers/${coordId}`).update({ rol: 'coordinator' });
     }
   });
 

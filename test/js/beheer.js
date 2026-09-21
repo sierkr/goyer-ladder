@@ -88,6 +88,14 @@ function openLadderInstellingen(ladderId) {
 
   document.getElementById('cfg-icoon-aan').checked = cfg.icoonAan ?? true;
 
+  // v5.41.0: welke spelvormen meetellen voor de stand. Ontbreekt het veld
+  // (ladder van vóór v5.41.0), dan tellen ze alle drie mee — precies zoals het
+  // tot nu toe werkte.
+  const mee = cfg.spelvormenMee || {};
+  document.getElementById('cfg-mee-matchplay').checked    = mee.matchplay    !== false;
+  document.getElementById('cfg-mee-amerikaantje').checked = mee.amerikaantje !== false;
+  document.getElementById('cfg-mee-highlow').checked      = mee.highlow      !== false;
+
   document.getElementById('modal-ladder-instellingen').classList.add('open');
 }
 
@@ -125,6 +133,18 @@ async function slaLadderInstellingenOp() {
   const ladderId = _instellingenLadderId;
   if (!ladderId) return;
 
+  // v5.41.0: minstens één spelvorm moet meetellen. Staat alles uit, dan zou
+  // geen enkele partij de stand nog bewegen en lijkt de ladder stuk.
+  const spelvormenMee = {
+    matchplay:    document.getElementById('cfg-mee-matchplay').checked,
+    amerikaantje: document.getElementById('cfg-mee-amerikaantje').checked,
+    highlow:      document.getElementById('cfg-mee-highlow').checked,
+  };
+  if (!spelvormenMee.matchplay && !spelvormenMee.amerikaantje && !spelvormenMee.highlow) {
+    toast('Minstens één spelvorm moet meetellen voor de stand');
+    return;
+  }
+
   const config = {
     laagStijg: parseInt(document.getElementById('cfg-laag-stijg').value) || 4,
     laagZak: parseInt(document.getElementById('cfg-laag-zak').value) || 2,
@@ -144,6 +164,7 @@ async function slaLadderInstellingenOp() {
     diversiteitsBonusDrempel: parseInt(document.getElementById('cfg-diversiteit-drempel').value) || 6,
     diversiteitsBonusPlekken: parseInt(document.getElementById('cfg-diversiteit-plekken').value) || 2,
     icoonAan: document.getElementById('cfg-icoon-aan').checked,
+    spelvormenMee,
     // v5.1.0: 'maand' = eerste maandag van de maand · 'week' = elke maandag
     activiteitPeriode: document.getElementById('cfg-activiteit-periode').value === 'week' ? 'week' : 'maand',
   };
