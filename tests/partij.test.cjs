@@ -167,3 +167,14 @@ check('uitgezette spelvorm telt niet mee',      _teltMee(_uit, 'amerikaantje'), 
 check('aangezette spelvorm telt wel mee',       _teltMee(_uit, 'matchplay'), true);
 check('onbekende spelvorm telt mee',            _teltMee({spelvormenMee:{matchplay:false}}, 'watdanook'), true);
 check('leeg speltype geldt als matchplay',      _teltMee({spelvormenMee:{matchplay:false}}, undefined), false);
+
+console.log('\n══ HET STEMPEL OP EEN UITSLAG (v5.41.1) ══');
+// Teruggedraaid wint van "telt niet mee": een teruggedraaide uitslag heeft
+// altijd ook teltMee:false, en dan hoort er het sterkere woord te staan.
+const _stempel = new Function(
+  require('fs').readFileSync(require('path').join(__dirname,'..','js','uitslagen.js'),'utf8')
+    .match(/^function uitslagStempel[\s\S]*?\n\}/m)[0] + 'return uitslagStempel;')();
+check('gewone uitslag krijgt geen stempel',   _stempel({ partijId:'p1' }), '');
+check('spelvorm die niet meetelt',            _stempel({ teltMee:false }), 'telt niet mee voor de stand');
+check('teruggedraaid wint',                   _stempel({ teltMee:false, teruggedraaid:true }), 'teruggedraaid');
+check('lege uitslag valt niet om',            _stempel(null), '');

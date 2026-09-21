@@ -218,13 +218,12 @@ function renderUitslagen() {
     }).join('');
   }
 
-  // v5.41.0: een uitslag van een spelvorm die voor die ladder niet meetelt.
-  // De partij is echt gespeeld en de scorekaart staat er gewoon bij; alleen de
-  // stand bewoog niet. Er valt dan ook niets terug te draaien — de knop
-  // Terugdraaien is hieronder verborgen, want de server kent deze partij niet.
-  const telMeeLabel = (u) => u.teltMee === false
-    ? `<div style="display:inline-block;font-size:11px;color:var(--mid);background:var(--border);border-radius:6px;padding:2px 8px;margin-bottom:8px">telt niet mee voor de stand</div>`
-    : '';
+  const telMeeLabel = (u) => {
+    const tekst = uitslagStempel(u);
+    return tekst
+      ? `<div style="display:inline-block;font-size:11px;color:var(--mid);background:var(--border);border-radius:6px;padding:2px 8px;margin-bottom:8px">${esc(tekst)}</div>`
+      : '';
+  };
 
   // Gespeelde partijen
   const list = document.getElementById('uitslagen-list');
@@ -251,7 +250,7 @@ function renderUitslagen() {
       ${_uitslagRegels(u)}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
         ${heeftScorekaart && !ouderDan30Dagen ? `<button class="btn btn-sm btn-ghost" onclick="openScorekaartDetail(${JSON.stringify(u).replace(/"/g,'&quot;')})">📋 Scorekaart</button>` : ''}
-        ${isBeheerder && u.partijId && u.teltMee !== false ? `<button class="btn btn-sm btn-ghost" style="color:var(--red);border-color:#f5c6cb" onclick="draaiUitslagTerug('${escAttr(u.ladderId || '')}','${escAttr(u.partijId)}')" title="Zet de ladderstand terug naar vóór deze partij">↩ Terugdraaien</button>` : ''}
+        ${isBeheerder && u.partijId && u.teltMee !== false && u.teruggedraaid !== true ? `<button class="btn btn-sm btn-ghost" style="color:var(--red);border-color:#f5c6cb" onclick="draaiUitslagTerug('${escAttr(u.ladderId || '')}','${escAttr(u.partijId)}')" title="Zet de ladderstand terug naar vóór deze partij">↩ Terugdraaien</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -266,12 +265,82 @@ function renderUitslagen() {
 // ============================================================
 const _draaiPartijTerugFn = httpsCallable(functions, 'draaiPartijTerug');
 
+// ============================================================
+//  v5.41.1 — HET STEMPEL OP EEN UITSLAG
+// ------------------------------------------------------------
+//  Twee toestanden delen één plek, want ze sluiten elkaar niet uit: een
+//  teruggedraaide uitslag heeft ALTIJD ook teltMee:false. Teruggedraaid is het
+//  sterkere woord en wint daarom.
+//
+//  Geen stempel = een gewone, meetellende uitslag. Zo blijft alles van vóór
+//  v5.41.0 er precies zo uitzien als voorheen.
+// ============================================================
+function uitslagStempel(u) {
+  if (!u) return '';
+  if (u.teruggedraaid === true) return 'teruggedraaid';
+  if (u.teltMee === false) return 'telt niet mee voor de stand';
+  return '';
+}
+
+// ============================================================
+//  v5.41.1 — WAT ER MIS WAS AAN TERUGDRAAIEN
+// ------------------------------------------------------------
+//  De server zette standen en punten netjes terug, maar de VERMELDING in
+//  ladders/{id}.data.uitslagen bleef onaangeroerd. Twee gevolgen:
+//
+//   1. De knop bleef staan. Elke volgende klik meldde opnieuw "de ladderstand
+//      is hersteld", terwijl de server allang niets meer deed.
+//   2. Erger: die vermelding voedt de activiteitsberekening. Een
+//      teruggedraaide partij telde dus nog steeds als gespeelde partij én als
+//      ontmoeting, en duwde de speler via de frequentie- en diversiteitsbonus
+//      alsnog terug naar waar hij net was weggehaald.
+//
+//  De vermelding wordt nu gemarkeerd in plaats van verwijderd — zo blijft
+//  zichtbaar DAT er is teruggedraaid. `teltMee: false` doet het rekenwerk
+//  (berekenActiviteitsStats slaat hem over, sinds v5.41.0), `teruggedraaid`
+//  vertelt waarom.
+// ============================================================
+async function _markeerUitslagTeruggedraaid(ladderId, partijId) {
+  const idx = alleLadders.findIndex(l => l.id === ladderId);
+  if (idx < 0) return true;
+  const lijst = alleLadders[idx].data?.uitslagen;
+  if (!Array.isArray(lijst)) return true;
+
+  let gewijzigd = false;
+  lijst.forEach(u => {
+    if (u && u.partijId === partijId && u.teruggedraaid !== true) {
+      u.teruggedraaid = true;
+      u.teltMee = false;
+      gewijzigd = true;
+    }
+  });
+  if (!gewijzigd) return true;
+
+  try {
+    await slaUitslagenOp(ladderId);
+    return true;
+  } catch (e) {
+    console.error('uitslag markeren als teruggedraaid mislukt:', e);
+    return false;
+  }
+}
+
 async function draaiUitslagTerug(ladderId, partijId) {
   if (!ladderId || !partijId) { toast('Deze uitslag kan niet worden teruggedraaid (geen partij-id)'); return; }
   if (!confirm('Deze uitslag terugdraaien? De ladderstand gaat terug naar de situatie vóór deze partij.')) return;
   try {
-    await _draaiPartijTerugFn({ ladderId, partijId, isTest: IS_TEST });
-    toast('Uitslag teruggedraaid — de ladderstand is hersteld');
+    const res = await _draaiPartijTerugFn({ ladderId, partijId, isTest: IS_TEST });
+    // v5.41.1: de server meldt dit als de partij al eerder is teruggedraaid.
+    // Dan is er niets hersteld en moet er ook niet gezegd worden dat dat wel zo is.
+    const alEerder = res?.data?.alTeruggedraaid === true;
+    const gemarkeerd = await _markeerUitslagTeruggedraaid(ladderId, partijId);
+    if (!gemarkeerd) {
+      toast('Ladderstand hersteld — maar de uitslag kon niet worden bijgewerkt. Ververs en probeer het nog eens.');
+    } else {
+      toast(alEerder
+        ? 'Deze uitslag was al teruggedraaid'
+        : 'Uitslag teruggedraaid — de ladderstand is hersteld');
+    }
     renderUitslagen();
   } catch(e) {
     console.error('draaiPartijTerug mislukt:', e);
