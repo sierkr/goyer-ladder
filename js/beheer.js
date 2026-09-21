@@ -2,7 +2,7 @@
 //  beheer.js
 // ============================================================
 import { db, auth, IS_TEST, functions, httpsCallable, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
-import { store, alleLadders, activeLadderId, huidigeBruiker, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG } from './store.js';
+import { store, alleLadders, activeLadderId, huidigeBruiker, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG, isGastProfiel } from './store.js';
 
 // v4.2.0: puntensysteem — handmatige aanpassing door de puntenbeheerder.
 const _pasPuntenAanFn = httpsCallable(functions, 'pasPuntenAan');
@@ -292,8 +292,22 @@ async function openLadderSpelersModal(ladderId) {
       } catch(e) { console.warn('Punten laden mislukt (mogelijk geen rechten):', e.code || e); }
     }
 
+    // ⚠ v5.41.2 — GASTEN HOREN OOK HIER NIET IN.
+    //  Sierk, 21 september 2026: "wanneer ik spelers selecteer voor een ladder
+    //  dan zie ik nog steeds gastspelers in die lijst staan."
+    //
+    //  Dezelfde fout als v5.40.3, één scherm verderop: dit toonde élk document
+    //  uit `spelers/`. De regel staat nu in store.js, zodat een volgend scherm
+    //  hem niet opnieuw kan missen.
+    //
+    //  ⚠ De uitzondering is er met opzet. Zit er toch een gast ín deze ladder
+    //  (bijvoorbeeld uit een oude toernooironde), dan blijft hij staan, mét
+    //  vinkje. Filterden we hem hard weg, dan zat hij erin zonder dat er nog
+    //  een scherm bestond om hem eruit te halen.
+    const zichtbaar = users.filter(u => !isGastProfiel(u) || huidigeUids.has(u.uid));
+
     // Toon alle bekende spelers — uit spelers/ collectie (uid-based)
-    const gesorteerd = [...users].sort((a, b) =>
+    const gesorteerd = [...zichtbaar].sort((a, b) =>
       (a.naam || '').localeCompare(b.naam || '', 'nl')
     );
 

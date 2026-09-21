@@ -178,3 +178,22 @@ check('gewone uitslag krijgt geen stempel',   _stempel({ partijId:'p1' }), '');
 check('spelvorm die niet meetelt',            _stempel({ teltMee:false }), 'telt niet mee voor de stand');
 check('teruggedraaid wint',                   _stempel({ teltMee:false, teruggedraaid:true }), 'teruggedraaid');
 check('lege uitslag valt niet om',            _stempel(null), '');
+
+console.log('\n══ WIE IS EEN GAST (v5.41.2) ══');
+// Deze regel stond in v5.40.3 in één scherm ingetypt; een dag later miste het
+// scherm "Spelers in <ladder>" hem. Daarom nu één bron, en een test erop.
+const _isGast = new Function(
+  require('fs').readFileSync(require('path').join(__dirname,'..','js','store.js'),'utf8')
+    .match(/^export function isGastProfiel[\s\S]*?\n\}/m)[0].replace('export ','') + 'return isGastProfiel;')();
+check('clublid is geen gast',        _isGast({ uid:'u1', naam:'Sierk' }), false);
+check('toernooigast is een gast',    _isGast({ uid:'g1', toernooiGast:true }), true);
+check('rondegast is een gast',       _isGast({ uid:'g2', rondeGast:true }), true);
+check('vlag op false telt niet',     _isGast({ uid:'u2', toernooiGast:false }), false);
+check('niets valt niet om',          _isGast(null), false);
+
+// De uitzondering: een gast die tóch in deze ladder zit blijft zichtbaar, anders
+// kun je hem er nooit meer uit halen.
+const _inLadder = new Set(['g1']);
+const _zichtbaar = (users) => users.filter(u => !_isGast(u) || _inLadder.has(u.uid));
+const _alle = [{uid:'u1',naam:'Sierk'},{uid:'g1',toernooiGast:true},{uid:'g2',rondeGast:true}];
+check('gasten eruit, lid blijft',    _zichtbaar(_alle).map(u=>u.uid), ['u1','g1']);
