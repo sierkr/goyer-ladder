@@ -18,6 +18,11 @@ import { db, auth, firebaseConfig, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAG
 // ⚠ De Cloud Function `verwijderWeesAccount` zelf blijft staan in
 // functions/index.js. Die weghalen zou een uitrol naar LIVE vragen (functies
 // zijn gedeeld tussen test en live) voor iets dat niemand kwaad doet.
+//
+// v5.40.3: en daar is hij weer, want er is opnieuw een plek die een
+// achtergebleven account moet kunnen opruimen — zie verwijderGastProfiel().
+// Hij verwijdert uitsluitend accounts ZONDER profiel; die veiligheidsklep is
+// precies waarom het profiel er eerst af moet.
 import { store, alleLadders, activeLadderId,
   huidigeBruiker, uitdagingenData } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers,
@@ -38,6 +43,8 @@ function _blokkeerInTest(actie) {
 import { openNieuweLadderModal, renderAdminLadders } from './beheer.js';
 import { reageerUitdaging, verwijderUitdaging } from './archief.js';
 import { renderLadder } from './ladder.js';
+
+const _verwijderWeesAccountFn = httpsCallable(functions, 'verwijderWeesAccount');
 import { getLadderSpelers } from './ladder-view.js';
 // v5.0.0 (punt 3): syncStandenNaBevestigUitslag is verwijderd — standen
 // worden uitsluitend nog server-side geschreven (Cloud Functions).
@@ -82,7 +89,26 @@ async function renderAdminSpelersEnAccounts() {
   let users = [];
   try { users = await getUsers(); } catch(e) {}
 
-  const gesorteerd = [...users].sort((a, b) =>
+  // ⚠ v5.40.3 — GASTEN HOREN NIET IN DE LEDENLIJST.
+  //  Sierk, 21 september 2026: "Spelers die zijn aangemaakt zijn te zien in
+  //  beheer, spelers. Dat is niet de bedoeling."
+  //
+  //  Deze lijst toonde ELK document uit `spelers/`, zonder enige uitzondering.
+  //  Daar staan sinds v5.10.0 ook toernooigasten in, en sinds v5.40.0 het
+  //  tijdelijke profiel van een ronde-QR. De app gebruikt de gastvlag al
+  //  overal elders om ze weg te filteren (de spelerspool van een toernooi
+  //  bijvoorbeeld); alleen dit scherm had hem nooit gekregen.
+  //
+  //  ⚠ Ze worden NIET stilletjes verborgen. Een toernooi dat wordt afgesloten
+  //  ruimt zijn gasten op, maar een partij die wordt weggegooid zonder
+  //  verwerkt te worden laat zijn profiel staan. Ziet niemand dat ooit, dan
+  //  merkt de club het pas als er honderd staan. Vandaar de dichtgeklapte
+  //  regel onderaan, met een knop om er één op te ruimen.
+  const isGastProfiel = (u) => u.toernooiGast === true || u.rondeGast === true;
+  const leden  = users.filter(u => !isGastProfiel(u));
+  const gasten = users.filter(isGastProfiel);
+
+  const gesorteerd = [...leden].sort((a, b) =>
     (a.naam || a.gebruikersnaam || '').localeCompare(b.naam || b.gebruikersnaam || '', 'nl')
   );
 
@@ -139,10 +165,87 @@ async function renderAdminSpelersEnAccounts() {
     </div>`;
   });
 
-  list.innerHTML = rijen.length === 0
+  list.innerHTML = (rijen.length === 0
     ? '<div class="empty"><div class="empty-icon">👤</div><p>Geen spelers.</p></div>'
-    : rijen.join('');
+    : rijen.join('')) + gastenBlokHtml(gasten);
 }
+
+// De dichtgeklapte regel met de tijdelijke gastaccounts. Staat er onder de
+// ledenlijst zodat hij niet in de weg zit, maar wél te zien is.
+function gastenBlokHtml(gasten) {
+  if (!gasten || gasten.length === 0) return '';
+  const rijen = [...gasten]
+    .sort((a, b) => (a.naam || '').localeCompare(b.naam || '', 'nl'))
+    .map(u => {
+      const waarvan = u.rondeGast
+        ? 'ronde' + (u.partijId ? ` · ${esc(String(u.partijId).slice(0, 8))}` : '')
+        : 'toernooi' + (u.toernooiNaam ? ` · ${esc(u.toernooiNaam)}` : '');
+      return `<div class="admin-row" style="flex-wrap:nowrap;gap:6px;align-items:center">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;color:var(--mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(u.naam || '—')}</div>
+          <div style="font-size:11px;color:var(--light)">${waarvan}</div>
+        </div>
+        <button class="btn btn-sm" data-gast-weg="${escAttr(u.uid)}"
+          style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px"
+          onclick="verwijderGastProfiel('${escAttr(u.uid)}','${escAttr(u.naam || '')}')"
+          title="Dit tijdelijke account opruimen">✕</button>
+      </div>`;
+    }).join('');
+  return `<div id="admin-gasten-blok" style="border-top:1px solid var(--border)">
+      <div class="card-header inklapbaar ingeklapt" style="padding:10px 16px"
+        onclick="toggleAdminKaart(this)">
+        <h2 style="font-size:13px;color:var(--mid)">Tijdelijke gastaccounts (${gasten.length})</h2>
+      </div>
+      <div class="card-collapse ingeklapt">
+        <p style="font-size:11px;color:var(--light);margin:0;padding:0 16px 8px">
+          Horen bij een toernooi of een ronde en verdwijnen normaal vanzelf.
+          Blijft er een hangen, dan kun je hem hier opruimen.
+        </p>
+        ${rijen}
+      </div>
+    </div>`;
+}
+
+// ⚠ v5.40.3 — DIT VERWIJDERT EEN ACCOUNT VAN EEN MENS.
+//  Daarom dezelfde drie grendels als ruimGastloginsOp() in js/toernooi.js:
+//    1. het profiel moet ZELF de gastvlag dragen — een clublid heeft die
+//       nooit, ook niet als hij een keer als gast meedeed;
+//    2. de uid mag in geen enkele ladder voorkomen;
+//    3. er wordt eerst gevraagd, met de naam erbij.
+//  En dezelfde volgorde: eerst het profiel, dan het inlogaccount. De
+//  serverfunctie verwijdert uitsluitend accounts ZONDER profiel; die
+//  veiligheidsklep blijft daarmee heel.
+async function verwijderGastProfiel(uid, naam) {
+  try {
+    const snap = await getDoc(doc(db, 'spelers', uid));
+    if (!snap.exists()) { toast('Dit account bestaat niet meer'); renderAdminSpelersEnAccounts(); return; }
+    const data = snap.data() || {};
+    if (data.toernooiGast !== true && data.rondeGast !== true) {
+      toast('Dit is geen gastaccount — er gebeurt niets', 7000);
+      return;
+    }
+    if ((alleLadders || []).some(l => (l.spelerIds || []).includes(uid))) {
+      toast('Deze speler staat in een ladder — er gebeurt niets', 7000);
+      return;
+    }
+    if (!confirm(`Het tijdelijke account van ${naam || 'deze gast'} opruimen?\n\n`
+               + `Ingevulde scores blijven staan; alleen de inlog verdwijnt.`)) return;
+
+    await deleteDoc(doc(db, 'spelers', uid));
+    // Alleen een toernooigast heeft ook een échte inlog. Het profiel van een
+    // ronde-QR bestaat alleen in de database, dus daar valt niets te wissen.
+    if (data.email) {
+      try { await _verwijderWeesAccountFn({ targetUid: uid, isTest: IS_TEST }); }
+      catch (e) { console.warn('inlogaccount opruimen mislukt:', e?.code || e?.message); }
+    }
+    store._usersCache = null;
+    toast(`${naam || 'Gastaccount'} opgeruimd ✓`);
+    renderAdminSpelersEnAccounts();
+  } catch (e) {
+    meldFout('Gastaccount opruimen', e);
+  }
+}
+window.verwijderGastProfiel = verwijderGastProfiel;
 
 // ============================================================
 //  LADDER HELPERS
@@ -221,6 +324,9 @@ async function openAddPlayer() {
     const lijst = document.getElementById('add-player-accounts-lijst');
     // Accounts zonder ladder-lidmaatschap — uitsluitend via spelerIds[] (uid)
     const zonderLadder = users.filter(u =>
+      // v5.40.3: gasten horen hier ook niet in — ze zitten per definitie in
+      // geen enkele ladder en zouden deze lijst dus vullen.
+      !(u.toernooiGast === true || u.rondeGast === true) &&
       !alleLadders.some(l =>
         (l.spelerIds || []).includes(u.uid)
       )

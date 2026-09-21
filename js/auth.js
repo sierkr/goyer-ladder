@@ -1632,6 +1632,12 @@ function spelersDocNaarUserFormaat(data) {
     // geen enkele ladder — maar dat filter verdwijnt. Zonder dit veld zou elke
     // gast van elk vorig toernooi in de keuzelijst opduiken.
     toernooiGast:   data.toernooiGast === true,
+    // v5.40.3: het tijdelijke profiel van een ronde-QR. Sierk: "Spelers die
+    // zijn aangemaakt zijn te zien in beheer, spelers. Dat is niet de
+    // bedoeling." Zelfde behandeling als een toernooigast.
+    rondeGast:      data.rondeGast === true,
+    toernooiNaam:   data.toernooiNaam   || '',
+    partijId:       data.partijId       || '',
     spelerId:       null,   // verdwijnt in fase 3
   };
 }
