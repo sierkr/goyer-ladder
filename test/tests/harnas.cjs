@@ -259,14 +259,28 @@ function laadNaamKern() {
 function laadMarkerKern() {
   const bron = `
     let _liveScores = {};
-    const window = { _tEigenInvoer: {} };
+    const window = { _tEigenInvoer: {}, _tSpelerSaveTimers: {} };
+    // v5.43.1: slaSpelerScoreOp praat met Firestore. Hier staat een schrijver
+    // die de test zelf bestuurt — inclusief het ophouden van de bevestiging,
+    // want juist in die tussentijd ging het mis.
+    const actieveToernooiId = 't1';
+    const db = {};
+    const doc = () => ({});
+    let _schrijf = async () => {};
+    const setDoc = (ref, velden) => _schrijf(velden);
     ${knip('js/toernooi.js', ['zelfdeFlight', 'scoreOordeel', 'kaartOordeel',
-      '_eigenInvoerSleutel', '_onthoudEigenInvoer', '_rijVoorOpslag'])}
+      '_eigenInvoerSleutel', '_onthoudEigenInvoer', '_vergeetVerstuurdeInvoer',
+      '_metEigenInvoer', '_rijVoorOpslag'])}
+    ${knip('js/toernooi.js', ['slaSpelerScoreOp'], 'async ')}
     return {
       zelfdeFlight, scoreOordeel, kaartOordeel,
-      _onthoudEigenInvoer, _rijVoorOpslag,
-      _zetLive:   (v) => { _liveScores = v || {}; },
-      _leegEigen: ()  => { window._tEigenInvoer = {}; },
+      _onthoudEigenInvoer, _rijVoorOpslag, _vergeetVerstuurdeInvoer,
+      _metEigenInvoer, slaSpelerScoreOp,
+      _zetLive:      (v) => { _liveScores = v || {}; },
+      _leesLive:     ()  => _liveScores,
+      _leegEigen:    ()  => { window._tEigenInvoer = {}; },
+      _leesEigen:    ()  => window._tEigenInvoer,
+      _zetSchrijver: (f) => { _schrijf = f; },
     };
   `;
   return new Function(bron)();

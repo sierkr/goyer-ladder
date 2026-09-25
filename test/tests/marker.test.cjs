@@ -126,6 +126,31 @@ check('lege holes tellen niet mee in de regel',
 check('de holes komen ook los terug, voor het slot op de uitslagknop',
   M.kaartOordeel([k(3, 'rood'), k(7, 'rood')]).verschillen, [3, 7]);
 
+// ⚠ v5.43.1 — BIJ WIE ZIT HET VERSCHIL. Sierk, 25 september 2026: "er is nog een
+// hole met alle scores hetzelfde en toch rood." De regel noemde alleen het
+// holenummer, en sinds v5.43.0 kijkt hij naar ÉLKE kolom van de flight in plaats
+// van naar twee. "Hole 7" kon dus over de kaart van een medespeler gaan terwijl
+// er op je eigen regel bij hole 7 niets aan de hand was. Een waarschuwing die je
+// niet kunt terugvinden is een vals alarm.
+const kw = (holeNr, kleur, wie) => ({ holeNr, kleur, wie });
+
+check('bij één verschil staat de naam erbij',
+  M.kaartOordeel([kw(7, 'rood', 'Bram')]).tekst, '1 verschil (hole 7 bij Bram)');
+check('bij meer verschillen bij allemaal',
+  M.kaartOordeel([kw(3, 'rood', 'Anna'), kw(7, 'rood', 'Bram')]).tekst,
+  '2 verschillen (hole 3 bij Anna, hole 7 bij Bram)');
+check('twee verschillen bij dezelfde speler staan er ook los',
+  M.kaartOordeel([kw(3, 'rood', 'Anna'), kw(7, 'rood', 'Anna')]).tekst,
+  '2 verschillen (hole 3 bij Anna, hole 7 bij Anna)');
+check('het wachten blijft een aantal, zonder namen',
+  M.kaartOordeel([kw(1, 'oranje', 'Anna'), kw(2, 'oranje', 'Bram')]).tekst,
+  '2 holes wachten op bevestiging');
+check('zonder naam blijft de tekst precies zoals hij was',
+  [M.kaartOordeel([k(7, 'rood')]).tekst, M.kaartOordeel([k(3, 'rood'), k(7, 'rood')]).tekst],
+  ['1 verschil (hole 7)', '2 verschillen (holes 3, 7)']);
+check('en de holes komen los nog steeds terug',
+  M.kaartOordeel([kw(3, 'rood', 'Anna'), kw(7, 'rood', 'Bram')]).verschillen, [3, 7]);
+
 // ── Blok 5: niemand wist de holes van een ander ──────────────
 console.log('\n══ TWEE MENSEN IN DEZELFDE KOLOM ══\n');
 
@@ -196,4 +221,111 @@ check('dag 2 pakt alleen zijn eigen dag',
 check('en dag 1 blijft ongemoeid',
   M._rijVoorOpslag('a', 'markerDagen', 1, 2), [4, 5]);
 
-module.exports = staat;
+// ── Blok 6: doortikken terwijl de server nog niet heeft geantwoord ──
+console.log('\n══ DOORTIKKEN TIJDENS HET OPSLAAN ══\n');
+
+//  ⚠ WAAROM DIT BLOK BESTAAT. Sierk, 25 september 2026, na v5.43.0 op live:
+//  "het lijkt nu toch alsof de beheerder niet meer bepaalt welke score er
+//  klopt." Hij had het goed gezien, en het was een NIEUWE fout van v5.43.0.
+//
+//  Tussen het versturen van een kaart en de bevestiging van de server zit een
+//  netwerkreis. v5.43.0 gooide de lijst "wat tikte ik zelf in" bij die
+//  bevestiging in één keer leeg — óók de holes die je in die tussentijd had
+//  ingetikt. De melding die op de bevestiging volgt bevat alleen wat er
+//  verstuurd was, dus verdween dat getal daarna ook uit de lokale kopie, en de
+//  volgende schrijfactie stuurde de rij zónder hem weg. Wie een kolom snel naar
+//  beneden tikt — en dat doet de wedstrijdleiding — verliest zo getallen.
+//
+//  Deze test doet dat na met een schrijver die de test zelf ophoudt.
+
+const tik = (uid, laag, dagNr, hole, waarde, holes = 2) => {
+  // Wat updateTScore lokaal doet bij één toetsaanslag.
+  const live = M._leesLive();
+  const rij = [...((live[uid] || {})[laag]?.[String(dagNr)] || Array(holes).fill(null))];
+  rij[hole] = waarde;
+  M._zetLive({ ...live, [uid]: { ...(live[uid] || {}), [laag]: { [String(dagNr)]: rij } } });
+  M._onthoudEigenInvoer(uid, laag, dagNr, hole, waarde);
+  M.slaSpelerScoreOp(uid, dagNr, holes, laag);
+};
+const wacht = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function blokDoortikken() {
+  M._leegEigen();
+  M._zetLive({});
+  const verstuurd = [];
+  let losEerste;
+  let nr = 0;
+  M._zetSchrijver((velden) => {
+    nr++;
+    verstuurd.push([...velden.beheerDagen['1']]);
+    // De eerste schrijfactie blijft hangen tot de test hem losmaakt.
+    if (nr === 1) return new Promise(r => { losEerste = r; });
+    return Promise.resolve();
+  });
+
+  tik('a', 'beheerDagen', 1, 0, 6);   // hole 1 = 6
+  await wacht(850);                   // verstuurd, nog niet bevestigd
+  tik('a', 'beheerDagen', 1, 1, 5);   // hole 2 = 5, tijdens het wachten
+  losEerste();                        // en nu antwoordt de server op de eerste
+  await wacht(30);
+  // De melding die op die bevestiging volgt bevat alleen wat er verstuurd was.
+  // Zo kwam de 5 uit de lokale kopie te verdwijnen.
+  M._zetLive({ a: M._metEigenInvoer('a', { beheerDagen: { '1': [6, null] } }) });
+  await wacht(1100);                  // de tweede schrijfactie loopt af
+
+  check('de 5 die tijdens het opslaan werd ingetikt gaat mee',
+    verstuurd[verstuurd.length - 1], [6, 5]);
+  check('en de 6 van daarvoor blijft ook staan',
+    verstuurd[verstuurd.length - 1][0], 6);
+
+  // ── En op het scherm. De meeluisteraar mag een net ingetikt getal niet
+  //    terugzetten naar de oude waarde; bij de wedstrijdleiding ziet dat eruit
+  //    alsof haar getal niet geldt.
+  M._leegEigen();
+  M._onthoudEigenInvoer('a', 'beheerDagen', 1, 1, 5);
+  check('een verse serverkopie houdt mijn nog niet bevestigde getal',
+    M._metEigenInvoer('a', { beheerDagen: { '1': [6, null] } }).beheerDagen['1'],
+    [6, 5]);
+  check('een andere speler in dezelfde melding blijft ongemoeid',
+    M._metEigenInvoer('b', { beheerDagen: { '1': [3, 3] } }).beheerDagen['1'],
+    [3, 3]);
+  check('en een andere dag ook',
+    M._metEigenInvoer('a', { beheerDagen: { '2': [4, 4] } }).beheerDagen['2'],
+    [4, 4]);
+
+  // ── De lijst zelf: alleen wat écht verstuurd is gaat eraf.
+  M._leegEigen();
+  M._onthoudEigenInvoer('a', 'markerDagen', 1, 0, 4);
+  M._onthoudEigenInvoer('a', 'markerDagen', 1, 1, 5);
+  M._vergeetVerstuurdeInvoer('a|markerDagen|1', { 0: 4 });
+  check('de verstuurde hole gaat eraf, de andere blijft',
+    M._leesEigen()['a|markerDagen|1'], { 1: 5 });
+
+  M._leegEigen();
+  M._onthoudEigenInvoer('a', 'markerDagen', 1, 0, 4);
+  M._vergeetVerstuurdeInvoer('a|markerDagen|1', { 0: 4 });
+  check('een lege lijst wordt helemaal opgeruimd',
+    M._leesEigen()['a|markerDagen|1'], undefined);
+
+  // ⚠ Overtikken tijdens het wachten: de 4 is verstuurd, maar er staat nu een 5.
+  // Die mag NIET van de lijst af, anders verdwijnt de correctie.
+  M._leegEigen();
+  M._onthoudEigenInvoer('a', 'markerDagen', 1, 0, 5);
+  M._vergeetVerstuurdeInvoer('a|markerDagen|1', { 0: 4 });
+  check('een hole die intussen is overgetikt blijft beschermd',
+    M._leesEigen()['a|markerDagen|1'], { 0: 5 });
+
+  // Leegmaken is ook een waarde: verstuurd als null, dus mag eraf.
+  M._leegEigen();
+  M._onthoudEigenInvoer('a', 'markerDagen', 1, 0, null);
+  M._vergeetVerstuurdeInvoer('a|markerDagen|1', { 0: null });
+  check('een verstuurde leegmaking gaat ook van de lijst',
+    M._leesEigen()['a|markerDagen|1'], undefined);
+
+  M._leegEigen();
+  M._zetLive({});
+  M._zetSchrijver(async () => {});
+  return staat;
+}
+
+module.exports = blokDoortikken();
