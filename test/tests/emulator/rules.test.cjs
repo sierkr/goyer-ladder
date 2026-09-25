@@ -244,10 +244,14 @@ async function main() {
     () => anon.doc(`toernooien/t1/live/${SPELER}`).set({ dagNr: 1, scores: [9] }));
 
   // ══ v5.11.0: de drie scorelagen ════════════════════════════
-  // De laag `beheerDagen` zet een hole definitief op slot voor speler en
-  // marker. Wie hem kan schrijven kan dus een uitslag bepalen — daarom is
+  // De laag `beheerDagen` zet een hole definitief op slot voor de speler en
+  // zijn flight. Wie hem kan schrijven kan dus een uitslag bepalen — daarom is
   // alleen die laag afgeschermd, en de andere twee niet.
-  await R.magWel('speler kan zijn markerlaag schrijven',
+  //
+  // v5.43.0: de vaste marker is vervallen; elke speler uit de flight mag deze
+  // laag schrijven. Deze regels hoefden daarvoor niet te veranderen — ze lieten
+  // elke ingelogde speler hem al schrijven, en dat is hier het bewijs.
+  await R.magWel('een speler kan de bevestigingslaag van een ander schrijven',
     () => speler.doc(`toernooien/t1/live/${SPELER2}`).set({ markerDagen: { '1': [5] } }, { merge: true }));
   await R.magNiet('speler kan de vastgestelde laag NIET schrijven',
     () => speler.doc(`toernooien/t1/live/${SPELER2}`).set({ beheerDagen: { '1': [3] } }, { merge: true }));

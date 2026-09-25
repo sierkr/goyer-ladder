@@ -245,16 +245,29 @@ function laadNaamKern() {
 }
 
 // ============================================================
-//  v5.11.0 — MARKERS: wie markeert wie, en welke kleur hoort erbij
+//  v5.11.0 / v5.43.0 — TWEE PAAR OGEN: wie mag waar typen, en welke kleur
+//  hoort erbij
 // ------------------------------------------------------------
-//  markerKring() verdeelt de markers over een flight, scoreOordeel() bepaalt
-//  per hole welke score telt en welke kleur hij krijgt. Beide uit
-//  js/toernooi.js geknipt, zodat de tests met de app meebewegen.
+//  zelfdeFlight() bepaalt in wiens kolom je mag invullen, scoreOordeel() bepaalt
+//  per hole welke score telt en welke kleur hij krijgt. Uit js/toernooi.js
+//  geknipt, zodat de tests met de app meebewegen.
+//
+//  v5.43.0: markerKring() en herschikMarkers() zijn vervallen — de vaste marker
+//  bestaat niet meer. In hun plaats staan hier de drie functies die samen
+//  voorkomen dat twee mensen in dezelfde kolom elkaars holes wissen.
 // ============================================================
 function laadMarkerKern() {
   const bron = `
-    ${knip('js/toernooi.js', ['markerKring', 'scoreOordeel', 'kaartOordeel', 'herschikMarkers'])}
-    return { markerKring, scoreOordeel, kaartOordeel, herschikMarkers };
+    let _liveScores = {};
+    const window = { _tEigenInvoer: {} };
+    ${knip('js/toernooi.js', ['zelfdeFlight', 'scoreOordeel', 'kaartOordeel',
+      '_eigenInvoerSleutel', '_onthoudEigenInvoer', '_rijVoorOpslag'])}
+    return {
+      zelfdeFlight, scoreOordeel, kaartOordeel,
+      _onthoudEigenInvoer, _rijVoorOpslag,
+      _zetLive:   (v) => { _liveScores = v || {}; },
+      _leegEigen: ()  => { window._tEigenInvoer = {}; },
+    };
   `;
   return new Function(bron)();
 }
