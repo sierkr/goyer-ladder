@@ -390,7 +390,7 @@ test.describe.serial('Partij en scores', () => {
     //    een trage ronde was dat niet genoeg en verscheen er een lege kaart.
     //    Nu wordt er gewacht tot het resultaat er IS, met een paar pogingen.
     //
-    // En het is bovendien realistischer geworden: speler en marker tikken niet
+    // En het is bovendien realistischer geworden: speler en medespeler tikken niet
     // in dezelfde milliseconde in maar vlak na elkaar, zoals op de baan.
     await expect(invoerA.first(),
       'de partij uit de vorige test in deze serie moet lopen').toBeVisible({ timeout: 20000 });

@@ -11,7 +11,7 @@ const suites = [
   ['Weergavestijl',               './stijl.test.cjs'],
   ['Knockout',                   './knockout.test.cjs'],
   ['Korte unieke namen',         './namen.test.cjs'],
-  ['Markers en scorelagen',      './marker.test.cjs'],
+  ['Twee paar ogen & scorelagen', './marker.test.cjs'],
   ['Gastlogins',                 './gastlogin.test.cjs'],
   ['QR-code',                    './qr.test.cjs'],
 ];

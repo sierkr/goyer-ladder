@@ -308,14 +308,19 @@ service cloud.firestore {
       //
       // v5.11.0 - DRIE LAGEN IN EEN DOCUMENT.
       //   dagen        de speler zelf
-      //   markerDagen  zijn marker
+      //   markerDagen  een medespeler uit zijn flight
       //   beheerDagen  de wedstrijdleiding - en die is beslissend
       //
       // De eerste twee mag elke ingelogde speler schrijven: de app bepaalt wie
-      // wiens marker is, en een club waarvan iedereen een eigen inlog heeft is
-      // geen plek om dat met databaseregels dicht te timmeren. De DERDE laag is
-      // wel afgeschermd: die zet een hole definitief op slot voor speler en
-      // marker, dus wie hem kan schrijven kan een uitslag bepalen.
+      // in welke kolom mag typen, en een club waarvan iedereen een eigen inlog
+      // heeft is geen plek om dat met databaseregels dicht te timmeren. De DERDE
+      // laag is wel afgeschermd: die zet een hole definitief op slot voor de
+      // speler en zijn flight, dus wie hem kan schrijven kan een uitslag
+      // bepalen.
+      //
+      // v5.43.0: de vaste marker is vervallen - wie in de flight zit mag in elke
+      // kolom van die flight typen. Deze regels hoefden daarvoor NIET te
+      // veranderen: ze lieten elke ingelogde speler deze laag al schrijven.
       //
       // ⚠ hasAny() op affectedKeys() is hier de juiste vraag: "verandert deze
       // schrijfactie beheerDagen?" Een create heeft geen resource.data, vandaar

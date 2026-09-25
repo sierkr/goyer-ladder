@@ -754,7 +754,7 @@
   /* ============================================================
      v5.11.0 — DE KLEUREN VAN DE TOERNOOIKAART
      ------------------------------------------------------------
-     gewone rand  = klopt (vastgesteld, of speler en marker gelijk)
+     gewone rand  = klopt (vastgesteld, of speler en medespeler gelijk)
      stippellijn  = één van de twee heeft ingevuld, de ander nog niet
      dubbele rand = allebei ingevuld, verschillend
 
@@ -765,7 +765,7 @@
      ⚠ !important is hier nodig, niet netjes-bedoeld. Hierboven staat
      `html[data-theme="matchcheck"] .scorecard input[type=number] { border: ...
      !important }` — de standaardstijl van de club. Zonder !important wint die
-     rand van de kleur en ziet niemand het verschil. De browsertest MARKERS
+     rand van de kleur en ziet niemand het verschil. De browsertest TWEE PAAR OGEN
      ving dit op: hij leest de rand zoals hij echt op het scherm staat.
      ============================================================ */
 
@@ -2164,7 +2164,7 @@
     <h3>Zo werkt de scorekaart</h3>
     <div style="font-size:14px;line-height:1.6;color:var(--dark)">
       <p style="margin-bottom:10px"><strong>Jouw kolom</strong> staat op je eigen naam. Daar vul je je eigen score in.</p>
-      <p style="margin-bottom:10px"><strong>Je marker</strong> is één medespeler uit je flight; jij houdt zijn kaart bij en iemand anders die van jou. Zo wordt elke score twee keer geteld.</p>
+      <p style="margin-bottom:10px"><strong>De andere kolommen</strong> van je flight mag je ook invullen — allemaal. Wie de kaart bijhoudt, maakt niet uit; met z'n tweeen mag ook. Zo wordt elke score twee keer geteld: door de speler zelf en door iemand uit zijn flight.</p>
       <p style="margin-bottom:6px"><strong>De kleuren:</strong></p>
       <ul style="margin:0 0 10px 18px;padding:0">
         <li style="margin-bottom:4px">leeg — nog niets ingevuld</li>

@@ -364,7 +364,7 @@ test.describe('Toernooi — de hele route', () => {
   });
 
   // ============================================================
-  //  v5.11.0 — DRIE MENSEN TEGELIJK: SPELER, MARKER EN WEDSTRIJDLEIDING
+  //  v5.11.0 / v5.43.0 — DRIE MENSEN TEGELIJK AAN ÉÉN KAART
   // ============================================================
   //  Dit is de test die er tot nu toe niet was, en de reden dat de
   //  toernooimodus bugs bleef houden: de sommen klopten, maar of drie mensen
@@ -377,8 +377,14 @@ test.describe('Toernooi — de hele route', () => {
   //
   //  De kleur wordt uit de ECHTE opmaak gelezen (de rand), niet uit een
   //  hulpveld dat de test zelf zou kunnen zetten.
+  //
+  //  ⚠ v5.43.0 — DE VASTE MARKER IS WEG. Tot v5.42.0 mocht je in precies één
+  //  kolom van een medespeler typen, de kolom die de app je had toegewezen.
+  //  Sierk, 25 september 2026: in de praktijk pakt iemand de kaart op en vult
+  //  hij hem voor de hele flight in. Blok 3 bewaakt dat nu, en blok 7b bewaakt
+  //  het gevolg: twee mensen in dezelfde kolom mogen elkaars holes niet wissen.
   // ============================================================
-  test('MARKERS: speler, marker en wedstrijdleiding tegelijk aan één kaart', async ({ browser }) => {
+  test('KAARTCONTROLE: speler, medespeler en wedstrijdleiding tegelijk aan één kaart', async ({ browser }) => {
     test.setTimeout(240000);
 
     // Leest de kleur zoals hij op het scherm staat: stippellijn = oranje,
@@ -400,73 +406,82 @@ test.describe('Toernooi — de hele route', () => {
 
     const ctxCoord  = await browser.newContext();
     const ctxSpeler = await browser.newContext();
-    const ctxMarker = await browser.newContext();
+    const ctxMede   = await browser.newContext();
+    const ctxDerde  = await browser.newContext();
     try {
       // ── 1. De wedstrijdleiding zet een toernooi van één flight op ──
       const coord = await ctxCoord.newPage();
       jaOpAlles(coord);
       await inloggen(coord, 'coord@MPladder.stb');
       await naarToernooi(coord);
-      await vulAanmaakformulier(coord, 'Markers', 1);
+      await vulAanmaakformulier(coord, 'Kaartcontrole', 1);
       for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(coord, n);
       await naarFlightIndeling(coord);
       await slaOpEnStart(coord);   // v5.21.0: opslaan én dag 1 starten
-      await expect(coord.locator('#toernooi-detail')).toContainText('Markers', { timeout: 15000 });
+      await expect(coord.locator('#toernooi-detail')).toContainText('Kaartcontrole', { timeout: 15000 });
 
-      // ── 2. De markerkring ligt vast in de flight ──────────────
-      const t      = await haalToernooi('Markers');
-      const ids    = t.dagen[0].flights[0].spelerIds;
-      const markers = t.dagen[0].flights[0].markers;
-      expect(Object.keys(markers).length, 'iedereen heeft een marker').toBe(ids.length);
-      expect(Object.entries(markers).filter(([s, m]) => s === m).length,
-        'niemand markeert zichzelf').toBe(0);
+      // ── 2. De flight staat vast, een markerindeling niet meer ──
+      const t   = await haalToernooi('Kaartcontrole');
+      const ids = t.dagen[0].flights[0].spelerIds;
+      expect(ids.length, 'drie spelers in één flight').toBe(3);
+      // ⚠ v5.43.0: hier stond de markerkring. Die wordt niet meer geschreven.
+      // Staat hij er tóch, dan is er ergens oude logica teruggekropen.
+      expect(t.dagen[0].flights[0].markers,
+        'er wordt geen markerindeling meer weggeschreven').toBeUndefined();
 
-      // We volgen één speler en zijn marker.
-      const uidSpeler = ids[1];
-      const uidMarker = markers[uidSpeler];
-      expect(uidMarker, 'de marker van de tweede is de eerste').toBe(ids[0]);
+      // We volgen de tweede speler; de eerste en de derde houden zijn kaart bij.
       const naamVan = (uid) => t.spelers.find(s => s.uid === uid).naam.split(' ')[0].toLowerCase();
-      const uidDerde = ids.find(u => u !== uidSpeler && u !== uidMarker);
+      const uidSpeler = ids[1];
+      const uidMede   = ids[0];
+      const uidDerde  = ids[2];
 
       const speler = await ctxSpeler.newPage();
-      const marker = await ctxMarker.newPage();
-      jaOpAlles(speler); jaOpAlles(marker);
+      const mede   = await ctxMede.newPage();
+      const derde  = await ctxDerde.newPage();
+      jaOpAlles(speler); jaOpAlles(mede); jaOpAlles(derde);
       await inloggen(speler, `${naamVan(uidSpeler)}@MPladder.stb`);
-      await inloggen(marker, `${naamVan(uidMarker)}@MPladder.stb`);
+      await inloggen(mede,   `${naamVan(uidMede)}@MPladder.stb`);
+      await inloggen(derde,  `${naamVan(uidDerde)}@MPladder.stb`);
       await naarToernooi(speler);
-      await naarToernooi(marker);
+      await naarToernooi(mede);
+      await naarToernooi(derde);
 
       // ── 3. Wie mag waar typen ────────────────────────────────
-      // De speler: zijn eigen kolom en die van de speler die HIJ markeert.
-      // De kolom van de derde staat op punten — hiermee vervalt het oude
-      // vinkje "Scores verbergen".
+      // ⚠ v5.43.0 — DIT IS DE WIJZIGING. Elk van de drie mag in elk van de drie
+      // kolommen van zijn eigen flight typen. Tot v5.42.0 waren dat er twee: je
+      // eigen kolom en die van de ene speler die je was toegewezen.
       const magTypen = (pagina, uid) => pagina.locator(`#t-scorecard-wrap input[data-uid="${uid}"]`).count();
-      expect(await magTypen(speler, uidSpeler), 'eigen kolom is invulbaar').toBeGreaterThan(0);
-      const doorSpelerGemarkeerd = Object.keys(markers).find(k => markers[k] === uidSpeler);
-      expect(await magTypen(speler, doorSpelerGemarkeerd), 'de kolom van zijn marker-speler ook').toBeGreaterThan(0);
-      const verboden = ids.find(u => u !== uidSpeler && u !== doorSpelerGemarkeerd);
-      expect(await magTypen(speler, verboden), 'de kolom van een ander niet').toBe(0);
-
-      // v5.11.8: maar ZIEN doet hij die kolom wel. Daar stonden puntjes.
-      // Sierk: "de scores van je flightgenoten moet je wel kunnen zien."
-      await coord.evaluate(({ uid }) => window.updateTScore(uid, 2, 7), { uid: verboden });
-      await expect.poll(() => speler.evaluate(({ uid }) =>
-        document.querySelector(`#t-scorecard-wrap [data-uid="${uid}"][data-hole="2"]`)?.textContent?.trim(),
-        { uid: verboden }), { timeout: 20000, message: 'de score van een flightgenoot is te zien' })
-        .toBe('7');
-      expect(await speler.locator(`#t-scorecard-wrap [data-uid="${verboden}"]`).count(),
-        'de hele kolom staat er, niet als puntjes').toBeGreaterThan(1);
+      for (const uid of ids) {
+        expect(await magTypen(speler, uid),
+          `de speler mag in de kolom van ${naamVan(uid)}`).toBeGreaterThan(0);
+        expect(await magTypen(mede, uid),
+          `de medespeler mag in de kolom van ${naamVan(uid)}`).toBeGreaterThan(0);
+        expect(await magTypen(derde, uid),
+          `de derde mag in de kolom van ${naamVan(uid)}`).toBeGreaterThan(0);
+      }
       expect(await magTypen(coord, uidDerde), 'de wedstrijdleiding mag overal').toBeGreaterThan(0);
 
-      // ── 4. De speler vult in: oranje, want de marker moet nog ──
+      // v5.11.8: en ZIEN doet hij ze ook allemaal. Daar stonden puntjes.
+      // Sierk: "de scores van je flightgenoten moet je wel kunnen zien."
+      // De wedstrijdleiding stelt hier hole 3 van de derde vast; dat zet die
+      // hole op slot, dus hij staat bij de speler als tekst en niet als vakje.
+      await coord.evaluate(({ uid }) => window.updateTScore(uid, 2, 7), { uid: uidDerde });
+      await expect.poll(() => speler.evaluate(({ uid }) =>
+        document.querySelector(`#t-scorecard-wrap [data-uid="${uid}"][data-hole="2"]`)?.textContent?.trim(),
+        { uid: uidDerde }), { timeout: 20000, message: 'de score van een flightgenoot is te zien' })
+        .toBe('7');
+      expect(await speler.locator(`#t-scorecard-wrap [data-uid="${uidDerde}"]`).count(),
+        'de hele kolom staat er, niet als puntjes').toBeGreaterThan(1);
+
+      // ── 4. De speler vult in: oranje, want de flight moet nog ──
       await speler.evaluate(({ uid }) => window.updateTScore(uid, 0, 5), { uid: uidSpeler });
       await wachtOpKleur(speler, uidSpeler, 0, 'oranje');
       await wachtOpKleur(coord,  uidSpeler, 0, 'oranje');
       await expect(coord.locator('#t-kaart-waarschuwing')).toContainText('wacht', { timeout: 20000 });
 
-      // ── 5. De marker vult iets ANDERS in: rood, bij alle drie ──
-      await marker.evaluate(({ uid }) => window.updateTScore(uid, 0, 6), { uid: uidSpeler });
-      await wachtOpKleur(marker, uidSpeler, 0, 'rood');
+      // ── 5. Een medespeler vult iets ANDERS in: rood, bij alle drie ──
+      await mede.evaluate(({ uid }) => window.updateTScore(uid, 0, 6), { uid: uidSpeler });
+      await wachtOpKleur(mede, uidSpeler, 0, 'rood');
       await wachtOpKleur(speler, uidSpeler, 0, 'rood');
       await wachtOpKleur(coord,  uidSpeler, 0, 'rood');
       await expect(speler.locator('#t-kaart-waarschuwing')).toContainText('verschil', { timeout: 20000 });
@@ -476,18 +491,34 @@ test.describe('Toernooi — de hele route', () => {
         document.querySelector(`#t-scorecard-wrap [data-uid="${uid}"][data-hole="${hole}"]`)?.value,
         { uid, hole });
       expect(await getalIn(speler, uidSpeler, 0), 'de speler ziet zijn eigen 5').toBe('5');
-      expect(await getalIn(marker, uidSpeler, 0), 'de marker ziet zijn eigen 6').toBe('6');
+      expect(await getalIn(mede, uidSpeler, 0), 'de medespeler ziet zijn eigen 6').toBe('6');
 
       // ── 6. Zolang het rood is, gaat de uitslag niet open ──────
       await expect(coord.locator('#t-uitslag-btn')).toContainText('uitpraten', { timeout: 20000 });
       await expect(coord.locator('#t-uitslag-btn')).toBeDisabled();
 
-      // ── 7. Ze praten het uit: de marker past aan → zwart ──────
-      await marker.evaluate(({ uid }) => window.updateTScore(uid, 0, 5), { uid: uidSpeler });
+      // ── 7. Ze praten het uit: de medespeler past aan → zwart ──
+      await mede.evaluate(({ uid }) => window.updateTScore(uid, 0, 5), { uid: uidSpeler });
       await wachtOpKleur(speler, uidSpeler, 0, 'zwart');
       await wachtOpKleur(coord,  uidSpeler, 0, 'zwart');
       await expect(coord.locator('#t-uitslag-btn')).not.toContainText('uitpraten', { timeout: 20000 });
       await expect(coord.locator('#t-kaart-waarschuwing')).not.toContainText('verschil', { timeout: 20000 });
+
+      // ── 7b. Een TWEEDE medespeler in dezelfde kolom ───────────
+      //  ⚠ v5.43.0 — HET GEVOLG VAN DE WIJZIGING. Nu de hele flight in dezelfde
+      //  kolom mag typen, kunnen twee mensen daar tegelijk in zitten. Een kaart
+      //  gaat als HELE RIJ naar de server, dus wie een rij wegstuurt waarin de
+      //  hole van de ander nog leeg staat, wist die. Hier tikt de derde hole 3
+      //  in bij dezelfde speler; hole 1 van de medespeler moet blijven staan.
+      await derde.evaluate(({ uid }) => window.updateTScore(uid, 2, 4), { uid: uidSpeler });
+      await wachtOpKleur(derde, uidSpeler, 2, 'oranje');
+      await wachtOpKleur(speler, uidSpeler, 2, 'oranje');
+      await wachtOpKleur(speler, uidSpeler, 0, 'zwart');
+      expect(await getalIn(mede, uidSpeler, 0),
+        'de 5 van de medespeler staat er nog').toBe('5');
+      // En de flight deelt één laag: de derde ziet wat de medespeler intikte.
+      await expect.poll(() => getalIn(derde, uidSpeler, 0),
+        { timeout: 20000, message: 'de derde ziet de 5 van de medespeler' }).toBe('5');
 
       // ── 8. De wedstrijdleiding stelt vast en zet de hole op slot ──
       await speler.evaluate(({ uid }) => window.updateTScore(uid, 1, 4), { uid: uidSpeler });
@@ -501,7 +532,8 @@ test.describe('Toernooi — de hele route', () => {
         document.querySelector(`#t-scorecard-wrap [data-uid="${uid}"][data-hole="1"]`)?.textContent?.trim(),
         { uid: uidSpeler }), { timeout: 20000 }).toBe('7');
     } finally {
-      await ctxCoord.close(); await ctxSpeler.close(); await ctxMarker.close();
+      await ctxCoord.close(); await ctxSpeler.close();
+      await ctxMede.close();  await ctxDerde.close();
     }
   });
 
@@ -760,44 +792,40 @@ test.describe('Toernooi — de hele route', () => {
   });
 
   // ============================================================
-  //  v5.11.6 — DE MARKERKRING NA EEN SPELER ERBIJ
+  //  v5.11.6 / v5.43.0 — EEN SPELER DIE LATER IN DE FLIGHT KOMT
   // ============================================================
-  //  Een speler toevoegen aan een lopend toernooi raakte `markers` niet aan.
-  //  De nieuwe viel dan terug op de kring terwijl de anderen hun opgeslagen
-  //  marker hielden: één speler markeerde er twee, de nieuwe niemand. Niemand
-  //  bleef zónder marker, dus het viel niet op — maar "ieder markeert er één"
-  //  klopte niet meer, en dat is juist de afspraak.
+  //  ⚠ WAT ER MIS WAS (v5.11.6). Een speler toevoegen aan een lopend toernooi
+  //  raakte de markerindeling niet aan. De nieuwe viel dan terug op de kring
+  //  terwijl de anderen hun opgeslagen marker hielden: één speler markeerde er
+  //  twee, de nieuwe niemand.
+  //
+  //  v5.43.0: die indeling bestaat niet meer, dus die fout kan ook niet meer.
+  //  Wat overblijft is de vraag waar het eigenlijk om ging — kan iemand die
+  //  later in de flight komt meteen meedoen? Deze test loopt daarom dezelfde
+  //  route (toevoegen, in de pool, verdelen) en kijkt aan het eind op de ECHTE
+  //  scorekaart van een medespeler of de kolom van de nieuwe invulbaar is.
   // ============================================================
-  test('MARKERKRING: een speler erbij verdeelt de kring opnieuw', async ({ page }) => {
+  test('SPELER ERBIJ: wie later in de flight komt mag er meteen in typen', async ({ page, browser }) => {
     test.setTimeout(180000);
     jaOpAlles(page);
 
     await inloggen(page, 'coord@MPladder.stb');
     await naarToernooi(page);
-    await vulAanmaakformulier(page, 'Kring', 1);
+    await vulAanmaakformulier(page, 'Erbij', 1);
     for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(page, n);
     await naarFlightIndeling(page);
-    await page.click('#flight-modal-start-btn');
-    await expect(page.locator('#toernooi-detail')).toContainText('Kring', { timeout: 15000 });
+    // ⚠ Dag 1 moet ECHT lopen. Tot v5.42.0 keek deze test alleen in de database
+    // en was opslaan genoeg; nu kijkt hij op de scorekaart, en die bestaat pas
+    // als de dag gestart is. Het is ook de situatie waar het om gaat: iemand
+    // die bij een LOPEND toernooi wordt toegevoegd.
+    await slaOpEnStart(page, 1);
+    await expect(page.locator('#toernooi-detail')).toContainText('Erbij', { timeout: 15000 });
 
-    // Controleert de afspraak: ieder markeert er precies één, ieder wordt
-    // precies één keer gemarkeerd, en niemand markeert zichzelf.
-    const kringKlopt = (t) => {
-      const f = t.dagen[0].flights[0];
-      const m = f.markers || {};
-      const spelers = f.spelerIds || [];
-      return {
-        aantal: spelers.length,
-        iedereenHeeftEr1: Object.keys(m).length === spelers.length,
-        iedereenMarkeertEr1: new Set(Object.values(m)).size === spelers.length,
-        geenZelf: Object.entries(m).every(([s, mk]) => s !== mk),
-        alleenEchteSpelers: Object.entries(m).flat().every(uid => spelers.includes(uid)),
-      };
-    };
-
-    expect(kringKlopt(await haalToernooi('Kring')))
-      .toEqual({ aantal: 3, iedereenHeeftEr1: true, iedereenMarkeertEr1: true,
-                 geenZelf: true, alleenEchteSpelers: true });
+    // De flight zoals hij begint: drie spelers, en geen markerindeling.
+    const flightVan = (t) => t.dagen[0].flights[0] || {};
+    const begin = flightVan(await haalToernooi('Erbij'));
+    expect((begin.spelerIds || []).length, 'drie spelers in de flight').toBe(3);
+    expect(begin.markers, 'er wordt geen markerindeling meer weggeschreven').toBeUndefined();
 
     // ── Een vierde speler erbij, via Spelers beheren ──────────
     await openSpelersBeheer(page);
@@ -808,12 +836,10 @@ test.describe('Toernooi — de hele route', () => {
     await page.click('#modal-toernooi-spelers button:has-text("+ Toevoegen")');
     await expect(page.locator('#toernooi-detail')).toContainText('4 spelers', { timeout: 15000 });
 
-    // ⚠ v5.19.0: hier stond direct de controle op een kring van vier. Dat kan
-    // niet meer, en dat is met opzet: wie je op het tabblad Spelers toevoegt
-    // komt in de SPELERSPOOL, nog in geen enkele flight. Indelen hoort bij de
-    // dag. Nina moet dus eerst ingedeeld worden — en pas dán hoort de kring
-    // opnieuw verdeeld te zijn. Dat laatste is waar deze test over gaat.
-    expect(kringKlopt(await haalToernooi('Kring')).aantal,
+    // ⚠ v5.19.0: wie je op het tabblad Spelers toevoegt komt in de SPELERSPOOL,
+    // nog in geen enkele flight. Indelen hoort bij de dag. Nina moet dus eerst
+    // ingedeeld worden — en pas dán hoort ze mee te kunnen doen.
+    expect((flightVan(await haalToernooi('Erbij')).spelerIds || []).length,
       'Nina staat nog in de pool, niet in de flight').toBe(3);
 
     await naarDagTab(page, 1);
@@ -823,10 +849,35 @@ test.describe('Toernooi — de hele route', () => {
     await page.click('#flight-lijst button:has-text("Verdelen")');
     await page.click('#flight-modal-start-btn');
 
-    await expect.poll(async () => kringKlopt(await haalToernooi('Kring')),
-      { timeout: 15000, message: 'de kring is opnieuw verdeeld' })
-      .toEqual({ aantal: 4, iedereenHeeftEr1: true, iedereenMarkeertEr1: true,
-                 geenZelf: true, alleenEchteSpelers: true });
+    const na = await haalToernooi('Erbij', 20,
+      (x) => ((x.dagen?.[0]?.flights?.[0]?.spelerIds) || []).length === 4);
+    const ids = flightVan(na).spelerIds;
+    expect(ids.length, 'alle vier staan in de flight').toBe(4);
+    expect(new Set(ids).size, 'en niemand dubbel').toBe(4);
+    expect(flightVan(na).markers, 'nog steeds geen markerindeling').toBeUndefined();
+
+    const uidNina = na.spelers.find(sp => sp.naam.startsWith('Nina')).uid;
+    expect(ids, 'Nina zit in de flight').toContain(uidNina);
+
+    // ── En nu de echte vraag: mag een medespeler in Nina's kolom? ──
+    const ctx = await browser.newContext();
+    try {
+      const anna = await ctx.newPage();
+      jaOpAlles(anna);
+      await inloggen(anna, 'anna@MPladder.stb');
+      await naarToernooi(anna);
+      await expect.poll(() =>
+        anna.locator(`#t-scorecard-wrap input[data-uid="${uidNina}"]`).count(),
+        { timeout: 20000, message: 'de kolom van de nieuwe speler is invulbaar' })
+        .toBeGreaterThan(0);
+      // En omgekeerd: Nina's kaart telt ook haar eigen kolom.
+      for (const uid of ids) {
+        expect(await anna.locator(`#t-scorecard-wrap input[data-uid="${uid}"]`).count(),
+          'elke kolom van de flight is invulbaar').toBeGreaterThan(0);
+      }
+    } finally {
+      await ctx.close();
+    }
   });
 
   // ============================================================
@@ -1402,17 +1453,20 @@ test.describe('Toernooi — de hele route', () => {
     // dat niemand hoeft te kennen; op het briefje staat de PINCODE.
     await expect(briefje, 'met de pincode erbij').toContainText('1234');
 
-    // v5.11.5: en de markerindeling draagt geen TIJDELIJKE gast-sleutels meer.
-    // Die werden bij het starten overal vervangen behalve hier.
+    // v5.11.5: en de flight draagt geen TIJDELIJKE gast-sleutels meer. Die
+    // werden bij het starten overal vervangen behalve in de markerindeling.
+    // v5.43.0: die indeling is vervallen, dus `spelerIds` is de enige plek waar
+    // een sleutel nog kan blijven hangen — en dat is precies de plek waar
+    // zelfdeFlight() naar kijkt om te bepalen wie mag invullen.
     const naStart = await haalToernooi('Gastentoernooi');
-    const markerSleutels = (naStart.dagen[0].flights || [])
-      .flatMap(f => Object.entries(f.markers || {}).flat());
-    expect(markerSleutels.length, 'er staan markers in').toBeGreaterThan(0);
-    expect(markerSleutels.filter(k => String(k).startsWith('gast_')),
-      'geen tijdelijke sleutels meer in de markerindeling').toEqual([]);
+    const flightSleutels = (naStart.dagen[0].flights || [])
+      .flatMap(f => f.spelerIds || []);
+    expect(flightSleutels.length, 'er staan spelers in de flights').toBeGreaterThan(0);
+    expect(flightSleutels.filter(k => String(k).startsWith('gast_')),
+      'geen tijdelijke sleutels meer in de flights').toEqual([]);
     const echteIds = new Set(naStart.spelers.map(sp => sp.uid));
-    expect(markerSleutels.every(k => echteIds.has(k)),
-      'elke marker verwijst naar een speler die echt meedoet').toBe(true);
+    expect(flightSleutels.every(k => echteIds.has(k)),
+      'elke sleutel in een flight is een speler die echt meedoet').toBe(true);
 
     expect(fouten, 'geen JavaScript-fouten').toEqual([]);
   });
@@ -2145,8 +2199,8 @@ test.describe('Toernooi — de hele route', () => {
     expect(gastNa.uid, 'hij heeft een echte sleutel gekregen').not.toBe(gastVoor.uid);
     expect(String(gastNa.uid).startsWith('gast_'), 'geen tijdelijke sleutel meer').toBe(false);
 
-    // Zijn oude sleutel mag nergens meer staan — flights, markers en scores
-    // moeten allemaal zijn omgeschreven.
+    // Zijn oude sleutel mag nergens meer staan — flights en scores moeten
+    // allemaal zijn omgeschreven.
     // ⚠ Deze ene regel ving een echte fout: de sleutelwissel gebeurde ONDERWEG,
     // tussen twee netwerkaanroepen door, en de meeluisteraar zette de oude
     // sleutel daarna gewoon weer terug in `dagen[].scores`.
