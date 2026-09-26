@@ -691,7 +691,6 @@ async function renderLadder() {
           <button onclick="event.stopPropagation();deelLadderAlsAfbeelding('${escAttr(l.id)}')" style="background:none;border:none;cursor:pointer;font-size:20px;padding:0;flex-shrink:0" title="Deel als afbeelding">📤</button>
           <h2 style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Ladderstand ${esc(l.naam)}</h2>
         </div>
-        <span class="badge badge-green">${spelers.length} spelers</span>
       </div>
       <div class="card-collapse" id="ladder-collapse-${escAttr(l.id)}">
         <div id="ladder-list-${escAttr(l.id)}">${lijstHtml}</div>
