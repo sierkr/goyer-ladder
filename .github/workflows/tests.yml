@@ -9,6 +9,22 @@ on:
 
 jobs:
 
+  # ── Laag 0: knopkoppelingen. Heeft niets nodig, dus als eerste. ──
+  # v5.44.0. De app roept functies aan vanuit onclick="naam()". Dat is voor elke
+  # controleur gewone tekst; een kapotte koppeling ziet niemand en de knop doet
+  # dan niets. Op 25 september 2026 hing "Nu updaten" aan zo'n naam en werd een
+  # open partijformulier stil weggegooid.
+  knoppen:
+    name: Knopkoppelingen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Knopkoppelingen controleren
+        run: node tests/onclick-check.cjs
+
   # ── Laag 1: rekentests. Snel, geen emulator nodig. ──────────
   rekenkern:
     name: Rekenkern (unit)
@@ -20,6 +36,23 @@ jobs:
           node-version: '22'
       - name: Tests draaien
         run: node tests/run.cjs
+
+  # ── Laag 1b: de linter. Vindt namen die niet bestaan. ───────
+  # v5.44.0. Dit is de enige laag die de fout van v5.43.0 zonder browser had
+  # gevonden: één verwijzing naar een weggehaalde variabele bleef staan, de hele
+  # toernooi-scorekaart werd niet meer getekend, en alle rekentests bleven groen.
+  linter:
+    name: Linter (namen die niet bestaan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Testgereedschap installeren
+        run: npm install --prefix tests
+      - name: Linter draaien
+        run: ./tests/node_modules/.bin/eslint --config tests/eslint.config.mjs --no-config-lookup js sw.js tests
 
   # ── Laag 2 en 3: regels en functies tegen de emulator ───────
   emulator:

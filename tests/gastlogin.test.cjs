@@ -20,24 +20,13 @@ const { staat, check } = maakChecker();
 
 const CODE = G.toernooiCodeVan('Gastentoernooi');
 
-// De kern van de zaak: wat de app aanmaakt moet zijn wat de app herkent.
-const komtUit = (ingetikt, aangemaaktVoor) =>
-  `${G.gastKernVan(ingetikt)}.${CODE}` === G.gastLoginVan(aangemaaktVoor, CODE);
-
-console.log('══ WAT DE GAST INTIKT VINDT ZIJN EIGEN ACCOUNT ══\n');
-
-check('voor- en achternaam',            komtUit('Karel Gast', 'Karel Gast'), true);
-check('met een punt ertussen',          komtUit('Karel.Gast', 'Karel Gast'), true);
-check('hoofdletters maken niet uit',    komtUit('karel gast', 'Karel Gast'), true);
-check('extra spaties ook niet',         komtUit('  Karel   Gast ', 'Karel Gast'), true);
-check('ALLEEN een voornaam',            komtUit('Karel', 'Karel'), true);
-check('alleen een voornaam met punt',   komtUit('.Karel.', 'Karel'), true);
-check('een tussenvoegsel telt gewoon mee',
-  komtUit('Jan de Vries', 'Jan de Vries'), true);
-
-check('een andere naam vindt het account NIET',
-  komtUit('Karel Gast', 'Karel Ander'), false);
-check('niets ingetikt levert geen kern op', G.gastKernVan('   '), '');
+// ⚠ v5.44.0: hier stond "wat de gast intikt vindt zijn eigen account" — negen
+// controles die gastKernVan() uit js/auth.js naast gastLoginVan() uit
+// js/toernooi.js legden. Die weg is weg (Sierk, 25 september 2026): een gast
+// tikt zijn naam niet meer in, hij kiest hem uit een lijst en tikt vier cijfers.
+// Er valt dus niets meer te herkennen, en deze controles zijn vervallen — niet
+// stukgegaan. Wat de inlognaam ZELF moet worden, blijft hieronder staan: die
+// staat nog op het briefje en in het beheerscherm.
 
 console.log('\n══ DE INLOGNAAM ZELF ══\n');
 
@@ -53,59 +42,13 @@ console.log('\n══ TWEE GASTEN MET DEZELFDE NAAM ══\n');
 const tweede = G.gastLoginVan('Karel2', CODE);
 check('de tweede krijgt een cijfer in de naam', tweede, 'karel2.gastentoernooi');
 check('en de code staat nog steeds achteraan', tweede.endsWith('.' + CODE), true);
-check('en hij kan zijn eigen inlog intikken', komtUit('karel2', 'Karel2'), true);
 check('het cijfer staat NIET achter de code', /gastentoernooi\d/.test(tweede), false);
 
 const tweedeVol = G.gastLoginVan('Karel Gast2', CODE);
 check('ook met een achternaam', tweedeVol, 'karel.gast2.gastentoernooi');
-check('en ook die is in te tikken', komtUit('karel.gast2', 'Karel Gast2'), true);
 
-// ============================================================
-//  v5.12.3 — DE INLOGNAAM WORDT OPGEZOCHT, NIET UITGEREKEND
-// ------------------------------------------------------------
-//  Sierk, 13 september 2026: "en waarom maakt de app van sierk loginnaam
-//  sierk2? er was maar 1 speler in het toernooi die zo heet."
-//
-//  Omdat er nog een account van een eerdere ronde stond. Het toernooi bewaart
-//  de ECHTE inlognaam bij de speler; tot v5.12.2 rekende het inlogscherm hem
-//  zelf uit en kwam daarmee op het oude account uit — met het goede wachtwoord
-//  erbij kwam de speler dus binnen in een toernooi dat niet meer liep.
-// ============================================================
-console.log('\n══ DE INLOGNAAM WORDT OPGEZOCHT ══\n');
-
-const toernooiMetHarry2 = {
-  gastCode: 'clubkampioenscha',
-  spelers: [
-    { uid: 'u1', naam: 'Anna Speler' },                                  // clublid, geen login
-    { uid: 'u2', naam: 'Harry', gast: true, login: 'harry2.clubkampioenscha' },
-  ],
-};
-
-check('"Harry" vindt zijn ECHTE inlog, met cijfer en al',
-  G.gastLoginUitToernooi(toernooiMetHarry2, 'Harry'), 'harry2.clubkampioenscha');
-check('en niet de uitgerekende naam zonder cijfer',
-  G.gastLoginUitToernooi(toernooiMetHarry2, 'Harry') === 'harry.clubkampioenscha', false);
-check('hij mag ook intikken wat op zijn briefje staat',
-  G.gastLoginUitToernooi(toernooiMetHarry2, 'harry2'), 'harry2.clubkampioenscha');
-check('hoofdletters en punten maken niet uit',
-  G.gastLoginUitToernooi(toernooiMetHarry2, 'HARRY'), 'harry2.clubkampioenscha');
-check('iemand die niet meedoet vindt niets',
-  G.gastLoginUitToernooi(toernooiMetHarry2, 'Piet'), null);
-check('een clublid zonder eigen gastinlog ook niet',
-  G.gastLoginUitToernooi(toernooiMetHarry2, 'Anna Speler'), null);
-check('een leeg toernooi valt niet om',
-  G.gastLoginUitToernooi({}, 'Harry'), null);
-
-// De gewone gang van zaken: wat gastLoginVan schrijft, moet hier terugkomen.
-const gewoon = {
-  gastCode: 'zomercup',
-  spelers: ['Karel Gast', 'Bep'].map((naam, i) => ({
-    uid: 'g' + i, naam, gast: true, login: G.gastLoginVan(naam, 'zomercup'),
-  })),
-};
-check('wat de ene kant schrijft, vindt de andere kant terug',
-  ['Karel Gast', 'Karel.Gast', 'Bep'].map(n => G.gastLoginUitToernooi(gewoon, n)),
-  ['karel.gast.zomercup', 'karel.gast.zomercup', 'bep.zomercup']);
+// ⚠ v5.44.0: hier stond "de inlognaam wordt opgezocht" — acht controles op
+// gastLoginUitToernooi() uit js/auth.js. Vervallen met de oude gastlogin.
 
 // ── De gastcode moet uniek zijn ──────────────────────────────
 //  De code wordt afgekapt op 16 letters, dus twee toernooien die pas daarna

@@ -430,31 +430,19 @@ async function loginSubmit() {
     await signInWithEmailAndPassword(auth, email, wachtwoord);
     return;
   } catch(e) {
-    // v5.10.0: tweede kans voor een toernooigast.
+    // ⚠ v5.44.0 — DE OUDE GASTLOGIN IS ERUIT. Hier stond een tweede kans voor
+    // een toernooigast: die tikte zijn NAAM in plus een wachtwoord, en de app
+    // zocht in de lopende toernooien welk account daarbij hoorde.
     //
-    // Een gast van buiten de club tikt alleen zijn NAAM in plus het
-    // wachtwoord van het toernooi. Zijn echte inlognaam is
-    // `voornaam.achternaam.<toernooicode>`, maar die krijgt hij nooit te zien.
-    // Sierk, 12 september 2026: "Ik wil voor de login dat de gebruiker alleen
-    // voor en achternaam hoeft in te tikken."
+    // Die weg is sinds v5.38.0 dood hout: nieuwe gastaccounts krijgen een
+    // WILLEKEURIG wachtwoord dat niemand kent. Een gast kiest nu zijn naam uit
+    // de lijst en tikt vier cijfers — zie "MEEDOEN AAN HET TOERNOOI" hieronder.
+    // Hij werkte dus alleen nog voor toernooien van vóór 19 september 2026.
+    // Besloten door Sierk, 25 september 2026: weg.
     //
-    // Dit kan omdat toernooidocumenten openbaar leesbaar zijn: het inlogscherm
-    // mag dus vóór het inloggen al opvragen welke toernooien lopen en welke
-    // code daarbij hoort. De code is geen geheim — het WACHTWOORD is dat.
-    //
-    // Alleen ACTIEVE toernooien tellen mee. Daarmee vervalt de gastinlog
-    // vanzelf zodra het toernooi is afgesloten, nog vóór de accounts worden
-    // opgeruimd. De uitslag blijft daarna gewoon zichtbaar via de meekijklink.
-    const gast = await _probeerGastLogin(invoer, wachtwoord);
-    if (gast === true) return;
-    // v5.12.3: het vangnet. De inlog bestond en het wachtwoord klopte, maar het
-    // account doet in geen enkel lopend toernooi mee — een overblijfsel van een
-    // eerder toernooi. Tot v5.12.2 kwam zo iemand gewoon binnen en las hij
-    // "Geen actief toernooi", zonder enige aanwijzing wat er aan de hand was.
-    if (gast === 'ouder-toernooi') {
-      toonLoginFout('Deze inlog hoort bij een ouder toernooi — vraag de wedstrijdleiding om je inlognaam.');
-      return;
-    }
+    // ⚠ De prijs, bewust betaald: een gast van een toernooi van vóór v5.38.0 kan
+    // niet meer inloggen. De uitslag van zo'n toernooi blijft wel zichtbaar via
+    // de meekijklink, waarvoor je niets nodig hebt.
 
     const berichten = {
       'auth/user-not-found':    'Geen account gevonden',
@@ -467,114 +455,11 @@ async function loginSubmit() {
   }
 }
 
-// Probeert de invoer te lezen als "Voornaam Achternaam" van een gast in een
-// lopend toernooi. Geeft true als het inloggen daarmee gelukt is.
-//
-// ⚠ Deze functie mag nooit zelf een fout naar buiten laten: hij draait in de
-// catch van het inloggen, en een fout hier zou de nette foutmelding vervangen
-// door een stille mislukking.
-// Maakt van wat de gast intikt het eerste deel van zijn inlognaam, ZONDER de
-// toernooicode. Dit moet exact hetzelfde uitpakken als gastLoginVan() in
-// js/toernooi.js, want dat is de kant die het account aanmaakt. Lopen ze uit de
-// pas, dan vindt de gast zijn eigen account niet. De rekentest 'Gastlogin'
-// vergelijkt beide kanten met elkaar.
-//
-// v5.11.7: een punt scheidt net als een spatie ("Test.1" = "Test 1"), en ÉÉN
-// woord is genoeg — een gast mag met alleen een voornaam worden toegevoegd.
-function gastKernVan(invoer) {
-  const delen = String(invoer || '').trim().split(/[\s.]+/).filter(Boolean);
-  if (delen.length === 0) return '';
-  const schoon = t => String(t).toLowerCase().replace(/\s+/g, '');
-  return delen.length === 1
-    ? schoon(delen[0])
-    : `${schoon(delen[0])}.${schoon(delen.slice(1).join(' '))}`;
-}
-
-// ============================================================
-//  v5.12.3 — WELKE INLOG HOORT BIJ DEZE NAAM?
-// ------------------------------------------------------------
-//  Het toernooi bewaart bij elke gast zijn ECHTE inlognaam (`speler.login`) —
-//  dat is ook wat het beheerscherm en het briefje tonen. Deze functie zoekt
-//  daarin de speler die bij de ingetikte naam hoort.
-//
-//  ⚠ WAT ER MIS WAS. Tot v5.12.2 rekende het inlogscherm de inlognaam zélf uit:
-//  `<naamkern>.<toernooicode>`. Dat gaat mis zodra die naam al bezet was door
-//  een ouder toernooi met dezelfde (afgekapte) code — dan heet de speler in
-//  werkelijkheid `harry2.<code>`, maar het inlogscherm probeert `harry.<code>`
-//  en komt uit bij het OUDE account. Klopt het wachtwoord ook nog, dan is hij
-//  binnen in een toernooi dat niet meer loopt en leest hij "Geen actief
-//  toernooi". Gemeten op 13 september 2026.
-//
-//  Nu wordt er niets meer uitgerekend maar opgezocht. `codes` zijn alle
-//  schrijfwijzen waarmee een speler zichzelf mag aankondigen: zijn opgeslagen
-//  inlog zonder de toernooicode ("harry2"), of gewoon zijn naam ("harry").
-function gastLoginUitToernooi(toernooi, invoer) {
-  const kern = gastKernVan(invoer);
-  if (!kern) return null;
-  const code = toernooi?.gastCode;
-  const zonderCode = (login) => {
-    if (!login || !code) return login || '';
-    const staart = '.' + String(code).toLowerCase();
-    return login.toLowerCase().endsWith(staart) ? login.slice(0, -staart.length) : login;
-  };
-  const treffer = (toernooi?.spelers || []).find(sp => {
-    if (!sp.login) return false;
-    return zonderCode(sp.login) === kern || gastKernVan(sp.naam) === kern;
-  });
-  return treffer ? treffer.login : null;
-}
-
-async function _probeerGastLogin(invoer, wachtwoord) {
-  try {
-    if (!invoer || invoer.includes('@')) return false;
-    // v5.11.4: een punt telt als scheiding, net als een spatie. "Test 1",
-    // "Test.1" en "test.1" komen dus op dezelfde gast uit.
-    //
-    // ⚠ WAAROM DIT NODIG WAS. Het beheerscherm toont een gast zijn inlognaam
-    // als `test.1` — dat is wat hij moet intikken. Werd hier alleen op spaties
-    // gesplitst, dan was "Test.1" één woord, viel hij buiten deze terugval, en
-    // weigerde precies de naam die op het scherm stond. Sierk, 12 september
-    // 2026: "van Test 1 is 1 de achternaam. hoezo accepteert de login Test.1
-    // dan niet."
-    const kern = gastKernVan(invoer);
-    if (!kern) return false;
-
-    const snap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
-    const toernooien = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-    // v5.12.3: eerst de opgeslagen inlognaam van het LOPENDE toernooi. Die is
-    // de waarheid; een zelf uitgerekende naam is een gok.
-    for (const t of toernooien) {
-      const login = gastLoginUitToernooi(t, invoer);
-      if (!login) continue;
-      try {
-        await signInWithEmailAndPassword(auth, `${login}${EMAIL_SUFFIX}`, wachtwoord);
-        return true;
-      } catch (_) { /* volgende toernooi proberen */ }
-    }
-
-    // Terugval voor toernooien van vóór v5.10.0, waar de spelers nog geen
-    // `login` dragen: dan alsnog de oude, uitgerekende schrijfwijze.
-    for (const code of toernooien.map(t => t.gastCode).filter(Boolean)) {
-      try {
-        await signInWithEmailAndPassword(auth, `${kern}.${code}${EMAIL_SUFFIX}`, wachtwoord);
-        // ⚠ De terugval rekent de naam uit en kan daarmee op het account van een
-        // OUDER toernooi uitkomen. Hoort deze uid nergens bij, dan meteen weer
-        // uitloggen — anders staat hij binnen te kijken naar een leeg scherm.
-        const uid = auth.currentUser?.uid;
-        const hoortErbij = toernooien.some(t =>
-          (t.spelers || []).some(sp => sp.uid === uid));
-        if (hoortErbij) return true;
-        await signOut(auth);
-        return 'ouder-toernooi';
-      } catch (_) { /* volgende toernooi proberen */ }
-    }
-    return false;
-  } catch (e) {
-    console.warn('gastlogin proberen mislukt:', e?.code || e?.message);
-    return false;
-  }
-}
+// ⚠ v5.44.0: hier stonden gastKernVan(), gastLoginUitToernooi() en
+// _probeerGastLogin() — de oude gastlogin met naam en wachtwoord. Weg; de uitleg
+// staat bij de inloghandler hierboven. De kant die het gastACCOUNT aanmaakt
+// (gastLoginVan() in js/toernooi.js) blijft bestaan: die inlognaam staat nog op
+// het briefje en in het beheerscherm.
 
 // ============================================================
 //  MEEDOEN AAN HET TOERNOOI — v5.38.0
@@ -1668,7 +1553,17 @@ async function getLadderData(ladderId, forceFresh = false) {
   if (!forceFresh) {
     const cached = alleLadders.find(l => l.id === ladderId);
     if (cached?.data) return { exists: true, data: cached.data, _cached: true };
-    if (ladderId === activeLadderId) return { exists: true, data: state, _cached: true };
+    // ⚠ v5.44.0 — HIER STOND EEN HARDE FOUT. Er stond:
+    //   if (ladderId === activeLadderId) return { exists:true, data: state, … };
+    // `state` bestaat hier niet: niet geïmporteerd, niet gedeclareerd, en
+    // store.js exporteert hem niet. Die regel wierp dus een fout op het moment
+    // dat hij werd bereikt, en dat kon echt gebeuren: elke plek die
+    // `alleLadders` uit de database vult zet `.data` erbij, behalve het aanmaken
+    // van een NIEUWE ladder (js/beheer.js). Maakte je er een aan en sloot je in
+    // dezelfde sessie een toernooidag af die op die ladder rangschikt, dan liep
+    // het stuk. Gevonden met een linter op 25 september 2026.
+    // De regel is eruit: zonder gegevens in de cache hoort hij ze gewoon op te
+    // halen, en dat doet de code hieronder al.
   }
   try {
     const snap = await getDoc(doc(db, 'ladders', ladderId));

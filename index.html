@@ -1349,14 +1349,17 @@
     <div class="form-group">
       <label>Login</label>
       <input type="text" id="login-email" placeholder="voornaam.achternaam" autocomplete="username" inputmode="email">
-      <!-- v5.10.0: gasten van een toernooi tikken hier hun gewone naam in.
-           v5.17.0: "voor- en achternaam" klopte niet voor een gast die met
-           alleen een voornaam is aangemaakt — die logt in met "karel". De
-           inlognaam staat bij de gastloginlijst van de wedstrijdleiding, dus
-           daar verwijzen we naar in plaats van de naam na te vertellen. -->
+      <!-- ⚠ v5.44.0: hier stond dat een toernooigast hier zijn inlognaam en
+           wachtwoord kon intikken. Die weg is weg (Sierk, 25 september 2026):
+           nieuwe gastaccounts krijgen een willekeurig wachtwoord dat niemand
+           kent. Een gast kiest zijn naam uit de lijst BOVEN dit vak en tikt
+           vier cijfers. Dit vak is dus alleen nog voor clubleden.
+           De tekst wijst nu naar die lijst, zodat een gast die hier begint niet
+           blijft proberen. -->
       <p style="font-size:11px;color:var(--light);margin:4px 0 0">
-        Doe je als gast mee aan een toernooi? Vul dan de inlognaam in die je van
-        de organisatie hebt gekregen, met het bijbehorende wachtwoord.
+        Alleen voor clubleden. Doe je als gast mee aan een toernooi? Kies dan
+        hierboven je naam uit de lijst en vul de pincode in die je van de
+        organisatie hebt gekregen.
       </p>
     </div>
     <div class="form-group">

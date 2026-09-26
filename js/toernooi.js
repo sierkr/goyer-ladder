@@ -328,10 +328,18 @@ window.verwijderConceptUitStart = verwijderConceptUitStart;
 // ondergrond, met mijn eigen getallen eroverheen. Wat een ander intikte blijft
 // staan; wat ik leegmaakte gaat echt weg.
 //
-// De lijst gaat leeg zodra de schrijfactie is gelukt. Vanaf dat moment staat
-// mijn getal op de server, en elke melding die daarna binnenkomt heeft hem —
-// Firestore zet een eigen schrijfactie meteen in zijn lokale kopie, nog voor de
-// server antwoordt.
+// ⚠ v5.43.1 — WAT ER MIS WAS, EN HOE HET GEMETEN IS. De lijst ging in v5.43.0
+// in één keer leeg zodra de schrijfactie was gelukt. Dat wist ook de holes die
+// je INTUSSEN had ingetikt: tussen het versturen en de bevestiging zit een
+// netwerkreis, en wie in die tussentijd doortikt stond niet meer op de lijst.
+// De melding die op die bevestiging volgt bevat alleen wat er verstuurd was, dus
+// verdween dat getal daarna ook uit de lokale kopie — en de volgende
+// schrijfactie stuurde de rij zónder hem weg. Sierk, 25 september 2026: "het
+// lijkt nu toch alsof de beheerder niet meer bepaalt welke score er klopt."
+// Precies dat: zij tikt een kolom snel naar beneden en verliest daarbij getallen.
+//
+// Nu gaan alleen de holes van de lijst die MET DEZE schrijfactie meegingen, en
+// alleen als er intussen niets nieuws in is getikt.
 if (!window._tEigenInvoer) window._tEigenInvoer = {};
 
 // ⚠ Meerregelig op papier gezet omdat het testharnas functies uit dit bestand
@@ -344,6 +352,42 @@ function _onthoudEigenInvoer(uid, laag, dagNr, holeIdx, waarde) {
   const sl = _eigenInvoerSleutel(uid, laag, dagNr);
   if (!window._tEigenInvoer[sl]) window._tEigenInvoer[sl] = {};
   window._tEigenInvoer[sl][holeIdx] = waarde;
+}
+
+// Haalt de holes van de lijst die met een gelukte schrijfactie meegingen. Wat er
+// tijdens het wachten op de bevestiging is bijgekomen of overgetikt blijft staan
+// — dat staat nog niet op de server. Zie v5.43.1 hierboven.
+function _vergeetVerstuurdeInvoer(sl, verstuurd) {
+  const nu = window._tEigenInvoer[sl];
+  if (!nu) return;
+  Object.keys(verstuurd).forEach(i => {
+    if (nu[i] === verstuurd[i]) delete nu[i];
+  });
+  if (Object.keys(nu).length === 0) delete window._tEigenInvoer[sl];
+}
+
+// ⚠ v5.43.1 — EN OOK OP HET SCHERM. Dezelfde race liet een net ingetikt getal
+// een tel terugspringen naar de oude waarde: de meeluisteraar zet een verse
+// serverkopie in de plaats van de lokale, en daar staat wat je zojuist typte nog
+// niet in. Bij de wedstrijdleiding ziet dat eruit alsof haar getal niet geldt.
+// Daarom wordt elke serverkopie eerst langs de eigen, nog niet bevestigde
+// invoer gehaald.
+function _metEigenInvoer(uid, data) {
+  const uit = data || {};
+  Object.keys(window._tEigenInvoer || {}).forEach(sl => {
+    const [sUid, laag, dag] = sl.split('|');
+    if (sUid !== uid) return;
+    const eigen = window._tEigenInvoer[sl] || {};
+    if (Object.keys(eigen).length === 0) return;
+    const perDag = { ...(uit[laag] || {}) };
+    const rij = Array.isArray(perDag[dag]) ? [...perDag[dag]] : [];
+    Object.keys(eigen).forEach(i => { rij[Number(i)] = eigen[i]; });
+    perDag[dag] = rij;
+    uit[laag] = perDag;
+    // Het oude formaat loopt alleen voor de speler mee — zie slaSpelerScoreOp().
+    if (laag === 'dagen' && String(uit.dagNr) === dag) uit.scores = rij;
+  });
+  return uit;
 }
 
 // De rij zoals hij de deur uit gaat: de laatst bekende stand van deze laag, met
@@ -363,17 +407,19 @@ async function slaSpelerScoreOp(uid, dagNr, aantalHoles, laag = 'dagen') {
   const sleutel = uid + '|' + laag;
   clearTimeout(window._tSpelerSaveTimers[sleutel]);
   window._tSpelerSaveTimers[sleutel] = setTimeout(async () => {
-    const scores = _rijVoorOpslag(uid, laag, dagNr, aantalHoles);
+    const sl        = _eigenInvoerSleutel(uid, laag, dagNr);
+    const verstuurd = { ...(window._tEigenInvoer[sl] || {}) };
+    const scores    = _rijVoorOpslag(uid, laag, dagNr, aantalHoles);
     try {
       const velden = { [laag]: { [String(dagNr)]: scores }, timestamp: Date.now() };
       // Het oude formaat (`dagNr` + `scores` los ernaast) blijft alleen voor de
       // speler meelopen, zodat schermen die het nog lezen niet omvallen.
       if (laag === 'dagen') { velden.dagNr = dagNr; velden.scores = scores; }
       await setDoc(doc(db, 'toernooien', actieveToernooiId, 'live', uid), velden, { merge: true });
-      // Gelukt: mijn getallen staan op de server en hoeven niet meer beschermd
-      // te worden. Mislukt het, dan blijven ze staan en gaan ze mee met de
-      // volgende poging — anders is een score stil verdwenen.
-      delete window._tEigenInvoer[_eigenInvoerSleutel(uid, laag, dagNr)];
+      // Gelukt: deze holes staan op de server en hoeven niet meer beschermd te
+      // worden. Mislukt het, dan blijven ze staan en gaan ze mee met de volgende
+      // poging — anders is een score stil verdwenen.
+      _vergeetVerstuurdeInvoer(sl, verstuurd);
     } catch(e) {
       console.error('Speler score opslaan mislukt:', e);
     }
@@ -546,13 +592,25 @@ function _liveScoresVanDag(data, dagNr) {
 // wedstrijdleiding — een rood vakje halverwege een kaart van 18 holes zie je
 // op een telefoon anders niet.
 function kaartOordeel(kleuren) {
-  const verschillen = (kleuren || []).filter(k => k.kleur === 'rood').map(k => k.holeNr);
+  const rood        = (kleuren || []).filter(k => k.kleur === 'rood');
+  const verschillen = rood.map(k => k.holeNr);
   const wachtend    = (kleuren || []).filter(k => k.kleur === 'oranje').map(k => k.holeNr);
   const delen = [];
-  if (verschillen.length > 0) {
-    delen.push(verschillen.length === 1
-      ? `1 verschil (hole ${verschillen[0]})`
-      : `${verschillen.length} verschillen (holes ${verschillen.join(', ')})`);
+  // ⚠ v5.43.1 — BIJ WIE. Sierk, 25 september 2026: "er is nog een hole met alle
+  // scores hetzelfde en toch rood." De regel noemde alleen het HOLENUMMER, en
+  // sinds v5.43.0 kijkt hij naar ÉLKE kolom van de flight in plaats van naar
+  // twee. "Hole 7" kon dus over de kaart van een medespeler gaan, terwijl op je
+  // eigen regel bij hole 7 niets aan de hand was — een waarschuwing die je niet
+  // kunt terugvinden is een vals alarm, en dan is de hele controle waardeloos.
+  // Nu staat de naam erbij. Zonder naam (oudere aanroepen, en de tests die de
+  // rekenregel los nameten) blijft de tekst zoals hij was.
+  const noem = (k) => k.wie ? `hole ${k.holeNr} bij ${k.wie}` : `hole ${k.holeNr}`;
+  if (rood.length === 1) {
+    delen.push(`1 verschil (${noem(rood[0])})`);
+  } else if (rood.length > 1) {
+    delen.push(rood.some(k => k.wie)
+      ? `${rood.length} verschillen (${rood.map(noem).join(', ')})`
+      : `${rood.length} verschillen (holes ${verschillen.join(', ')})`);
   }
   if (wachtend.length > 0) {
     delen.push(wachtend.length === 1
@@ -668,12 +726,20 @@ function herlaadToernooiListeners() {
         // _liveScores verouderde zodra iemand naar een afgesloten dag keek —
         // en heeftGeenScores() daarop vertrouwt om "terug naar setup" te
         // blokkeren tijdens een lopende speeldag.
-        liveSnap.docs.forEach(liveDoc => { store._liveScores[liveDoc.id] = liveDoc.data(); });
+        // v5.43.1: elke serverkopie eerst langs de eigen, nog niet bevestigde
+        // invoer — anders springt een net ingetikt getal een tel terug. Zie
+        // _metEigenInvoer().
+        liveSnap.docs.forEach(liveDoc => {
+          store._liveScores[liveDoc.id] = _metEigenInvoer(liveDoc.id, liveDoc.data());
+        });
         if (!dag || dag.afgerond) return;
         let gewijzigd = false;
         liveSnap.docs.forEach(liveDoc => {
-          const data = liveDoc.data();
           const uid = liveDoc.id;
+          // ⚠ Dezelfde kopie als hierboven, mét de eigen invoer erin. Las dit
+          // liveDoc.data() opnieuw, dan zou `dag.scores` — waar het totaal, de
+          // stand en de ranglijst op leunen — die invoer juist wél missen.
+          const data = store._liveScores[uid];
           const scores = _liveScoresVanDag(data, dag.dagNr);
           if (scores === null) return; // deze speler heeft niets voor deze dag
           if (!dag.scores) dag.scores = {};
@@ -4071,6 +4137,51 @@ function prijsRegelHtml(t, dag, key, idx, rij) {
 // De inhoud van de kaart. Apart van de kaart zelf, zodat één wijziging alleen
 // dit stukje hertekent: een volledige hertekening zou de kaart dichtklappen en
 // je keuzelijst onder je vinger vandaan halen.
+// ============================================================
+//  DE PRIJZEN VOOR DE DEELNEMER — v5.44.0
+// ------------------------------------------------------------
+//  Sierk, 25 september 2026: de handmatige prijzen mogen ook bij de deelnemers
+//  en op de meekijkpagina staan. Tot nu toe zag alleen de wedstrijdleiding ze,
+//  en dat volgde uit de plek: het invulvak zit in háár knoppenblok.
+//
+//  Dit is de LEESkant: geen invoervelden, geen knoppen.
+//
+//  ⚠ Alleen wat is INGEVULD. Een leeg vak zou de indruk geven dat er nog prijzen
+//  komen; een regel zonder hole of zonder speler is niets waard en wordt
+//  overgeslagen. Is er niets, dan komt er ook geen kaart — geen lege kop op een
+//  telefoonscherm.
+//
+//  ⚠ Dit volgt NIET het vinkje "Stand tonen aan deelnemers". Dat vinkje gaat
+//  over het klassement en de onderlinge stand; een longest drive is geen stand.
+//  Wil je dat anders, dan is dat een besluit en geen instelling.
+//
+//  Dezelfde kaart staat op de meekijkpagina — prijzenHtmlLive() in
+//  toernooi-live.html. Wijzig je hier iets, kijk dan ook daar.
+// ============================================================
+function prijzenLeesKaart(t, dag) {
+  if (!dag) return '';
+  const naamVan = (uid) => (t?.spelers || []).find(sp => String(sp.uid) === String(uid))?.naam || '';
+  const regels = [];
+  PRIJS_SOORTEN.forEach(soort => {
+    prijsRegels(dag, soort.key).forEach(rij => {
+      const naam = naamVan(rij?.uid);
+      if (!rij?.hole || !naam) return;
+      regels.push({ label: soort.label, hole: rij.hole, naam });
+    });
+  });
+  if (regels.length === 0) return '';
+  return `<div class="card">
+      <div class="card-header"><h2>🏆 Prijzen</h2></div>
+      <div class="card-body" style="padding:4px 16px 14px">
+        ${regels.map(r => `<div style="display:flex;align-items:baseline;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <span style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;min-width:64px">${esc(r.label)}</span>
+          <span style="font-size:12px;color:var(--light);min-width:52px">hole ${esc(r.hole)}</span>
+          <span style="font-size:14px;color:var(--dark);font-weight:600">${esc(r.naam)}</span>
+        </div>`).join('')}
+      </div>
+    </div>`;
+}
+
 function prijzenVakHtml(t, dag) {
   return PRIJS_SOORTEN.map(soort => {
     const rijen = prijsRegels(dag, soort.key);
@@ -4645,7 +4756,10 @@ function renderToernooiActief() {
   } else if (isBeheerder) {
     detail.innerHTML = dagTabsHtml + titelKaart + ranglijstKaart + matrixKaart + scorecardKaart + dagKnoppen;
   } else {
-    detail.innerHTML = dagTabsHtml + titelKaart + scorecardKaart + ranglijstKaart + matrixKaart;
+    // v5.44.0: de prijzen erbij, alleen lezen. Onder de scorekaart, want daar
+    // kijkt een deelnemer als hij van de baan komt.
+    detail.innerHTML = dagTabsHtml + titelKaart + scorecardKaart
+                     + prijzenLeesKaart(t, dag) + ranglijstKaart + matrixKaart;
   }
 
   renderTScorecard();
@@ -4778,7 +4892,8 @@ function verversScoreKleuren() {
     const holeIdx = Number(el.getAttribute('data-hole'));
     const o       = celOordeel(uid, holeIdx, dag);
     const rol     = rolVoorKolom(uid, dag);
-    kleuren.push({ holeNr: holeIdx + 1, kleur: o.kleur });
+    kleuren.push({ holeNr: holeIdx + 1, kleur: o.kleur,
+                   wie: el.getAttribute('data-wie') || null });
     el.className = celKlasse(o.kleur, o.vast);
 
     // Heeft de wedstrijdleiding deze hole zojuist vastgesteld, dan hoort er
@@ -4902,21 +5017,26 @@ function renderTScorecard() {
   const rollen = {};
   spelers.forEach(s => { rollen[s.uid] = rolVoorKolom(s.uid, dag); });
 
+  // v5.11.0: unieke korte namen binnen DEZE kaart. Drie spelers die Arjan
+  // heten stonden hier alle drie als "Arjan"; nu Arjan V, Arjan R, Arjan P.
+  // v5.43.1: ze staan hier omhoog verhuisd, want de waarschuwingsregel hieronder
+  // noemt nu bij wie een verschil zit.
+  const korteNamen = kortNaamMap(spelers);
+  const kortVan = (s) => korteNamen[s.uid] || s.naam.split(' ')[0];
+
   // De waarschuwingsregel. Staat bij speler, medespeler EN wedstrijdleiding: een
   // rood vakje op hole 7 van 18 zie je op een telefoon anders pas als je scrolt.
   const kleuren = [];
   spelers.forEach(s => {
     if (rollen[s.uid] === 'kijker') return;
     holesInVolgorde.forEach(holeIdx => {
-      kleuren.push({ holeNr: holeIdx + 1, kleur: celOordeel(s.uid, holeIdx, dag).kleur });
+      kleuren.push({ holeNr: holeIdx + 1, kleur: celOordeel(s.uid, holeIdx, dag).kleur,
+                     wie: kortVan(s) });
     });
   });
   html += `<div id="t-kaart-waarschuwing" style="${dagAfgerond ? 'display:none' : waarschuwingStijl(kaartOordeel(kleuren))}">${esc(kaartOordeel(kleuren).tekst)}</div>`;
 
   html += `<div style="overflow-x:auto"><table class="scorecard" style="width:100%"><thead><tr><th class="player-col">Hole</th>`;
-  // v5.11.0: unieke korte namen binnen DEZE kaart. Drie spelers die Arjan
-  // heten stonden hier alle drie als "Arjan"; nu Arjan V, Arjan R, Arjan P.
-  const korteNamen = kortNaamMap(spelers);
   spelers.forEach(s => {
     // v5.43.0: hier stond een groen vinkje boven de kolom van de speler die jij
     // moest markeren, en de rol die daarvoor nodig was. Er is geen toegewezen
@@ -4962,11 +5082,12 @@ function renderTScorecard() {
       const opSlot = dagAfgerond || rol === 'kijker' || (o.vast && rol !== 'beheer');
       if (opSlot) {
         html += `<td style="text-align:center"><span data-uid="${escAttr(s.uid)}" data-hole="${holeIdx}"
+          data-wie="${escAttr(kortVan(s))}"
           class="${celKlasse(o.kleur, o.vast)}"
           title="${o.vast ? 'Vastgesteld door de wedstrijdleiding' : ''}">${val !== null && val !== undefined ? val : '—'}</span></td>`;
       } else {
         html += `<td><input type="number" min="1" max="12" inputmode="numeric" value="${val !== null && val !== undefined ? val : ''}"
-          data-uid="${escAttr(s.uid)}" data-hole="${holeIdx}"
+          data-uid="${escAttr(s.uid)}" data-hole="${holeIdx}" data-wie="${escAttr(kortVan(s))}"
           tabindex="${tabIdx}" onfocus="this.select();meldCelStatus('${escAttr(s.uid)}',${holeIdx})"
           oninput="updateTScoreAndAdvance('${escAttr(s.uid)}',${holeIdx},${tabIdx},this.value)"
           class="${celKlasse(o.kleur, o.vast)}"></td>`;
