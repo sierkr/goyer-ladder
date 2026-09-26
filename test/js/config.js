@@ -162,20 +162,13 @@ export { httpsCallable };
 export const STATE_DOC = doc(db, 'ladder', 'state'); // legacy — voor migratie
 export const USERS_DOC = doc(db, 'ladder', 'users');
 
-// Users cache helpers — voorkomt herhaalde Firestore reads
-async function getUsers(forceFresh = false) {
-  if (!forceFresh && _usersCache !== null) return _usersCache;
-  try {
-    const snap = await getDoc(USERS_DOC);
-    _usersCache = snap.exists() ? (snap.data().lijst || []) : [];
-  } catch(e) { console.error('getUsers mislukt:', e); _usersCache = _usersCache || []; }
-  return _usersCache;
-}
-async function saveUsers(lijst) {
-  _usersCache = lijst;
-  try { await setDoc(USERS_DOC, { lijst }); }
-  catch(e) { console.error('saveUsers mislukt:', e); }
-}
+// ⚠ v5.44.0: hier stonden een `getUsers()` en een `saveUsers()` die
+// `_usersCache` gebruikten — een naam die in dit bestand niet bestaat. Ze werden
+// nergens aangeroepen en niet geëxporteerd (js/auth.js heeft zijn eigen versies,
+// en die worden overal gebruikt), dus er ging vandaag niets mis. Maar wie ze ooit
+// zou gaan gebruiken kreeg meteen een fout. Weggehaald in plaats van
+// gerepareerd: twee versies van hetzelfde naast elkaar is de echte valstrik.
+// Gevonden met een linter op 25 september 2026.
 export const SPELERS_DOC = null; // v3.0.0-9c: legacy ladder/spelers is verwijderd, export behouden als null voor compat
 export const BANEN_DOC = doc(db, 'ladder', 'banen');
 export const ARCHIEF_DOC = doc(db, 'ladder', 'archief');

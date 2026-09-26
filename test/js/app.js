@@ -100,6 +100,28 @@ window.slaAangepasteBaanOp = slaAangepasteBaanOp;
 window.scanScorekaartFoto = scanScorekaartFoto;
 window.verwijderAangepasteBaan = verwijderAangepasteBaan;
 window.refreshPlayerSlotOptions = refreshPlayerSlotOptions;
+
+// ⚠ v5.44.0 — WAT ER MIS WAS. Hier stond de knop "Nu updaten" uit de updatebalk
+// met de hele handeling in het `onclick` zelf:
+//   onclick="(function(){try{slaPartijFormulierOp()}catch(e){}…reload()…})()"
+// Een `onclick` draait in de GLOBALE ruimte, niet in die van deze module. En
+// `slaPartijFormulierOp` stond — als enige van de namen die uit HTML worden
+// aangeroepen — niet op `window`. Dat is dus een fout op een niet-bestaande
+// naam, en de lege `catch` slikte hem op: de pagina herlaadde gewoon en een open
+// partijformulier was weg. Gemeten op 25 september 2026 in de browser:
+// `typeof window.slaPartijFormulierOp` was `undefined`, terwijl `startPartij`
+// en `scanScorekaartFoto` er wél stonden.
+//
+// Twee dingen daartegen: de handeling heeft nu één naam die op window staat, en
+// er wordt gemeld als het bewaren mislukt. Een lege `catch` maakt van een fout
+// een stilte, en dan vindt niemand hem ooit.
+// (`slaPartijFormulierOp` vangt zijn eigen fouten al af en meldt ze zelf; deze
+// opvang is er voor het onverwachte.)
+window.updateNuEnHerlaad = function updateNuEnHerlaad() {
+  try { slaPartijFormulierOp(); }
+  catch (e) { console.error('[update] partijformulier bewaren mislukt:', e); }
+  setTimeout(() => location.reload(), 200);
+};
 window.updateScore = updateScore;
 window.toggleScorecard = toggleScorecard;
 window.openUitslagModal = openUitslagModal;
@@ -231,7 +253,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v5.43.1';
+  const VERSION = 'v5.44.0';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -275,7 +297,7 @@ window.kiesTRankingLadder = kiesTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v5.43.1';
+  const LOKALE_VERSIE = 'v5.44.0';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 
@@ -297,7 +319,7 @@ window.kiesTRankingLadder = kiesTRankingLadder;
           style="padding:6px 12px;border-radius:6px;border:1.5px solid rgba(255,255,255,0.5);background:transparent;color:white;cursor:pointer;font-family:inherit;font-size:12px">
           Later
         </button>
-        <button onclick="(function(){try{slaPartijFormulierOp()}catch(e){}setTimeout(function(){location.reload()},200)})()"
+        <button onclick="updateNuEnHerlaad()"
           style="padding:6px 12px;border-radius:6px;border:none;background:white;color:#2d6a4f;cursor:pointer;font-weight:700;font-family:inherit;font-size:12px">
           Nu updaten
         </button>

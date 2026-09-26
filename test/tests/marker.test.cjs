@@ -221,7 +221,77 @@ check('dag 2 pakt alleen zijn eigen dag',
 check('en dag 1 blijft ongemoeid',
   M._rijVoorOpslag('a', 'markerDagen', 1, 2), [4, 5]);
 
-// ── Blok 6: doortikken terwijl de server nog niet heeft geantwoord ──
+// ── Blok 6: de meekijkpagina kiest hetzelfde getal als de app ──
+console.log('\n══ DE MEEKIJKPAGINA NAAST DE APP ══\n');
+
+//  ⚠ WAAROM DIT BLOK BESTAAT. `toernooi-live.html` staat los van de app en heeft
+//  zijn eigen kopie van "welk getal telt". Tot v5.43.1 las die pagina alleen de
+//  laag `dagen` — wat een speler ZELF intikte — en negeerde `markerDagen` en
+//  `beheerDagen`. Houdt één iemand de kaart van de hele flight bij, en dat is
+//  sinds v5.43.0 de gewone gang van zaken, dan bleef die pagina dus leeg tot
+//  "dag afsluiten". Sierk vroeg op 25 september 2026 waarom de meekijklink niet
+//  dezelfde kaart laat zien als de coordinator.
+//
+//  ⚠ Er is GEEN browserproef voor die pagina en die kan er ook niet zijn: hij
+//  praat altijd met de live-database en draait niet in de emulator. Dit is dus
+//  de enige meting die er is — de twee kanten uit de bron knippen en naast
+//  elkaar leggen, net als de suite "Korte unieke namen" doet.
+
+const L = M.meekijk;
+const waarden = [null, undefined, '', 0, 3, 4, 5, '5'];
+let afwijkingen = 0;
+for (const sp of waarden) for (const mk of waarden) for (const bh of waarden) {
+  const app  = M.scoreOordeel(sp, mk, bh).tel;
+  const live = L.tellendGetal(sp, mk, bh);
+  // Allebei null/undefined telt als gelijk; anders moet het getal hetzelfde zijn.
+  const gelijk = (app === null || app === undefined)
+    ? (live === null || live === undefined)
+    : app === live;
+  if (!gelijk) afwijkingen++;
+}
+check(`alle ${waarden.length ** 3} combinaties geven hetzelfde getal`, afwijkingen, 0);
+
+// En de losse gevallen met naam, zodat een afwijking meteen te lezen is.
+check('alleen de speler',                 L.tellendGetal(5, null, null), 5);
+check('alleen een medespeler',            L.tellendGetal(null, 5, null), 5);
+check('alleen de wedstrijdleiding',       L.tellendGetal(null, null, 5), 5);
+check('speler en medespeler oneens: de speler telt',
+  L.tellendGetal(5, 6, null), 5);
+check('de wedstrijdleiding overrulet allebei',
+  L.tellendGetal(5, 6, 4), 4);
+check('een vastgestelde 0 telt ook echt',  L.tellendGetal(5, 5, 0), 0);
+check('niemand vulde in',                  L.tellendGetal(null, null, null), null);
+
+// ── De hele rij, zoals de pagina hem tekent ─────────────────
+//  Dit is het geval uit de melding: één medespeler hield de kaart bij, de speler
+//  zelf tikte niets in. Tot v5.43.1 kwam hier een leeg scherm uit.
+L._zetLiveMap({
+  a: { markerDagen: { '1': [4, 5] } },              // alleen door de flight
+  b: { dagen: { '1': [6, 7] }, dagNr: 1, scores: [6, 7] },  // door zichzelf
+  c: { beheerDagen: { '1': [3, 3] } },              // door de wedstrijdleiding
+});
+const dag = { dagNr: 1, holes: [{}, {}], scores: {} };
+check('de kaart van een medespeler komt door',
+  L.getLiveScoresVoorDag(dag).a, [4, 5]);
+check('de eigen kaart ook nog steeds',
+  L.getLiveScoresVoorDag(dag).b, [6, 7]);
+check('en wat de wedstrijdleiding vaststelde ook',
+  L.getLiveScoresVoorDag(dag).c, [3, 3]);
+
+// De pagina mag niet omvallen op een speler zonder scores, en valt terug op wat
+// er in het toernooidocument staat — dat is de bron voor een afgesloten dag.
+L._zetLiveMap({});
+check('zonder live-scores blijft de dag zelf de bron',
+  L.getLiveScoresVoorDag({ dagNr: 1, holes: [{}], scores: { a: [4] } }).a, [4]);
+check('een lege dag valt niet om', L.getLiveScoresVoorDag(null), {});
+
+// En het moet hetzelfde zijn als wat de APP voor dezelfde gegevens uitrekent.
+const zelfdeBron = { markerDagen: { '1': [4, 5] }, dagen: { '1': [null, 6] } };
+L._zetLiveMap({ a: zelfdeBron });
+check('app en meekijkpagina komen op dezelfde rij uit',
+  L.getLiveScoresVoorDag(dag).a, M._liveScoresVanDag(zelfdeBron, 1));
+
+// ── Blok 7: doortikken terwijl de server nog niet heeft geantwoord ──
 console.log('\n══ DOORTIKKEN TIJDENS HET OPSLAAN ══\n');
 
 //  ⚠ WAAROM DIT BLOK BESTAAT. Sierk, 25 september 2026, na v5.43.0 op live:

@@ -272,7 +272,9 @@ function laadMarkerKern() {
       '_eigenInvoerSleutel', '_onthoudEigenInvoer', '_vergeetVerstuurdeInvoer',
       '_metEigenInvoer', '_rijVoorOpslag'])}
     ${knip('js/toernooi.js', ['slaSpelerScoreOp'], 'async ')}
+    ${knip('js/toernooi.js', ['lagenVanDag', '_laagVanDag', '_liveScoresVanDag'])}
     return {
+      lagenVanDag, _liveScoresVanDag,
       zelfdeFlight, scoreOordeel, kaartOordeel,
       _onthoudEigenInvoer, _rijVoorOpslag, _vergeetVerstuurdeInvoer,
       _metEigenInvoer, slaSpelerScoreOp,
@@ -283,18 +285,38 @@ function laadMarkerKern() {
       _zetSchrijver: (f) => { _schrijf = f; },
     };
   `;
-  return new Function(bron)();
+  const app = new Function(bron)();
+
+  // ⚠ v5.44.0 — DE MEEKIJKPAGINA, DE ANDERE KANT.
+  //  `toernooi-live.html` staat bewust los van de app en heeft zijn eigen kopie
+  //  van "welk getal telt". Tot v5.43.1 las die pagina maar ÉÉN van de drie
+  //  lagen; dat viel bijna twee weken niemand op, omdat er geen enkele proef is
+  //  die deze pagina met scores erin bekijkt — hij praat altijd met de
+  //  live-database en draait dus niet in de emulator.
+  //  Dit is wat er wél te meten valt: de twee kanten uit de bron knippen en
+  //  naast elkaar leggen. Lopen ze uit de pas, dan valt de test om.
+  const meekijk = new Function(`
+    ${knip('toernooi-live.html', ['tellendGetal', 'laagVanDagLive', 'getLiveScoresVoorDag'])}
+    let _liveScoresMap = {};
+    return {
+      tellendGetal, laagVanDagLive, getLiveScoresVoorDag,
+      _zetLiveMap: (v) => { _liveScoresMap = v || {}; },
+    };
+  `)();
+  return { ...app, meekijk };
 }
 
 // ============================================================
-//  v5.11.7 — DE GASTLOGIN, VAN BEIDE KANTEN
+//  v5.11.7 / v5.44.0 — DE GASTLOGIN
 // ------------------------------------------------------------
-//  Twee bestanden moeten hier precies hetzelfde doen:
-//    js/toernooi.js  gastLoginVan()  maakt het account aan
-//    js/auth.js      gastKernVan()   herkent wat de gast intikt
-//  Lopen ze uit de pas, dan bestaat het account wel maar komt de gast er niet
-//  in — en dat merk je pas op de eerste tee. Beide worden hier ECHT uit de app
-//  geknipt en in de test tegen elkaar gelegd.
+//  js/toernooi.js maakt het gastaccount aan: gastLoginVan() bepaalt de
+//  inlognaam, gastloginTekst() maakt het briefje, hashPinTekst() de pincode.
+//
+//  ⚠ v5.44.0: hier stond óók de andere kant — gastKernVan() uit js/auth.js, dat
+//  herkende wat een gast INTIKTE. Die hele weg is weg (Sierk, 25 september
+//  2026): een gast kiest nu zijn naam uit een lijst en tikt vier cijfers, dus
+//  er valt niets meer te herkennen. De vergelijking tussen de twee kanten is
+//  daarmee vervallen, niet stukgegaan.
 // ============================================================
 function laadGastloginKern() {
   const maak = new Function(`
@@ -312,14 +334,7 @@ function laadGastloginKern() {
     return { splitsNaam, gastLoginVan, toernooiCodeVan, uniekeGastCode, gastloginTekst,
              gastenUitTekst, hashPinTekst };
   `)();
-  // v5.12.3: gastLoginUitToernooi zoekt de ECHTE inlognaam op in het toernooi,
-  // in plaats van hem uit te rekenen. Het is de tegenhanger van gastLoginVan:
-  // wat de ene schrijft, moet de andere terugvinden.
-  const herken = new Function(`
-    ${knip('js/auth.js', ['gastKernVan', 'gastLoginUitToernooi'])}
-    return { gastKernVan, gastLoginUitToernooi };
-  `)();
-  return { ...maak, ...herken };
+  return maak;
 }
 
 // ============================================================

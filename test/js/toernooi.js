@@ -4137,6 +4137,51 @@ function prijsRegelHtml(t, dag, key, idx, rij) {
 // De inhoud van de kaart. Apart van de kaart zelf, zodat één wijziging alleen
 // dit stukje hertekent: een volledige hertekening zou de kaart dichtklappen en
 // je keuzelijst onder je vinger vandaan halen.
+// ============================================================
+//  DE PRIJZEN VOOR DE DEELNEMER — v5.44.0
+// ------------------------------------------------------------
+//  Sierk, 25 september 2026: de handmatige prijzen mogen ook bij de deelnemers
+//  en op de meekijkpagina staan. Tot nu toe zag alleen de wedstrijdleiding ze,
+//  en dat volgde uit de plek: het invulvak zit in háár knoppenblok.
+//
+//  Dit is de LEESkant: geen invoervelden, geen knoppen.
+//
+//  ⚠ Alleen wat is INGEVULD. Een leeg vak zou de indruk geven dat er nog prijzen
+//  komen; een regel zonder hole of zonder speler is niets waard en wordt
+//  overgeslagen. Is er niets, dan komt er ook geen kaart — geen lege kop op een
+//  telefoonscherm.
+//
+//  ⚠ Dit volgt NIET het vinkje "Stand tonen aan deelnemers". Dat vinkje gaat
+//  over het klassement en de onderlinge stand; een longest drive is geen stand.
+//  Wil je dat anders, dan is dat een besluit en geen instelling.
+//
+//  Dezelfde kaart staat op de meekijkpagina — prijzenHtmlLive() in
+//  toernooi-live.html. Wijzig je hier iets, kijk dan ook daar.
+// ============================================================
+function prijzenLeesKaart(t, dag) {
+  if (!dag) return '';
+  const naamVan = (uid) => (t?.spelers || []).find(sp => String(sp.uid) === String(uid))?.naam || '';
+  const regels = [];
+  PRIJS_SOORTEN.forEach(soort => {
+    prijsRegels(dag, soort.key).forEach(rij => {
+      const naam = naamVan(rij?.uid);
+      if (!rij?.hole || !naam) return;
+      regels.push({ label: soort.label, hole: rij.hole, naam });
+    });
+  });
+  if (regels.length === 0) return '';
+  return `<div class="card">
+      <div class="card-header"><h2>🏆 Prijzen</h2></div>
+      <div class="card-body" style="padding:4px 16px 14px">
+        ${regels.map(r => `<div style="display:flex;align-items:baseline;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <span style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;min-width:64px">${esc(r.label)}</span>
+          <span style="font-size:12px;color:var(--light);min-width:52px">hole ${esc(r.hole)}</span>
+          <span style="font-size:14px;color:var(--dark);font-weight:600">${esc(r.naam)}</span>
+        </div>`).join('')}
+      </div>
+    </div>`;
+}
+
 function prijzenVakHtml(t, dag) {
   return PRIJS_SOORTEN.map(soort => {
     const rijen = prijsRegels(dag, soort.key);
@@ -4711,7 +4756,10 @@ function renderToernooiActief() {
   } else if (isBeheerder) {
     detail.innerHTML = dagTabsHtml + titelKaart + ranglijstKaart + matrixKaart + scorecardKaart + dagKnoppen;
   } else {
-    detail.innerHTML = dagTabsHtml + titelKaart + scorecardKaart + ranglijstKaart + matrixKaart;
+    // v5.44.0: de prijzen erbij, alleen lezen. Onder de scorekaart, want daar
+    // kijkt een deelnemer als hij van de baan komt.
+    detail.innerHTML = dagTabsHtml + titelKaart + scorecardKaart
+                     + prijzenLeesKaart(t, dag) + ranglijstKaart + matrixKaart;
   }
 
   renderTScorecard();

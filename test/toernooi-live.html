@@ -257,22 +257,62 @@ window.laadData = async function() {
   }
 };
 
+// ============================================================
+//  WELK GETAL TELT — v5.44.0
+// ------------------------------------------------------------
+//  ⚠ KOPIE van scoreOordeel() uit js/toernooi.js, maar alleen het getal dat
+//  MEETELT — deze pagina heeft de kleuren niet. Deze pagina staat bewust los van
+//  de app: importeren zou de halve app meeslepen (config, store, auth) en dat
+//  wil je niet op een scherm dat zonder inloggen open moet kunnen. De
+//  rekentest-suite "Twee paar ogen & scorelagen" knipt beide kanten uit de bron
+//  en legt ze naast elkaar; lopen ze uit de pas, dan valt die test om.
+//  Wijzig je hier iets, wijzig het dan ook in js/toernooi.js.
+//
+//  ⚠ WAT ER MIS WAS (gemeld door Sierk, 25 september 2026). Deze pagina las
+//  alleen de laag `dagen` — wat een speler ZELF intikte — en negeerde
+//  `markerDagen` (een medespeler uit zijn flight) en `beheerDagen` (de
+//  wedstrijdleiding). De drie lagen bestaan sinds v5.11.0; deze pagina is toen
+//  niet meegenomen.
+//
+//  Zolang iedereen zijn eigen kaart invulde stond het getal toevallig in de laag
+//  waar deze pagina in keek. Sinds v5.43.0 houdt vaak één iemand de kaart van de
+//  hele flight bij — dan komt het in `markerDagen` terecht en bleef deze pagina
+//  leeg tot "dag afsluiten". Ook een score die de wedstrijdleiding vaststelde
+//  was hier onzichtbaar.
+// ============================================================
+function tellendGetal(spelerWaarde, markerWaarde, beheerWaarde) {
+  const leeg = (v) => v === null || v === undefined || v === '';
+  const bh = leeg(beheerWaarde) ? null : Number(beheerWaarde);
+  if (bh !== null) return bh;          // de wedstrijdleiding heeft het laatste woord
+  const sp = leeg(spelerWaarde) ? null : Number(spelerWaarde);
+  const mk = leeg(markerWaarde) ? null : Number(markerWaarde);
+  return sp !== null ? sp : mk;        // anders de speler; is die er niet, zijn flight
+}
+
+// Eén laag van één dag uit een live-document, altijd als array.
+function laagVanDagLive(data, laag, dagNr) {
+  const perDag = data?.[laag]?.[String(dagNr)];
+  if (Array.isArray(perDag)) return perDag;
+  // v5.3.0-formaat: één losse dag naast `dagen`. Gold alleen voor de speler.
+  if (laag === 'dagen' && data?.dagNr === dagNr && Array.isArray(data.scores)) return data.scores;
+  return [];
+}
+
 // v3.0.0-11.106: helper — geeft de scores terug voor een dag,
 // met live/-subcollectie als prioriteit boven dag.scores.
 function getLiveScoresVoorDag(dag) {
   if (!dag) return {};
   const result = { ...(dag.scores || {}) };
   Object.keys(_liveScoresMap).forEach(uid => {
-    // v5.3.0: live-documenten bewaren de scores nu per dag onder `dagen`.
-    // Het oude formaat (een enkele `scores` bij `dagNr`) blijft werken.
     const e = _liveScoresMap[uid] || {};
-    const perDag = e.dagen?.[String(dag.dagNr)];
-    const scoresVanDag = Array.isArray(perDag)
-      ? perDag
-      : (e.dagNr === dag.dagNr ? e.scores : null);
-    if (scoresVanDag) {
-      result[uid] = scoresVanDag;
-    }
+    const speler = laagVanDagLive(e, 'dagen',       dag.dagNr);
+    const marker = laagVanDagLive(e, 'markerDagen', dag.dagNr);
+    const beheer = laagVanDagLive(e, 'beheerDagen', dag.dagNr);
+    const lengte = Math.max(speler.length, marker.length, beheer.length);
+    if (lengte === 0) return;   // deze speler heeft niets voor deze dag
+    const rij = [];
+    for (let i = 0; i < lengte; i++) rij.push(tellendGetal(speler[i], marker[i], beheer[i]));
+    result[uid] = rij;
   });
   return result;
 }
@@ -488,7 +528,61 @@ function kortNaamMap(spelers) {
     html += '</tr></tbody></table></div></div>';
   });
 
+  html += prijzenHtmlLive(t, dag);
+
   document.getElementById('inhoud').innerHTML = html || '<div class="empty">Geen scores.</div>';
+}
+
+// ============================================================
+//  HANDMATIGE PRIJZEN — v5.44.0
+// ------------------------------------------------------------
+//  Longest, Neary en Leary staan per DAG in het toernooidocument
+//  (`dag.prijzen`), dus deze pagina had ze al binnen — er werd alleen niets mee
+//  getekend. Sierk, 25 september 2026: ze mogen ook hier staan.
+//
+//  ⚠ Alleen wat is INGEVULD. Een leeg vak zou de indruk geven dat er nog prijzen
+//  komen; een regel zonder hole of zonder speler is niets waard en wordt
+//  overgeslagen. Staat er niets, dan staat er ook geen kop.
+//
+//  ⚠ Dit is de kant van de MEEKIJKER. De wedstrijdleiding vult ze in op haar
+//  eigen scherm (prijzenVakHtml() in js/toernooi.js); dit is alleen lezen.
+//
+//  ⚠ Alles gaat door escLive(). Een spelersnaam wordt door de wedstrijdleiding
+//  ingetikt — bij een gast helemaal — en komt hier op een OPENBARE pagina
+//  terecht. Zelfde reden als bij de teamnamen in v5.42.0.
+// ============================================================
+const PRIJS_SOORTEN_LIVE = [
+  { key: 'longest', label: 'Longest' },
+  { key: 'neary',   label: 'Neary' },
+  { key: 'leary',   label: 'Leary' },
+];
+
+function prijzenHtmlLive(t, dag) {
+  if (!dag) return '';
+  const naamVan = (uid) => (t.spelers || []).find(sp => String(sp.uid) === String(uid))?.naam || '';
+  const regels = [];
+  for (const soort of PRIJS_SOORTEN_LIVE) {
+    const rijen = Array.isArray(dag.prijzen?.[soort.key]) ? dag.prijzen[soort.key] : [];
+    for (const rij of rijen) {
+      const naam = naamVan(rij?.uid);
+      if (!rij?.hole || !naam) continue;
+      regels.push({ label: soort.label, hole: rij.hole, naam });
+    }
+  }
+  if (regels.length === 0) return '';
+  return `<div class="card">
+      <div class="flight-header">🏆 Prijzen</div>
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th style="text-align:left">Prijs</th><th>Hole</th><th style="text-align:left">Speler</th></tr></thead>
+        <tbody>
+          ${regels.map(r => `<tr>
+            <td style="text-align:left">${escLive(r.label)}</td>
+            <td>${escLive(r.hole)}</td>
+            <td style="text-align:left">${escLive(r.naam)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>`;
 }
 
 // v3.0.0-11.37: berekening per dag, met totaal-optie (dagNr=0)
