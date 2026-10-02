@@ -29,7 +29,7 @@ import { store, alleLadders, activeLadderId,
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers,
   isBeheerderRol, isCoordinatorRol, toast, meldFout, laadUitdagingen,
   normaliseerLadderRangen, ladderIntegriteitsRapport, herstelLadderIntegriteit,
-  herstelVerbinding, leesHerstelSpoor } from './auth.js';
+  herstelVerbinding, leesHerstelSpoor, leesOpstartSpoor, opstartTekst } from './auth.js';
 
 // v3.0.0-11.103: gebruikersbeheer (aanmaken/verwijderen/wachtwoord-reset) loopt
 // via de gedeelde Firebase Auth — die is voor test én productie hetzelfde project.
@@ -81,6 +81,27 @@ function renderAdmin() {
   if (isBeheerder) renderAdminSpelersEnAccounts();
   renderAdminLadders();
   toonHerstelSpoor();
+  toonOpstartSpoor();
+}
+
+// v5.46.0: hoe lang het laatste opstarten op dit toestel duurde. Zelfde opzet
+// als het herstelspoor hierboven; uitleg bij leesOpstartSpoor in js/auth.js.
+function toonOpstartSpoor() {
+  const pagina = document.getElementById('page-admin');
+  if (!pagina) return;
+  let el = document.getElementById('admin-opstart-spoor');
+  const spoor = leesOpstartSpoor();
+  if (!spoor) { if (el) el.remove(); return; }
+
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'admin-opstart-spoor';
+    el.style.cssText = 'font-size:11px;color:var(--light);padding:10px 16px;text-transform:none';
+    pagina.appendChild(el);
+  }
+  const d = new Date(spoor.ts);
+  const tijd = d.toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  el.textContent = `Laatste opstart op dit toestel: ${tijd} — ${opstartTekst(spoor)}`;
 }
 
 // ============================================================

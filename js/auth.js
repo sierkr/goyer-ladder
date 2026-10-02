@@ -817,6 +817,8 @@ async function migratieVasteBanen(huidigeLijst) {
 }
 
 async function initFirestore() {
+  // v5.46.0: meetpunt 1 — tot hier was het de browser die de bestanden ophaalde.
+  if (_opstart.bestanden === null) _opstart.bestanden = Math.round(performance.now());
   toonLaadOverlay(true);
 
   const heeftInvite = new URLSearchParams(location.search).has('invite');
@@ -856,6 +858,28 @@ async function initFirestore() {
   }, 3000);
 
   try {
+    // ────────────────────────────────────────────────────────
+    // v5.46.0: ALLE losse leesacties gaan nu tegelijk de deur uit.
+    //
+    // WAT ER MIS WAS. Sierk: "het duurt vaak tot wel 30-60 sec voordat de
+    // database bereikt is". Hieronder werd vijf keer na elkaar op de database
+    // gewacht: eerst de verzamel-read, dan het wachtwoord, dan de UI-stijl
+    // (allebei ladder/config — hetzelfde document twee keer), dan de ladders,
+    // dan ladder/state. Op een traag netwerk telt elke wachttijd op.
+    //
+    // Nu worden ze hier alle vier meteen gestart en verderop, op precies de
+    // plek waar ze vroeger stonden, alleen nog afgewacht. De volgorde waarin de
+    // resultaten worden VERWERKT is dus ongewijzigd — alleen het wachten
+    // overlapt. De .then(…, …) vangt elke fout direct op, zodat een fout pas
+    // telt op het moment dat de oude code hem ook zou zien.
+    const _wachtwoordBelofte = laadInitieelWachtwoord(store).then(() => null, e => e);
+    const _uiStijlBelofte    = laadUiStijl(store);           // gooit nooit
+    const _laddersBelofte    = getDocs(LADDERS_COL).then(snap => ({ snap }), fout => ({ fout }));
+    const _stateBelofte      = getDoc(STATE_DOC).catch(e => {
+      console.warn('[init] ladder/state niet geladen:', e.code || e.message);
+      return null;
+    });
+
     // v3.0.0-11.74: laad initieel wachtwoord parallel met overige docs
     // v5.4.4: Promise.allSettled in plaats van Promise.all.
     //
@@ -899,16 +923,16 @@ async function initFirestore() {
     // Het initiële wachtwoord is alleen nodig in het beheerscherm. Ontbreekt het
     // hier, dan wordt het na het inloggen alsnog opgehaald (zie
     // onAuthStateChanged verderop, v3.0.4). Het mag het opstarten niet blokkeren.
-    try {
-      await laadInitieelWachtwoord(store);
-    } catch(e) {
+    // v5.46.0: al gestart bovenaan; hier alleen nog afwachten.
+    const _wachtwoordFout = await _wachtwoordBelofte;
+    if (_wachtwoordFout) {
       console.warn('[init] initieel wachtwoord nog niet beschikbaar:',
-        e.code || e.message);
+        _wachtwoordFout.code || _wachtwoordFout.message);
     }
 
     // v4.1.0: globale UI-stijl laden en meteen toepassen (voor eerste render van
     // login/app-scherm). Faalt nooit hard — valt terug op 'club' bij problemen.
-    await laadUiStijl(store);
+    await _uiStijlBelofte; // v5.46.0: al gestart bovenaan
     // v5.6.0: de eigen keuze van dit apparaat gaat voor op die van de club.
     pasUiStijlToe(effectieveStijl(store.uiStijl));
 
@@ -1028,15 +1052,16 @@ async function initFirestore() {
     (err) => { console.warn('toernooien collectie listener error:', err.code); }
   ));
 
-    const laddersSnap = await getDocs(LADDERS_COL);
+    // v5.46.0: al gestart bovenaan. Een fout wordt hier opnieuw gegooid, op
+    // dezelfde plek als vroeger, zodat de afhandeling eronder ongewijzigd blijft.
+    const _ladders = await _laddersBelofte;
+    if (_ladders.fout) throw _ladders.fout;
+    const laddersSnap = _ladders.snap;
 
     // v5.4.4: ook deze losse read mag het laden van de ladders niet meeslepen.
     // ladder/state is een legacy-document dat alleen nog in de migratietak
     // hieronder wordt gebruikt; is het onbereikbaar, dan gaan we gewoon door.
-    const stateSnap = await getDoc(STATE_DOC).catch(e => {
-      console.warn('[init] ladder/state niet geladen:', e.code || e.message);
-      return null;
-    });
+    const stateSnap = await _stateBelofte; // v5.46.0: al gestart bovenaan
     const mpDoc     = laddersSnap.docs.find(d => d.id === 'mp');
 
     if (!mpDoc) {
@@ -1090,6 +1115,12 @@ async function initFirestore() {
       // alleSpelersData wordt nu rechtstreeks afgeleid van _usersCache.
     }
   } catch(e) { console.error('Firestore init error:', e); }
+
+  // v5.46.0: meetpunt 2 — de opstartvragen aan de database zijn binnen.
+  if (_opstart.database === null && _opstart.bestanden !== null) {
+    _opstart.database = Math.round(performance.now()) - _opstart.bestanden;
+    bewaarOpstart();
+  }
 
   clearTimeout(loginFallback);
 
@@ -1254,6 +1285,62 @@ function wisselLadder(ladderId) {
 
 function toonLaadOverlay(toon) {
   document.getElementById('laad-overlay').style.display = toon ? 'flex' : 'none';
+  // v5.46.0: meetpunt 3 — het logo gaat (voor het eerst) weg.
+  if (!toon && _opstart.bestanden !== null && _opstart.totaal === null) {
+    _opstart.totaal = Math.round(performance.now());
+    bewaarOpstart();
+  }
+}
+
+// ============================================================
+//  v5.46.0 — HOE LANG DUURDE HET OPSTARTEN?
+// ------------------------------------------------------------
+//  Sierk: "het duurt vaak tot wel 30-60 sec voordat de database bereikt is".
+//  Op een iPhone is het logboek van de browser onbereikbaar, dus net als bij
+//  het verbindingsherstel blijft er één regel achter op het toestel zelf,
+//  onderaan Beheer. Zo is na te meten of het sneller is geworden, en zo niet,
+//  WAAR het blijft hangen:
+//   - bestanden: tot de app-code draait (ophalen van de bestanden);
+//   - database:  de opstartvragen aan de database;
+//   - totaal:    tot het logo weggaat.
+//  Alle tijden in milliseconden vanaf het openen van de app.
+// ============================================================
+const OPSTART_SLEUTEL = 'goyer_opstarttijd';
+const _opstart = { bestanden: null, database: null, totaal: null };
+
+function bewaarOpstart() {
+  try {
+    localStorage.setItem(OPSTART_SLEUTEL, JSON.stringify({ ts: Date.now(), ..._opstart }));
+  } catch (_) { /* privémodus: dan maar zonder meting */ }
+}
+
+function leesOpstartSpoor() {
+  try {
+    const rauw = localStorage.getItem(OPSTART_SLEUTEL);
+    if (!rauw) return null;
+    const spoor = JSON.parse(rauw);
+    return (spoor && typeof spoor.ts === 'number') ? spoor : null;
+  } catch (_) { return null; }
+}
+
+// Puur: milliseconden → "0,8 s", "4,2 s", "37 s". Los van het scherm, zodat
+// de rekentest hem kan natellen.
+function opstartSeconden(ms) {
+  if (typeof ms !== 'number' || !isFinite(ms) || ms < 0) return '?';
+  const s = ms / 1000;
+  return (s < 10 ? s.toFixed(1).replace('.', ',') : String(Math.round(s))) + ' s';
+}
+
+// Puur: het regeltje zonder de datum ervoor.
+function opstartTekst(spoor) {
+  if (!spoor) return '';
+  const delen = [];
+  if (typeof spoor.bestanden === 'number') delen.push('bestanden ' + opstartSeconden(spoor.bestanden));
+  if (typeof spoor.database === 'number')  delen.push('database ' + opstartSeconden(spoor.database));
+  const kop = (typeof spoor.totaal === 'number')
+    ? opstartSeconden(spoor.totaal) + ' tot beeld'
+    : 'logo nog niet weg';
+  return delen.length ? kop + ' (' + delen.join(', ') + ')' : kop;
 }
 
 // ============================================================
@@ -1979,5 +2066,6 @@ export {
   isCoordinatorRol, isBeheerderRol, rondeVanSessie, isPinSessie,
   toast, foutTekst, meldFout, registreerNotificatieToken, laadUitdagingen,
   herstelVerbinding, controleerVerbinding, leesHerstelSpoor, magHerstellen,
+  leesOpstartSpoor, opstartTekst,
   slaEersteLoginOp,
 };
