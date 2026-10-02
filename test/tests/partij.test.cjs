@@ -223,3 +223,48 @@ check('eerste keer mag altijd',        _mag(null, 100000), true);
 check('meteen daarna niet',            _mag(100000, 100500), false);
 check('na precies 30 seconden nog niet', _mag(100000, 130000), false);
 check('na 31 seconden weer wel',       _mag(100000, 131000), true);
+
+console.log('\n══ SNELLER OPSTARTEN (v5.46.0) ══');
+// Sierk: "het duurt vaak tot wel 30-60 sec voordat de database bereikt is".
+const _fs = require('fs'), _pad = require('path');
+const _sw = _fs.readFileSync(_pad.join(__dirname,'..','sw.js'),'utf8');
+const _authBron = _fs.readFileSync(_pad.join(__dirname,'..','js','auth.js'),'utf8');
+
+// De service worker kiest één bron voor de hele opstart.
+const _kies = new Function(_sw.match(/^function kiesBron[\s\S]*?\n\}/m)[0] + 'return kiesBron;')();
+check('zelfde versie → uit de kopie',          _kies('v5.46.0', 'v5.46.0'), 'kopie');
+check('geen antwoord binnen 3 s → uit de kopie', _kies('v5.46.0', null), 'kopie');
+check('nieuwe versie online → van internet',   _kies('v5.46.0', 'v5.47.0'), 'netwerk');
+
+// Het nummer dat de service worker vergelijkt moet het echte versienummer zijn.
+// Staat het ernaast, dan haalt elke opstart alles van internet (en is de winst
+// weg) — zonder foutmelding.
+const _swRegel = _sw.split('\n').find(r => /CACHE_VERSION *=/.test(r)) || '';
+const _swApp = (_swRegel.match(/APP_VERSIE *= *'(v[0-9.]+)'/) || [])[1];
+const _json = JSON.parse(_fs.readFileSync(_pad.join(__dirname,'..','version.json'),'utf8')).version;
+check('APP_VERSIE staat op de CACHE_VERSION-regel', !!_swApp, true);
+check('APP_VERSIE in sw.js = version.json', _swApp, _json);
+check('de kopie wordt vers gevuld (cache: reload)', /addAll\(STATIC_ASSETS\.map\(u => new Request\(u, \{ cache: 'reload' \}\)\)\)/.test(_sw), true);
+
+// De opstartvragen aan de database gaan tegelijk de deur uit: ze worden
+// gestart vóór de eerste keer dat er op de database gewacht wordt.
+const _init = _authBron.match(/^async function initFirestore[\s\S]*?\n\}/m)[0];
+const _eersteWacht = _init.indexOf('await Promise.all([');
+['laadInitieelWachtwoord(store)', 'laadUiStijl(store)', 'getDocs(LADDERS_COL)', 'getDoc(STATE_DOC)'].forEach(naam => {
+  const plek = _init.indexOf(naam);
+  check(`${naam} start vóór het eerste wachten`, plek >= 0 && plek < _eersteWacht, true);
+});
+
+// Het regeltje onderaan Beheer.
+const _ops = new Function(
+  _authBron.match(/^function opstartSeconden[\s\S]*?\n\}/m)[0] +
+  _authBron.match(/^function opstartTekst[\s\S]*?\n\}/m)[0] +
+  'return { opstartSeconden, opstartTekst };')();
+check('onder 10 s met één decimaal',  _ops.opstartSeconden(4230), '4,2 s');
+check('boven 10 s afgerond',          _ops.opstartSeconden(37400), '37 s');
+check('onzin wordt een vraagteken',   _ops.opstartSeconden(undefined), '?');
+check('volledige regel', _ops.opstartTekst({ bestanden: 900, database: 3100, totaal: 4200 }),
+  '4,2 s tot beeld (bestanden 0,9 s, database 3,1 s)');
+check('logo nog niet weg', _ops.opstartTekst({ bestanden: 900, database: null, totaal: null }),
+  'logo nog niet weg (bestanden 0,9 s)');
+check('geen spoor → niets', _ops.opstartTekst(null), '');
