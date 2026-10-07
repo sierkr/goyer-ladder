@@ -105,6 +105,15 @@
   .merk-logo { display: block; margin: 0 auto; width: 96px; height: 96px; }
   .merk-logo-klein { display: block; margin: 0 auto 10px; width: 84px; height: 84px; }
 
+  /* v5.47.0: "Bekijk als gewone speler" — de gele balk van MatchCheck v3.21.0.
+     In alle drie de weergaven dezelfde kleur: hij moet opvallen, want zolang
+     hij er staat zie je de app NIET als beheerder. Inkt op geel: 10 : 1. */
+  #kijk-balk {
+    background: #fff4d6; border-bottom: 1px solid #e8c96a; color: #4a3b00;
+    padding: 8px 16px; display: flex; align-items: center; gap: 10px;
+    flex-wrap: wrap; font-size: 14px;
+  }
+
   /* NAV TABS */
   nav {
     display: flex;
@@ -1878,6 +1887,13 @@
   </div>
 </header>
 
+<!-- v5.47.0: alleen zichtbaar voor een beheerder die als gewone speler kijkt
+     (toonKijkBalk in js/auth.js) -->
+<div id="kijk-balk" style="display:none">
+  <span>Je kijkt als <strong>gewone speler</strong>.</span>
+  <button class="btn btn-sm btn-primary" onclick="kijkAlsSpeler(false)">Terug naar beheerder</button>
+</div>
+
 <nav>
   <button id="nav-ladder-btn" class="active" onclick="showPage('ladder', event)"><span class="nav-label">Ladder</span></button>
   <button id="nav-partij-btn" onclick="showPage('partij', event)"><span class="nav-label">Partij</span></button>
@@ -2466,6 +2482,25 @@
 
 <!-- ==================== ADMIN ==================== -->
 <div id="page-admin" class="page">
+  <!-- v5.47.0: "Bekijk als gewone speler" — wens Sierk, zelfde opzet als
+       MatchCheck v3.21.0. Alleen voor de beheerder (renderAdmin in js/admin.js). -->
+  <div class="card" id="admin-sectie-kijkalsspeler" style="display:none">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+      <h2>Bekijk als gewone speler</h2>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">
+          Zie de app zoals een gewone speler hem ziet: zonder Beheer, Archief en de knoppen van de
+          wedstrijdleiding. Bovenaan staat dan een gele balk met een knop om terug te gaan; uitloggen
+          of de app afsluiten zet het ook weer uit. Je kijkt met je eigen account, dus met jouw
+          ladders, partijen en toernooien. Wat je in deze stand doet gebeurt echt, en de database
+          kent je nog steeds als beheerder.
+        </p>
+        <button class="btn btn-primary btn-block" onclick="kijkAlsSpeler(true)">👁 Bekijk als gewone speler</button>
+      </div>
+    </div>
+  </div>
   <div class="card" id="admin-sectie-spelers">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
       <h2>Spelers & accounts</h2>

@@ -72,8 +72,62 @@ async function setIngelogd(firebaseUser) {
   }
 }
 
+// ============================================================
+//  v5.47.0 — BEKIJK ALS GEWONE SPELER
+// ------------------------------------------------------------
+//  Sierk: "ik wil als beheerder een knop zoals bij matchcheck zodat ik kan
+//  zien wat een gewone speler ziet en kan." Zelfde opzet als MatchCheck
+//  v3.21.0: een knop in Beheer, een gele balk met "Terug naar beheerder", en
+//  opnieuw inloggen is altijd weer beheerder.
+//
+//  De app kijkt op één plek of je beheerder bent: het veld `rol` hieronder.
+//  Alle andere plekken lezen dat veld (isCoordinatorRol, isBeheerderRol,
+//  rolVoorKolom, de tabbladen in vervolgIngelogd). Hier omzetten is dus genoeg
+//  om de hele app als speler te laten werken — gemeten in de code op
+//  6 oktober 2026.
+//
+//  Omschakelen gaat via opnieuw laden (js/app.js, kijkAlsSpeler). De stand
+//  staat daarom in sessionStorage: die overleeft het herladen, maar niet het
+//  afsluiten van de app. Uitloggen en een verloren inlog zetten hem ook uit.
+//
+//  ⚠ Dit verandert alleen het SCHERM. De database kent je nog steeds als
+//  beheerder: iets wat een echte speler geweigerd zou worden, lukt hier wél.
+//  Zo'n fout vind je met deze knop dus niet.
+// ============================================================
+const KIJK_SLEUTEL = 'goyer_kijk_als_speler';
+
+// Puur, zodat de rekentest hem kan natellen. Alleen een BEHEERDER kan als
+// speler kijken, en de stand hoort bij één account: logt er op dit toestel
+// iemand anders in, dan geldt hij niet.
+function kijktAlsSpeler(profielRol, vlagUid, uid) {
+  return profielRol === 'beheerder' && !!uid && vlagUid === uid;
+}
+
+function leesKijkVlag() {
+  try { return sessionStorage.getItem(KIJK_SLEUTEL); }
+  catch (_) { return null; }   // privémodus: dan gewoon beheerder
+}
+
+// Geeft false als dit toestel de stand niet kan bewaren. Dan heeft opnieuw
+// laden geen zin: je zou gewoon weer als beheerder terugkomen.
+function zetKijkAlsSpeler(aan) {
+  try {
+    if (!aan) { sessionStorage.removeItem(KIJK_SLEUTEL); return true; }
+    if (!huidigeBruiker?.uid) return false;
+    sessionStorage.setItem(KIJK_SLEUTEL, huidigeBruiker.uid);
+    return true;
+  } catch (_) { return false; }
+}
+
+function toonKijkBalk(aan) {
+  const balk = document.getElementById('kijk-balk');
+  if (balk) balk.style.display = aan ? '' : 'none';
+}
+
 // Zet huidigeBruiker op basis van profiel uit spelers/{uid}
 function setIngelogdVanafProfiel(firebaseUser, profiel) {
+  // v5.47.0: kijkt deze beheerder als gewone speler? Zie hierboven.
+  const alsSpeler = kijktAlsSpeler(profiel.rol, leesKijkVlag(), firebaseUser.uid);
   // v3.0.0-9c: spelerId = uid. Geen naam-lookup meer in alleSpelersData.
   // Legacy code die 'spelerId' verwacht blijft werken omdat alleSpelersData
   // en de ladder-view nu ook id=uid teruggeven.
@@ -81,7 +135,8 @@ function setIngelogdVanafProfiel(firebaseUser, profiel) {
     uid:            firebaseUser.uid,
     email:          firebaseUser.email,
     gebruikersnaam: profiel.naam || firebaseUser.email.split('@')[0],
-    rol:            profiel.rol  || 'speler',
+    rol:            alsSpeler ? 'speler' : (profiel.rol || 'speler'),
+    kijktAlsSpeler: alsSpeler,   // v5.47.0: de gele balk
     spelerId:       firebaseUser.uid,
     eersteLogin:    profiel.eersteLogin === true, // v3.0.0-11
     toernooiSpeler: profiel.toernooiSpeler === true, // v3.0.0-11.74
@@ -89,7 +144,8 @@ function setIngelogdVanafProfiel(firebaseUser, profiel) {
     // v4.2.0: puntensysteem — alleen dit account ziet/wijzigt de ruwe punten.
     // Wordt uitsluitend handmatig gezet in de Firebase console (spelers/{uid}),
     // nooit via de app zelf. Ook technisch afgedwongen in firestore.rules.
-    puntenBeheerder: profiel.puntenBeheerder === true,
+    // v5.47.0: als gewone speler zie je ze ook niet.
+    puntenBeheerder: !alsSpeler && profiel.puntenBeheerder === true,
   };
 
   vervolgIngelogd();
@@ -376,6 +432,9 @@ async function vervolgIngelogd() {
 
   const versieBadge = document.getElementById('versie-badge');
   if (versieBadge) versieBadge.style.display = isBeheerderRol() ? '' : 'none';
+
+  // v5.47.0: de gele balk "Je kijkt als gewone speler".
+  toonKijkBalk(huidigeBruiker.kijktAlsSpeler === true);
 
   // v5.38.0: eerst vaststellen of deze sessie via de pincode binnenkwam. Dat
   // stuurt hieronder de tabbladen én het eerste-login-scherm.
@@ -690,6 +749,10 @@ function uitloggen() {
   store._toernooiListeners = [];
   stopAlleStandenListeners();
   signOut(auth);
+  // v5.47.0: uitloggen zet "Bekijk als gewone speler" uit — opnieuw inloggen
+  // is altijd weer beheerder, net als bij MatchCheck.
+  zetKijkAlsSpeler(false);
+  toonKijkBalk(false);
   store.huidigeBruiker = null;
   store._usersCache    = null;
   document.getElementById('login-scherm').classList.add('actief');
@@ -1265,6 +1328,13 @@ async function initFirestore() {
       // vanzelf als dat niet zo is. Zie de toelichting in ladder-view.js.
       startStandenWachthond();
     } else {
+      // v5.47.0: ook een inlog die verloren gaat zonder op uitloggen te
+      // drukken zet "Bekijk als gewone speler" uit. Bij het opstarten komt
+      // deze tak niet langs voor wie nog ingelogd is: Firebase meldt pas iets
+      // als de bewaarde inlog is teruggezet (de browserproef toetst dat, want
+      // anders zou de stand het omschakelen zelf niet overleven).
+      zetKijkAlsSpeler(false);
+      toonKijkBalk(false);
       store.huidigeBruiker = null;
       const heeftInvite = new URLSearchParams(location.search).has('invite');
       if (heeftInvite) { await checkInviteLink(); }
@@ -2068,4 +2138,5 @@ export {
   herstelVerbinding, controleerVerbinding, leesHerstelSpoor, magHerstellen,
   leesOpstartSpoor, opstartTekst,
   slaEersteLoginOp,
+  zetKijkAlsSpeler,
 };

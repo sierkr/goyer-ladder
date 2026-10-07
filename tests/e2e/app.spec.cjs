@@ -584,6 +584,91 @@ test.describe('Beheer', () => {
     }
   });
 
+  // ============================================================
+  //  v5.47.0 — BEKIJK ALS GEWONE SPELER
+  // ------------------------------------------------------------
+  //  Sierk: "ik wil als beheerder een knop zoals bij matchcheck zodat ik kan
+  //  zien wat een gewone speler ziet en kan."
+  //
+  //  ⚠ Deze proef toetst ook dat de stand het opnieuw laden OVERLEEFT.
+  //  Omschakelen gaat via herladen, en bij het opstarten mag de tak "niet
+  //  ingelogd" de stand niet wissen voordat Firebase de bewaarde inlog heeft
+  //  teruggezet. Viel die volgorde anders uit, dan deed de knop niets — en dat
+  //  zie je aan geen enkele rekentest.
+  // ============================================================
+  test('BEHEER: bekijk als gewone speler, en weer terug', async ({ page }) => {
+    test.setTimeout(180000);
+    const balk  = page.locator('#kijk-balk');
+    const beheer = page.locator('#nav-admin-btn');
+    const blok  = page.locator('#admin-sectie-kijkalsspeler');
+    const knopAan = blok.locator('button', { hasText: 'Bekijk als gewone speler' });
+
+    const coordDocs = await beheerDb.collection('spelers')
+      .where('naam', '==', 'Coen Coordinator').get();
+    const coordId = coordDocs.docs[0]?.id;
+    expect(coordId, 'Coen staat in de proefdatabase').toBeTruthy();
+
+    try {
+      // ── Een coordinator heeft de knop niet ─────────────────
+      await inloggen(page, 'coord');
+      await expect(beheer).toBeVisible({ timeout: 25000 });
+      await beheer.click();
+      await expect(page.locator('#page-admin')).toHaveClass(/active/);
+      await expect(blok, 'een coordinator ziet het blok niet').toBeHidden();
+
+      // ── Coen wordt beheerder (zelfde opzet als de gastenproef hierboven) ──
+      await beheerDb.doc(`spelers/${coordId}`).update({ rol: 'beheerder' });
+      await page.reload();
+      await expect(beheer).toBeVisible({ timeout: 25000 });
+      await expect(page.locator('#versie-badge'), 'de beheerder ziet het versienummer').toBeVisible();
+      await expect(balk, 'als beheerder geen gele balk').toBeHidden();
+
+      // ── Aanzetten ──────────────────────────────────────────
+      await beheer.click();
+      await expect(blok, 'de beheerder ziet het blok').toBeVisible();
+      await blok.locator('.card-header').click();
+      await knopAan.click();
+
+      // De app laadt opnieuw en komt terug als gewone speler.
+      await expect(balk, 'de gele balk staat er').toBeVisible({ timeout: 25000 });
+      await expect(balk).toContainText('gewone speler');
+      await expect(page.locator('#nav-ladder-btn'), 'gewoon ingelogd, met de gewone tabbladen').toBeVisible();
+      await expect(page.locator('#nav-profiel-btn')).toBeVisible();
+      await expect(beheer, 'geen Beheer').toBeHidden();
+      await expect(page.locator('#nav-archief-btn'), 'geen Archief').toBeHidden();
+      await expect(page.locator('#versie-badge'), 'geen versienummer').toBeHidden();
+
+      // Nog een keer herladen: de stand blijft staan.
+      await page.reload();
+      await expect(balk, 'na herladen nog steeds als speler').toBeVisible({ timeout: 25000 });
+      await expect(beheer).toBeHidden();
+
+      // ── Terug ──────────────────────────────────────────────
+      await balk.locator('button', { hasText: 'Terug naar beheerder' }).click();
+      await expect(beheer, 'Beheer is terug').toBeVisible({ timeout: 25000 });
+      await expect(balk).toBeHidden();
+      await expect(page.locator('#nav-archief-btn')).toBeVisible();
+
+      // ── Uitloggen zet het uit ──────────────────────────────
+      await beheer.click();
+      await blok.locator('.card-header').click();
+      await knopAan.click();
+      await expect(balk).toBeVisible({ timeout: 25000 });
+      await page.click('#logout-btn');
+      await page.waitForSelector('#login-scherm', { state: 'visible' });
+      await expect(balk, 'na uitloggen geen gele balk').toBeHidden();
+
+      // Opnieuw inloggen in hetzelfde scherm: weer gewoon beheerder.
+      await page.fill('#login-email', 'coord');
+      await page.fill('#login-pass', WACHTWOORD);
+      await klikInloggen(page);
+      await expect(beheer, 'opnieuw inloggen = weer beheerder').toBeVisible({ timeout: 25000 });
+      await expect(balk).toBeHidden();
+    } finally {
+      await beheerDb.doc(`spelers/${coordId}`).update({ rol: 'coordinator' });
+    }
+  });
+
   test('watch-scherm vraagt om een zescijferige PIN', async ({ page }) => {
     await page.goto('/watch.html');
     await expect(page.locator('#scherm-pin')).toBeVisible();

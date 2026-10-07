@@ -3,7 +3,7 @@
 // uitrollen.sh leest het versienummer van deze regel en controleert het; het
 // nummer dat daar gecontroleerd wordt is dus precies het nummer dat de service
 // worker gebruikt (zie kiesBron hieronder). Beide ophogen bij elke versie.
-const CACHE_VERSION = 'v316'; const APP_VERSIE = 'v5.46.0';
+const CACHE_VERSION = 'v317'; const APP_VERSIE = 'v5.47.0';
 // v3.0.0-11.33: detecteer test-omgeving via SW-scope URL.
 // Service worker draaiend onder /test/* → aparte cache, voorkomt conflict met productie.
 const IS_TEST_ENV = self.registration && self.registration.scope.includes('/test/');
