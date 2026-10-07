@@ -14,6 +14,7 @@ const suites = [
   ['Twee paar ogen & scorelagen', './marker.test.cjs'],
   ['Gastlogins',                 './gastlogin.test.cjs'],
   ['QR-code',                    './qr.test.cjs'],
+  ['Bekijk als gewone speler',   './kijkalsspeler.test.cjs'],   // v5.47.0
 ];
 
 let totOk = 0, totFout = 0;

@@ -7,7 +7,8 @@ import { initApp, uitloggen, loginSubmit, loginMetGoogle, autoAdvance,
   genereerInviteLink, kopieerInviteLink, registreerSpeler,
   laadInviteStatus, registreerNotificatieToken,
   wisselLadder, toonLaadOverlay, checkInviteLink,
-  slaEersteLoginOp, herlaadNaResume, controleerVerbinding } from './auth.js';
+  slaEersteLoginOp, herlaadNaResume, controleerVerbinding,
+  zetKijkAlsSpeler, toast } from './auth.js';
 
 import { showPage } from './nav.js';
 import { renderLadder, toggleLadderKaart } from './ladder.js';
@@ -121,6 +122,20 @@ window.updateNuEnHerlaad = function updateNuEnHerlaad() {
   try { slaPartijFormulierOp(); }
   catch (e) { console.error('[update] partijformulier bewaren mislukt:', e); }
   setTimeout(() => location.reload(), 200);
+};
+
+// v5.47.0: "Bekijk als gewone speler" aan of uit (knop in Beheer, en "Terug
+// naar beheerder" in de gele balk). Uitleg bij KIJK_SLEUTEL in js/auth.js.
+// Omschakelen gaat via opnieuw laden: dan bouwt de app elk scherm op zoals bij
+// een speler die inlogt, in plaats van dat tientallen plekken los bijgewerkt
+// moeten worden. Herladen loopt via "Nu updaten", zodat een half ingevuld
+// partijformulier bewaard blijft.
+window.kijkAlsSpeler = function kijkAlsSpeler(aan) {
+  if (!zetKijkAlsSpeler(aan)) {
+    toast('Omschakelen lukt niet op dit toestel — de stand kan hier niet bewaard worden.', 9000);
+    return;
+  }
+  window.updateNuEnHerlaad();
 };
 window.updateScore = updateScore;
 window.toggleScorecard = toggleScorecard;
@@ -253,7 +268,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v5.46.0';
+  const VERSION = 'v5.47.0';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -297,7 +312,7 @@ window.kiesTRankingLadder = kiesTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v5.46.0';
+  const LOKALE_VERSIE = 'v5.47.0';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 
