@@ -543,6 +543,20 @@
     animation: spin 0.8s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+  /* v5.48.0: stap en balk op het logo-scherm (zetLaadStap in js/auth.js). */
+  #laad-overlay .laad-stap { font-size: 13px; color: var(--mid); text-align: center; padding: 0 24px; }
+  #laad-overlay .laad-balk {
+    width: 180px; height: 6px; border-radius: 3px; background: #d8f3dc; overflow: hidden;
+  }
+  #laad-balk-vulling { height: 100%; background: var(--green); transition: width 0.4s ease; }
+  /* De uitleg na 5 seconden komt met opmaak, niet met code: juist bij de trage
+     eerste start na een update draait de app-code dan misschien nog niet. De
+     animatie begint opnieuw zodra het logo opnieuw verschijnt. */
+  #laad-overlay .laad-traag {
+    font-size: 12px; color: var(--mid); text-align: center; max-width: 280px; padding: 0 16px;
+    opacity: 0; animation: laad-traag-in 0.3s ease 5s forwards;
+  }
+  @keyframes laad-traag-in { to { opacity: 1; } }
 
   /* LOGIN SCHERM */
   #login-scherm {
@@ -1244,7 +1258,11 @@
   <img src="logo.png" alt="Goyer MP Ladder" class="merk-logo">
   <div class="laad-logo">Matchplay Ladder</div>
   <div class="laad-spinner"></div>
-  <div style="font-size:13px;color:var(--light)">Verbinden met database…</div>
+  <!-- v5.48.0: stap en balk. Stap 1 staat hier vast — de app-code draait dan
+       nog niet; daarna zet zetLaadStap() in js/auth.js stap 2 en 3. -->
+  <div id="laad-stap" class="laad-stap">Stap 1 van 3 — App laden…</div>
+  <div class="laad-balk"><div id="laad-balk-vulling" style="width:33%"></div></div>
+  <div class="laad-traag">Dit duurt langer dan normaal. Vlak na een update is dat gewoon: dan wordt de nieuwe versie opgehaald.</div>
 </div>
 
 <!-- REGISTRATIE SCHERM (via uitnodigingslink) -->
@@ -1908,7 +1926,10 @@
 
 <!-- ==================== LADDER ==================== -->
 <div id="page-ladder" class="page active">
-  <div id="ladder-kaarten"></div>
+  <!-- v5.48.0: deze kaart staat er tot de ladder getekend is. Zonder dit zag je
+       op een trage verbinding alleen de tabbladen en een leeg scherm, als het
+       vangnet van 10 seconden het logo weghaalde. -->
+  <div id="ladder-kaarten"><div class="card"><div class="empty"><div class="empty-icon">⏳</div><p>Je gegevens worden opgehaald…</p><p style="font-size:12px;color:var(--light)">Dit gaat meestal vanzelf.</p></div></div></div>
 </div>
 
 <!-- ==================== PARTIJ ==================== -->
@@ -2052,6 +2073,16 @@
             style="vertical-align:-2px;margin-right:6px"><path fill="currentColor"
             fill-rule="evenodd" d="M0 0h7v7H0zM1 1h5v5H1zM2 2h3v3H2zM14 0h7v7h-7zM15 1h5v5h-5zM16 2h3v3h-3zM0 14h7v7H0zM1 15h5v5H1zM2 16h3v3H2z"/><path
             fill="currentColor" d="M9 0h2v2H9zM9 4h2v2H9zM9 9h2v2H9zM12 9h2v2h-2zM16 9h2v2h-2zM9 13h2v2H9zM13 13h2v2h-2zM17 16h2v2h-2zM13 17h2v2h-2z"/></svg>QR-code voor gasten</button>
+        <!-- v5.49.0: de QR voor SPELERS van deze flight. Wie scant kiest zijn
+             eigen naam en zit dan in deze ronde, ook als hij nog nooit heeft
+             ingelogd. Alleen deze ronde; de rest van de app gaat met zijn
+             eigen wachtwoord. -->
+        <button id="ronde-spelers-qr-btn" class="btn btn-ghost btn-block btn-sm" style="margin-top:8px"
+          onclick="toonRondeQr('speler')"><svg width="14" height="14" viewBox="0 0 21 21"
+            aria-hidden="true" focusable="false" shape-rendering="crispEdges"
+            style="vertical-align:-2px;margin-right:6px"><path fill="currentColor"
+            fill-rule="evenodd" d="M0 0h7v7H0zM1 1h5v5H1zM2 2h3v3H2zM14 0h7v7h-7zM15 1h5v5h-5zM16 2h3v3h-3zM0 14h7v7H0zM1 15h5v5H1zM2 16h3v3H2z"/><path
+            fill="currentColor" d="M9 0h2v2H9zM9 4h2v2H9zM9 9h2v2H9zM12 9h2v2h-2zM16 9h2v2h-2zM9 13h2v2H9zM13 13h2v2h-2zM17 16h2v2h-2zM13 17h2v2h-2z"/></svg>QR-code voor spelers</button>
       </div>
     </div>
 
@@ -2147,10 +2178,24 @@
      hij draagt een sleutel die bij DEZE ronde hoort. Hij wordt daarom op de
      server getekend en hier alleen getoond.
      ========================================================================= -->
+<!-- ==================== WIE BEN JIJ? (v5.49.0) ====================
+     Na het scannen van de spelerscode. De namen komen van de server en zijn
+     alleen die van deze flight. -->
+<div class="modal-overlay" id="modal-ronde-naam" style="z-index:10001">
+  <div class="modal">
+    <h3>Wie ben jij?</h3>
+    <div style="font-size:14px;line-height:1.5;color:var(--dark);margin-bottom:12px">
+      Tik op je naam. Je komt dan in deze ronde en kunt de scores bijhouden.
+    </div>
+    <div id="ronde-naam-lijst"></div>
+    <div id="ronde-naam-fout" style="display:none;color:var(--alert-text);font-size:13px;margin-top:10px"></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-ronde-qr">
   <div class="modal">
-    <h3>QR-code voor gasten</h3>
-    <div style="font-size:14px;line-height:1.5;color:var(--dark);margin-bottom:12px">
+    <h3 id="ronde-qr-titel">QR-code voor gasten</h3>
+    <div id="ronde-qr-uitleg" style="font-size:14px;line-height:1.5;color:var(--dark);margin-bottom:12px">
       Laat dit scherm zien aan je gast. Wie hem scant komt meteen in deze ronde
       en kan scores invullen — ook die van jou. Zodra de partij is verwerkt
       werkt de code niet meer.

@@ -101,9 +101,17 @@ function toonOpstartSpoor() {
     el.style.cssText = 'font-size:11px;color:var(--light);padding:10px 16px;text-transform:none';
     pagina.appendChild(el);
   }
-  const d = new Date(spoor.ts);
-  const tijd = d.toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-  el.textContent = `Laatste opstart op dit toestel: ${tijd} — ${opstartTekst(spoor)}`;
+  const tijdVan = (ts) => new Date(ts).toLocaleString('nl-NL',
+    { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const regels = [`Laatste opstart op dit toestel: ${tijdVan(spoor.ts)} — ${opstartTekst(spoor)}`];
+  // v5.48.0: de laatste start ná een update blijft apart staan — die is het
+  // traagst, en de volgende (snelle) start zou hem anders overschrijven.
+  const naUpdate = leesOpstartSpoor('update');
+  if (naUpdate && naUpdate.ts !== spoor.ts) {
+    regels.push(`Laatste start na een update: ${tijdVan(naUpdate.ts)} — ${opstartTekst(naUpdate)}`);
+  }
+  el.style.whiteSpace = 'pre-line';
+  el.textContent = regels.join('\n');
 }
 
 // ============================================================

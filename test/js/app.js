@@ -8,7 +8,7 @@ import { initApp, uitloggen, loginSubmit, loginMetGoogle, autoAdvance,
   laadInviteStatus, registreerNotificatieToken,
   wisselLadder, toonLaadOverlay, checkInviteLink,
   slaEersteLoginOp, herlaadNaResume, controleerVerbinding,
-  zetKijkAlsSpeler, toast } from './auth.js';
+  zetKijkAlsSpeler, toast, markeerOpstartNaUpdate } from './auth.js';
 
 import { showPage } from './nav.js';
 import { renderLadder, toggleLadderKaart } from './ladder.js';
@@ -268,7 +268,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v5.47.0';
+  const VERSION = 'v5.49.0';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -312,7 +312,7 @@ window.kiesTRankingLadder = kiesTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v5.47.0';
+  const LOKALE_VERSIE = 'v5.49.0';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 
@@ -395,6 +395,10 @@ window.kiesTRankingLadder = kiesTRankingLadder;
     navigator.serviceWorker.addEventListener('message', event => {
       if (event.data && event.data.type === 'SW_ACTIVATED') {
         console.log('[versieCheck] SW_ACTIVATED ontvangen, check versie...');
+        // v5.48.0: er werd net een nieuwe versie actief — deze start is dus de
+        // eerste na een update (of na de installatie). Die opstarttijd blijft
+        // apart bewaard voor de regel onderaan Beheer.
+        try { markeerOpstartNaUpdate(); } catch (_) { /* meten mag nooit storen */ }
         checkVersie();
       }
     });

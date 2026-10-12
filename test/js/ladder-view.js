@@ -111,6 +111,36 @@ export function ladderStandenGeladen(ladderId) {
   return Object.keys(standenMap).length > 0;
 }
 
+// ============================================================
+//  v5.48.0 — ZIJN DE NAMEN AL BINNEN?
+// ------------------------------------------------------------
+//  De ladderlijst heeft naast de standen ook de NAMEN nodig (spelers/). Die
+//  komen eerst uit de kopie op het toestel, en daar kan maar een deel in
+//  staan. Gemeten op een afgeknepen lijn met een gewiste kopie: 4,6 s lang
+//  een ladder met maar één naam (die van wie inlogt). Bij een beheerder die
+//  zelf niet in de ladder staat werd dat "Nog geen spelers." — Sierks
+//  schermafdruk van 7 oktober 2026.
+//
+//  De lijst mag pas getekend worden als van elk lid de naam bekend is, óf als
+//  de server heeft geantwoord (dan ontbreekt een naam echt, bijvoorbeeld bij
+//  een verwijderd profiel — anders bleef zo'n ladder eeuwig "laden").
+//  Zonder verbinding met alle namen al op het toestel: meteen tekenen.
+// ============================================================
+
+// Puur, zodat de rekentest hem kan natellen.
+export function namenCompleet(spelerIds, gebruikers, vanServer) {
+  const ids = (spelerIds || []).filter(id => typeof id === 'string' && id.length > 10);
+  if (ids.length === 0 || vanServer === true) return true;
+  const bekend = new Set((gebruikers || []).map(u => u && u.uid));
+  return ids.every(id => bekend.has(id));
+}
+
+export function ladderNamenCompleet(ladderId) {
+  const ladder = alleLadders.find(l => l.id === ladderId);
+  return namenCompleet(ladder?.data?.spelerIds || ladder?.spelerIds,
+    _usersCache, store._namenVanServer === true);
+}
+
 /**
  * Check of een speler (uid) in een ladder zit.
  */

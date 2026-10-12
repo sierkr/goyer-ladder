@@ -32,7 +32,8 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut,
   signInWithCustomToken }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc,
-  deleteDoc, getDocs, addDoc, query, where, orderBy, writeBatch, enableNetwork }
+  deleteDoc, getDocs, addDoc, query, where, orderBy, writeBatch, enableNetwork,
+  getDocFromServer }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ============================================================
@@ -44,6 +45,18 @@ async function setIngelogd(firebaseUser) {
   try {
     const spelersSnap = await getDoc(doc(db, 'spelers', firebaseUser.uid));
 
+    if (!spelersSnap.exists() && isRondeAccount(firebaseUser.uid)) {
+      // v5.49.0: het tijdelijke profiel van een ronde-QR is opgeruimd — de
+      // partij is verwerkt. Niet "Je hebt geen toegang" (dat klinkt als een
+      // fout), maar zeggen wat er aan de hand is.
+      // ⚠ Alleen uitloggen als dit nog steeds de ingelogde sessie is. Scant
+      // iemand net een NIEUWE code, dan kan die al binnen zijn; die mag hier
+      // niet mee worden uitgelogd.
+      if (auth.currentUser?.uid !== firebaseUser.uid) return;
+      await signOut(auth);
+      toonLoginFout(RONDE_AFGELOPEN_TEKST);
+      return;
+    }
     if (!spelersSnap.exists()) {
       // Niet in spelers/ — fallback naar oude users lijst (tijdelijk tijdens migratie)
       const users = await getUsers();
@@ -439,6 +452,9 @@ async function vervolgIngelogd() {
   // v5.38.0: eerst vaststellen of deze sessie via de pincode binnenkwam. Dat
   // stuurt hieronder de tabbladen én het eerste-login-scherm.
   await sessieViaPin();
+  // v5.49.0: loopt de ronde van deze QR-sessie nog? Zie hierboven. Niet
+  // afwachten: het scherm wordt intussen gewoon opgebouwd.
+  if (rondeVanSessie()) controleerRondeNogBezig();
 
   // v3.0.0-11.74: herstart per-doc toernooi-listeners na login zodat ze
   // huidigeBruiker correct hebben voor toernooiModus etc.
@@ -612,13 +628,15 @@ window.toernooiPinInloggen = toernooiPinInloggen;
 // en de serverfuncties kijken naar dezelfde stempel.
 let _viaPinSessie = false;
 let _viaRondePartij = null;   // v5.40.0: partijnummer uit de ronde-QR
+let _viaRondeLadder = null;   // v5.49.0: en de ladder waar die partij in loopt
 
 async function sessieViaPin() {
   try {
     const res = await auth.currentUser?.getIdTokenResult();
     _viaPinSessie   = res?.claims?.viaPin === true;
     _viaRondePartij = res?.claims?.viaRonde || null;
-  } catch (_) { _viaPinSessie = false; _viaRondePartij = null; }
+    _viaRondeLadder = res?.claims?.ladderId || null;
+  } catch (_) { _viaPinSessie = false; _viaRondePartij = null; _viaRondeLadder = null; }
   return _viaPinSessie;
 }
 
@@ -699,7 +717,89 @@ function wachtOpRondeScherm() {
 function rondeQrUitAdres() {
   const q = new URLSearchParams(location.search);
   const partijId = q.get('r'), ladderId = q.get('l'), sleutel = q.get('k');
-  return (partijId && ladderId && sleutel) ? { partijId, ladderId, sleutel } : null;
+  // v5.49.0: `s=1` is de spelerscode. De server controleert met een eigen
+  // sleutel of dat klopt; hier bepaalt het alleen of we om een naam vragen.
+  const soort = q.get('s') === '1' ? 'speler' : 'gast';
+  return (partijId && ladderId && sleutel) ? { partijId, ladderId, sleutel, soort } : null;
+}
+
+// ============================================================
+//  v5.49.0 — DE SPELERSCODE: WIE BEN JIJ?
+// ------------------------------------------------------------
+//  Sierk, 12 oktober 2026: "De speler kiest zijn naam als daar om gevraagd
+//  wordt." De namen komen van de server en zijn alleen die van deze flight.
+//  Geeft een belofte die de gekozen uid oplevert.
+// ============================================================
+function kiesRondeNaam(lijst) {
+  return new Promise(klaar => {
+    const vak = document.getElementById('ronde-naam-lijst');
+    document.getElementById('ronde-naam-fout').style.display = 'none';
+    vak.innerHTML = '';
+    lijst.forEach(sp => {
+      const knop = document.createElement('button');
+      knop.className = 'btn btn-ghost btn-block';
+      knop.style.marginTop = '8px';
+      knop.textContent = sp.naam;          // textContent: een naam is geen HTML
+      knop.dataset.uid = sp.uid;
+      knop.onclick = () => {
+        vak.querySelectorAll('button').forEach(b => { b.disabled = true; });
+        knop.textContent = sp.naam + ' …';
+        klaar(sp.uid);
+      };
+      vak.appendChild(knop);
+    });
+    document.getElementById('modal-ronde-naam').classList.add('open');
+  });
+}
+
+// v5.49.0: de tijdelijke accounts van een ronde-QR. Eén plek, zodat de
+// opruimregels hieronder niet uit elkaar lopen.
+function isRondeAccount(uid) {
+  return typeof uid === 'string' && (uid.startsWith('rondegast_') || uid.startsWith('rondespeler_'));
+}
+
+const RONDE_AFGELOPEN_TEKST = 'Deze ronde is afgelopen. Log in met je eigen account.';
+
+// ============================================================
+//  v5.49.0 — EEN RONDE-SESSIE VAN EEN RONDE DIE NIET MEER LOOPT
+// ------------------------------------------------------------
+//  Een inlog via een ronde-QR blijft op de telefoon bewaard. Is de ronde
+//  geannuleerd of verwijderd in plaats van verwerkt, dan blijft ook het
+//  tijdelijke profiel staan, en stond je bij het openen van de app voorgoed in
+//  een leeg Ronde-scherm: "Geen actieve partij", zonder andere tabbladen.
+//  Nagespeeld in de browsertest op 12 oktober 2026.
+//
+//  ⚠ Alleen uitloggen als het ZEKER is. Rechtstreeks bij de server gevraagd,
+//  niet uit de kopie op het toestel. Geen verbinding of een fout = onbekend =
+//  niets doen. Eén keer onterecht iemand midden in de ronde uitloggen is erger
+//  dan een leeg scherm.
+// ============================================================
+async function controleerRondeNogBezig() {
+  const partijId = _viaRondePartij, ladderId = _viaRondeLadder;
+  const uid = auth.currentUser?.uid;
+  if (!partijId || !ladderId || !uid) return;
+  // Er wordt net een nieuwe code gescand: die handelt het zelf af.
+  if (rondeQrUitAdres() || _rondeQrBezig) return;
+  let loopt = null;
+  try {
+    const snap = await getDocFromServer(doc(db, 'ladders', ladderId));
+    loopt = snap.exists()
+      && (snap.data().actievePartijen || []).some(p => p && p.partijId === partijId);
+  } catch (e) {
+    console.warn('ronde-controle onbekend:', e?.code || e?.message);
+    return;
+  }
+  if (loopt !== false) return;
+  if (auth.currentUser?.uid !== uid) return;   // intussen iemand anders
+  uitloggen();
+  // beperkNavTotRonde() had deze verborgen. Een beheerder die hierna inlogt
+  // krijgt ze niet vanzelf terug (pasToernooiModusNavToe stopt voor hem
+  // vroeg), dus hier weer neerzetten.
+  ['ladder', 'partij', 'ronde', 'uitslagen', 'help'].forEach(tab => {
+    const b = document.getElementById(`nav-${tab}-btn`);
+    if (b) b.style.display = '';
+  });
+  toonLoginFout(RONDE_AFGELOPEN_TEKST);
 }
 
 async function checkRondeQrLink() {
@@ -707,10 +807,21 @@ async function checkRondeQrLink() {
   if (!gegevens) return false;
   _rondeQrBezig = true;
   beperkNavTotRonde();
-  wachtOpRondeScherm();
+  // v5.49.0: bij de spelerscode pas wachten op de scorekaart NADAT de naam is
+  // gekozen. Anders loopt de grens van 30 seconden af terwijl hij nog leest.
+  if (gegevens.soort !== 'speler') wachtOpRondeScherm();
   try {
     const fn = httpsCallable(functions, 'wisselRondeSleutel');
-    const uit = await fn({ ...gegevens, isTest: IS_TEST });
+    let extra = {};
+    if (gegevens.soort === 'speler') {
+      const keuze = await fn({ ...gegevens, isTest: IS_TEST });
+      const lijst = keuze?.data?.kies || [];
+      if (!lijst.length) throw new Error('Er staan geen spelers in deze ronde.');
+      extra = { spelerUid: await kiesRondeNaam(lijst) };
+      wachtOpRondeScherm();
+    }
+    const uit = await fn({ ...gegevens, ...extra, isTest: IS_TEST });
+    document.getElementById('modal-ronde-naam')?.classList.remove('open');
     const token = uit?.data?.customToken;
     if (!token) throw new Error('geen token ontvangen');
     await signInWithCustomToken(auth, token);
@@ -718,6 +829,7 @@ async function checkRondeQrLink() {
     return true;
   } catch (e) {
     history.replaceState(null, '', location.pathname);
+    document.getElementById('modal-ronde-naam')?.classList.remove('open');
     _rondeQrBezig = false;
     toonLaadOverlay(false);
     document.getElementById('login-scherm').classList.add('actief');
@@ -883,6 +995,8 @@ async function initFirestore() {
   // v5.46.0: meetpunt 1 — tot hier was het de browser die de bestanden ophaalde.
   if (_opstart.bestanden === null) _opstart.bestanden = Math.round(performance.now());
   toonLaadOverlay(true);
+  // v5.48.0: de app-code draait — stap 2 op het logo-scherm.
+  zetLaadStap(2);
 
   const heeftInvite = new URLSearchParams(location.search).has('invite');
   if (heeftInvite) {
@@ -905,6 +1019,9 @@ async function initFirestore() {
     await auth.authStateReady();
     hersteldeSessie = !!auth.currentUser;
   } catch(e) { console.warn('authStateReady mislukt (niet fataal):', e); }
+  // v5.48.0: voor de meetregel — alleen een start met een bewaarde inlog
+  // meet de tijd tot je gegevens en tot de ladder.
+  _opstart.hersteld = hersteldeSessie;
 
   // v3.0.6: fallback toont het loginscherm ALLEEN als er geen invite is én
   // Firebase bevestigd heeft dat er geen gebruiker is. Bij een herstelde sessie
@@ -1251,10 +1368,37 @@ async function initFirestore() {
 
   onAuthStateChanged(auth, async (user) => {
     if (store._bezigMetRegistratie) return;
-    if (!_rondeQrBezig) toonLaadOverlay(false);
+    // ────────────────────────────────────────────────────────
+    // v5.48.0: bij een bewaarde inlog blijft het logo staan tot we weten WIE
+    // er inlogt (spelers/{uid}, in setIngelogd).
+    //
+    // WAT ER MIS WAS. Tot v5.47.0 ging het logo hier al weg, vóór het eigen
+    // profiel binnen was. Op een trage verbinding zag je dan alleen de
+    // tabbladen en een leeg scherm: 2,4 s gemeten op een afgeknepen lijn, bij
+    // Sierk op 7 oktober 2026 na een update "zeker een halve minuut".
+    //
+    // Zonder gebruiker, of als dezelfde gebruiker er al is: meteen weg, zoals
+    // altijd. En het vangnet van 10 seconden hierboven blijft gelden.
+    // ────────────────────────────────────────────────────────
+    const nieuweGebruiker = !!user && !(huidigeBruiker && huidigeBruiker.uid === user.uid);
+    if (!_rondeQrBezig && !nieuweGebruiker) toonLaadOverlay(false);
     if (user) {
       if (huidigeBruiker && huidigeBruiker.uid === user.uid) return;
-      await setIngelogd(user);
+      zetLaadStap(3);
+      const profielStart = performance.now();
+      try {
+        await setIngelogd(user);
+      } finally {
+        // Meetpunt: alleen bij het opstarten met een bewaarde inlog. Bij
+        // inloggen via het inlogscherm zou het typen als wachttijd meetellen.
+        // ⚠ Niet afhankelijk maken van "het logo staat nog": haalt het vangnet
+        // van 10 seconden het logo eerder weg, dan is dat juist de trage start
+        // die we willen meten.
+        if (_opstart.hersteld === true && _opstart.profiel === null) {
+          _opstart.profiel = Math.round(performance.now() - profielStart);
+        }
+        if (!_rondeQrBezig) toonLaadOverlay(false);
+      }
       // v3.0.4: (her)laad het initiële wachtwoord nu de gebruiker ingelogd is.
       // Bij een koude start draait initFirestore() ongeauthenticeerd, waardoor de
       // config-read wordt geweigerd en store.initieelWachtwoord leeg blijft. Dat
@@ -1269,8 +1413,16 @@ async function initFirestore() {
         _vasteListeners._spelersListenerActief = true;
         _vasteListeners.push(onSnapshot(
           collection(db, 'spelers'),
+          // v5.48.0: ook een seintje als alleen de HERKOMST verandert — van de
+          // kopie op het toestel naar de server. De eerste levering komt uit
+          // die kopie, en daar kan maar een deel in staan (gemeten: alleen het
+          // eigen profiel, na een gewiste kopie). Pas als de server heeft
+          // geantwoord weet de ladder dat een ontbrekende naam echt ontbreekt;
+          // zie ladderNamenCompleet() in js/ladder-view.js.
+          { includeMetadataChanges: true },
           (snap) => {
             if (!huidigeBruiker) return;
+            if (!snap.metadata.fromCache) store._namenVanServer = true;
             store._usersCache = snap.docs.map(d => spelersDocNaarUserFormaat(d.data()));
             const ap = document.querySelector('.page.active')?.id?.replace('page-', '');
             if (ap === 'admin') renderAdmin();
@@ -1363,6 +1515,35 @@ function toonLaadOverlay(toon) {
 }
 
 // ============================================================
+//  v5.48.0 — HET LOGO-SCHERM ZEGT WAT HET DOET
+// ------------------------------------------------------------
+//  Sierk, 7 oktober 2026: "Graag bericht op scherm en/of zelf een progressie
+//  balk?" Drie stappen, en de balk loopt per stap mee. Stap 1 staat vast in
+//  index.html: de app-code draait dan nog niet. De regel "Dit duurt langer dan
+//  normaal" komt met opmaak (na 5 seconden), om dezelfde reden.
+//
+//  ⚠ Een balk die gelijk oploopt met de tijd zou liegen; deze laat alleen zien
+//  welke stap bezig is.
+// ============================================================
+const LAAD_STAPPEN = ['App laden', 'Verbinden met de database', 'Jouw gegevens ophalen'];
+
+// Puur, zodat de rekentest hem kan natellen.
+function laadStapTekst(nr) {
+  const n = Math.max(1, Math.min(LAAD_STAPPEN.length, Math.round(Number(nr)) || 1));
+  return `Stap ${n} van ${LAAD_STAPPEN.length} — ${LAAD_STAPPEN[n - 1]}…`;
+}
+
+function zetLaadStap(nr) {
+  try {
+    const tekst = document.getElementById('laad-stap');
+    const vulling = document.getElementById('laad-balk-vulling');
+    const n = Math.max(1, Math.min(LAAD_STAPPEN.length, Math.round(Number(nr)) || 1));
+    if (tekst) tekst.textContent = laadStapTekst(n);
+    if (vulling) vulling.style.width = Math.round(100 * n / LAAD_STAPPEN.length) + '%';
+  } catch (_) { /* het logo-scherm mag nooit zelf de storing worden */ }
+}
+
+// ============================================================
 //  v5.46.0 — HOE LANG DUURDE HET OPSTARTEN?
 // ------------------------------------------------------------
 //  Sierk: "het duurt vaak tot wel 30-60 sec voordat de database bereikt is".
@@ -1372,21 +1553,55 @@ function toonLaadOverlay(toon) {
 //  WAAR het blijft hangen:
 //   - bestanden: tot de app-code draait (ophalen van de bestanden);
 //   - database:  de opstartvragen aan de database;
-//   - totaal:    tot het logo weggaat.
-//  Alle tijden in milliseconden vanaf het openen van de app.
+//   - profiel:   (v5.48.0) het ophalen van je eigen gegevens — het logo wacht
+//                daar nu op, dus "tot beeld" telt dit sinds v5.48.0 mee;
+//   - totaal:    tot het logo weggaat;
+//   - ladder:    (v5.48.0) tot de ladder er met alle namen staat.
+//  Alle tijden in milliseconden vanaf het openen van de app, behalve database
+//  en profiel: dat zijn de duren van die stap.
+//
+//  v5.48.0: Sierk zag na een update "zeker een halve minuut" — en de volgende,
+//  snelle start overschreef dat spoor. Daarom blijft de laatste start ná een
+//  update apart bewaard (OPSTART_UPDATE_SLEUTEL). Of het een start na een
+//  update was, zegt de service worker: die meldt SW_ACTIVATED als er net een
+//  nieuwe versie actief werd (zie js/app.js). Een eerste installatie telt ook.
 // ============================================================
 const OPSTART_SLEUTEL = 'goyer_opstarttijd';
-const _opstart = { bestanden: null, database: null, totaal: null };
+const OPSTART_UPDATE_SLEUTEL = 'goyer_opstarttijd_update';
+const _opstart = { bestanden: null, database: null, profiel: null, totaal: null,
+                   ladder: null, naUpdate: false, hersteld: false };
+const _opstartTs = Date.now();   // wanneer deze start begon
 
 function bewaarOpstart() {
   try {
-    localStorage.setItem(OPSTART_SLEUTEL, JSON.stringify({ ts: Date.now(), ..._opstart }));
+    const rauw = JSON.stringify({ ts: _opstartTs, ..._opstart });
+    localStorage.setItem(OPSTART_SLEUTEL, rauw);
+    if (_opstart.naUpdate) localStorage.setItem(OPSTART_UPDATE_SLEUTEL, rauw);
   } catch (_) { /* privémodus: dan maar zonder meting */ }
 }
 
-function leesOpstartSpoor() {
+// v5.48.0: meetpunt — de ladder staat er voor het eerst met alle namen.
+// Alleen bij een start met een bewaarde inlog (dan is er een profieltijd);
+// anders zou het typen op het inlogscherm meetellen.
+function markeerOpstartLadder() {
+  if (_opstart.ladder !== null || _opstart.profiel === null) return;
+  _opstart.ladder = Math.round(performance.now());
+  bewaarOpstart();
+}
+
+// v5.48.0: deze start was de eerste na een update (of na de installatie).
+// Alleen in de eerste drie minuten: wordt een nieuwe versie actief terwijl de
+// app al uren openstaat, dan hoort dat niet bij deze start.
+function markeerOpstartNaUpdate() {
+  if (_opstart.naUpdate || _opstart.bestanden === null) return;
+  if (performance.now() > 180000) return;
+  _opstart.naUpdate = true;
+  bewaarOpstart();
+}
+
+function leesOpstartSpoor(welke) {
   try {
-    const rauw = localStorage.getItem(OPSTART_SLEUTEL);
+    const rauw = localStorage.getItem(welke === 'update' ? OPSTART_UPDATE_SLEUTEL : OPSTART_SLEUTEL);
     if (!rauw) return null;
     const spoor = JSON.parse(rauw);
     return (spoor && typeof spoor.ts === 'number') ? spoor : null;
@@ -1407,10 +1622,16 @@ function opstartTekst(spoor) {
   const delen = [];
   if (typeof spoor.bestanden === 'number') delen.push('bestanden ' + opstartSeconden(spoor.bestanden));
   if (typeof spoor.database === 'number')  delen.push('database ' + opstartSeconden(spoor.database));
+  // v5.48.0: een spoor van vóór v5.48.0 heeft deze velden niet en geeft dus
+  // precies het oude regeltje.
+  if (typeof spoor.profiel === 'number')   delen.push('gegevens ' + opstartSeconden(spoor.profiel));
   const kop = (typeof spoor.totaal === 'number')
     ? opstartSeconden(spoor.totaal) + ' tot beeld'
     : 'logo nog niet weg';
-  return delen.length ? kop + ' (' + delen.join(', ') + ')' : kop;
+  let tekst = delen.length ? kop + ' (' + delen.join(', ') + ')' : kop;
+  if (typeof spoor.ladder === 'number') tekst += '; ladder met namen na ' + opstartSeconden(spoor.ladder);
+  if (spoor.naUpdate === true) tekst += ' — eerste start na een update';
+  return tekst;
 }
 
 // ============================================================
@@ -2137,6 +2358,7 @@ export {
   toast, foutTekst, meldFout, registreerNotificatieToken, laadUitdagingen,
   herstelVerbinding, controleerVerbinding, leesHerstelSpoor, magHerstellen,
   leesOpstartSpoor, opstartTekst,
+  markeerOpstartLadder, markeerOpstartNaUpdate,   // v5.48.0
   slaEersteLoginOp,
   zetKijkAlsSpeler,
 };

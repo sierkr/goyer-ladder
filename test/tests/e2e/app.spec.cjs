@@ -359,6 +359,90 @@ test.describe.serial('Partij en scores', () => {
     }
   });
 
+  // ══ v5.49.0 — DE SPELERSCODE ══════════════════════════════════
+  //  Sierk, 12 oktober 2026: een speler die op de ladder staat maar nog nooit
+  //  had ingelogd kwam met de QR niet als zichzelf in de ronde. Nina is precies
+  //  zo iemand (eersteLogin: true in de seed).
+  test('SPELERS-QR: een speler die nooit inlogde kiest zijn naam en zit in de ronde', async ({ browser }) => {
+    test.setTimeout(240000);
+    const ctxLid = await browser.newContext();
+    const lid = await ctxLid.newPage();
+    try {
+      await inloggen(lid, 'cees');
+      await expect(lid.locator('#ladder-list-mp')).toContainText('Nina Nieuw', { timeout: 25000 });
+      // Loopt de partij van de vorige proef nog, dan die gebruiken; anders starten.
+      await lid.click('#nav-ronde-btn');
+      const loopt = await lid.locator('#ronde-content').isVisible({ timeout: 5000 }).catch(() => false);
+      if (!loopt) {
+        await lid.click('#nav-partij-btn');
+        await lid.selectOption('#partij-ladder-select', 'mp').catch(() => {});
+        await lid.selectOption('#baan-select', 'De Goyer');
+        await lid.fill('#player-2', 'Nina');
+        await lid.locator('#speler-lijst-2 .speler-zoek-item', { hasText: 'Nina Nieuw' })
+          .first().click();
+        await lid.locator('#page-partij button:has-text("Partij starten")').first().click();
+        await expect(lid.locator('#page-ronde')).toHaveClass(/active/, { timeout: 20000 });
+      }
+
+      await lid.click('#ronde-spelers-qr-btn');
+      await expect(lid.locator('#modal-ronde-qr')).toHaveClass(/open/, { timeout: 15000 });
+      await expect(lid.locator('#ronde-qr-titel')).toHaveText('QR-code voor spelers');
+      await expect(lid.locator('#ronde-qr-vak svg')).toBeVisible({ timeout: 25000 });
+      const adres = (await lid.locator('#ronde-qr-adres').textContent() || '').trim();
+      expect(adres, 'het is de spelerscode').toMatch(/[?&]s=1/);
+
+      // ── Nina's telefoon: nooit ingelogd, scant ───────────────
+      const ctxNina = await browser.newContext();
+      const nina = await ctxNina.newPage();
+      await nina.goto(adres);
+      await expect(nina.locator('#modal-ronde-naam'), 'de app vraagt wie je bent')
+        .toHaveClass(/open/, { timeout: 30000 });
+      const namen = await nina.locator('#ronde-naam-lijst button').allTextContents();
+      expect(namen.sort(), 'alleen de namen uit deze flight')
+        .toEqual(['Cees Speler', 'Nina Nieuw']);
+      await nina.locator('#ronde-naam-lijst button', { hasText: 'Nina Nieuw' }).click();
+
+      await expect(nina.locator('#page-ronde'), 'ze staat in de ronde')
+        .toHaveClass(/active/, { timeout: 30000 });
+      await expect(nina.locator('#scorecard-body input[type=number]').first())
+        .toBeVisible({ timeout: 20000 });
+      await expect(nina.locator('#ronde-empty')).toBeHidden();
+      await expect(nina.locator('#logout-btn'), 'onder haar eigen naam').toHaveText(/^Nina/);
+      await expect(nina.locator('#login-scherm')).not.toHaveClass(/actief/);
+      expect(nina.url(), 'de sleutel is uit de adresbalk').not.toMatch(/[?&]k=/);
+      // Alleen deze ronde — en dus ook niet het "maak je profiel af"-scherm.
+      await expect(nina.locator('#nav-ladder-btn')).toBeHidden();
+      await expect(nina.locator('#nav-partij-btn')).toBeHidden();
+      await expect(nina.locator('#ronde-spelers-qr-btn')).toBeHidden();
+      await expect(nina.locator('#ronde-qr-btn')).toBeHidden();
+      await expect(nina.locator('#ronde-afsluiten-btn')).toBeHidden();
+
+      // Ze kan scoren; dat komt bij Cees binnen.
+      const vak = nina.locator('#scorecard-body input[type=number]').nth(1);
+      await vak.fill('5');
+      await vak.blur();
+      await expect(lid.locator('#scorecard-body input[type=number]').nth(1),
+        'haar score komt bij Cees binnen').toHaveValue('5', { timeout: 25000 });
+
+      // ── De ronde verdwijnt zonder te worden verwerkt ─────────
+      //  (geannuleerd of verwijderd: dan blijft het tijdelijke profiel staan).
+      //  Opent ze de app daarna, dan hoort ze NIET vast te zitten op "Geen
+      //  actieve partij", maar netjes uitgelogd te zijn met een uitleg.
+      const ladder = (await beheerDb.doc('ladders/mp').get()).data() || {};
+      const partijId = new URL(adres).searchParams.get('r');
+      await beheerDb.doc('ladders/mp').update({
+        actievePartijen: (ladder.actievePartijen || []).filter(x => x.partijId !== partijId),
+      });
+      await nina.goto('/index.html');
+      await expect(nina.locator('#login-scherm'), 'na afloop staat ze bij het inlogscherm')
+        .toHaveClass(/actief/, { timeout: 30000 });
+      await expect(nina.locator('#login-fout')).toContainText('Deze ronde is afgelopen');
+      await ctxNina.close();
+    } finally {
+      await ctxLid.close();
+    }
+  });
+
   test('twee spelers scoren tegelijk zonder elkaar te overschrijven', async ({ browser }) => {
     // Dit is de kern van de omzetting in v5.0.0: scores staan per speler in
     // een eigen document, dus gelijktijdig invoeren mag niets wissen.
@@ -762,6 +846,95 @@ test.describe('Zelfherstel', () => {
       // Altijd terugzetten, ook als de test onderweg struikelt.
       await Promise.all(bewaard.map(d => col.doc(d.id).set(d.data)));
     }
+  });
+});
+
+// ============================================================
+//  v5.48.0 — TRAGE START
+// ------------------------------------------------------------
+//  Sierk, 7 oktober 2026, met een schermafdruk: bij een trage verbinding "zie
+//  je alleen maar de vier tabs en een leeg scherm", en daarna stond er "Nog
+//  geen spelers." Nagebootst met een afgeknepen verbinding en een gewiste
+//  databasekopie op het toestel (de inlog blijft bewaard). Onder v5.47.0 gaf
+//  dat 2,4 s een leeg scherm en daarna 4,6 s een ladder met één naam.
+//
+//  Deze proef kijkt elke 150 ms naar het scherm en toetst wat ALTIJD moet
+//  gelden — niet hoe lang het duurt, want dat hangt van de machine af:
+//   1. het logo zegt welke stap bezig is (stap 2 en 3 moeten langskomen);
+//   2. is het logo weg, dan is het ladderscherm nooit leeg;
+//   3. een ladder met namen heeft ze allemaal: nooit één naam, nooit
+//      "Nog geen spelers.";
+//   4. de meetregel heeft de tijd tot je gegevens en tot de ladder.
+//
+//  ⚠ Het afknijpen (Chromium) geldt alleen voor het verkeer van de pagina,
+//  niet voor dat van de service worker. De trage eerste start ná een update
+//  wordt hier dus NIET nagebootst — daar is de meetregel voor.
+// ============================================================
+test.describe('Trage start', () => {
+  test('TRAGE START: logo met stappen, nooit leeg, nooit een halve ladder', async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await inloggen(page, 'coord');
+    await expect(page.locator('#ladder-list-mp')).toContainText('Anna Speler', { timeout: 30000 });
+
+    // De databasekopie op het toestel wissen; de inlog staat in een eigen opslag.
+    await page.goto('/version.json');
+    const gewist = await page.evaluate(async () => {
+      const namen = (await indexedDB.databases()).map(d => d.name).filter(n => /^firestore/.test(n || ''));
+      for (const n of namen) {
+        await new Promise(r => { const q = indexedDB.deleteDatabase(n); q.onsuccess = q.onerror = q.onblocked = () => r(); });
+      }
+      return namen.length;
+    });
+    expect(gewist, 'er was een databasekopie om te wissen').toBeGreaterThan(0);
+
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Network.enable');
+    await cdp.send('Network.emulateNetworkConditions',
+      { offline: false, latency: 2000, downloadThroughput: 40 * 1024, uploadThroughput: 20 * 1024 });
+    const stappen = new Set();
+    const fouten = [];
+    let klaar = false;
+    try {
+      const start = Date.now();
+      await page.goto('/index.html', { waitUntil: 'commit' });
+      while (Date.now() - start < 120000) {
+        const s = await page.evaluate(() => {
+          const zichtbaar = (el) => !!el && getComputedStyle(el).display !== 'none';
+          return {
+            logo:  zichtbaar(document.getElementById('laad-overlay')),
+            stap:  document.getElementById('laad-stap')?.textContent || '',
+            tekst: (document.getElementById('ladder-kaarten')?.innerText || '').replace(/\s+/g, ' ').trim(),
+          };
+        }).catch(() => null);
+        if (s) {
+          const t = ((Date.now() - start) / 1000).toFixed(1);
+          if (s.logo) {
+            const m = s.stap.match(/^Stap (\d) van 3/);
+            if (m) stappen.add(Number(m[1]));
+          } else {
+            if (!s.tekst) fouten.push(`${t} s: leeg scherm na het logo`);
+            if (/Nog geen spelers/.test(s.tekst)) fouten.push(`${t} s: "Nog geen spelers."`);
+            if (/Coen Coordinator/.test(s.tekst) && !/Anna Speler/.test(s.tekst)) {
+              fouten.push(`${t} s: een halve ladder — ${s.tekst.slice(0, 80)}`);
+            }
+            if (/Coen Coordinator/.test(s.tekst) && /Anna Speler/.test(s.tekst)) { klaar = true; break; }
+          }
+        }
+        await page.waitForTimeout(150);
+      }
+    } finally {
+      await cdp.send('Network.emulateNetworkConditions',
+        { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }).catch(() => {});
+    }
+    expect([...new Set(fouten)], 'wat er nooit op het scherm mag staan').toEqual([]);
+    expect(stappen.has(2) && stappen.has(3), `het logo liet stap 2 en 3 zien (gezien: ${[...stappen].join(', ')})`).toBe(true);
+    expect(klaar, 'de ladder staat er uiteindelijk met alle namen').toBe(true);
+
+    // De meetregel: geopend met een bewaarde inlog, dus met gegevens- en laddertijd.
+    const spoor = await page.evaluate(() => JSON.parse(localStorage.getItem('goyer_opstarttijd') || 'null'));
+    expect(typeof spoor?.profiel, 'tijd tot je gegevens gemeten').toBe('number');
+    expect(typeof spoor?.ladder, 'tijd tot de ladder met namen gemeten').toBe('number');
   });
 });
 

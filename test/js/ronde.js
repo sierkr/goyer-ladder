@@ -129,12 +129,35 @@ function ontkoppelScoreListener() {
 // ============================================================
 const _maakRondeQrFn = httpsCallable(functions, 'maakRondeQr');
 
-async function toonRondeQr() {
+// v5.49.0: `soort` is 'gast' (de knop van altijd) of 'speler' (de tweede
+// knop). Dezelfde modal; alleen de titel, de uitleg en de sleutel verschillen.
+const RONDE_QR_TEKST = {
+  gast: {
+    titel: 'QR-code voor gasten',
+    uitleg: 'Laat dit scherm zien aan je gast. Wie hem scant komt meteen in deze ronde '
+          + 'en kan scores invullen — ook die van jou. Zodra de partij is verwerkt '
+          + 'werkt de code niet meer.',
+  },
+  speler: {
+    titel: 'QR-code voor spelers',
+    uitleg: 'Voor je medespelers in deze flight. Wie hem scant tikt zijn eigen naam aan '
+          + 'en komt in deze ronde, ook als hij nog nooit heeft ingelogd. Alleen deze '
+          + 'ronde: voor de rest van de app logt hij in met zijn eigen wachtwoord. '
+          + 'Zodra de partij is verwerkt werkt de code niet meer.',
+  },
+};
+
+async function toonRondeQr(soort = 'gast') {
+  if (soort !== 'speler') soort = 'gast';
   const p = mijnPartij();
   if (!p) { toast('Er loopt geen ronde'); return; }
   const vak   = document.getElementById('ronde-qr-vak');
   const adres = document.getElementById('ronde-qr-adres');
   if (!vak || !adres) return;
+  const titel  = document.getElementById('ronde-qr-titel');
+  const uitleg = document.getElementById('ronde-qr-uitleg');
+  if (titel)  titel.textContent  = RONDE_QR_TEKST[soort].titel;
+  if (uitleg) uitleg.textContent = RONDE_QR_TEKST[soort].uitleg;
 
   vak.innerHTML = '<div style="padding:18px;text-align:center;color:var(--mid);font-size:13px">Code maken…</div>';
   adres.textContent = '';
@@ -145,6 +168,7 @@ async function toonRondeQr() {
       ladderId: p.ladderId,
       partijId: p.partijId,
       basis: `${window.location.origin}${window.location.pathname}`,
+      soort,
       isTest: IS_TEST,
     });
     const svg = uit?.data?.svg;
@@ -181,7 +205,7 @@ function renderRonde() {
   //  ⚠ Dit is opruimen, geen beveiliging. Die staat in firestore.rules en in
   //  de serverfuncties, en blijft daar staan.
   const isGast = !!rondeVanSessie();
-  ['ronde-qr-btn', 'ronde-instellingen-btn', 'ronde-afsluiten-btn'].forEach(id => {
+  ['ronde-qr-btn', 'ronde-spelers-qr-btn', 'ronde-instellingen-btn', 'ronde-afsluiten-btn'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = isGast ? 'none' : '';
   });

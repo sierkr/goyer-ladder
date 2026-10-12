@@ -518,9 +518,15 @@ async function _qrGeheim(fs) {
   return nieuw;
 }
 
-function _qrSleutel(geheim, partijId) {
+// v5.49.0: twee soorten code per ronde, elk met een EIGEN sleutel. De
+// gastencode blijft precies wat hij was (HMAC over alleen het partijnummer),
+// zodat een gastencode die al op tafel ligt blijft werken. De spelerscode
+// rekent over "speler:" + partijnummer. Zo kan iemand met de gastencode niet
+// door alleen `&s=1` aan het adres te plakken een naam gaan kiezen.
+function _qrSleutel(geheim, partijId, soort = 'gast') {
+  const invoer = soort === 'speler' ? 'speler:' + String(partijId) : String(partijId);
   return crypto.createHmac('sha256', geheim)
-    .update(String(partijId), 'utf8')
+    .update(invoer, 'utf8')
     .digest('base64url')
     .slice(0, QR_SLEUTEL_LENGTE);
 }
@@ -535,7 +541,10 @@ function _lopendePartij(ladderDoc, partijId) {
  * De QR-code van een ronde. Alleen voor wie al is ingelogd — je moet de ronde
  * kunnen zien om hem te kunnen laten zien.
  *
- * Input:  { ladderId, partijId, basis, isTest? }
+ * v5.49.0: `soort` is 'gast' (standaard, zoals altijd) of 'speler'. De
+ * spelerscode krijgt `&s=1` in het adres en een eigen sleutel.
+ *
+ * Input:  { ladderId, partijId, basis, soort?, isTest? }
  * Output: { url, svg }
  */
 exports.maakRondeQr = onCall(
@@ -565,10 +574,12 @@ exports.maakRondeQr = onCall(
       throw new HttpsError('failed-precondition', 'Deze ronde loopt niet meer.');
     }
 
-    const sleutel = _qrSleutel(await _qrGeheim(fs), partijId);
+    const soort = data?.soort === 'speler' ? 'speler' : 'gast';
+    const sleutel = _qrSleutel(await _qrGeheim(fs), partijId, soort);
     const scheiding = basis.includes('?') ? '&' : '?';
     const url = `${basis}${scheiding}r=${encodeURIComponent(partijId)}`
-              + `&l=${encodeURIComponent(ladderId)}&k=${encodeURIComponent(sleutel)}`;
+              + `&l=${encodeURIComponent(ladderId)}&k=${encodeURIComponent(sleutel)}`
+              + (soort === 'speler' ? '&s=1' : '');
 
     // Foutcorrectie M en een rustrand van 4 vakjes: dezelfde keuzes als bij de
     // vaste QR uit v5.37.0, en om dezelfde reden.
@@ -584,8 +595,26 @@ exports.maakRondeQr = onCall(
  * Wissel een gescande sleutel om voor een inlog in die ronde.
  * Bewust NIET authenticatie-plichtig: dit ÍS de login.
  *
- * Input:  { ladderId, partijId, sleutel, isTest? }
- * Output: { customToken, partijId }
+ * v5.49.0 — DE SPELERSCODE (`soort: 'speler'`). Sierk, 12 oktober 2026: een
+ * speler die op de ladder staat maar nog nooit had ingelogd, kwam met de QR
+ * niet als zichzelf de ronde in. "De speler kiest zijn naam als daar om
+ * gevraagd wordt." Twee stappen, met dezelfde sleutel:
+ *   1. zonder `spelerUid` → de namen van DEZE flight, verder niets;
+ *   2. met `spelerUid`    → een inlog, als die speler in deze flight zit.
+ *
+ * ⚠ OOK DE SPELER KRIJGT EEN TIJDELIJK ACCOUNT, NIET ZIJN ECHTE.
+ *  De echte uid zou zijn rol meenemen. firestore.rules heeft negen
+ *  schrijfregels die alleen naar coördinator/beheerder kijken en niet naar de
+ *  stempel `viaRonde` (gemeten 12 oktober 2026: archief, state, users,
+ *  toernooi, config, ...). Staat de coördinator in de flight, dan zou iedereen
+ *  die de code ziet zijn naam kunnen aantikken en die rechten krijgen. Met een
+ *  eigen account `rondespeler_<partij>_<uid>` is hij gewoon een gast met een
+ *  naam: hij kan precies wat een gast kan — de scores van deze ronde — en de
+ *  regels hoeven niet te veranderen. De scorekaart zelf hangt niet af van wie
+ *  er ingelogd is (sinds v5.43.0 mag iedereen in de flight elke kolom vullen).
+ *
+ * Input:  { ladderId, partijId, sleutel, soort?, spelerUid?, isTest? }
+ * Output: { customToken, partijId }  of  { kies: [{ uid, naam }] }
  */
 exports.wisselRondeSleutel = onCall(
   { region: 'europe-west1' },
@@ -610,11 +639,46 @@ exports.wisselRondeSleutel = onCall(
     // Geen foutteller nodig: de sleutel is 22 tekens uit een HMAC. Raden kost
     // meer tijd dan er ronden gespeeld worden. Wel in vaste tijd vergelijken,
     // zodat de duur van het antwoord niets verraadt.
-    const verwacht = _qrSleutel(await _qrGeheim(fs), partijId);
+    const soort = data.soort === 'speler' ? 'speler' : 'gast';
+    const verwacht = _qrSleutel(await _qrGeheim(fs), partijId, soort);
     const a = Buffer.from(sleutel);
     const b = Buffer.from(verwacht);
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
       throw new HttpsError('permission-denied', 'Deze code hoort niet bij deze ronde.');
+    }
+
+    if (soort === 'speler') {
+      const flight = (partij.spelers || []).filter(sp => sp && sp.uid);
+      const spelerUid = String(data.spelerUid ?? '').trim();
+      if (!spelerUid) {
+        // Stap 1: alleen naam en nummer — geen handicap, geen e-mail.
+        return { kies: flight.map(sp => ({ uid: String(sp.uid), naam: String(sp.naam || 'Speler') })) };
+      }
+      const speler = flight.find(sp => String(sp.uid) === spelerUid);
+      if (!speler) {
+        throw new HttpsError('permission-denied', 'Deze naam hoort niet bij deze ronde.');
+      }
+      const uid = ('rondespeler_' + partijId + '_' + spelerUid).slice(0, 128);
+      await fs.collection('spelers').doc(uid).set({
+        uid,
+        naam: String(speler.naam || 'Speler'),
+        rol: 'speler',
+        hcp: 0,
+        eersteLogin: false,
+        rondeGast: true,      // zelfde opruiming en zelfde plek in Beheer als de gast
+        rondeSpeler: spelerUid,
+        partijId,
+        ladderId,
+        gemaakt: Date.now(),
+      }, { merge: true });
+      let customToken;
+      try {
+        customToken = await admin.auth().createCustomToken(uid, { viaRonde: partijId, ladderId });
+      } catch (e) {
+        console.error('createCustomToken mislukt:', e);
+        throw new HttpsError('internal', 'Inloggen mislukt, probeer het opnieuw.');
+      }
+      return { customToken, partijId };
     }
 
     // ⚠ EÉN TIJDELIJK PROFIEL PER RONDE, niet per gast.
@@ -1652,6 +1716,14 @@ exports.verwerkPartijUitslag = onCall(
     // nog LOOPT.
     try { await fs.collection('spelers').doc('rondegast_' + partijId).delete(); }
     catch (e) { console.warn('gastprofiel opruimen mislukt:', e?.message); }
+    // v5.49.0: en de tijdelijke profielen van de spelerscode (één per gekozen
+    // naam). Zelfde regel: mislukt dit, dan gaat de uitslag gewoon door.
+    try {
+      const rest = await fs.collection('spelers').where('partijId', '==', partijId).get();
+      await Promise.all(rest.docs
+        .filter(d => d.id.startsWith('rondespeler_') && d.data()?.rondeGast === true)
+        .map(d => d.ref.delete()));
+    } catch (e) { console.warn('spelersprofielen opruimen mislukt:', e?.message); }
 
     return { success: true, changes, spelerRegels };
   }
