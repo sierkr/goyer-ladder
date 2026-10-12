@@ -400,12 +400,24 @@ test.describe.serial('Partij en scores', () => {
       const namen = await nina.locator('#ronde-naam-lijst button').allTextContents();
       expect(namen.sort(), 'alleen de namen uit deze flight')
         .toEqual(['Cees Speler', 'Nina Nieuw']);
+      // ⚠ v5.49.1 — EEN MENS KIEST NIET IN EEN MILLISECONDE. Zo snel als een
+      //  proef klikt, was ze soms al ingelogd vóór de app de ladders ophaalde,
+      //  en dan ging het toevallig goed. Met wat bedenktijd gaat de opstartvraag
+      //  naar de ladders zeker zonder inlog de deur uit — precies wat er op de
+      //  baan gebeurt. Zie laadRondeVanSessie() in js/auth.js.
+      await nina.waitForTimeout(8000);
       await nina.locator('#ronde-naam-lijst button', { hasText: 'Nina Nieuw' }).click();
+      const gekozen = Date.now();
 
       await expect(nina.locator('#page-ronde'), 'ze staat in de ronde')
         .toHaveClass(/active/, { timeout: 30000 });
-      await expect(nina.locator('#scorecard-body input[type=number]').first())
-        .toBeVisible({ timeout: 20000 });
+      // Sierk: "moet er alles op gericht zijn om meteen in de ronde te komen."
+      // Gemeten onder v5.49.0 met de regels aan: nooit — na 30 s stond er
+      // "Geen actieve partij". De grens hier is ruim voor een trage testmachine.
+      await expect(nina.locator('#scorecard-body input[type=number]').first(),
+        'de scorekaart staat er binnen 8 seconden na het kiezen')
+        .toBeVisible({ timeout: 8000 });
+      console.log(`[SPELERS-QR] scorekaart ${((Date.now() - gekozen) / 1000).toFixed(1)} s na het kiezen`);
       await expect(nina.locator('#ronde-empty')).toBeHidden();
       await expect(nina.locator('#logout-btn'), 'onder haar eigen naam').toHaveText(/^Nina/);
       await expect(nina.locator('#login-scherm')).not.toHaveClass(/actief/);

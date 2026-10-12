@@ -134,6 +134,23 @@ jobs:
           --project demo-goyer --only firestore,auth,functions
           "node tests/e2e/seed.cjs && ./tests/node_modules/.bin/playwright test --config=playwright.config.cjs"
 
+      # v5.49.1: de QR-proeven nog een keer, nu MET de databaseregels.
+      # firebase.json noemt de regels per database (lijstvorm, nodig voor het
+      # uitrolscript), en die vorm leest de emulator niet: de stap hierboven
+      # draait daardoor zonder regels. Zo glipte op 12 oktober 2026 door dat
+      # een QR-inlog na 30 s op "Geen actieve partij" uitkwam — live wel,
+      # in de test niet. firebase.regels.json is dezelfde instelling met de
+      # regels in de vorm die de emulator wél leest.
+      - name: QR-proeven met databaseregels
+        env:
+          GCLOUD_PROJECT: demo-goyer
+          CI: 'true'
+        run: >
+          ./tests/node_modules/.bin/firebase emulators:exec
+          --config firebase.regels.json
+          --project demo-goyer --only firestore,auth,functions
+          "node tests/e2e/seed.cjs && ./tests/node_modules/.bin/playwright test --config=playwright.config.cjs -g 'RONDE-QR|SPELERS-QR'"
+
       - name: Rapport bewaren bij een fout
         if: failure()
         uses: actions/upload-artifact@v4

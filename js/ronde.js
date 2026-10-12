@@ -189,6 +189,15 @@ function renderRonde() {
   const p = mijnPartij();
   if (!p) {
     ontkoppelScoreListener();
+    // v5.49.1: wie met een QR-code binnenkwam, heeft hier een ronde. Staat hij
+    // er (nog) niet, dan wordt hij opgehaald (auth.js, laadRondeVanSessie) — dus
+    // geen "Geen actieve partij" en geen verwijzing naar een Partij-tabblad dat
+    // zo iemand niet heeft. Is de ronde echt voorbij, dan wordt hij uitgelogd.
+    const tekst = document.querySelector('#ronde-empty p');
+    if (tekst) {
+      if (tekst.dataset.standaard === undefined) tekst.dataset.standaard = tekst.innerHTML;
+      tekst.innerHTML = rondeVanSessie() ? 'Ronde ophalen…' : tekst.dataset.standaard;
+    }
     document.getElementById('ronde-empty').style.display = 'block';
     document.getElementById('ronde-content').style.display = 'none';
     return;

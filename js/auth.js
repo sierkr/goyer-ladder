@@ -452,9 +452,10 @@ async function vervolgIngelogd() {
   // v5.38.0: eerst vaststellen of deze sessie via de pincode binnenkwam. Dat
   // stuurt hieronder de tabbladen én het eerste-login-scherm.
   await sessieViaPin();
-  // v5.49.0: loopt de ronde van deze QR-sessie nog? Zie hierboven. Niet
-  // afwachten: het scherm wordt intussen gewoon opgebouwd.
-  if (rondeVanSessie()) controleerRondeNogBezig();
+  // v5.49.0/v5.49.1: een QR-sessie haalt zijn eigen ronde op (en ziet daarbij
+  // of hij afgelopen is). Niet afwachten: het scherm wordt intussen gewoon
+  // opgebouwd en opnieuw getekend zodra de ronde er is.
+  if (rondeVanSessie()) laadRondeVanSessie();
 
   // v3.0.0-11.74: herstart per-doc toernooi-listeners na login zodat ze
   // huidigeBruiker correct hebben voor toernooiModus etc.
@@ -775,22 +776,13 @@ const RONDE_AFGELOPEN_TEKST = 'Deze ronde is afgelopen. Log in met je eigen acco
 //  dan een leeg scherm.
 // ============================================================
 async function controleerRondeNogBezig() {
-  const partijId = _viaRondePartij, ladderId = _viaRondeLadder;
-  const uid = auth.currentUser?.uid;
-  if (!partijId || !ladderId || !uid) return;
-  // Er wordt net een nieuwe code gescand: die handelt het zelf af.
-  if (rondeQrUitAdres() || _rondeQrBezig) return;
-  let loopt = null;
-  try {
-    const snap = await getDocFromServer(doc(db, 'ladders', ladderId));
-    loopt = snap.exists()
-      && (snap.data().actievePartijen || []).some(p => p && p.partijId === partijId);
-  } catch (e) {
-    console.warn('ronde-controle onbekend:', e?.code || e?.message);
-    return;
-  }
-  if (loopt !== false) return;
-  if (auth.currentUser?.uid !== uid) return;   // intussen iemand anders
+  // v5.49.1: opgegaan in laadRondeVanSessie() hieronder, die de ronde ophaalt
+  // én beslist of hij afgelopen is. Deze naam blijft bestaan voor wie hem
+  // zoekt vanuit de aantekeningen van v5.49.0.
+  return laadRondeVanSessie();
+}
+
+function rondeAfgelopenUitloggen() {
   uitloggen();
   // beperkNavTotRonde() had deze verborgen. Een beheerder die hierna inlogt
   // krijgt ze niet vanzelf terug (pasToernooiModusNavToe stopt voor hem
@@ -800,6 +792,121 @@ async function controleerRondeNogBezig() {
     if (b) b.style.display = '';
   });
   toonLoginFout(RONDE_AFGELOPEN_TEKST);
+}
+
+// ============================================================
+//  v5.49.1 — MET DE QR-CODE METEEN IN DE RONDE
+// ------------------------------------------------------------
+//  Sierk, 12 oktober 2026, na de eerste echte proef met de spelerscode: "de
+//  naam was te selecteren, maar daarna moet je zo lang wachten dat hij uitkomt
+//  met er is geen actieve ronde." En: "Als mensen de QR-code gebruiken, moet er
+//  alles op gericht zijn om meteen in de ronde te komen. De rest is bijzaak."
+//
+//  WAT ER MIS WAS. Bij het opstarten haalt de app alle ladders op. Na een scan
+//  is dan nog niemand ingelogd, en firestore.rules laat de ladders alleen lezen
+//  door wie ingelogd is: geweigerd. De app kende dus geen enkele ladder en dus
+//  ook geen lopende partij. Na het inloggen werd dat nergens opnieuw geprobeerd.
+//  Het laadscherm wachtte 30 seconden op een scorekaart die nooit kwam, en dan
+//  stond er "Geen actieve partij". Bij opnieuw openen ging het wél goed: dan
+//  ben je al ingelogd vóór de ladders worden opgehaald.
+//
+//  ⚠ WAAROM DE BROWSERTESTS GROEN WAREN. De proefdatabase draaide ZONDER
+//  regels: firebase.json noemt ze in de lijstvorm (per database), en die vorm
+//  leest de emulator niet — hij meldt "allowing all reads and writes". Met de
+//  regels aan (firebase.regels.json) is het precies nagespeeld: na 30 s
+//  "Geen actieve partij", na opnieuw openen de scorekaart.
+//
+//  DE OPLOSSING. Een QR-sessie wacht niet op de rest van de app. In de inlog
+//  staat al welke ladder en welke partij het is (`viaRonde`, `ladderId`). Precies
+//  dat ene ladderdocument wordt opgehaald, de partij komt in de lijst, de
+//  scorekaart wordt getekend, en alleen die ladder blijft live bijgewerkt.
+//
+//  Lukt het ophalen niet (slecht bereik op de baan), dan opnieuw proberen tot
+//  het lukt — met "Ronde ophalen…" op het scherm, niet "Geen actieve partij".
+//  ⚠ "Deze ronde is afgelopen" alleen als de SERVER zelf zegt dat de partij
+//  er niet meer is. Geen verbinding = onbekend = blijven proberen. Eén keer
+//  onterecht iemand midden in de ronde uitloggen is erger dan even wachten.
+// ============================================================
+let _rondeLadderLuisteraar = null;   // { ladderId, stop }
+let _rondeOphaalTimer = null;
+let _rondeOphaalPoging = 0;
+
+function zetLadderInLijst(ladderId, data) {
+  const regel = {
+    id: ladderId, naam: data.naam,
+    type:            data.type            || 'ranking',
+    spelerIds:       data.spelerIds       || [],
+    actievePartijen: data.actievePartijen || [],
+    config: data.config || null,
+    data,
+  };
+  const idx = alleLadders.findIndex(l => l.id === ladderId);
+  if (idx < 0) alleLadders.push(regel);
+  else Object.assign(alleLadders[idx], regel);
+}
+
+function startRondeLadderLuisteraar(ladderId) {
+  if (_rondeLadderLuisteraar?.ladderId === ladderId) return;
+  stopRondeLadderLuisteraar();
+  const stop = onSnapshot(doc(db, 'ladders', ladderId), (snap) => {
+    if (!snap.exists() || !rondeVanSessie()) return;
+    zetLadderInLijst(ladderId, snap.data());
+    const ap = document.querySelector('.page.active')?.id?.replace('page-', '');
+    if (ap === 'ronde') renderRonde();
+  }, (err) => {
+    console.warn('ronde-ladder luisteraar:', err?.code || err?.message);
+    _rondeLadderLuisteraar = null;
+  });
+  _rondeLadderLuisteraar = { ladderId, stop };
+}
+
+function stopRondeLadderLuisteraar() {
+  if (_rondeOphaalTimer) { clearTimeout(_rondeOphaalTimer); _rondeOphaalTimer = null; }
+  _rondeOphaalPoging = 0;
+  if (!_rondeLadderLuisteraar) return;
+  try { _rondeLadderLuisteraar.stop(); } catch (_) { /* al gestopt */ }
+  _rondeLadderLuisteraar = null;
+}
+
+async function laadRondeVanSessie() {
+  const partijId = _viaRondePartij, ladderId = _viaRondeLadder;
+  const uid = auth.currentUser?.uid;
+  if (!partijId || !ladderId || !uid) return;
+  // Is er intussen iemand anders ingelogd (een nieuwe scan), dan hoort dit
+  // antwoord nergens meer bij.
+  const nogDezelfde = () => auth.currentUser?.uid === uid && _viaRondePartij === partijId;
+  if (_rondeOphaalTimer) { clearTimeout(_rondeOphaalTimer); _rondeOphaalTimer = null; }
+
+  let snap = null, vanServer = false;
+  try {
+    snap = await getDocFromServer(doc(db, 'ladders', ladderId));
+    vanServer = true;
+  } catch (e) {
+    console.warn('ronde ophalen bij de server mislukt:', e?.code || e?.message);
+    try { snap = await getDoc(doc(db, 'ladders', ladderId)); } catch (_) { snap = null; }
+  }
+  if (!nogDezelfde()) return;
+
+  const loopt = !!snap?.exists()
+    && (snap.data().actievePartijen || []).some(p => p && p.partijId === partijId);
+
+  if (loopt) {
+    _rondeOphaalPoging = 0;
+    zetLadderInLijst(ladderId, snap.data());
+    startRondeLadderLuisteraar(ladderId);
+    renderRonde();
+    return;
+  }
+  if (vanServer) {
+    // De server zegt zelf: deze partij loopt niet meer. Maar niet als er net
+    // een nieuwe code gescand wordt — die handelt het zelf af.
+    if (!rondeQrUitAdres() && !_rondeQrBezig) rondeAfgelopenUitloggen();
+    return;
+  }
+  // Onbekend: opnieuw, steeds iets langer wachten, hooguit 15 seconden.
+  _rondeOphaalPoging++;
+  const wacht = Math.min(15000, 1000 * 2 ** Math.min(_rondeOphaalPoging, 4));
+  _rondeOphaalTimer = setTimeout(() => { if (nogDezelfde()) laadRondeVanSessie(); }, wacht);
 }
 
 async function checkRondeQrLink() {
@@ -826,6 +933,9 @@ async function checkRondeQrLink() {
     if (!token) throw new Error('geen token ontvangen');
     await signInWithCustomToken(auth, token);
     history.replaceState(null, '', location.pathname);
+    // v5.49.1: de ronde meteen ophalen, tegelijk met het eigen profiel in
+    // plaats van erna. Zie laadRondeVanSessie().
+    sessieViaPin().then(() => { if (rondeVanSessie()) laadRondeVanSessie(); });
     return true;
   } catch (e) {
     history.replaceState(null, '', location.pathname);
@@ -855,6 +965,7 @@ async function loginMetGoogle() {
 }
 
 function uitloggen() {
+  stopRondeLadderLuisteraar();   // v5.49.1
   _vasteListeners.forEach(unsub => unsub());
   store._vasteListeners = [];
   _toernooiListeners.forEach(unsub => unsub());
