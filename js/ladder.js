@@ -3,12 +3,13 @@
 // ============================================================
 import { db, LADDERS_COL, SNAPSHOTS_COL, ARCHIEF_DOC, esc, escAttr } from './config.js';
 import { store, alleLadders, activeLadderId, huidigeBruiker, uitdagingenData, alleToernooien, archiefData, DEFAULT_LADDER_CONFIG } from './store.js';
-import { getLadderConfig, getLadderData, isBeheerderRol, isCoordinatorRol, toast } from './auth.js';
+import { getLadderConfig, getLadderData, isBeheerderRol, isCoordinatorRol, toast,
+         markeerOpstartLadder } from './auth.js';
 import { stuurUitdaging } from './archief.js';
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { renderKnockoutLadderKaart } from './knockout.js';
 import { getLadderSpelers, isInLadder, ladderStandenGeladen,
-         herstartStandenListeners } from './ladder-view.js';
+         herstartStandenListeners, ladderNamenCompleet } from './ladder-view.js';
 
 // ============================================================
 //  ACTIVITEITSSYSTEEM — deterministisch berekend uit partijhistorie
@@ -655,6 +656,9 @@ async function renderLadder() {
     return { ...l, data };
   }));
 
+  // v5.48.0: staan alle ladders er hieronder compleet? Dan is dat het meetpunt
+  // "ladder met namen" voor de regel onderaan Beheer.
+  let allesKlaar = true;
   wrap.innerHTML = ladderData.map(l => {
     const isKnockout = (l.data.type || l.type) === 'knockout';
 
@@ -669,7 +673,11 @@ async function renderLadder() {
     // ladder zitten, geeft getLadderSpelers() voor iedereen rang 0 terug en
     // zou de lijst alfabetisch met 0P/0W verschijnen — een stand die klopt
     // noch bestaat. Liever eerlijk melden dat hij nog laadt.
-    const standenKlaar = ladderStandenGeladen(l.id);
+    // v5.48.0: hetzelfde voor de NAMEN. Zonder deze controle tekende hij wat
+    // er toevallig al op het toestel stond: een ladder met één naam, of —
+    // voor wie zelf niet in de ladder staat — "Nog geen spelers."
+    const standenKlaar = ladderStandenGeladen(l.id) && ladderNamenCompleet(l.id);
+    if (!standenKlaar) allesKlaar = false;
     // v5.4.1: geen "ververs de pagina" meer — in de app op het beginscherm van
     // een telefoon is er geen adresbalk en geen verversknop. De app probeert
     // het nu zelf opnieuw (zie de wachthond in ladder-view.js) en biedt
@@ -697,6 +705,7 @@ async function renderLadder() {
       </div>
     </div>`;
   }).join('');
+  if (allesKlaar) markeerOpstartLadder();
   } catch(e) { console.error('renderLadder mislukt:', e); }
 }
 

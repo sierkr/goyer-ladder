@@ -513,10 +513,75 @@ async function main() {
   await R.magNiet('een ronde-sessie kan GEEN horloge-pincode maken',
     () => roepAan('maakWatchPin', {}, rondeToken));
 
+  // ══ v5.49.0 — DE SPELERSCODE ════════════════════════════════
+  //  Sierk: "De speler kiest zijn naam als daar om gevraagd wordt." Alleen
+  //  namen uit deze flight, en alleen deze ronde.
+  await db.doc('ladders/mp').set({
+    actievePartijen: [{ partijId: 'p1', ladderId: 'mp', baan: 'De Goyer',
+                        spelers: [{ uid: SPELER_A, naam: 'Anna', hcp: 12 },
+                                  { uid: 'flightgenoot', naam: 'Bert', hcp: 20 }] }],
+  }, { merge: true });
+  const sqr = await roepAan('maakRondeQr',
+    { ladderId: 'mp', partijId: 'p1', basis: BASIS, soort: 'speler' }, tokenA);
+  R.check('de spelerscode heeft s=1 in het adres', /[?&]s=1(&|$)/.test(sqr?.url || ''), true);
+  const spelerSleutel = new URL(sqr.url).searchParams.get('k');
+  R.check('de spelerscode heeft een EIGEN sleutel', spelerSleutel !== sleutel, true);
+  R.check('even lang als de gastensleutel', (spelerSleutel || '').length, 22);
+  R.check('de gastencode heeft geen s=1', /[?&]s=/.test(qr.url), false);
+
+  await R.magNiet('met de GASTENsleutel kun je geen naam kiezen',
+    () => roepAan('wisselRondeSleutel',
+      { ladderId: 'mp', partijId: 'p1', sleutel, soort: 'speler' }, null));
+  await R.magNiet('en met de SPELERSsleutel niet als gast binnen',
+    () => roepAan('wisselRondeSleutel',
+      { ladderId: 'mp', partijId: 'p1', sleutel: spelerSleutel }, null));
+
+  const keuze = await roepAan('wisselRondeSleutel',
+    { ladderId: 'mp', partijId: 'p1', sleutel: spelerSleutel, soort: 'speler' }, null);
+  R.check('stap 1 geeft de namen van de flight',
+    (keuze?.kies || []).map(k => k.naam).join(','), 'Anna,Bert');
+  R.check('en verder niets — geen handicap', JSON.stringify(keuze).includes('hcp'), false);
+  R.check('en nog geen inlog', keuze?.customToken, undefined);
+
+  await R.magNiet('een naam van BUITEN de flight wordt geweigerd',
+    () => roepAan('wisselRondeSleutel',
+      { ladderId: 'mp', partijId: 'p1', sleutel: spelerSleutel, soort: 'speler',
+        spelerUid: SPELER_B }, null));
+
+  const alsAnna = await roepAan('wisselRondeSleutel',
+    { ladderId: 'mp', partijId: 'p1', sleutel: spelerSleutel, soort: 'speler',
+      spelerUid: SPELER_A }, null);
+  R.check('met een naam uit de flight krijg je een inlog', typeof alsAnna?.customToken, 'string');
+  const annaClaims = JSON.parse(
+    Buffer.from(String(alsAnna.customToken).split('.')[1], 'base64').toString('utf8'));
+  // ⚠ NIET haar echte account: dat zou haar rol meenemen, en negen
+  // schrijfregels kijken alleen naar de rol. Zie wisselRondeSleutel.
+  R.check('het is NIET haar echte account', annaClaims?.uid === SPELER_A, false);
+  R.check('maar een tijdelijk account van deze ronde',
+    annaClaims?.uid, 'rondespeler_p1_' + SPELER_A);
+  R.check('met de stempel van deze ronde', annaClaims?.claims?.viaRonde, 'p1');
+  const annaProfiel = await db.doc('spelers/rondespeler_p1_' + SPELER_A).get();
+  R.check('het tijdelijke profiel draagt haar naam', annaProfiel.data()?.naam, 'Anna');
+  R.check('en wordt opgeruimd als gast', annaProfiel.data()?.rondeGast, true);
+
+  const spelerAanmeld = await fetch(
+    'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=fake-api-key',
+    { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: alsAnna.customToken, returnSecureToken: true }) });
+  const spelerToken = (await spelerAanmeld.json()).idToken;
+  await R.magNiet('een spelerscode-sessie kan GEEN uitslag indienen',
+    () => roepAan('verwerkPartijUitslag', { ladderId: 'mp', partijId: 'p1' }, spelerToken));
+  await R.magNiet('en GEEN nieuwe QR laten maken',
+    () => roepAan('maakRondeQr', { ladderId: 'mp', partijId: 'p1', basis: BASIS, soort: 'speler' }, spelerToken));
+
   // Is de partij niet meer actief, dan is de code niets meer waard.
   await db.doc('ladders/mp').set({ actievePartijen: [] }, { merge: true });
   await R.magNiet('een afgelopen ronde laat niemand meer binnen',
     () => roepAan('wisselRondeSleutel', { ladderId: 'mp', partijId: 'p1', sleutel }, null));
+  await R.magNiet('ook niet met de spelerscode',
+    () => roepAan('wisselRondeSleutel',
+      { ladderId: 'mp', partijId: 'p1', sleutel: spelerSleutel, soort: 'speler',
+        spelerUid: SPELER_A }, null));
 
   return toonRapport(R);
 }
