@@ -138,12 +138,13 @@ const RONDE_QR_TEKST = {
           + 'en kan scores invullen — ook die van jou. Zodra de partij is verwerkt '
           + 'werkt de code niet meer.',
   },
+  // v5.50.0: dit is nu de enige knop ("QR-code voor de flight"). De gasttekst
+  // hierboven blijft staan voor wie toonRondeQr() zonder soort aanroept.
   speler: {
-    titel: 'QR-code voor spelers',
-    uitleg: 'Voor je medespelers in deze flight. Wie hem scant tikt zijn eigen naam aan '
-          + 'en komt in deze ronde, ook als hij nog nooit heeft ingelogd. Alleen deze '
-          + 'ronde: voor de rest van de app logt hij in met zijn eigen wachtwoord. '
-          + 'Zodra de partij is verwerkt werkt de code niet meer.',
+    titel: 'QR-code voor de flight',
+    uitleg: 'Laat dit zien aan je medespelers, ook gasten. Wie scant tikt zijn eigen '
+          + 'naam aan en komt in deze ronde. Zodra de partij is verwerkt werkt de code '
+          + 'niet meer.',
   },
 };
 
@@ -214,7 +215,7 @@ function renderRonde() {
   //  ⚠ Dit is opruimen, geen beveiliging. Die staat in firestore.rules en in
   //  de serverfuncties, en blijft daar staan.
   const isGast = !!rondeVanSessie();
-  ['ronde-qr-btn', 'ronde-spelers-qr-btn', 'ronde-instellingen-btn', 'ronde-afsluiten-btn'].forEach(id => {
+  ['ronde-qr-btn', 'ronde-instellingen-btn', 'ronde-afsluiten-btn'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = isGast ? 'none' : '';
   });
