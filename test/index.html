@@ -2068,21 +2068,17 @@
              dit is op elke telefoon hetzelfde. `currentColor` laat het meelopen
              met de tekstkleur van de knop, ook in een andere clubstijl. -->
         <button id="ronde-qr-btn" class="btn btn-ghost btn-block btn-sm" style="margin-top:8px"
-          onclick="toonRondeQr()"><svg width="14" height="14" viewBox="0 0 21 21"
-            aria-hidden="true" focusable="false" shape-rendering="crispEdges"
-            style="vertical-align:-2px;margin-right:6px"><path fill="currentColor"
-            fill-rule="evenodd" d="M0 0h7v7H0zM1 1h5v5H1zM2 2h3v3H2zM14 0h7v7h-7zM15 1h5v5h-5zM16 2h3v3h-3zM0 14h7v7H0zM1 15h5v5H1zM2 16h3v3H2z"/><path
-            fill="currentColor" d="M9 0h2v2H9zM9 4h2v2H9zM9 9h2v2H9zM12 9h2v2h-2zM16 9h2v2h-2zM9 13h2v2H9zM13 13h2v2h-2zM17 16h2v2h-2zM13 17h2v2h-2z"/></svg>QR-code voor gasten</button>
-        <!-- v5.49.0: de QR voor SPELERS van deze flight. Wie scant kiest zijn
-             eigen naam en zit dan in deze ronde, ook als hij nog nooit heeft
-             ingelogd. Alleen deze ronde; de rest van de app gaat met zijn
-             eigen wachtwoord. -->
-        <button id="ronde-spelers-qr-btn" class="btn btn-ghost btn-block btn-sm" style="margin-top:8px"
           onclick="toonRondeQr('speler')"><svg width="14" height="14" viewBox="0 0 21 21"
             aria-hidden="true" focusable="false" shape-rendering="crispEdges"
             style="vertical-align:-2px;margin-right:6px"><path fill="currentColor"
             fill-rule="evenodd" d="M0 0h7v7H0zM1 1h5v5H1zM2 2h3v3H2zM14 0h7v7h-7zM15 1h5v5h-5zM16 2h3v3h-3zM0 14h7v7H0zM1 15h5v5H1zM2 16h3v3H2z"/><path
-            fill="currentColor" d="M9 0h2v2H9zM9 4h2v2H9zM9 9h2v2H9zM12 9h2v2h-2zM16 9h2v2h-2zM9 13h2v2H9zM13 13h2v2h-2zM17 16h2v2h-2zM13 17h2v2h-2z"/></svg>QR-code voor spelers</button>
+            fill="currentColor" d="M9 0h2v2H9zM9 4h2v2H9zM9 9h2v2H9zM12 9h2v2h-2zM16 9h2v2h-2zM9 13h2v2H9zM13 13h2v2h-2zM17 16h2v2h-2zM13 17h2v2h-2z"/></svg>QR-code voor de flight</button>
+        <!-- v5.50.0: ÉÉN code. Sierk, 12 oktober 2026: "je hebt maar 1 QR code
+             nodig waarmee ook gastspelers hun naam kiezen." Wie scant tikt zijn
+             naam aan uit de flight — clubleden én gastspelers (die staan met
+             een gast_-nummer in de partij). De aparte gastencode en de knop
+             ronde-spelers-qr-btn uit v5.49.0 zijn weg. Iemand die niet
+             meespeelt komt er bewust niet mee binnen (keuze van Sierk). -->
       </div>
     </div>
 
@@ -2194,11 +2190,11 @@
 
 <div class="modal-overlay" id="modal-ronde-qr">
   <div class="modal">
-    <h3 id="ronde-qr-titel">QR-code voor gasten</h3>
+    <h3 id="ronde-qr-titel">QR-code voor de flight</h3>
     <div id="ronde-qr-uitleg" style="font-size:14px;line-height:1.5;color:var(--dark);margin-bottom:12px">
-      Laat dit scherm zien aan je gast. Wie hem scant komt meteen in deze ronde
-      en kan scores invullen — ook die van jou. Zodra de partij is verwerkt
-      werkt de code niet meer.
+      Laat dit zien aan je medespelers, ook gasten. Wie scant tikt zijn eigen
+      naam aan en komt in deze ronde. Zodra de partij is verwerkt werkt de code
+      niet meer.
     </div>
     <div id="ronde-qr-vak" style="width:100%;max-width:260px;margin:0 auto;background:#ffffff;border-radius:8px;min-height:120px"></div>
     <div id="ronde-qr-adres" style="text-align:center;font-family:'DM Mono',monospace;font-size:10px;color:var(--mid);margin-top:10px;word-break:break-all"></div>
