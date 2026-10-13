@@ -57,7 +57,9 @@ export function hcpOmschrijving(p, speltype) {
   const delen = [Math.round(i.pct * 100) + '%'];
   // Bij matchplay zegt "volledig/relatief" niets: daar is het altijd het
   // onderlinge verschil. Alleen tonen waar het betekenis heeft.
-  if (speltype === 'amerikaantje' || speltype === 'highlow') {
+  // v5.51.0: bij elke spelvorm behalve matchplay rekent ieder met zijn eigen
+  // nettoscore, dus daar heeft "eigen hcp / onderling verschil" betekenis.
+  if (speltype && speltype !== 'matchplay') {
     // v5.8.2: "volledig" las alsof het percentage er dan niet overheen ging.
     // Nu benoemt de tekst waarover gerekend wordt, niet hoe veel.
     delen.push(i.verdeling === 'relatief' ? 'onderling verschil' : 'eigen hcp');

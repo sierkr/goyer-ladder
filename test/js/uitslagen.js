@@ -2,6 +2,7 @@
 //  uitslagen.js
 // ============================================================
 import { db, auth, functions, httpsCallable, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
+import { isNieuweSpelvorm, spelvormNaam } from './spelvormen.js';   // v5.51.0
 import { store, alleLadders, activeLadderId, _beheerPartijId, _beheerWinnaars } from './store.js';
 
 // v4.2.0: zelfde Cloud Function als in ronde.js — zie de toelichting daar.
@@ -43,11 +44,14 @@ function _uitslagRegels(u) {
       <span>${links}</span>${rechts}
     </div>`;
 
-  if (u.speltype === 'amerikaantje' || u.speltype === 'highlow') {
+  if (u.speltype === 'amerikaantje' || u.speltype === 'highlow' || isNieuweSpelvorm(u.speltype)) {
     const naam = i => esc((u.spelers || [])[i] || '?');
     const stand = Array.isArray(u.eindstand) ? u.eindstand : [];
+    // v5.51.0: de naam uit het register, zodat een nieuwe spelvorm niet als
+    // "Amerikaantje" op het scherm komt.
+    const vormNaam = u.speltype === 'highlow' ? 'High-Low' : spelvormNaam(u.speltype);
     if (!stand.length) {
-      return regel(`<span style="color:var(--light)">${u.speltype === 'highlow' ? 'High-Low' : 'Amerikaantje'}</span>`, '');
+      return regel(`<span style="color:var(--light)">${esc(vormNaam)}</span>`, '');
     }
     if (u.speltype === 'highlow') {
       const teams = [[], []];
@@ -57,7 +61,7 @@ function _uitslagRegels(u) {
     }
     const opPositie = [...stand.keys()].sort((a, b) => stand[a].positie - stand[b].positie);
     const tekst = opPositie.map(i => `${stand[i].positie}. ${naam(i)}`).join(' · ');
-    return regel('Amerikaantje', `<span style="font-size:12px;color:var(--mid)">${tekst}</span>`);
+    return regel(esc(vormNaam), `<span style="font-size:12px;color:var(--mid)">${tekst}</span>`);
   }
 
   // v5.8.9: in de pill staat de VOORNAAM plus de score waarmee hij won, bijv.

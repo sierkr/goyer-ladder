@@ -3,7 +3,7 @@
 // uitrollen.sh leest het versienummer van deze regel en controleert het; het
 // nummer dat daar gecontroleerd wordt is dus precies het nummer dat de service
 // worker gebruikt (zie kiesBron hieronder). Beide ophogen bij elke versie.
-const CACHE_VERSION = 'v321'; const APP_VERSIE = 'v5.50.0';
+const CACHE_VERSION = 'v322'; const APP_VERSIE = 'v5.51.0';
 // v3.0.0-11.33: detecteer test-omgeving via SW-scope URL.
 // Service worker draaiend onder /test/* → aparte cache, voorkomt conflict met productie.
 const IS_TEST_ENV = self.registration && self.registration.scope.includes('/test/');
@@ -32,6 +32,10 @@ const STATIC_ASSETS = [
   // nodig hebben. Hij belandde alleen in de cache als je toevallig een
   // partij had geopend voordat je offline ging.
   './js/hcp.js',
+  // v5.51.0: de rekenregels van de spelvormen. Zonder deze regel zou een
+  // scorekaart van een nieuwe spelvorm offline niet openen (zelfde les als
+  // hcp.js hierboven).
+  './js/spelvormen.js',
   './handleiding-partij-ronde.html',
   // v5.35.0: de tweede handleiding hoort er ook in — anders is hij offline niet
   // te openen, en die lijst groeit niet vanzelf mee.

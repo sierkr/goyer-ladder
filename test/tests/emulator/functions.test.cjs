@@ -583,6 +583,46 @@ async function main() {
       { ladderId: 'mp', partijId: 'p1', sleutel: spelerSleutel, soort: 'speler',
         spelerUid: SPELER_A }, null));
 
+  // ══ v5.51.0 — DE NIEUWE SPELVORMEN ══════════════════════════
+  //  Een Skins-partij met drie spelers: de eindstand gaat in plekken, en de
+  //  server verschuift volgens +2 / 0 / −2. Cees (3e op de ladder) wint.
+  await zetLadderKlaar();
+  await db.doc('ladders/mp/partijen/psk').set({
+    partijId: 'psk', ladderId: 'mp', holes: HOLES, status: 'actief', speltype: 'skins',
+    spelers: [{ uid: SPELER_A, naam: 'Anna', hcp: 10, partijHcp: 10 },
+              { uid: SPELER_B, naam: 'Bram', hcp: 10, partijHcp: 10 },
+              { uid: SPELER_C, naam: 'Cees', hcp: 10, partijHcp: 10 }],
+    matchups: [],
+  });
+  await R.magNiet('een eindstand zonder alle spelers wordt geweigerd',
+    () => roepAan('verwerkPartijUitslag', { ladderId: 'mp', partijId: 'psk', eindstand: {
+      speltype: 'skins', posities: [{ uid: SPELER_C, positie: 1 }, { uid: SPELER_A, positie: 2 }] } }, tokenA));
+  await R.magNiet('een ongeldige eindstand (1-1-2) wordt geweigerd',
+    () => roepAan('verwerkPartijUitslag', { ladderId: 'mp', partijId: 'psk', eindstand: {
+      speltype: 'skins', posities: [{ uid: SPELER_C, positie: 1 }, { uid: SPELER_A, positie: 1 },
+        { uid: SPELER_B, positie: 2 }] } }, tokenA));
+  await R.magNiet('dezelfde speler twee keer wordt geweigerd',
+    () => roepAan('verwerkPartijUitslag', { ladderId: 'mp', partijId: 'psk', eindstand: {
+      speltype: 'skins', posities: [{ uid: SPELER_C, positie: 1 }, { uid: SPELER_C, positie: 2 },
+        { uid: SPELER_B, positie: 3 }] } }, tokenA));
+  await R.magNiet('Nassau met drie spelers wordt geweigerd',
+    () => roepAan('verwerkPartijUitslag', { ladderId: 'mp', partijId: 'psk', eindstand: {
+      speltype: 'nassau', posities: [{ uid: SPELER_C, positie: 1 }, { uid: SPELER_A, positie: 2 },
+        { uid: SPELER_B, positie: 3 }] } }, tokenA));
+  const skins = await roepAan('verwerkPartijUitslag', { ladderId: 'mp', partijId: 'psk', eindstand: {
+    speltype: 'skins', posities: [{ uid: SPELER_C, positie: 1 }, { uid: SPELER_A, positie: 2 },
+      { uid: SPELER_B, positie: 3 }] } }, tokenA);
+  R.check('skins wordt verwerkt', skins?.success, true);
+  // Het antwoord geeft per speler de oude en nieuwe plek (op naam).
+  const regelVan = naam => (skins?.spelerRegels || []).find(r => r.naam === naam) || {};
+  R.check('Cees (winnaar, +2): van 3 naar 1', [regelVan('Cees').oud, regelVan('Cees').nieuw], [3, 1]);
+  R.check('Anna (tweede, 0): van 1 naar 2, door Cees erboven', [regelVan('Anna').oud, regelVan('Anna').nieuw], [1, 2]);
+  R.check('Bram (derde, −2): van 2 naar 3, onderaan', [regelVan('Bram').oud, regelVan('Bram').nieuw], [2, 3]);
+  const rankVan = async uid => (await db.doc(`ladders/mp/standen/${uid}`).get()).data()?.rank;
+  R.check('Cees staat nu bovenaan', await rankVan(SPELER_C), 1);
+  const cees = (await db.doc(`ladders/mp/standen/${SPELER_C}`).get()).data() || {};
+  R.check('en heeft een gewonnen partij', cees.gewonnen, 1);
+
   return toonRapport(R);
 }
 

@@ -8,6 +8,7 @@ import { objNaarRondes } from './knockout.js';
 import { getLadderSpelers, isInLadder } from './ladder-view.js';
 // v5.0.0 (punt 4): partijen krijgen een eigen document met scores per speler.
 import { maakPartijDocument, verwijderPartijDocument, voegSpelerToeAanPartij, verwijderSpelerUitPartijDoc } from './scores.js';
+import { SPELVORMEN, SPELVORM_VOLGORDE, spelvormZichtbaar, isNieuweSpelvorm, uitlegVerschuiving } from './spelvormen.js';
 // v5.8.0: alle handicaprekenwerk staat op een plek.
 import { HCP_STANDAARD, hcpInstellingen, hcpOmschrijving, koppelSlagen, spelerSlagen,
          slagHoleLijst, partijHcpVan } from './hcp.js';
@@ -50,6 +51,9 @@ function slaPartijFormulierOp() {
       hcpPctVeld:   document.getElementById('hcp-pct')?.value || '75',
       hcpVerdeling: document.querySelector('input[name="hcp-verdeling"]:checked')?.value || 'volledig',
       hcpPlaatsing: document.querySelector('input[name="hcp-plaatsing"]:checked')?.value || 'laag',
+      // v5.51.0
+      taliban:      !!document.getElementById('taliban-aan')?.checked,
+      talibanBasis: document.querySelector('input[name="taliban-basis"]:checked')?.value || 'netto',
     };
     sessionStorage.setItem(PARTIJ_FORM_KEY, JSON.stringify(state));
   } catch(e) {
@@ -92,6 +96,8 @@ function herstelPartijFormulier() {
     if (pctEl && state.hcpPctVeld) pctEl.value = state.hcpPctVeld;
     zetRadio('hcp-verdeling', state.hcpVerdeling || 'volledig');
     zetRadio('hcp-plaatsing', state.hcpPlaatsing || 'laag');
+    zetTaliban(state.taliban === true, state.talibanBasis);
+    pasSpelvormZichtbaarToe(state.speltype);
     onSpeltypeChange();
 
     // Spelerslots herstellen — wacht tot spelerslijst beschikbaar is
@@ -184,33 +190,84 @@ function onHcpOptieChange() {
 
 function onSpeltypeChange() {
   const val = document.querySelector('input[name="speltype"]:checked')?.value || 'matchplay';
-  // v5.8.0: "volledig of relatief" heeft alleen betekenis bij Amerikaantje en
-  // High-Low. Bij matchplay wordt altijd het onderlinge verschil verrekend,
-  // dus daar zou de keuze alleen maar verwarren.
+  // v5.8.0: "volledig of relatief" heeft geen betekenis bij matchplay: daar
+  // wordt altijd het onderlinge verschil verrekend. v5.51.0: bij alle andere
+  // spelvormen rekent ieder met zijn eigen nettoscore, dus daar wel.
   const verdelingWrap = document.getElementById('hcp-verdeling-wrap');
   if (verdelingWrap) {
-    verdelingWrap.style.display = (val === 'amerikaantje' || val === 'highlow') ? 'block' : 'none';
+    verdelingWrap.style.display = val !== 'matchplay' ? 'block' : 'none';
   }
   onHcpOptieChange();
+  // v5.51.0: Taliban hoort alleen bij het Amerikaantje.
+  const talibanWrap = document.getElementById('taliban-wrap');
+  const talibanAan  = !!document.getElementById('taliban-aan')?.checked;
+  if (talibanWrap) talibanWrap.style.display = val === 'amerikaantje' ? 'block' : 'none';
+  const basisWrap = document.getElementById('taliban-basis-wrap');
+  if (basisWrap) basisWrap.style.display = (val === 'amerikaantje' && talibanAan) ? 'block' : 'none';
+
   const hint = document.getElementById('speltype-hint');
-  const matchLabel = document.getElementById('speltype-matchplay-label');
-  const amerLabel  = document.getElementById('speltype-amerikaantje-label');
-  const hlLabel    = document.getElementById('speltype-highlow-label');
   // v3.0.3: hint-tekst per speltype
   if (hint) {
+    let tekst = '';
     if (val === 'amerikaantje') {
-      hint.textContent = 'Exact 3 spelers · 6 punten per hole · winnaar +2 plekken, verliezer −2';
-      hint.style.display = 'block';
+      tekst = 'Exact 3 spelers · 6 punten per hole · winnaar +2 plekken, verliezer −2';
     } else if (val === 'highlow') {
-      hint.textContent = 'Exact 4 spelers · 2 teams van 2 (slot 1+2 vs 3+4) · low/high-punt per hole · winnaars +1 plek, verliezers −1';
-      hint.style.display = 'block';
-    } else {
-      hint.style.display = 'none';
+      tekst = 'Exact 4 spelers · 2 teams van 2 (slot 1+2 vs 3+4) · low/high-punt per hole · winnaars +1 plek, verliezers −1';
+    } else if (isNieuweSpelvorm(val)) {
+      // v5.51.0: uit het register, zodat de tekst niet kan afwijken van de regel.
+      const sv = SPELVORMEN[val];
+      const aantal = sv.min === sv.max ? `Exact ${sv.min} spelers` : `${sv.min}–${sv.max} spelers`;
+      const ladder = sv.min === sv.max ? uitlegVerschuiving(sv.min)
+        : `ladder: ${uitlegVerschuiving(2)} (bij 2) · ${uitlegVerschuiving(4)} (bij 4)`;
+      tekst = `${aantal} · ${sv.uitleg} · ${ladder}`;
     }
+    hint.textContent = tekst;
+    hint.style.display = tekst ? 'block' : 'none';
   }
-  if (matchLabel) matchLabel.style.borderColor = val === 'matchplay'    ? 'var(--green)' : 'var(--border)';
-  if (amerLabel)  amerLabel.style.borderColor  = val === 'amerikaantje' ? 'var(--green)' : 'var(--border)';
-  if (hlLabel)    hlLabel.style.borderColor    = val === 'highlow'      ? 'var(--green)' : 'var(--border)';
+  SPELVORM_VOLGORDE.forEach(t => {
+    const lab = document.getElementById(`speltype-${t}-label`);
+    if (lab) lab.style.borderColor = val === t ? 'var(--green)' : 'var(--border)';
+  });
+}
+
+// ============================================================
+//  v5.51.0 — WELKE SPELVORMEN STAAN ER VOOR DEZE LADDER?
+// ------------------------------------------------------------
+//  Beheer → ladder → Instellingen bepaalt per spelvorm "zichtbaar". Matchplay
+//  staat er altijd. `behoud` is de spelvorm van een lopende partij die wordt
+//  aangepast: die blijft te kiezen, ook als hij intussen is uitgezet — anders
+//  zou "Partij-instellingen aanpassen" ongemerkt de spelvorm omgooien.
+// ============================================================
+function pasSpelvormZichtbaarToe(behoud) {
+  const ladderId = document.getElementById('partij-ladder-select')?.value || activeLadderId;
+  const cfg = alleLadders.find(l => l.id === ladderId)?.config || null;
+  let gekozenWeg = false;
+  SPELVORM_VOLGORDE.forEach(t => {
+    const lab = document.getElementById(`speltype-${t}-label`);
+    if (!lab) return;
+    const zien = spelvormZichtbaar(cfg, t) || t === behoud;
+    lab.style.display = zien ? 'flex' : 'none';
+    const radio = document.getElementById(`speltype-${t}`);
+    if (!zien && radio?.checked) gekozenWeg = true;
+  });
+  if (gekozenWeg) {
+    const mp = document.getElementById('speltype-matchplay');
+    if (mp) mp.checked = true;
+  }
+  onSpeltypeChange();
+}
+
+function zetTaliban(aan, basis) {
+  const box = document.getElementById('taliban-aan');
+  if (box) box.checked = !!aan;
+  zetRadio('taliban-basis', basis === 'bruto' ? 'bruto' : 'netto');
+}
+
+// Taliban-velden voor een partij: alleen bij een Amerikaantje met vinkje.
+function leesTaliban(speltype) {
+  if (speltype !== 'amerikaantje' || !document.getElementById('taliban-aan')?.checked) return null;
+  const basis = document.querySelector('input[name="taliban-basis"]:checked')?.value === 'bruto' ? 'bruto' : 'netto';
+  return { taliban: true, talibanBasis: basis };
 }
 
 // v5.4.5: het baanmenu vullen uit de lijst in het geheugen.
@@ -294,7 +351,7 @@ function initPartijForm() {
 
   // Verberg selector als er maar één ladder beschikbaar is
   document.getElementById('partij-ladder-wrap').style.display = mijnLadders.length <= 1 ? 'none' : 'block';
-  ladderSel.onchange = () => herlaadPartijSpelers();
+  ladderSel.onchange = () => { herlaadPartijSpelers(); pasSpelvormZichtbaarToe(); };
 
   // v5.6.0: speltype-keuze voor iedereen. Stond sinds v3.0.0-11.97 alleen open
   // voor beheerder en coordinator; Amerikaantje en High-Low zijn gewone
@@ -306,7 +363,8 @@ function initPartijForm() {
   if (speltypeMatchplay) { speltypeMatchplay.checked = true; }
   // v5.8.0: handicapkeuzes terug naar de standaard (75% · volledig · laagste SI)
   if (!heeftOpgeslagen) vulHcpInstellingen(null);
-  onSpeltypeChange();
+  zetTaliban(false, 'netto');
+  pasSpelvormZichtbaarToe();
 
   const sel = document.getElementById('baan-select');
   vulBaanSelect(sel, heeftOpgeslagen);
@@ -981,9 +1039,10 @@ function vulFormulierMetLopendePartij() {
   // Speltype en handicapkeuzes
   zetRadio('speltype', p.speltype || 'matchplay');
   vulHcpInstellingen(p);
+  zetTaliban(p.taliban === true, p.talibanBasis);
   const speltypeWrap = document.getElementById('speltype-wrap');
   if (speltypeWrap) speltypeWrap.style.display = 'block';
-  onSpeltypeChange();
+  pasSpelvormZichtbaarToe(p.speltype || 'matchplay');
 
   // Spelers in de slots, in dezelfde volgorde als de partij — bij High-Low
   // bepaalt die volgorde de teams (slot 1+2 tegen 3+4).
@@ -1042,7 +1101,8 @@ function leesSpelersUitFormulier(partijLadderSpelers, extraBekend = []) {
 // Bouwt de onderlinge matchups. Amerikaantje en High-Low kennen ze niet.
 function bouwMatchups(spelers, speltype, pct) {
   const matchups = [];
-  if (speltype === 'amerikaantje' || speltype === 'highlow') return matchups;
+  // v5.51.0: alleen matchplay kent onderlinge partijen.
+  if ((speltype || 'matchplay') !== 'matchplay') return matchups;
   for (let i = 0; i < spelers.length; i++) {
     for (let j = i + 1; j < spelers.length; j++) {
       const a = spelers[i], b = spelers[j];
@@ -1062,6 +1122,16 @@ function bouwMatchups(spelers, speltype, pct) {
 function speltypeKlopt(speltype, aantal) {
   if (speltype === 'amerikaantje' && aantal !== 3) { toast('Selecteer 3 spelers voor Amerikaantje'); return false; }
   if (speltype === 'highlow' && aantal !== 4) { toast('Selecteer 4 spelers voor High-Low'); return false; }
+  // v5.51.0: de nieuwe spelvormen, uit het register.
+  if (isNieuweSpelvorm(speltype)) {
+    const sv = SPELVORMEN[speltype];
+    if (aantal < sv.min || aantal > sv.max) {
+      toast(sv.min === sv.max
+        ? `Selecteer ${sv.min} spelers voor ${sv.naam}`
+        : `Selecteer ${sv.min} tot ${sv.max} spelers voor ${sv.naam}`);
+      return false;
+    }
+  }
   return true;
 }
 
@@ -1145,7 +1215,15 @@ async function slaPartijInstellingenOp() {
   });
 
   // ── Partij bijwerken ─────────────────────────────────────
-  const vorigeStaat = JSON.stringify({ spelers: p.spelers, matchups: p.matchups, holes: p.holes, speltype: p.speltype, scores: p.scores });
+  // v5.51.0: de extra invoer van Wolf en Bingo Bango Bongo (scoredocumenten
+  // waarvan de naam met _ begint) hoort niet bij een speler, maar mag bij het
+  // aanpassen niet verdwijnen.
+  Object.keys(p.scores || {}).filter(k => k.startsWith('_')).forEach(k => {
+    const oud = Array.isArray(p.scores[k]) ? p.scores[k] : [];
+    nieuweScores[k] = Array.from({ length: lengte }, (_, i) => (oud[i] === undefined ? null : oud[i]));
+  });
+  const vorigeStaat = JSON.stringify({ spelers: p.spelers, matchups: p.matchups, holes: p.holes, speltype: p.speltype, scores: p.scores,
+    taliban: p.taliban, talibanBasis: p.talibanBasis });
   p.spelers = spelers;
   p.holes = nieuweHoles;
   p.startHole = startHole;
@@ -1154,6 +1232,10 @@ async function slaPartijInstellingenOp() {
   p.hcpPct = inst.hcpPct;
   p.hcpVerdeling = inst.hcpVerdeling;
   p.hcpPlaatsing = inst.hcpPlaatsing;
+  // v5.51.0: Taliban aan of uit, ook tijdens de partij.
+  const tal = leesTaliban(speltype);
+  if (tal) { p.taliban = true; p.talibanBasis = tal.talibanBasis; }
+  else { delete p.taliban; delete p.talibanBasis; }
   p.matchups = bouwMatchups(spelers, speltype, inst.hcpPct);
 
   try {
@@ -1177,6 +1259,8 @@ async function slaPartijInstellingenOp() {
       const terug = JSON.parse(vorigeStaat);
       p.spelers = terug.spelers; p.matchups = terug.matchups;
       p.holes = terug.holes; p.speltype = terug.speltype; p.scores = terug.scores;
+      if (terug.taliban) { p.taliban = true; p.talibanBasis = terug.talibanBasis; }
+      else { delete p.taliban; delete p.talibanBasis; }
     } catch (_) {}
     toast('Wijzigingen konden niet worden opgeslagen: ' + (e?.message || e?.code || 'onbekende fout'));
     return;
@@ -1329,6 +1413,8 @@ async function startPartij() {
     spelers,
     matchups,
     speltype,   // v3.0.0-11.97
+    // v5.51.0: alleen aanwezig bij een Amerikaantje met de Taliban-regel.
+    ...(leesTaliban(speltype) || {}),
     // v5.8.0: de handicapafspraak hoort bij de partij, niet bij de app. Zo
     // blijft een lopende ronde rekenen zoals hij begonnen is, ook als iemand
     // anders later andere standaarden kiest.
@@ -1489,8 +1575,9 @@ function renderHcpBlok(spelers, holes, bron, containerId, speltype) {
 
   let html = '';
 
-  if (vorm === 'amerikaantje' || vorm === 'highlow') {
-    // Per speler, want er zijn geen onderlinge partijen.
+  if (vorm !== 'matchplay') {
+    // Per speler, want er zijn geen onderlinge partijen (v5.51.0: geldt voor
+    // elke spelvorm behalve matchplay).
     const slagenMap = spelerSlagen(lijst, inst);
     // Bij High-Low volgen de teams uit de spelersvolgorde: slot 1+2 tegen 3+4.
     const teamVan = uid => {

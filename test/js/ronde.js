@@ -9,6 +9,9 @@ import { kortNaamMap, mijnPartij, renderHcpBlok } from './partij.js';
 // v5.8.0: alle slagentoekenning komt uit een module, niet meer uit losse
 // kopieen per scherm.
 import { hcpInstellingen, slagenOpHole, spelerSlagen, koppelSlagen } from './hcp.js';
+// v5.51.0: de rekenregels van alle nieuwe spelvormen (en Taliban) staan los.
+import { SPELVORMEN, isNieuweSpelvorm, berekenSpelvorm, amerikaantjeHole, geldigePosities,
+  uitlegVerschuiving, spelvormNaam, wolfVan, SIXES_KOPPELS, sixesStuk, besliste } from './spelvormen.js';
 import { getLadderSpelers, ladderStandenGeladen } from './ladder-view.js';
 import { renderLadder, berekenWeergaveRangen } from './ladder.js';
 
@@ -260,8 +263,12 @@ function renderScorecard() {
   } else if (p.speltype === 'highlow') {
     // v3.0.3: team-punten kolom
     headHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px;color:rgba(255,255,255,0.8)">T1–T2</th>`;
+  } else if (isNieuweSpelvorm(p.speltype)) {
+    // v5.51.0
+    headHtml += `<th style="text-align:center;font-family:'DM Sans',sans-serif;font-size:12px;color:rgba(255,255,255,0.8)">Punten</th>`;
   }
   headHtml += '</tr>';
+  const _sv = spelvormUitkomst(p);   // v5.51.0: één keer per tekening
   document.getElementById('scorecard-head').innerHTML = headHtml;
 
   // BODY — rijen = holes, kolommen = spelers
@@ -316,8 +323,16 @@ function renderScorecard() {
       } else {
         bodyHtml += `<td style="text-align:center;color:var(--light);font-size:11px">—</td>`;
       }
+    } else if (_sv) {
+      // v5.51.0: punten van de nieuwe spelvormen. "kies" bij Wolf als de wolf
+      // nog niet heeft gekozen; "→ 3" bij Skins als de hole doorschuift.
+      const h = _sv.perHole[holeIdx];
+      bodyHtml += h
+        ? `<td style="text-align:center;font-family:'DM Mono',monospace;font-size:12px;color:${h.open ? 'var(--red)' : 'var(--mid)'};white-space:nowrap">${esc(h.tekst)}</td>`
+        : `<td style="text-align:center;color:var(--light);font-size:11px">—</td>`;
     }
     bodyHtml += '</tr>';
+    bodyHtml += _extraRijHtml(p, holeIdx, naamMap);   // v5.51.0: Wolf / Bingo Bango Bongo
   });
 
   // Totaalrij
@@ -347,6 +362,8 @@ function renderScorecard() {
       if (hl) { tA += hl.teamPunten[0]; tB += hl.teamPunten[1]; }
     });
     bodyHtml += `<td style="text-align:center;font-family:'DM Mono',monospace;font-weight:700;font-size:13px;color:var(--green)">${tA}–${tB}</td>`;
+  } else if (_sv) {
+    bodyHtml += `<td style="text-align:center;font-family:'DM Mono',monospace;font-weight:700;font-size:13px;color:var(--green)">${esc(_sv.totalen.map(_puntTekst).join('-'))}</td>`;
   }
   bodyHtml += '</tr>';
 
@@ -590,32 +607,120 @@ function berekenAmerikaaanjeHole(holeIdx) {
   // (percentage + volledig of relatief), de plaatsing uit de SI-keuze.
   // Voorheen kreeg iedereen hier zijn VOLLEDIGE handicap als slagen, zonder
   // percentage — terwijl aan de eerste tee vrijwel altijd 75% wordt afgesproken.
-  const inst = hcpInstellingen(p);
-  const slagenMap = spelerSlagen(p.spelers, inst);
-  const netto = p.spelers.map(s => {
-    const scoreArr = Array.isArray(p.scores?.[s.uid]) ? p.scores[s.uid] : [];
-    const raw = scoreArr[holeIdx];
-    if (raw === null || raw === undefined) return null;
-    return raw - slagenOpHole(slagenMap[s.uid] ?? 0, p.holes, holeIdx, inst.plaatsing);
-  });
-
-  // Als iemand geen score heeft: return null array
+  const netto = _nettoRij(p, holeIdx);
   if (netto.some(v => v === null)) return null;
-
-  const gesorteerd = [...netto].sort((a, b) => a - b);
-  const laagste = gesorteerd[0];
-  const tweede  = gesorteerd[1];
-  const hoogste = gesorteerd[2];
-
-  return netto.map(n => {
-    if (n === laagste && n === tweede && n === hoogste) return 2; // 2-2-2
-    if (n === laagste && n === tweede) return 3;                  // 3-3-0
-    if (n === tweede  && n === hoogste) return 1;                 // 4-1-1
-    if (n === laagste) return 4;
-    if (n === tweede)  return 2;
-    return 0;
+  // v5.51.0: de telling staat nu in js/spelvormen.js (letterlijk dezelfde
+  // regel), met de Taliban-regel erbovenop als die bij deze partij aan staat.
+  const bruto = p.spelers.map(s => {
+    const arr = Array.isArray(p.scores?.[s.uid]) ? p.scores[s.uid] : [];
+    return arr[holeIdx] ?? null;
+  });
+  return amerikaantjeHole(netto, {
+    taliban: p.taliban === true,
+    basis: p.talibanBasis === 'bruto' ? bruto : netto,
+    par: p.holes?.[holeIdx]?.par,
   });
 }
+
+// Netto score per speler op één hole (null als nog niet ingevuld).
+function _nettoRij(p, holeIdx) {
+  const inst = hcpInstellingen(p);
+  const slagenMap = spelerSlagen(p.spelers, inst);
+  return p.spelers.map(s => {
+    const scoreArr = Array.isArray(p.scores?.[s.uid]) ? p.scores[s.uid] : [];
+    const raw = scoreArr[holeIdx];
+    if (raw === null || raw === undefined || raw === '') return null;
+    return raw - slagenOpHole(slagenMap[s.uid] ?? 0, p.holes, holeIdx, inst.plaatsing);
+  });
+}
+
+// ============================================================
+//  v5.51.0 — DE NIEUWE SPELVORMEN OP DE SCOREKAART
+// ------------------------------------------------------------
+//  De uitkomst komt uit js/spelvormen.js. Hier alleen de vertaling van de
+//  partij naar wat die module verwacht: netto slagen per hole en per speler,
+//  en de extra invoer van Wolf en Bingo Bango Bongo.
+//
+//  ⚠ Die extra invoer staat in de scoredocumenten van de partij, onder een
+//  naam die met _ begint (`_wolf`, `_bingo`, `_bango`, `_bongo`). Waarom daar:
+//  in die documenten mag iedereen uit de flight schrijven — ook wie met de
+//  QR-code binnenkwam — en de live-meeluisteraar brengt ze vanzelf bij de
+//  anderen. Zo hoefden de databaseregels niet te veranderen. Per hole staat
+//  er een uid (of 'alleen' bij Wolf).
+// ============================================================
+const EXTRA_SLEUTELS = { wolf: ['_wolf'], bbb: ['_bingo', '_bango', '_bongo'] };
+
+function spelvormUitkomst(p) {
+  if (!p || !isNieuweSpelvorm(p.speltype)) return null;
+  const netto = (p.holes || []).map((_, h) => _nettoRij(p, h));
+  const idxVan = {};
+  (p.spelers || []).forEach((s, i) => { idxVan[s.uid] = i; });
+  const naarIdx = v => (v === 'alleen' ? 'alleen' : (v != null && v in idxVan ? idxVan[v] : null));
+  const lijst = k => (Array.isArray(p.scores?.[k]) ? p.scores[k] : []).map(naarIdx);
+  return berekenSpelvorm(p.speltype, {
+    n: (p.spelers || []).length,
+    holes: p.holes || [],
+    netto,
+    extra: { wolf: lijst('_wolf'), bingo: lijst('_bingo'), bango: lijst('_bango'), bongo: lijst('_bongo') },
+  });
+}
+
+// Tekst voor een puntentotaal: halve punten (Nassau) als ½.
+function _puntTekst(v) {
+  const heel = Math.floor(v), half = v - heel === 0.5;
+  return half ? (heel ? `${heel}½` : '½') : String(v);
+}
+
+// De keuzes onder een hole voor Wolf en Bingo Bango Bongo.
+function _extraRijHtml(p, holeIdx, naamMap) {
+  const vorm = SPELVORMEN[p.speltype]?.extra;
+  if (!vorm) return '';
+  const kolommen = (p.spelers || []).length + 2;
+  const opt = (waarde, tekst, gekozen) =>
+    `<option value="${escAttr(waarde)}"${gekozen === waarde ? ' selected' : ''}>${esc(tekst)}</option>`;
+  const stijl = 'font-size:12px;padding:2px 4px;border:1px solid #e0ddd4;border-radius:5px;max-width:110px';
+  let inhoud = '';
+  if (vorm === 'wolf') {
+    const w = p.spelers[wolfVan(holeIdx)];
+    const gekozen = (p.scores?._wolf || [])[holeIdx] ?? '';
+    const keuzes = opt('', 'kies…', gekozen)
+      + p.spelers.filter(s => s.uid !== w?.uid).map(s => opt(s.uid, 'met ' + naamMap[s.uid], gekozen)).join('')
+      + opt('alleen', 'alleen', gekozen);
+    inhoud = `<span style="color:var(--mid)">🐺 ${esc(naamMap[w?.uid] || '?')}</span>
+      <select tabindex="-1" data-extra="_wolf" data-hole="${holeIdx}" style="${stijl}"
+        onchange="zetSpelvormExtra('_wolf',${holeIdx},this.value)">${keuzes}</select>`;
+  } else {
+    // Drie kolommen: een klein kopje boven elk menu, en in het menu alleen de
+    // naam. Eerst stond het woord ervoor (twee regels per hole op een
+    // telefoon), daarna erin ("Bango: Cee", afgekapt) — beide gezien op
+    // schermafdrukken van 13 oktober 2026.
+    inhoud = `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px">` + [['_bingo', 'Bingo'], ['_bango', 'Bango'], ['_bongo', 'Bongo']].map(([k, label]) => {
+      const gekozen = (p.scores?.[k] || [])[holeIdx] ?? '';
+      const keuzes = opt('', '—', gekozen) + p.spelers.map(s => opt(s.uid, naamMap[s.uid], gekozen)).join('');
+      return `<label style="display:flex;flex-direction:column;gap:1px;margin:0;text-transform:none;font-weight:500;font-size:10px;color:var(--light);min-width:0">${label}
+        <select tabindex="-1" data-extra="${k}" data-hole="${holeIdx}" aria-label="${label}"
+          style="${stijl};width:100%;max-width:none"
+          onchange="zetSpelvormExtra('${k}',${holeIdx},this.value)">${keuzes}</select></label>`;
+    }).join('') + `</div>`;
+  }
+  return `<tr class="spelvorm-extra"><td colspan="${kolommen}" style="padding:2px 8px 6px;border-top:none">${inhoud}</td></tr>`;
+}
+
+// Een keuze onder een hole opslaan. Gaat via dezelfde weg als een score.
+async function zetSpelvormExtra(sleutel, holeIdx, waarde) {
+  const p = mijnPartij();
+  if (!p) return;
+  const toegestaan = Object.values(EXTRA_SLEUTELS).flat();
+  if (!toegestaan.includes(sleutel)) return;
+  const w = waarde === '' ? null : String(waarde);
+  if (!p.scores) p.scores = {};
+  if (!Array.isArray(p.scores[sleutel])) p.scores[sleutel] = new Array(p.holes.length).fill(null);
+  p.scores[sleutel][holeIdx] = w;
+  renderScorecard();
+  renderMatchOverview();
+  await _flushScore(p.ladderId, p.partijId, sleutel, holeIdx, w);
+}
+window.zetSpelvormExtra = zetSpelvormExtra;
 
 // ============================================================
 //  HIGH-LOW (v3.0.3)
@@ -732,6 +837,53 @@ function renderAmerikaaanjeOverview() {
   document.getElementById('match-overview').innerHTML = html;
 }
 
+// v5.51.0: tussenstand van de nieuwe spelvormen — zelfde opbouw als die van
+// het Amerikaantje, plus wat per spelvorm nodig is om hem te volgen.
+function renderSpelvormOverview() {
+  const p = mijnPartij();
+  if (!p) return;
+  const uit = spelvormUitkomst(p);
+  if (!uit) return;
+  const naamMap = kortNaamMap(p.spelers);
+  const volgorde = [...p.spelers.keys()].sort((a, b) => uit.totalen[b] - uit.totalen[a]);
+  const max = Math.max(1, ...uit.totalen);
+  let html = `<div style="padding:12px 12px 4px">
+    <div style="font-size:11px;color:var(--light);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">${esc(spelvormNaam(p.speltype))}</div>`;
+  volgorde.forEach((i, pos) => {
+    const s = p.spelers[i];
+    const pts = uit.totalen[i];
+    const kleur = uit.posities[i] === 1 ? 'var(--green)' : pos === 1 ? 'var(--gold)' : 'var(--mid)';
+    html += `<div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+        <span style="font-weight:${uit.posities[i] === 1 ? '700' : '400'};color:${uit.posities[i] === 1 ? 'var(--green)' : 'inherit'}">${esc(naamMap[s.uid])}</span>
+        <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:16px;color:${kleur}">${esc(_puntTekst(pts))} <span style="font-size:11px;font-weight:400;color:var(--light)">pt</span></span>
+      </div>
+      <div style="height:6px;background:var(--border);border-radius:3px">
+        <div style="height:6px;background:${kleur};border-radius:3px;width:${Math.round((pts / max) * 100)}%;transition:width 0.4s"></div>
+      </div>
+    </div>`;
+  });
+  const regel = t => `<div style="font-size:12px;color:var(--mid);margin:2px 0">${t}</div>`;
+  if (p.speltype === 'nassau' && uit.info.wedstrijden) {
+    const [a, b] = p.spelers.map(s => naamMap[s.uid]);
+    uit.info.wedstrijden.forEach(w => {
+      const stand = !w.gespeeld ? 'nog niet begonnen'
+        : w.verschil === 0 ? 'gelijk'
+        : `${esc(w.verschil > 0 ? a : b)} ${Math.abs(w.verschil)} up`;
+      html += regel(`${esc(w.naam)} (${w.gespeeld}/${w.holes}): ${stand}`);
+    });
+  } else if (p.speltype === 'skins' && uit.info.blijftLiggen > 0) {
+    html += regel(`${uit.info.blijftLiggen} skin${uit.info.blijftLiggen === 1 ? '' : 's'} schuift door naar de volgende hole`);
+  } else if (p.speltype === 'sixes' && p.spelers.length === 4) {
+    SIXES_KOPPELS.forEach((koppels, k) => {
+      const tekst = koppels.map(kp => kp.map(i => esc(naamMap[p.spelers[i].uid])).join(' + ')).join(' tegen ');
+      html += regel(`Deel ${k + 1}: ${tekst}`);
+    });
+  }
+  html += '</div>';
+  document.getElementById('match-overview').innerHTML = html;
+}
+
 function renderMatchOverview() {
   const p = mijnPartij();
   if (!p) return;
@@ -739,6 +891,8 @@ function renderMatchOverview() {
   if (p.speltype === 'amerikaantje') { renderAmerikaaanjeOverview(); return; }
   // v3.0.3: High-Low eigen team-overzicht
   if (p.speltype === 'highlow') { renderHighlowOverview(); return; }
+  // v5.51.0: de nieuwe spelvormen
+  if (isNieuweSpelvorm(p.speltype)) { renderSpelvormOverview(); return; }
   const naamMap = kortNaamMap(p.spelers);
   let html = '';
   p.matchups.forEach(m => {
@@ -918,6 +1072,7 @@ function toonEindstandKeuze() {
   _keuzeOpen = true;
   renderAmerikaaanjeKeuze();
   renderHighlowKeuze();
+  renderSpelvormKeuze();   // v5.51.0
 }
 
 function renderAmerikaaanjeKeuze() {
@@ -1097,6 +1252,88 @@ function renderHighlowKeuze() {
       Winnaars +1 plek, verliezers −1. Bij gelijkspel verandert er niets.</p>`;
 }
 
+// ============================================================
+//  v5.51.0 — AFRONDEN VAN DE NIEUWE SPELVORMEN
+// ------------------------------------------------------------
+//  Zelfde opzet als het Amerikaantje: de eindstand volgt uit de punten; met
+//  "Eindstand aanpassen" kun je hem met de hand zetten (gedeelde plekken
+//  mogen). Zonder beslist hole staat de keuze meteen open.
+// ============================================================
+function openSpelvormUitslagModal() {
+  const p = mijnPartij();
+  if (!p) return;
+  const uit = spelvormUitkomst(p);
+  if (!uit) return;
+  const naamMap = kortNaamMap(p.spelers);
+  const metScores = besliste(uit.perHole) > 0;
+  _eindstandKeuze = metScores ? Object.fromEntries(p.spelers.map((s, i) => [s.uid, uit.posities[i]])) : null;
+  const volgorde = [...p.spelers.keys()].sort((a, b) => uit.totalen[b] - uit.totalen[a]);
+  let html = '<div style="margin-bottom:16px">';
+  volgorde.forEach(i => {
+    const s = p.spelers[i];
+    const pos = metScores ? uit.posities[i] : null;
+    const medal = pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : '·';
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f0ede4">
+      <span style="font-weight:${pos === 1 ? '700' : '400'}">${medal} ${esc(naamMap[s.uid])}</span>
+      <span style="font-family:'DM Mono',monospace;font-weight:700;font-size:18px">${esc(_puntTekst(uit.totalen[i]))} <span style="font-size:12px;font-weight:400;color:var(--light)">pt</span></span>
+    </div>`;
+  });
+  html += '</div>';
+  if (!metScores) {
+    html += `<p style="font-size:12px;color:var(--red);margin-bottom:8px">
+      Nog geen enkele hole beslist — wijs de eindstand zelf aan.</p>`;
+  }
+  html += '<div id="spelvorm-keuze"></div>';
+  document.getElementById('modal-matches').innerHTML = html;
+  document.getElementById('modal-uitslag').classList.add('open');
+  _keuzeOpen = !metScores;
+  renderSpelvormKeuze();
+}
+
+function zetSpelvormPositie(uid, positie) {
+  if (!_eindstandKeuze) _eindstandKeuze = {};
+  _eindstandKeuze[uid] = positie;
+  renderSpelvormKeuze();
+}
+window.zetSpelvormPositie = zetSpelvormPositie;
+
+function _spelvormStandGeldig() {
+  const p = mijnPartij();
+  if (!p || !_eindstandKeuze) return false;
+  return geldigePosities(p.spelers.map(s => _eindstandKeuze[s.uid]), p.spelers.length);
+}
+
+function renderSpelvormKeuze() {
+  const el = document.getElementById('spelvorm-keuze');
+  if (!el) return;
+  const p = mijnPartij();
+  if (!p) return;
+  const n = p.spelers.length;
+  const naamMap = kortNaamMap(p.spelers);
+  const keuze = _eindstandKeuze || {};
+  const regel = uitlegVerschuiving(n);
+  if (!_keuzeOpen && _spelvormStandGeldig()) {
+    el.innerHTML = `
+      <p style="font-size:12px;color:var(--light);margin:0 0 4px">Eindstand volgens de scorekaart. ${esc(regel)}.</p>
+      <button type="button" class="aanpas-link" onclick="toonEindstandKeuze()">Eindstand aanpassen</button>`;
+    return;
+  }
+  let html = '<div style="font-size:12px;color:var(--light);margin-bottom:8px">Eindstand — tik de plek aan. Gedeelde plekken mogen.</div>';
+  p.spelers.forEach(s => {
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f0ede4">
+      <span style="font-weight:600">${esc(naamMap[s.uid])}</span>
+      <span style="display:flex;gap:6px">
+        ${[...Array(n).keys()].map(k => k + 1).map(m => `<button type="button" class="btn btn-sm keuze-knop${keuze[s.uid] === m ? ' keuze-actief' : ''}"
+            style="min-width:36px" onclick="zetSpelvormPositie('${escAttr(s.uid)}',${m})">${m}e</button>`).join('')}
+      </span>
+    </div>`;
+  });
+  const geldig = _spelvormStandGeldig();
+  html += `<p style="font-size:12px;margin-top:10px;color:${geldig ? 'var(--light)' : 'var(--red)'}">
+    ${geldig ? esc(regel) + '. Gedeelde plek: het gemiddelde.' : 'Kies een geldige eindstand (gedeelde plekken mogen, bijv. 1-1-3).'}</p>`;
+  el.innerHTML = html;
+}
+
 function openUitslagModal() {
   const p = mijnPartij();
   if (!p) return;
@@ -1104,6 +1341,8 @@ function openUitslagModal() {
   if (p.speltype === 'amerikaantje') { openAmerikaaanjeUitslagModal(); return; }
   // v3.0.3: High-Low eigen afsluit-modal
   if (p.speltype === 'highlow') { openHighlowUitslagModal(); return; }
+  // v5.51.0: de nieuwe spelvormen
+  if (isNieuweSpelvorm(p.speltype)) { openSpelvormUitslagModal(); return; }
   const naamMap = kortNaamMap(p.spelers);
   let html = '';
   p.matchups.forEach((m, idx) => {
@@ -1363,6 +1602,35 @@ async function bevestigUitslag() {
         },
       },
       'Amerikaantje afgerond! 🏌️');
+    return;
+  }
+
+  // v5.51.0: de nieuwe spelvormen — een eindstand in plekken, net als het
+  // Amerikaantje. Telt de spelvorm niet mee, dan beslist _rondSpelvormAf dat.
+  if (isNieuweSpelvorm(p.speltype)) {
+    if (!_spelvormStandGeldig()) {
+      toast('Wijs eerst een geldige eindstand aan (gedeelde plekken mogen)');
+      return;
+    }
+    const uit = spelvormUitkomst(p) || { totalen: [] };
+    const posities = p.spelers.map(s2 => ({ uid: s2.uid, positie: _eindstandKeuze[s2.uid] }));
+    await _rondSpelvormAf(p,
+      { speltype: p.speltype, posities },
+      {
+        eindstandRegels: posities.map(x => ({ uid: x.uid, positie: x.positie })),
+        scorekaart: {
+          type: p.speltype,
+          ladderId: p.ladderId,
+          datum: new Date().toISOString(),
+          timestamp: Date.now(),
+          baan: p.baan,
+          holes: p.holes,
+          spelers: p.spelers.map((s2, i) => ({ naam: s2.naam, hcp: s2.partijHcp, punten: uit.totalen[i] ?? 0 })),
+          spelerIds: p.spelers.map(s2 => s2.uid),
+          scores: p.scores,
+        },
+      },
+      `${spelvormNaam(p.speltype)} afgerond! 🏌️`);
     return;
   }
 

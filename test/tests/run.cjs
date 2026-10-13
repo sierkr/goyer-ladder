@@ -16,6 +16,7 @@ const suites = [
   ['QR-code',                    './qr.test.cjs'],
   ['Bekijk als gewone speler',   './kijkalsspeler.test.cjs'],   // v5.47.0
   ['Trage start',                './trage-start.test.cjs'],     // v5.48.0
+  ['Spelvormen',                 './spelvormen.test.cjs'],      // v5.51.0
 ];
 
 let totOk = 0, totFout = 0;
