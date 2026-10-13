@@ -11,7 +11,8 @@ import { kortNaamMap, mijnPartij, renderHcpBlok } from './partij.js';
 import { hcpInstellingen, slagenOpHole, spelerSlagen, koppelSlagen } from './hcp.js';
 // v5.51.0: de rekenregels van alle nieuwe spelvormen (en Taliban) staan los.
 import { SPELVORMEN, isNieuweSpelvorm, berekenSpelvorm, amerikaantjeHole, geldigePosities,
-  uitlegVerschuiving, spelvormNaam, wolfVan, SIXES_KOPPELS, sixesStuk, besliste } from './spelvormen.js';
+  uitlegVerschuiving, spelvormNaam, wolfVan, SIXES_KOPPELS, sixesStuk, besliste,
+  BONUSSEN, BONUS_VOLGORDE, bonusInstellingen } from './spelvormen.js';
 import { getLadderSpelers, ladderStandenGeladen } from './ladder-view.js';
 import { renderLadder, berekenWeergaveRangen } from './ladder.js';
 
@@ -327,9 +328,12 @@ function renderScorecard() {
       // v5.51.0: punten van de nieuwe spelvormen. "kies" bij Wolf als de wolf
       // nog niet heeft gekozen; "→ 3" bij Skins als de hole doorschuift.
       const h = _sv.perHole[holeIdx];
+      // v5.52.0: bonussen bij Skins als tweede regel, bijv. "+0-1-0".
+      const bon = _sv.info?.bonus?.perHole?.[holeIdx];
+      const bonTekst = bon ? `<div style="font-size:10px;color:var(--gold)">+${esc(bon.join('-'))}</div>` : '';
       bodyHtml += h
-        ? `<td style="text-align:center;font-family:'DM Mono',monospace;font-size:12px;color:${h.open ? 'var(--red)' : 'var(--mid)'};white-space:nowrap">${esc(h.tekst)}</td>`
-        : `<td style="text-align:center;color:var(--light);font-size:11px">—</td>`;
+        ? `<td style="text-align:center;font-family:'DM Mono',monospace;font-size:12px;color:${h.open ? 'var(--red)' : 'var(--mid)'};white-space:nowrap">${esc(h.tekst)}${bonTekst}</td>`
+        : `<td style="text-align:center;color:var(--light);font-size:11px">—${bonTekst}</td>`;
     }
     bodyHtml += '</tr>';
     bodyHtml += _extraRijHtml(p, holeIdx, naamMap);   // v5.51.0: Wolf / Bingo Bango Bongo
@@ -363,7 +367,11 @@ function renderScorecard() {
     });
     bodyHtml += `<td style="text-align:center;font-family:'DM Mono',monospace;font-weight:700;font-size:13px;color:var(--green)">${tA}–${tB}</td>`;
   } else if (_sv) {
-    bodyHtml += `<td style="text-align:center;font-family:'DM Mono',monospace;font-weight:700;font-size:13px;color:var(--green)">${esc(_sv.totalen.map(_puntTekst).join('-'))}</td>`;
+    // v5.52.0: bij bonussen de skins en de bonussen apart, plus wat telt.
+    const bi = _sv.info?.bonus;
+    const tot = bi ? _sv.info.skinsTotalen : _sv.totalen;
+    const extra = bi ? `<div style="font-size:10px;font-weight:400;color:var(--gold)">+${esc(bi.totalen.join('-'))} bonus</div>` : '';
+    bodyHtml += `<td style="text-align:center;font-family:'DM Mono',monospace;font-weight:700;font-size:13px;color:var(--green)">${esc(tot.map(_puntTekst).join('-'))}${extra}</td>`;
   }
   bodyHtml += '</tr>';
 
@@ -648,7 +656,11 @@ function _nettoRij(p, holeIdx) {
 //  anderen. Zo hoefden de databaseregels niet te veranderen. Per hole staat
 //  er een uid (of 'alleen' bij Wolf).
 // ============================================================
-const EXTRA_SLEUTELS = { wolf: ['_wolf'], bbb: ['_bingo', '_bango', '_bongo'] };
+const EXTRA_SLEUTELS = { wolf: ['_wolf'], bbb: ['_bingo', '_bango', '_bongo'],
+  // v5.52.0: de bonussen bij Skins die je aantikt. Per hole een tekst met de
+  // uids, gescheiden door komma's — GEEN lijst: een lijst in de scorelijst zou
+  // een lijst binnen een lijst worden, en die weigert Firestore.
+  skins: BONUS_VOLGORDE.filter(k => BONUSSEN[k].invoer).map(k => '_b_' + k) };
 
 function spelvormUitkomst(p) {
   if (!p || !isNieuweSpelvorm(p.speltype)) return null;
@@ -657,11 +669,23 @@ function spelvormUitkomst(p) {
   (p.spelers || []).forEach((s, i) => { idxVan[s.uid] = i; });
   const naarIdx = v => (v === 'alleen' ? 'alleen' : (v != null && v in idxVan ? idxVan[v] : null));
   const lijst = k => (Array.isArray(p.scores?.[k]) ? p.scores[k] : []).map(naarIdx);
+  // v5.52.0: bonussen — per hole "uid,uid" → plekken.
+  const bonusLijst = k => (Array.isArray(p.scores?.['_b_' + k]) ? p.scores['_b_' + k] : [])
+    .map(v => (v ? String(v).split(',').map(u => idxVan[u]).filter(i => i !== undefined) : []));
+  const bonus = {};
+  BONUS_VOLGORDE.filter(k => BONUSSEN[k].invoer).forEach(k => { bonus[k] = bonusLijst(k); });
+  const bruto = (p.holes || []).map((_, h) => (p.spelers || []).map(s => {
+    const arr = Array.isArray(p.scores?.[s.uid]) ? p.scores[s.uid] : [];
+    const v = arr[h];
+    return v === null || v === undefined || v === '' ? null : v;
+  }));
   return berekenSpelvorm(p.speltype, {
     n: (p.spelers || []).length,
     holes: p.holes || [],
     netto,
-    extra: { wolf: lijst('_wolf'), bingo: lijst('_bingo'), bango: lijst('_bango'), bongo: lijst('_bongo') },
+    bruto,
+    bonus: p.speltype === 'skins' ? p.bonussen : null,
+    extra: { wolf: lijst('_wolf'), bingo: lijst('_bingo'), bango: lijst('_bango'), bongo: lijst('_bongo'), bonus },
   });
 }
 
@@ -671,8 +695,42 @@ function _puntTekst(v) {
   return half ? (heel ? `${heel}½` : '½') : String(v);
 }
 
+// v5.52.0: onder een hole bij Skins: per aangevinkte bonus de namen om aan te
+// tikken. Knoppen, geen invoervelden: een iPhone zoomt dan niet in.
+function _bonusRijHtml(p, holeIdx, naamMap) {
+  const b = bonusInstellingen(p.bonussen);
+  const par = Number(p.holes?.[holeIdx]?.par) || 4;
+  const hier = b.aan.filter(k => BONUSSEN[k].invoer && !(BONUSSEN[k].alleenPar3 && par !== 3));
+  if (!hier.length) return '';
+  const kolommen = (p.spelers || []).length + 2;
+  const regels = hier.map(k => {
+    const gekozen = String((p.scores?.['_b_' + k] || [])[holeIdx] || '').split(',').filter(Boolean);
+    const knoppen = p.spelers.map(s => {
+      const aan = gekozen.includes(s.uid);
+      return `<button type="button" tabindex="-1" data-bonus="${k}" data-hole="${holeIdx}" data-uid="${escAttr(s.uid)}"
+        onclick="tikBonus('${k}',${holeIdx},'${escAttr(s.uid)}')"
+        style="font-size:12px;padding:3px 7px;border-radius:12px;cursor:pointer;border:1px solid ${aan ? 'var(--green)' : '#e0ddd4'};background:${aan ? 'var(--green)' : '#fff'};color:${aan ? '#fff' : 'var(--mid)'}">${esc(naamMap[s.uid])}</button>`;
+    }).join('');
+    return `<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:2px 0">
+      <span style="font-size:11px;color:var(--light);min-width:52px">${esc(BONUSSEN[k].naam)}</span>${knoppen}</div>`;
+  }).join('');
+  return `<tr class="spelvorm-extra"><td colspan="${kolommen}" style="padding:2px 8px 6px;border-top:none">${regels}</td></tr>`;
+}
+
+// Een bonus aan- of uittikken. Bij de greenie kan er maar één zijn.
+async function tikBonus(k, holeIdx, uid) {
+  const p = mijnPartij();
+  if (!p || !BONUSSEN[k]?.invoer) return;
+  const sleutel = '_b_' + k;
+  const nu = String((p.scores?.[sleutel] || [])[holeIdx] || '').split(',').filter(Boolean);
+  let nieuw = nu.includes(uid) ? nu.filter(u => u !== uid) : (BONUSSEN[k].eenSpeler ? [uid] : [...nu, uid]);
+  await zetSpelvormExtra(sleutel, holeIdx, nieuw.join(','));
+}
+window.tikBonus = tikBonus;
+
 // De keuzes onder een hole voor Wolf en Bingo Bango Bongo.
 function _extraRijHtml(p, holeIdx, naamMap) {
+  if (p.speltype === 'skins') return _bonusRijHtml(p, holeIdx, naamMap);   // v5.52.0
   const vorm = SPELVORMEN[p.speltype]?.extra;
   if (!vorm) return '';
   const kolommen = (p.spelers || []).length + 2;
@@ -686,9 +744,14 @@ function _extraRijHtml(p, holeIdx, naamMap) {
     const keuzes = opt('', 'kies…', gekozen)
       + p.spelers.filter(s => s.uid !== w?.uid).map(s => opt(s.uid, 'met ' + naamMap[s.uid], gekozen)).join('')
       + opt('alleen', 'alleen', gekozen);
-    inhoud = `<span style="color:var(--mid)">🐺 ${esc(naamMap[w?.uid] || '?')}</span>
-      <select tabindex="-1" data-extra="_wolf" data-hole="${holeIdx}" style="${stijl}"
-        onchange="zetSpelvormExtra('_wolf',${holeIdx},this.value)">${keuzes}</select>`;
+    // v5.51.1: het menu vult de rest van de regel. Met de vaste breedte van
+    // 110 px stond er na het kiezen "MET PAS" en "MET SIEF" (iPhone van Sierk,
+    // 13 oktober 2026).
+    inhoud = `<div style="display:flex;align-items:center;gap:8px">
+      <span style="color:var(--mid);white-space:nowrap">🐺 ${esc(naamMap[w?.uid] || '?')}</span>
+      <select tabindex="-1" data-extra="_wolf" data-hole="${holeIdx}" aria-label="Partner van de wolf"
+        style="${stijl};flex:1 1 auto;min-width:0;max-width:none"
+        onchange="zetSpelvormExtra('_wolf',${holeIdx},this.value)">${keuzes}</select></div>`;
   } else {
     // Drie kolommen: een klein kopje boven elk menu, en in het menu alleen de
     // naam. Eerst stond het woord ervoor (twee regels per hole op een
@@ -710,7 +773,7 @@ function _extraRijHtml(p, holeIdx, naamMap) {
 async function zetSpelvormExtra(sleutel, holeIdx, waarde) {
   const p = mijnPartij();
   if (!p) return;
-  const toegestaan = Object.values(EXTRA_SLEUTELS).flat();
+  const toegestaan = Object.values(EXTRA_SLEUTELS).flat();   // incl. bonussen (v5.52.0)
   if (!toegestaan.includes(sleutel)) return;
   const w = waarde === '' ? null : String(waarde);
   if (!p.scores) p.scores = {};
@@ -872,8 +935,18 @@ function renderSpelvormOverview() {
         : `${esc(w.verschil > 0 ? a : b)} ${Math.abs(w.verschil)} up`;
       html += regel(`${esc(w.naam)} (${w.gespeeld}/${w.holes}): ${stand}`);
     });
-  } else if (p.speltype === 'skins' && uit.info.blijftLiggen > 0) {
-    html += regel(`${uit.info.blijftLiggen} skin${uit.info.blijftLiggen === 1 ? '' : 's'} schuift door naar de volgende hole`);
+  } else if (p.speltype === 'skins') {
+    if (uit.info.blijftLiggen > 0) {
+      html += regel(`${uit.info.blijftLiggen} skin${uit.info.blijftLiggen === 1 ? '' : 's'} schuift door naar de volgende hole`);
+    }
+    // v5.52.0: bonussen
+    const bi = uit.info.bonus;
+    if (bi) {
+      const per = p.spelers.map((s, i) => `${esc(naamMap[s.uid])} ${uit.info.skinsTotalen[i]}+${bi.totalen[i]}`).join(' · ');
+      html += regel(bi.instellingen.waarde === 'skin'
+        ? `Skins + bonus (telt mee): ${per}`
+        : `Skins + bonuspunten (bonus telt niet mee voor de uitslag): ${per}`);
+    }
   } else if (p.speltype === 'sixes' && p.spelers.length === 4) {
     SIXES_KOPPELS.forEach((koppels, k) => {
       const tekst = koppels.map(kp => kp.map(i => esc(naamMap[p.spelers[i].uid])).join(' + ')).join(' tegen ');
@@ -1279,6 +1352,13 @@ function openSpelvormUitslagModal() {
     </div>`;
   });
   html += '</div>';
+  // v5.52.0: bonussen bij Skins — zeggen hoe ze in deze stand zitten.
+  const bi = uit.info?.bonus;
+  if (bi) {
+    const per = p.spelers.map((s, i) => `${esc(naamMap[s.uid])} ${bi.totalen[i]}`).join(' · ');
+    html += `<p style="font-size:12px;color:var(--mid);margin:0 0 8px">Bonussen: ${per}. ${bi.instellingen.waarde === 'skin'
+      ? 'Ze tellen mee in deze stand.' : 'Aparte stand — ze tellen niet mee voor de uitslag.'}</p>`;
+  }
   if (!metScores) {
     html += `<p style="font-size:12px;color:var(--red);margin-bottom:8px">
       Nog geen enkele hole beslist — wijs de eindstand zelf aan.</p>`;
@@ -1625,7 +1705,8 @@ async function bevestigUitslag() {
           timestamp: Date.now(),
           baan: p.baan,
           holes: p.holes,
-          spelers: p.spelers.map((s2, i) => ({ naam: s2.naam, hcp: s2.partijHcp, punten: uit.totalen[i] ?? 0 })),
+          spelers: p.spelers.map((s2, i) => ({ naam: s2.naam, hcp: s2.partijHcp, punten: uit.totalen[i] ?? 0,
+            ...(uit.info?.bonus ? { bonus: uit.info.bonus.totalen[i] } : {}) })),   // v5.52.0
           spelerIds: p.spelers.map(s2 => s2.uid),
           scores: p.scores,
         },

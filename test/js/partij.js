@@ -8,7 +8,7 @@ import { objNaarRondes } from './knockout.js';
 import { getLadderSpelers, isInLadder } from './ladder-view.js';
 // v5.0.0 (punt 4): partijen krijgen een eigen document met scores per speler.
 import { maakPartijDocument, verwijderPartijDocument, voegSpelerToeAanPartij, verwijderSpelerUitPartijDoc } from './scores.js';
-import { SPELVORMEN, SPELVORM_VOLGORDE, spelvormZichtbaar, isNieuweSpelvorm, uitlegVerschuiving } from './spelvormen.js';
+import { SPELVORMEN, SPELVORM_VOLGORDE, spelvormZichtbaar, isNieuweSpelvorm, uitlegVerschuiving, bonusInstellingen } from './spelvormen.js';
 // v5.8.0: alle handicaprekenwerk staat op een plek.
 import { HCP_STANDAARD, hcpInstellingen, hcpOmschrijving, koppelSlagen, spelerSlagen,
          slagHoleLijst, partijHcpVan } from './hcp.js';
@@ -54,6 +54,7 @@ function slaPartijFormulierOp() {
       // v5.51.0
       taliban:      !!document.getElementById('taliban-aan')?.checked,
       talibanBasis: document.querySelector('input[name="taliban-basis"]:checked')?.value || 'netto',
+      bonussen:     leesBonusFormulier(),   // v5.52.0
     };
     sessionStorage.setItem(PARTIJ_FORM_KEY, JSON.stringify(state));
   } catch(e) {
@@ -97,6 +98,7 @@ function herstelPartijFormulier() {
     zetRadio('hcp-verdeling', state.hcpVerdeling || 'volledig');
     zetRadio('hcp-plaatsing', state.hcpPlaatsing || 'laag');
     zetTaliban(state.taliban === true, state.talibanBasis);
+    zetBonussen(state.bonussen);
     pasSpelvormZichtbaarToe(state.speltype);
     onSpeltypeChange();
 
@@ -204,6 +206,9 @@ function onSpeltypeChange() {
   if (talibanWrap) talibanWrap.style.display = val === 'amerikaantje' ? 'block' : 'none';
   const basisWrap = document.getElementById('taliban-basis-wrap');
   if (basisWrap) basisWrap.style.display = (val === 'amerikaantje' && talibanAan) ? 'block' : 'none';
+  // v5.52.0: bonussen horen alleen bij Skins.
+  const bonusWrap = document.getElementById('bonus-wrap');
+  if (bonusWrap) bonusWrap.style.display = val === 'skins' ? 'block' : 'none';
 
   const hint = document.getElementById('speltype-hint');
   // v3.0.3: hint-tekst per speltype
@@ -261,6 +266,31 @@ function zetTaliban(aan, basis) {
   const box = document.getElementById('taliban-aan');
   if (box) box.checked = !!aan;
   zetRadio('taliban-basis', basis === 'bruto' ? 'bruto' : 'netto');
+}
+
+// ============================================================
+//  v5.52.0 — BONUSSEN BIJ SKINS IN HET FORMULIER
+// ============================================================
+function leesBonusFormulier() {
+  return bonusInstellingen({
+    aan: [...document.querySelectorAll('#bonus-wrap input.bonus-aan:checked')].map(el => el.value),
+    waarde: document.querySelector('input[name="bonus-waarde"]:checked')?.value,
+    doorschuiven: document.querySelector('input[name="bonus-door"]:checked')?.value !== 'nee',
+  });
+}
+
+function zetBonussen(b) {
+  const inst = bonusInstellingen(b);
+  document.querySelectorAll('#bonus-wrap input.bonus-aan').forEach(el => { el.checked = inst.aan.includes(el.value); });
+  zetRadio('bonus-waarde', inst.waarde);
+  zetRadio('bonus-door', inst.doorschuiven ? 'ja' : 'nee');
+}
+
+// Bonusvelden voor een partij: alleen bij Skins, en alleen als er iets aan staat.
+function leesBonussen(speltype) {
+  if (speltype !== 'skins') return null;
+  const b = leesBonusFormulier();
+  return b.aan.length ? { bonussen: b } : null;
 }
 
 // Taliban-velden voor een partij: alleen bij een Amerikaantje met vinkje.
@@ -364,6 +394,7 @@ function initPartijForm() {
   // v5.8.0: handicapkeuzes terug naar de standaard (75% · volledig · laagste SI)
   if (!heeftOpgeslagen) vulHcpInstellingen(null);
   zetTaliban(false, 'netto');
+  zetBonussen(null);
   pasSpelvormZichtbaarToe();
 
   const sel = document.getElementById('baan-select');
@@ -1040,6 +1071,7 @@ function vulFormulierMetLopendePartij() {
   zetRadio('speltype', p.speltype || 'matchplay');
   vulHcpInstellingen(p);
   zetTaliban(p.taliban === true, p.talibanBasis);
+  zetBonussen(p.bonussen);
   const speltypeWrap = document.getElementById('speltype-wrap');
   if (speltypeWrap) speltypeWrap.style.display = 'block';
   pasSpelvormZichtbaarToe(p.speltype || 'matchplay');
@@ -1223,7 +1255,7 @@ async function slaPartijInstellingenOp() {
     nieuweScores[k] = Array.from({ length: lengte }, (_, i) => (oud[i] === undefined ? null : oud[i]));
   });
   const vorigeStaat = JSON.stringify({ spelers: p.spelers, matchups: p.matchups, holes: p.holes, speltype: p.speltype, scores: p.scores,
-    taliban: p.taliban, talibanBasis: p.talibanBasis });
+    taliban: p.taliban, talibanBasis: p.talibanBasis, bonussen: p.bonussen });
   p.spelers = spelers;
   p.holes = nieuweHoles;
   p.startHole = startHole;
@@ -1236,6 +1268,9 @@ async function slaPartijInstellingenOp() {
   const tal = leesTaliban(speltype);
   if (tal) { p.taliban = true; p.talibanBasis = tal.talibanBasis; }
   else { delete p.taliban; delete p.talibanBasis; }
+  // v5.52.0: bonussen aan of uit, ook tijdens de partij.
+  const bon = leesBonussen(speltype);
+  if (bon) p.bonussen = bon.bonussen; else delete p.bonussen;
   p.matchups = bouwMatchups(spelers, speltype, inst.hcpPct);
 
   try {
@@ -1261,6 +1296,7 @@ async function slaPartijInstellingenOp() {
       p.holes = terug.holes; p.speltype = terug.speltype; p.scores = terug.scores;
       if (terug.taliban) { p.taliban = true; p.talibanBasis = terug.talibanBasis; }
       else { delete p.taliban; delete p.talibanBasis; }
+      if (terug.bonussen) p.bonussen = terug.bonussen; else delete p.bonussen;
     } catch (_) {}
     toast('Wijzigingen konden niet worden opgeslagen: ' + (e?.message || e?.code || 'onbekende fout'));
     return;
@@ -1415,6 +1451,8 @@ async function startPartij() {
     speltype,   // v3.0.0-11.97
     // v5.51.0: alleen aanwezig bij een Amerikaantje met de Taliban-regel.
     ...(leesTaliban(speltype) || {}),
+    // v5.52.0: alleen aanwezig bij Skins met minstens één bonus aangevinkt.
+    ...(leesBonussen(speltype) || {}),
     // v5.8.0: de handicapafspraak hoort bij de partij, niet bij de app. Zo
     // blijft een lopende ronde rekenen zoals hij begonnen is, ook als iemand
     // anders later andere standaarden kiest.

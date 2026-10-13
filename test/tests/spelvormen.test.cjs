@@ -160,6 +160,15 @@ module.exports = (async () => {
     const tegen = S.berekenSpelvorm('wolf', { n: 4, holes: holes([4]), netto: [[6, 5, 4, 4]], extra: { wolf: [1] } });
     check('wolf + partner (1+2) verliezen: 3 en 4 krijgen 3', tegen.perHole[0].punten, [0, 0, 3, 3]);
     check('wolf alleen verliest: de anderen 1 elk', verlies.perHole[1].punten, [1, 0, 1, 1]);
+    // v5.51.1: "niets gekozen" (null, zoals het na de eerste keuze in de lijst
+    // staat) mag NOOIT als speler 1 tellen — op een hole van elke wolf.
+    const leeg = S.berekenSpelvorm('wolf', { n: 4, holes: holes([4, 4, 4, 4]),
+      netto: [[3, 4, 4, 3], [3, 4, 4, 3], [3, 4, 4, 3], [3, 4, 4, 3]], extra: { wolf: [null, null, null, null] } });
+    check('niets gekozen = kies, op de hole van elke wolf', leeg.perHole.map(h => h.tekst), ['kies', 'kies', 'kies', 'kies']);
+    check('niets gekozen = geen punten', leeg.totalen, [0, 0, 0, 0]);
+    const leegTekst = S.berekenSpelvorm('wolf', { n: 4, holes: holes([4, 4, 4]),
+      netto: [[3, 4, 4, 3], [3, 4, 4, 3], [3, 4, 4, 3]], extra: { wolf: ['', undefined, null] } });
+    check('lege tekst en undefined ook kies', leegTekst.perHole.map(h => h.tekst), ['kies', 'kies', 'kies']);
     const fout = S.berekenSpelvorm('wolf', { n: 4, holes: holes([4]), netto: [[4, 4, 4, 4]], extra: { wolf: [0] } });
     check('wolf kan zichzelf niet kiezen', fout.perHole[0].open, true);
   }
@@ -172,6 +181,61 @@ module.exports = (async () => {
     check('bbb telt ook zonder slagen', r.totalen, [2, 1, 3]);
     check('bbb eindstand', r.posities, [2, 3, 1]);
     check('besliste holes', S.besliste(r.perHole), 2);
+  }
+
+  console.log('\n══ BONUSSEN BIJ SKINS (v5.52.0) ══');
+  {
+    // Drie spelers, drie holes: par 4, par 3, par 4.
+    const h3 = [{ par: 4, si: 1 }, { par: 3, si: 2 }, { par: 4, si: 3 }];
+    const basis = (bonus, extra, bruto) => ({
+      n: 3, holes: h3,
+      netto: [[4, 5, 5], [3, 3, 4], [4, 4, 4]],      // hole 1: speler 1 wint · hole 2 en 3: doorschuiven
+      bruto: bruto || [[4, 4, 5], [3, 2, 4], [3, 4, 5]],
+      bonus, extra: { bonus: extra || {} } });
+    const zonder = S.berekenSpelvorm('skins', basis(null));
+    check('zonder bonussen: gewone skins', zonder.totalen, [1, 0, 0]);
+    check('zonder bonussen: geen bonusinfo', zonder.info.bonus, undefined);
+
+    // Sandy: speler 2 par (4 bruto op par 4) telt, speler 3 bogey (5) niet.
+    const sandy = S.berekenSpelvorm('skins', basis({ aan: ['sandy'], waarde: 'skin', doorschuiven: true },
+      { sandy: [[1, 2], [], []] }));
+    check('sandy alleen bij par of beter', sandy.info.bonus.perHole[0], [0, 1, 0]);
+    check('sandy als skin telt mee', sandy.totalen, [1, 1, 0]);
+    check('gelijk op 1: gedeelde eerste plek', sandy.posities, [1, 1, 3]);
+
+    const punt = S.berekenSpelvorm('skins', basis({ aan: ['sandy'], waarde: 'punt', doorschuiven: true },
+      { sandy: [[1], [], []] }));
+    check('bonus als punt telt niet mee in de uitslag', punt.totalen, [1, 0, 0]);
+    check('maar staat wel in de bonusstand', punt.info.bonus.totalen, [0, 1, 0]);
+
+    // Birdie volgt uit de score (echte slagen): hole 2 par 3, speler 2 bruto 2; hole 3 speler 1 bruto 3.
+    const birdie = S.berekenSpelvorm('skins', basis({ aan: ['birdie'], waarde: 'skin', doorschuiven: true }));
+    check('birdie uit de score', birdie.info.bonus.totalen, [1, 1, 0]);
+    // Doorschuiven nee: hole 2 en 3 schuiven door → hun bonussen vervallen.
+    const nee = S.berekenSpelvorm('skins', basis({ aan: ['birdie'], waarde: 'skin', doorschuiven: false }));
+    check('doorschuiven nee: bonus vervalt op een doorgeschoven hole', nee.info.bonus.totalen, [0, 0, 0]);
+    const neeSandy = S.berekenSpelvorm('skins', basis({ aan: ['sandy'], waarde: 'skin', doorschuiven: false },
+      { sandy: [[1], [], []] }));
+    check('doorschuiven nee: bonus telt op een gewonnen hole', neeSandy.info.bonus.totalen, [0, 1, 0]);
+
+    // Greenie: alleen par 3, maar één speler, en alleen bij par of beter.
+    const green = S.berekenSpelvorm('skins', basis({ aan: ['greenie'], waarde: 'skin', doorschuiven: true },
+      { greenie: [[0], [1, 0], []] }));
+    check('greenie niet op een par 4', green.info.bonus.perHole[0], null);
+    check('greenie: alleen de eerste', green.info.bonus.perHole[1], [0, 1, 0]);
+    const greenBogey = S.berekenSpelvorm('skins', basis({ aan: ['greenie'], waarde: 'skin', doorschuiven: true },
+      { greenie: [[], [2], []] }));
+    check('greenie zonder par telt niet', greenBogey.info.bonus.perHole[1], null);
+
+    // Chippie en polie: geen voorwaarde; meerdere spelers per hole.
+    const chip = S.berekenSpelvorm('skins', basis({ aan: ['chippie', 'polie'], waarde: 'skin', doorschuiven: true },
+      { chippie: [[2], [], []], polie: [[0, 2], [], []] }));
+    check('chippie en polie zonder voorwaarde, samen op één hole', chip.info.bonus.perHole[0], [1, 0, 2]);
+
+    // Een bonus is nooit de pot waard: altijd 1.
+    check('een bonus is één waard, ook als er skins liggen', birdie.info.bonus.perHole[2], [1, 0, 0]);
+    check('onbekende bonus valt weg', S.bonusInstellingen({ aan: ['kul', 'sandy'] }).aan, ['sandy']);
+    check('standaard: skin en doorschuiven ja', S.bonusInstellingen({}), { aan: [], waarde: 'skin', doorschuiven: true });
   }
 
   console.log('\n══ EINDSTAND ══');

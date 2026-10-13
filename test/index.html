@@ -2039,11 +2039,64 @@
         </label>
         <p style="font-size:11px;color:var(--light);margin:4px 0 0">Birdie of beter, en beide anderen minstens 2 slagen slechter: alle 6 punten.</p>
         <div id="taliban-basis-wrap" style="display:none;margin-top:8px;font-size:13px">
-          <span style="color:var(--mid)">Birdie en bogey tellen</span>
-          <label style="display:inline-flex;align-items:center;gap:4px;margin-left:8px;text-transform:none;font-weight:500;cursor:pointer">
+<div style="color:var(--mid);margin-bottom:2px">Birdie en bogey tellen</div>
+          <div style="display:flex;gap:16px;align-items:center">
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
             <input type="radio" name="taliban-basis" value="netto" checked style="width:auto;margin:0"> netto</label>
-          <label style="display:inline-flex;align-items:center;gap:4px;margin-left:8px;text-transform:none;font-weight:500;cursor:pointer">
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
             <input type="radio" name="taliban-basis" value="bruto" style="width:auto;margin:0"> bruto</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- v5.52.0: bonussen bij Skins. Alleen te zien als Skins gekozen is.
+           Buiten #speltype-wrap om dezelfde reden als het Taliban-blok (de
+           clubstijl kleurt daar aangevinkte labels groen). De regels staan in
+           js/spelvormen.js (BONUSSEN). -->
+      <div id="bonus-wrap" style="display:none;margin-top:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff">
+        <div style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Bonussen</div>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="sandy">
+            <span>Sandy <span style="font-size:11px;color:var(--light)">— par of beter na een bunker</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="greenie">
+            <span>Greenie <span style="font-size:11px;color:var(--light)">— par 3: dichtst bij de vlag én par</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="chippie">
+            <span>Chippie <span style="font-size:11px;color:var(--light)">— chip in één keer in</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="birdie">
+            <span>Birdie <span style="font-size:11px;color:var(--light)">— echte birdie of beter — volgt uit de score</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="barkie">
+            <span>Barkie <span style="font-size:11px;color:var(--light)">— par of beter na een boom</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="polie">
+            <span>Polie <span style="font-size:11px;color:var(--light)">— lange putt — de lengte spreken jullie af</span></span>
+          </label>
+        <div style="margin-top:8px;font-size:13px">
+          <div style="color:var(--mid);margin-bottom:2px">Een bonus is</div>
+          <div style="display:flex;gap:16px;align-items:center">
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
+            <input type="radio" name="bonus-waarde" value="skin" checked style="width:auto;margin:0"> een skin</label>
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
+            <input type="radio" name="bonus-waarde" value="punt" style="width:auto;margin:0"> een punt</label>
+          </div>
+          <p style="font-size:11px;color:var(--light);margin:2px 0 0">Skin: telt mee in de uitslag en de ladder. Punt: aparte bonusstand, telt niet mee.</p>
+        </div>
+        <div style="margin-top:8px;font-size:13px">
+<div style="color:var(--mid);margin-bottom:2px">Telt een bonus ook als de hole doorschuift?</div>
+          <div style="display:flex;gap:16px;align-items:center">
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
+            <input type="radio" name="bonus-door" value="ja" checked style="width:auto;margin:0"> ja</label>
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
+            <input type="radio" name="bonus-door" value="nee" style="width:auto;margin:0"> nee</label>
+          </div>
         </div>
       </div>
 

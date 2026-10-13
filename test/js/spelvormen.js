@@ -52,6 +52,41 @@ export const SPELVORM_VOLGORDE = Object.freeze(
 export const NIEUWE_SPELVORMEN = Object.freeze(
   SPELVORM_VOLGORDE.filter(t => SPELVORMEN[t].nieuw === true));
 
+// ─── Bonussen bij Skins (v5.52.0) ───────────────────────────
+//  Sierk, 13 oktober 2026: "Bij skins kan je toch ook punten halen bij up en
+//  down vanuit een bunker?" — "Ook andere bonussen en maak de keuze
+//  selecteerbaar." Besluiten: alle bonussen los aan te vinken bij het
+//  aanmaken; waarde "skin" (telt mee in de uitslag en dus de ladder) of "punt"
+//  (aparte stand, telt niet mee); kiezen of een bonus ook telt op een hole die
+//  doorschuift; alleen bij Skins. Een bonus wint nooit de pot van een hole:
+//  hij is één eenheid waard ("wat gebruikelijk is").
+//
+//  invoer      wie het haalde wordt per hole aangetikt
+//  auto        volgt uit de score (birdie)
+//  parOfBeter  telt alleen als die speler op die hole par of beter maakte
+//              (echte slagen) — dat controleert de app zelf
+//  alleenPar3  alleen op een par 3 (greenie)
+//  eenSpeler   maar één speler per hole (greenie: wie het dichtst lag)
+export const BONUSSEN = Object.freeze({
+  sandy:   { naam: 'Sandy',   uitleg: 'par of beter na een bunker',           invoer: true, parOfBeter: true },
+  greenie: { naam: 'Greenie', uitleg: 'par 3: dichtst bij de vlag én par',    invoer: true, parOfBeter: true, alleenPar3: true, eenSpeler: true },
+  chippie: { naam: 'Chippie', uitleg: 'chip in één keer in',                  invoer: true },
+  birdie:  { naam: 'Birdie',  uitleg: 'echte birdie of beter — volgt uit de score', auto: true },
+  barkie:  { naam: 'Barkie',  uitleg: 'par of beter na een boom',             invoer: true, parOfBeter: true },
+  polie:   { naam: 'Polie',   uitleg: 'lange putt — de lengte spreken jullie af', invoer: true },
+});
+export const BONUS_VOLGORDE = Object.freeze(['sandy', 'greenie', 'chippie', 'birdie', 'barkie', 'polie']);
+
+// De instellingen van een partij, schoongemaakt. Onbekende bonussen vallen weg.
+export function bonusInstellingen(b) {
+  const aan = Array.isArray(b?.aan) ? b.aan.filter(k => BONUS_VOLGORDE.includes(k)) : [];
+  return {
+    aan: BONUS_VOLGORDE.filter(k => aan.includes(k)),
+    waarde: b?.waarde === 'punt' ? 'punt' : 'skin',
+    doorschuiven: b?.doorschuiven !== false,
+  };
+}
+
 export function isNieuweSpelvorm(speltype) {
   return NIEUWE_SPELVORMEN.includes(String(speltype || ''));
 }
@@ -203,12 +238,64 @@ function skins(inv) {
       perHole.push({ punten, tekst: tekstVan(punten) });
       pot = 1;
     } else {
-      perHole.push({ punten: nullen(n), tekst: `→ ${pot + 1}` });
+      perHole.push({ punten: nullen(n), tekst: `→ ${pot + 1}`, doorgeschoven: true });
       pot += 1;
     }
   });
-  const totalen = somPer(perHole, n);
-  return { perHole, totalen, info: { blijftLiggen: open ? 0 : pot - 1 } };
+  const skinsTotalen = somPer(perHole, n);
+  const info = { blijftLiggen: open ? 0 : pot - 1 };
+
+  // v5.52.0: bonussen. Zonder aangevinkte bonussen verandert er niets.
+  const b = bonusInstellingen(inv.bonus);
+  if (!b.aan.length) return { perHole, totalen: skinsTotalen, info };
+  const bonusPerHole = netto.map((_, h) => bonusOpHole(inv, b, h, perHole[h]));
+  const bonusTotalen = nullen(n);
+  bonusPerHole.forEach(r => { if (r) r.forEach((v, i) => { bonusTotalen[i] += v; }); });
+  info.bonus = { instellingen: b, perHole: bonusPerHole, totalen: bonusTotalen };
+  info.skinsTotalen = skinsTotalen;
+  // "skin": de bonus telt mee in de uitslag. "punt": aparte stand.
+  const totalen = b.waarde === 'skin' ? skinsTotalen.map((v, i) => v + bonusTotalen[i]) : skinsTotalen;
+  return { perHole, totalen, info };
+}
+
+// De bonussen van één hole, per speler, of null als er (nog) niets te tellen
+// valt. `skinHole` is wat Skins van die hole maakte: null = nog open.
+//  doorschuiven = ja  → een bonus telt altijd, ook op een hole die doorschuift
+//                       of nog open staat (de bonus hangt niet aan de skin).
+//  doorschuiven = nee → alleen op een hole waar iemand de skin won.
+function bonusOpHole(inv, b, h, skinHole) {
+  const { n, holes, bruto } = inv;
+  if (!b.doorschuiven && (!skinHole || skinHole.doorgeschoven)) return null;
+  const par = Number(holes?.[h]?.par) || 4;
+  const echte = i => {
+    const v = bruto?.[h]?.[i];
+    return v === null || v === undefined || v === '' ? null : Number(v);
+  };
+  const extra = inv.extra?.bonus || {};
+  const punten = nullen(n);
+  let iets = false;
+  b.aan.forEach(k => {
+    const def = BONUSSEN[k];
+    if (def.auto) {                                   // birdie
+      for (let i = 0; i < n; i++) {
+        const v = echte(i);
+        if (v !== null && v <= par - 1) { punten[i] += 1; iets = true; }
+      }
+      return;
+    }
+    if (def.alleenPar3 && par !== 3) return;
+    let wie = (extra[k] || [])[h];
+    wie = Array.isArray(wie) ? wie.filter(i => Number.isInteger(i) && i >= 0 && i < n) : [];
+    if (def.eenSpeler) wie = wie.slice(0, 1);
+    wie.forEach(i => {
+      if (def.parOfBeter) {
+        const v = echte(i);
+        if (v === null || v > par) return;            // geen par: telt niet
+      }
+      punten[i] += 1; iets = true;
+    });
+  });
+  return iets ? punten : null;
 }
 
 // ─── Stableford ─────────────────────────────────────────────
@@ -321,6 +408,16 @@ function wolf(inv) {
       if (rij[w] < best) punten[w] = 4;
       else if (best < rij[w]) anderen.forEach(i => { punten[i] = 1; });
       return { punten, tekst: tekstVan(punten) };
+    }
+    // ⚠ v5.51.1 — "NIETS GEKOZEN" IS GEEN SPELER 1.
+    //  Zodra er op één hole een keuze is gemaakt, staat er voor alle andere
+    //  holes null in de lijst. Number(null) is 0, en 0 is speler 1: een hole
+    //  waar de wolf nog niets koos, telde daardoor alsof hij speler 1 als
+    //  partner nam. Sierk zag het op test (13 oktober 2026): bij hole 3 stond
+    //  0-3-0-3 terwijl Roy nog "kies…" had staan. De test had het gemist
+    //  omdat "niets gekozen" alleen op een hole van speler 1 zelf werd getest.
+    if (k === null || k === undefined || k === '') {
+      return { punten: null, tekst: 'kies', open: true };
     }
     const partner = Number(k);
     if (!Number.isInteger(partner) || partner < 0 || partner > 3 || partner === w) {
