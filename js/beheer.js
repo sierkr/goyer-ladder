@@ -2,7 +2,8 @@
 //  beheer.js
 // ============================================================
 import { db, auth, IS_TEST, functions, httpsCallable, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr } from './config.js';
-import { store, alleLadders, activeLadderId, huidigeBruiker, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG, isGastProfiel } from './store.js';
+import { SPELVORMEN, SPELVORM_VOLGORDE, spelvormZichtbaar } from './spelvormen.js';   // v5.51.0
+import { store, alleLadders, activeLadderId, huidigeBruiker, _bezigMetRegistratie, _standAanpassenSpelers, _standAanpassenLadderId, _instellingenLadderId, _ladderSpelersId, DEFAULT_LADDER_CONFIG, isGastProfiel, spelvormTeltMee } from './store.js';
 
 // v4.2.0: puntensysteem — handmatige aanpassing door de puntenbeheerder.
 const _pasPuntenAanFn = httpsCallable(functions, 'pasPuntenAan');
@@ -91,12 +92,49 @@ function openLadderInstellingen(ladderId) {
   // v5.41.0: welke spelvormen meetellen voor de stand. Ontbreekt het veld
   // (ladder van vóór v5.41.0), dan tellen ze alle drie mee — precies zoals het
   // tot nu toe werkte.
-  const mee = cfg.spelvormenMee || {};
-  document.getElementById('cfg-mee-matchplay').checked    = mee.matchplay    !== false;
-  document.getElementById('cfg-mee-amerikaantje').checked = mee.amerikaantje !== false;
-  document.getElementById('cfg-mee-highlow').checked      = mee.highlow      !== false;
+  // v5.51.0: per spelvorm "zichtbaar" en "telt mee". Matchplay vast aan.
+  tekenSpelvormenTabel(cfg);
 
   document.getElementById('modal-ladder-instellingen').classList.add('open');
+}
+
+// ============================================================
+//  v5.51.0 — SPELVORMEN: ZICHTBAAR EN TELT MEE, PER LADDER
+// ------------------------------------------------------------
+//  De standaard komt uit dezelfde twee functies die de rest van de app
+//  gebruikt (spelvormZichtbaar in js/spelvormen.js, spelvormTeltMee in
+//  js/store.js). Zo toont dit scherm precies wat er gebeurt, ook voor een
+//  ladder die nooit is ingesteld: de drie oude spelvormen aan, de nieuwe uit.
+// ============================================================
+function tekenSpelvormenTabel(cfg) {
+  const el = document.getElementById('cfg-spelvormen-tabel');
+  if (!el) return;
+  const vak = (id, aan, uit) => uit
+    ? `<span style="font-size:11px;color:var(--light)">altijd</span>`
+    : `<input type="checkbox" id="${id}" ${aan ? 'checked' : ''} style="width:18px;height:18px;accent-color:var(--green)">`;
+  const kop = `<div style="display:grid;grid-template-columns:1fr 70px 70px;gap:6px;align-items:center;font-size:11px;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;padding-bottom:4px;border-bottom:1px solid var(--border)">
+      <span>Spelvorm</span><span style="text-align:center">Zichtbaar</span><span style="text-align:center">Telt mee</span></div>`;
+  const rijen = SPELVORM_VOLGORDE.map(t => {
+    const vast = SPELVORMEN[t].vast === true;
+    return `<div style="display:grid;grid-template-columns:1fr 70px 70px;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid #f0ede4">
+      <span style="font-size:14px;font-weight:500;color:var(--dark)">${esc(SPELVORMEN[t].naam)}</span>
+      <span style="text-align:center">${vak(`cfg-zicht-${t}`, spelvormZichtbaar(cfg, t), vast)}</span>
+      <span style="text-align:center">${vak(`cfg-mee-${t}`, spelvormTeltMee(cfg, t), vast)}</span>
+    </div>`;
+  }).join('');
+  el.innerHTML = kop + rijen;
+}
+
+function leesSpelvormenTabel() {
+  const zicht = {}, mee = { matchplay: true };
+  SPELVORM_VOLGORDE.forEach(t => {
+    if (SPELVORMEN[t].vast) return;
+    const z = document.getElementById(`cfg-zicht-${t}`);
+    const m = document.getElementById(`cfg-mee-${t}`);
+    if (z) zicht[t] = z.checked;
+    if (m) mee[t] = m.checked;
+  });
+  return { zicht, mee };
 }
 
 // ============================================================
@@ -133,17 +171,9 @@ async function slaLadderInstellingenOp() {
   const ladderId = _instellingenLadderId;
   if (!ladderId) return;
 
-  // v5.41.0: minstens één spelvorm moet meetellen. Staat alles uit, dan zou
-  // geen enkele partij de stand nog bewegen en lijkt de ladder stuk.
-  const spelvormenMee = {
-    matchplay:    document.getElementById('cfg-mee-matchplay').checked,
-    amerikaantje: document.getElementById('cfg-mee-amerikaantje').checked,
-    highlow:      document.getElementById('cfg-mee-highlow').checked,
-  };
-  if (!spelvormenMee.matchplay && !spelvormenMee.amerikaantje && !spelvormenMee.highlow) {
-    toast('Minstens één spelvorm moet meetellen voor de stand');
-    return;
-  }
+  // v5.41.0 / v5.51.0: de controle "minstens één spelvorm telt mee" is niet
+  // meer nodig: Matchplay telt altijd mee.
+  const { zicht: spelvormenZichtbaar, mee: spelvormenMee } = leesSpelvormenTabel();
 
   const config = {
     laagStijg: parseInt(document.getElementById('cfg-laag-stijg').value) || 4,
@@ -165,6 +195,7 @@ async function slaLadderInstellingenOp() {
     diversiteitsBonusPlekken: parseInt(document.getElementById('cfg-diversiteit-plekken').value) || 2,
     icoonAan: document.getElementById('cfg-icoon-aan').checked,
     spelvormenMee,
+    spelvormenZichtbaar,   // v5.51.0
     // v5.1.0: 'maand' = eerste maandag van de maand · 'week' = elke maandag
     activiteitPeriode: document.getElementById('cfg-activiteit-periode').value === 'week' ? 'week' : 'maand',
   };

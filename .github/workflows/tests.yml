@@ -141,7 +141,10 @@ jobs:
       # een QR-inlog na 30 s op "Geen actieve partij" uitkwam — live wel,
       # in de test niet. firebase.regels.json is dezelfde instelling met de
       # regels in de vorm die de emulator wél leest.
-      - name: QR-proeven met databaseregels
+      # v5.51.0: ook de spelvormproeven (SPELVORM-): de keuzes van de wolf en
+      # bingo/bango/bongo worden in de scoredocumenten geschreven, en dat moet
+      # onder de echte regels lukken.
+      - name: QR- en spelvormproeven met databaseregels
         env:
           GCLOUD_PROJECT: demo-goyer
           CI: 'true'
@@ -149,7 +152,7 @@ jobs:
           ./tests/node_modules/.bin/firebase emulators:exec
           --config firebase.regels.json
           --project demo-goyer --only firestore,auth,functions
-          "node tests/e2e/seed.cjs && ./tests/node_modules/.bin/playwright test --config=playwright.config.cjs -g 'RONDE-QR|SPELERS-QR'"
+          "node tests/e2e/seed.cjs && ./tests/node_modules/.bin/playwright test --config=playwright.config.cjs -g 'RONDE-QR|SPELERS-QR|SPELVORM-'"
 
       - name: Rapport bewaren bij een fout
         if: failure()

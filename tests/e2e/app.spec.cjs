@@ -1016,3 +1016,208 @@ test.describe('Handleidingen', () => {
   });
 
 });
+
+// ============================================================
+//  v5.51.0 — SPELVORMEN: BEHEER EN EEN WOLF-RONDE
+// ------------------------------------------------------------
+//  Sierk, 13 oktober 2026: zes spelvormen erbij, en per ladder in Beheer
+//  "zichtbaar" en "telt mee". Deze twee proeven draaien ook in de ronde MET
+//  databaseregels (browser-regels), want de keuzes van de wolf worden in de
+//  scoredocumenten geschreven.
+// ============================================================
+test.describe.serial('Spelvormen', () => {
+
+  test('SPELVORM-BEHEER: zichtbaar en telt mee per ladder, matchplay vast', async ({ page }) => {
+    await beheerDb.doc('ladders/mp').set({ config: { spelvormenZichtbaar: {}, spelvormenMee: {} } }, { merge: true });
+    await inloggen(page, 'coord@MPladder.stb');
+    await expect(page.locator('#ladder-list-mp')).toBeVisible({ timeout: 25000 });
+
+    // Het formulier van een ladder zonder instellingen: de drie oude, geen nieuwe.
+    await page.click('#nav-partij-btn');
+    await page.selectOption('#partij-ladder-select', 'mp').catch(() => {});
+    await expect(page.locator('#speltype-amerikaantje-label')).toBeVisible();
+    await expect(page.locator('#speltype-wolf-label'), 'nieuwe spelvormen staan eerst uit').toBeHidden();
+
+    await page.evaluate(() => window.openLadderInstellingen('mp'));
+    const tabel = page.locator('#cfg-spelvormen-tabel');
+    await expect(tabel).toContainText('Bingo Bango Bongo', { timeout: 10000 });
+    await expect(page.locator('#cfg-zicht-matchplay'), 'matchplay heeft geen vinkje').toHaveCount(0);
+    await expect(page.locator('#cfg-mee-matchplay')).toHaveCount(0);
+    await expect(page.locator('#cfg-zicht-amerikaantje')).toBeChecked();
+    await expect(page.locator('#cfg-zicht-wolf')).not.toBeChecked();
+    await expect(page.locator('#cfg-mee-wolf')).not.toBeChecked();
+
+    await page.check('#cfg-zicht-wolf');
+    await page.check('#cfg-mee-wolf');
+    await page.check('#cfg-zicht-skins');
+    await page.uncheck('#cfg-zicht-highlow');
+    await page.evaluate(() => window.slaLadderInstellingenOp());
+    await expect.poll(async () => {
+      const c = (await beheerDb.doc('ladders/mp').get()).data()?.config || {};
+      return JSON.stringify([c.spelvormenZichtbaar?.wolf, c.spelvormenMee?.wolf, c.spelvormenZichtbaar?.skins,
+        c.spelvormenZichtbaar?.highlow, c.spelvormenMee?.matchplay]);
+    }, { timeout: 15000, message: 'de keuzes staan in de database' }).toBe('[true,true,true,false,true]');
+
+    await page.reload();
+    await expect(page.locator('#ladder-list-mp')).toBeVisible({ timeout: 25000 });
+    await page.click('#nav-partij-btn');
+    await page.selectOption('#partij-ladder-select', 'mp').catch(() => {});
+    await expect(page.locator('#speltype-wolf-label'), 'Wolf staat er nu').toBeVisible();
+    await expect(page.locator('#speltype-skins-label'), 'Skins ook').toBeVisible();
+    await expect(page.locator('#speltype-stableford-label'), 'Stableford niet').toBeHidden();
+    await expect(page.locator('#speltype-highlow-label'), 'High-Low uitgezet').toBeHidden();
+    await expect(page.locator('#speltype-matchplay-label'), 'matchplay altijd').toBeVisible();
+  });
+
+  test('SPELVORM-SKINS: bonussen aanvinken, aantikken, en "aanpassen" onthoudt ze', async ({ browser }) => {
+    test.setTimeout(240000);
+    await beheerDb.doc('ladders/mp').set({ config: { spelvormenZichtbaar: { skins: true }, spelvormenMee: { skins: true } } }, { merge: true });
+    const ctx = await browser.newContext();
+    const cees = await ctx.newPage();
+    let partijId = null;
+    try {
+      await inloggen(cees, 'cees');
+      await expect(cees.locator('#ladder-list-mp')).toContainText('Nina Nieuw', { timeout: 25000 });
+      await cees.click('#nav-partij-btn');
+      await cees.selectOption('#partij-ladder-select', 'mp').catch(() => {});
+      await cees.selectOption('#baan-select', 'De Goyer');
+      await cees.fill('#player-2', 'Nina');
+      await cees.locator('#speler-lijst-2 .speler-zoek-item', { hasText: 'Nina Nieuw' }).first().click();
+      const antwoorden = ['Gijs Gast', '20'];
+      const opDialoog = d => d.accept(antwoorden.shift());
+      cees.on('dialog', opDialoog);
+      await cees.click('#add-guest-btn');
+      await expect(cees.locator('[id^="slot-"][data-speler-id^="gast_"]')).toHaveCount(1, { timeout: 10000 });
+      cees.off('dialog', opDialoog);
+
+      await expect(cees.locator('#bonus-wrap'), 'bonussen alleen bij Skins').toBeHidden();
+      await cees.check('#speltype-skins');
+      await expect(cees.locator('#bonus-wrap')).toBeVisible();
+      await cees.check('#bonus-wrap input.bonus-aan[value="sandy"]');
+      await cees.check('#bonus-wrap input.bonus-aan[value="birdie"]');
+      await cees.locator('#page-partij button:has-text("Partij starten")').first().click();
+      await expect(cees.locator('#page-ronde')).toHaveClass(/active/, { timeout: 20000 });
+
+      const partij = ((await beheerDb.doc('ladders/mp').get()).data()?.actievePartijen || []).find(p => p.speltype === 'skins');
+      partijId = partij.partijId;
+      expect(partij.bonussen, 'de keuze staat bij de partij').toEqual({ aan: ['sandy', 'birdie'], waarde: 'skin', doorschuiven: true });
+
+      // Hole 1 (par 4): Cees 4 (par), Nina 3 (echte birdie), Gijs 5.
+      const vakken = cees.locator('#scorecard-body tr:not(.spelvorm-extra)').nth(0).locator('input[type=number]');
+      for (const [i, v] of [[0, 4], [1, 3], [2, 5]]) { await vakken.nth(i).fill(String(v)); await vakken.nth(i).blur(); }
+      // Sandy voor Cees (par: telt) en Gijs (bogey: telt niet).
+      await cees.locator('button[data-bonus="sandy"][data-hole="0"]', { hasText: 'Cees' }).click();
+      await cees.locator('button[data-bonus="sandy"][data-hole="0"]', { hasText: 'Gijs' }).click();
+      const cel = cees.locator('#scorecard-body tr:not(.spelvorm-extra)').nth(0).locator('td').last();
+      await expect(cel, 'sandy Cees + birdie Nina, Gijs niets').toContainText('+1-1-0', { timeout: 10000 });
+      const uids = partij.spelers.map(s => s.uid);
+      await expect.poll(async () =>
+        (await beheerDb.doc(`ladders/mp/partijen/${partijId}/scores/_b_sandy`).get()).data()?.holes?.['0'],
+        { timeout: 15000, message: 'de sandy is opgeslagen' }).toBe(`${uids[0]},${uids[2]}`);
+
+      // "Aanpassen" onthoudt Skins en de bonussen.
+      await cees.click('#ronde-instellingen-btn');
+      await expect(cees.locator('#page-partij')).toHaveClass(/active/, { timeout: 10000 });
+      await expect(cees.locator('#speltype-skins')).toBeChecked();
+      await expect(cees.locator('#bonus-wrap input.bonus-aan[value="sandy"]')).toBeChecked();
+      await expect(cees.locator('#bonus-wrap input.bonus-aan[value="birdie"]')).toBeChecked();
+      await expect(cees.locator('#bonus-wrap input.bonus-aan[value="chippie"]')).not.toBeChecked();
+    } finally {
+      // De partij weer weg, zodat Cees en Nina vrij zijn voor de volgende proef.
+      if (partijId) {
+        const lad = (await beheerDb.doc('ladders/mp').get()).data() || {};
+        await beheerDb.doc('ladders/mp').update({
+          actievePartijen: (lad.actievePartijen || []).filter(p => p.partijId !== partijId) });
+      }
+      await ctx.close();
+    }
+  });
+
+  test('SPELVORM-WOLF: de wolf kiest per hole, punten tellen, de ladder schuift', async ({ browser }) => {
+    test.setTimeout(240000);
+    // Los te draaien: Wolf zichtbaar en meetellend, wat de vorige proef ook doet.
+    await beheerDb.doc('ladders/mp').set({ config: { spelvormenZichtbaar: { wolf: true }, spelvormenMee: { wolf: true } } }, { merge: true });
+    const ctx = await browser.newContext();
+    const cees = await ctx.newPage();
+    try {
+      await inloggen(cees, 'cees');
+      await expect(cees.locator('#ladder-list-mp')).toContainText('Nina Nieuw', { timeout: 25000 });
+      await cees.click('#nav-partij-btn');
+      await cees.selectOption('#partij-ladder-select', 'mp').catch(() => {});
+      await cees.selectOption('#baan-select', 'De Goyer');
+      await cees.fill('#player-2', 'Nina');
+      await cees.locator('#speler-lijst-2 .speler-zoek-item', { hasText: 'Nina Nieuw' }).first().click();
+      const antwoorden = ['Gijs Gast', '20', 'Gert Gast', '24'];
+      const opDialoog = d => d.accept(antwoorden.shift());
+      cees.on('dialog', opDialoog);
+      await cees.click('#add-guest-btn');
+      await expect(cees.locator('[id^="slot-"][data-speler-id^="gast_"]')).toHaveCount(1, { timeout: 10000 });
+      await cees.click('#add-guest-btn');
+      await expect(cees.locator('[id^="slot-"][data-speler-id^="gast_"]')).toHaveCount(2, { timeout: 10000 });
+      cees.off('dialog', opDialoog);
+      await cees.check('#speltype-wolf');
+      await expect(cees.locator('#speltype-hint')).toContainText('Exact 4 spelers');
+      await cees.locator('#page-partij button:has-text("Partij starten")').first().click();
+      await expect(cees.locator('#page-ronde')).toHaveClass(/active/, { timeout: 20000 });
+
+      const invullen = async (hole, waarden) => {
+        const vakken = cees.locator('#scorecard-body tr:not(.spelvorm-extra)').nth(hole).locator('input[type=number]');
+        for (let i = 0; i < waarden.length; i++) { await vakken.nth(i).fill(String(waarden[i])); await vakken.nth(i).blur(); }
+      };
+      const kies = async (hole, tekst) => {
+        const sel = cees.locator(`select[data-extra="_wolf"][data-hole="${hole}"]`);
+        const waarde = await sel.evaluate((el, t) =>
+          [...el.options].find(o => o.textContent.includes(t))?.value, tekst);
+        await sel.selectOption(waarde);
+      };
+      const punten = hole => cees.locator('#scorecard-body tr:not(.spelvorm-extra)').nth(hole).locator('td').last();
+
+      // Hole 1: Cees is wolf, kiest Nina. Beste bal 4 tegen 5 → 2 punten elk.
+      await expect(cees.locator('#scorecard-body tr.spelvorm-extra').first(), 'de wolf van hole 1 is Cees')
+        .toContainText('Cees');
+      await invullen(0, [4, 5, 5, 6]);
+      await expect(punten(0), 'zonder keuze nog geen punten').toHaveText('kies');
+      await kies(0, 'Nina');
+      await expect(punten(0)).toHaveText('2-2-0-0', { timeout: 10000 });
+      // v5.51.1: het menu is breed genoeg voor "met Nina" (was 110 px).
+      const breedte = await cees.locator('select[data-extra="_wolf"][data-hole="0"]').evaluate(el => el.offsetWidth);
+      expect(breedte, 'het wolf-menu vult de regel').toBeGreaterThan(150);
+      // v5.51.1: hole 3 (wolf Gijs) heeft nog geen keuze, maar wel scores — dan
+      // hoort er "kies" te staan, geen punten (was: telde als partner Cees).
+      await invullen(2, [3, 4, 4, 3]);
+      await expect(punten(2), 'niets gekozen telt niet').toHaveText('kies', { timeout: 10000 });
+      // Hole 2: Nina is wolf en speelt alleen: 3 tegen 4 → 4 punten.
+      await invullen(1, [5, 3, 4, 4]);
+      await kies(1, 'alleen');
+      await expect(punten(1)).toHaveText('0-4-0-0', { timeout: 10000 });
+
+      // De keuze staat in de database, bij de scores van deze partij.
+      const partij = ((await beheerDb.doc('ladders/mp').get()).data()?.actievePartijen || [])
+        .find(p => p.speltype === 'wolf');
+      expect(partij, 'de partij loopt').toBeTruthy();
+      const nina = partij.spelers.find(s => s.naam === 'Nina Nieuw');
+      await expect.poll(async () =>
+        (await beheerDb.doc(`ladders/mp/partijen/${partij.partijId}/scores/_wolf`).get()).data()?.holes,
+        { timeout: 15000, message: 'de keuzes van de wolf zijn opgeslagen' })
+        .toEqual(expect.objectContaining({ 0: nina.uid, 1: 'alleen' }));
+
+      // Afsluiten: Nina 6, Cees 2, gasten 0 → Nina 1e, Cees 2e.
+      await cees.click('#ronde-afsluiten-btn');
+      await expect(cees.locator('#modal-uitslag')).toHaveClass(/open/, { timeout: 10000 });
+      await expect(cees.locator('#spelvorm-keuze')).toContainText('Winnaar +2');
+      const voor = async naam => {
+        const s = (await beheerDb.collection('spelers').where('naam', '==', naam).get()).docs[0];
+        return (await beheerDb.doc(`ladders/mp/standen/${s.id}`).get()).data() || {};
+      };
+      const ninaVoor = await voor('Nina Nieuw');
+      await cees.click('#modal-uitslag button:has-text("Uitslag verwerken")');
+      await expect.poll(async () => ((await beheerDb.doc('ladders/mp').get()).data()?.actievePartijen || [])
+        .some(p => p.partijId === partij.partijId), { timeout: 20000, message: 'de partij is afgerond' }).toBe(false);
+      const ninaNa = await voor('Nina Nieuw');
+      expect(ninaNa.gewonnen, 'Nina boekt een winst').toBe((ninaVoor.gewonnen || 0) + 1);
+      expect(ninaNa.rank, 'en staat hoger dan voorheen').toBeLessThan(ninaVoor.rank);
+    } finally {
+      await ctx.close();
+    }
+  });
+});

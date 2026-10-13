@@ -166,7 +166,15 @@ check('geen config: telt mee',                  _teltMee(undefined, 'matchplay')
 check('uitgezette spelvorm telt niet mee',      _teltMee(_uit, 'amerikaantje'), false);
 check('aangezette spelvorm telt wel mee',       _teltMee(_uit, 'matchplay'), true);
 check('onbekende spelvorm telt mee',            _teltMee({spelvormenMee:{matchplay:false}}, 'watdanook'), true);
-check('leeg speltype geldt als matchplay',      _teltMee({spelvormenMee:{matchplay:false}}, undefined), false);
+// v5.51.0: Matchplay telt ALTIJD mee (Sierk, 13 oktober 2026) — ook als er
+// van vroeger nog `matchplay: false` in de instellingen staat.
+check('matchplay telt altijd mee, ook met oud "uit"', _teltMee({spelvormenMee:{matchplay:false}}, 'matchplay'), true);
+check('leeg speltype geldt als matchplay',      _teltMee({spelvormenMee:{matchplay:false}}, undefined), true);
+// v5.51.0: de nieuwe spelvormen tellen pas mee als de beheerder ze aanzet.
+check('nieuwe spelvorm zonder instelling telt niet mee', _teltMee({}, 'skins'), false);
+check('nieuwe spelvorm zonder config telt niet mee',     _teltMee(undefined, 'wolf'), false);
+check('nieuwe spelvorm aangezet telt mee',      _teltMee({spelvormenMee:{skins:true}}, 'skins'), true);
+check('oude spelvorm zonder instelling telt nog steeds mee', _teltMee({spelvormenMee:{skins:true}}, 'highlow'), true);
 
 console.log('\n══ HET STEMPEL OP EEN UITSLAG (v5.41.1) ══');
 // Teruggedraaid wint van "telt niet mee": een teruggedraaide uitslag heeft

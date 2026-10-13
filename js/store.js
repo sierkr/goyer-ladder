@@ -116,6 +116,9 @@ export const DEFAULT_LADDER_CONFIG = {
   // partij gewoon gespeeld en bewaard, maar verschuift er niemand op de ladder
   // en telt hij niet mee voor de activiteitsbonussen.
   spelvormenMee: { matchplay: true, amerikaantje: true, highlow: true },
+  // v5.51.0: welke spelvormen in het partijformulier staan. Matchplay altijd;
+  // ontbreekt een spelvorm hier, dan zie spelvormZichtbaar() in js/spelvormen.js.
+  spelvormenZichtbaar: { amerikaantje: true, highlow: true },
   // v5.1.0: de activiteitscorrectie draait niet meer bij elke partij, maar
   // periodiek op maandagochtend 04:00 (Cloud Function verwerkActiviteitPeriodiek).
   // 'maand' = eerste maandag van de maand · 'week' = elke maandag.
@@ -135,10 +138,23 @@ export const DEFAULT_LADDER_CONFIG = {
 //  terwijl dat niet de bedoeling was, dan een stand die stilletjes niet
 //  bijwerkt.
 // ============================================================
+//
+//  ⚠ v5.51.0 — TWEE AANPASSINGEN (Sierk, 13 oktober 2026):
+//   1. Matchplay telt ALTIJD mee. Het vinkje in Beheer is weg; een oude
+//      `spelvormenMee.matchplay: false` wordt genegeerd.
+//   2. De nieuwe spelvormen (lijst hieronder) tellen pas mee als de beheerder
+//      ze aanzet. Voor de drie oude blijft de terugval "telt mee".
+//  De lijst staat hier letterlijk, niet geïmporteerd: tests/partij.test.cjs
+//  knipt deze functie los uit het bestand. tests/spelvormen.test.cjs
+//  controleert dat hij gelijk loopt met NIEUWE_SPELVORMEN in js/spelvormen.js.
+// ============================================================
 export function spelvormTeltMee(cfg, speltype) {
+  const NIEUW = ['skins', 'stableford', 'nassau', 'sixes', 'wolf', 'bbb'];
+  const t = String(speltype || 'matchplay');
+  if (t === 'matchplay') return true;
   const mee = cfg && cfg.spelvormenMee;
-  if (!mee || typeof mee !== 'object') return true;
-  return mee[String(speltype || 'matchplay')] !== false;
+  if (!mee || typeof mee !== 'object' || !(t in mee)) return !NIEUW.includes(t);
+  return mee[t] !== false;
 }
 
 // ============================================================

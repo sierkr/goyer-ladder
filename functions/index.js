@@ -751,6 +751,51 @@ function winstAmerikaantje(posities) {
   return p.map(x => x === 1);
 }
 
+// ============================================================
+//  v5.51.0 — DE NIEUWE SPELVORMEN (Skins, Stableford, Nassau, Sixes, Wolf,
+//  Bingo Bango Bongo)
+// ------------------------------------------------------------
+//  Allemaal een eindstand in plekken, net als het Amerikaantje. Goedgekeurd
+//  door Sierk op 13 oktober 2026:
+//    2 spelers  +1 / −1
+//    3 spelers  +2 / 0 / −2      (gelijk aan het Amerikaantje)
+//    4 spelers  +2 / +1 / −1 / −2
+//  Gedeelde plek: het gemiddelde van de gedeelde plekken, afgerond naar 0.
+//
+//  ⚠ KOPIE: js/spelvormen.js heeft dezelfde regel voor de tekst op het
+//  scherm. tests/spelvormen.test.cjs vergelijkt de twee.
+// ============================================================
+const NIEUWE_SPELVORMEN = ['skins', 'stableford', 'nassau', 'sixes', 'wolf', 'bbb'];
+const SPELERS_PER_SPELVORM = {
+  skins: [2, 4], stableford: [2, 4], nassau: [2, 2],
+  sixes: [4, 4], wolf: [4, 4], bbb: [2, 4],
+};
+const BASIS_VERSCHUIVING = { 2: [1, -1], 3: [2, 0, -2], 4: [2, 1, -1, -2] };
+
+function geldigePosities(posities, n) {
+  if (!Array.isArray(posities) || posities.length !== n || n < 2) return false;
+  const p = posities.map(Number);
+  if (p.some(x => !Number.isInteger(x) || x < 1 || x > n)) return false;
+  const s = p.slice().sort((a, b) => a - b);
+  if (s[0] !== 1) return false;
+  for (let k = 1; k < n; k++) {
+    if (s[k] !== s[k - 1] && s[k] !== k + 1) return false;
+  }
+  return true;
+}
+
+function verschuivingPosities(posities) {
+  const p = Array.isArray(posities) ? posities.map(Number) : [];
+  const basis = BASIS_VERSCHUIVING[p.length];
+  if (!basis || !geldigePosities(p, p.length)) return null;
+  return p.map(pos => {
+    const k = p.filter(x => x === pos).length;
+    let som = 0;
+    for (let r = pos; r < pos + k; r++) som += basis[r - 1];
+    return Math.trunc(som / k) + 0;
+  });
+}
+
 // teams: 0 of 1 per speler. winnend: 0, 1, of null bij gelijkspel.
 function verschuivingHighlow(teams, winnend) {
   const t = Array.isArray(teams) ? teams.map(Number) : [];
@@ -1497,6 +1542,17 @@ exports.verwerkPartijUitslag = onCall(
         const w = (eindstand.winnendTeam === 0 || eindstand.winnendTeam === 1)
           ? eindstand.winnendTeam : null;
         deltas = verschuivingHighlow(deelnemers.map(d => d.team), w);
+      } else if (NIEUWE_SPELVORMEN.includes(eindstand.speltype)) {
+        // v5.51.0: iedereen uit de partij moet in de eindstand staan, precies
+        // één keer, en het aantal moet bij de spelvorm passen.
+        const [min, max] = SPELERS_PER_SPELVORM[eindstand.speltype];
+        const inPartij = (partij.spelers || []).map(sp => sp && sp.uid).filter(Boolean);
+        const uniek = new Set(deelnemers.map(d => d && d.uid));
+        if (inPartij.length < min || inPartij.length > max
+            || deelnemers.length !== inPartij.length || uniek.size !== inPartij.length) {
+          throw new HttpsError('invalid-argument', 'Eindstand past niet bij deze partij.');
+        }
+        deltas = verschuivingPosities(deelnemers.map(d => d.positie));
       } else {
         throw new HttpsError('invalid-argument', 'Onbekend speltype.');
       }
@@ -1518,7 +1574,8 @@ exports.verwerkPartijUitslag = onCall(
         const s = werklijst.find(x => x.uid === d.uid);
         if (!s) return;                       // geen ladderlid (meer) -> overslaan
         s.partijen++;
-        if (eindstand.speltype === 'amerikaantje') {
+        if (eindstand.speltype === 'amerikaantje' || NIEUWE_SPELVORMEN.includes(eindstand.speltype)) {
+          // v5.51.0: ook bij de nieuwe spelvormen is "gewonnen" = op plek 1.
           if (winstAmerikaantje(deelnemers.map(x => x.positie))[i]) s.gewonnen++;
         } else if (deltas[i] > 0) {
           s.gewonnen++;

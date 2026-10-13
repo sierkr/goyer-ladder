@@ -724,6 +724,13 @@
     padding: 8px 12px !important;
     min-height: 38px !important;
   }
+  /* v5.51.0: de keuzes onder een hole (Wolf, Bingo Bango Bongo). Letter blijft
+     16px (iPhone-zoom), alleen de ruimte erin krimpt zodat er drie op een regel
+     passen. */
+  html[data-theme="matchcheck"] tr.spelvorm-extra select {
+    padding: 4px 4px !important;
+    min-height: 32px !important;
+  }
   html[data-theme="matchcheck"] #speltype-wrap label {
     padding: 8px 10px !important;
   }
@@ -1599,29 +1606,21 @@
       </label>
     </div>
 
-    <!-- v5.41.0: welke spelvormen meetellen voor de stand van DEZE ladder.
-         Kiezen kan in het partijformulier altijd; dit gaat over de telling. -->
+    <!-- v5.41.0 / v5.51.0: per spelvorm twee keuzes voor DEZE ladder.
+         Sierk, 13 oktober 2026: "Maak in beheer twee selecties ook voor de
+         bestaande spelvormen, 1 zichtbaar ja/nee, 2 telt mee ja/nee.
+         Uitzondering onderlinge matchplay, die is altijd zichtbaar en telt
+         altijd mee." De rijen worden getekend door js/beheer.js uit het
+         register in js/spelvormen.js. -->
     <div class="divider"></div>
     <div class="form-group" style="margin-top:12px">
-      <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Welke spelvormen tellen mee voor de stand</label>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark)">
-          <input type="checkbox" id="cfg-mee-matchplay" style="width:18px;height:18px;accent-color:var(--green)">
-          Matchplay
-        </label>
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark)">
-          <input type="checkbox" id="cfg-mee-amerikaantje" style="width:18px;height:18px;accent-color:var(--green)">
-          Amerikaantje
-        </label>
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark)">
-          <input type="checkbox" id="cfg-mee-highlow" style="width:18px;height:18px;accent-color:var(--green)">
-          High-Low
-        </label>
-      </div>
+      <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Spelvormen op deze ladder</label>
+      <div id="cfg-spelvormen-tabel" style="margin-top:6px"></div>
       <p style="font-size:11px;color:var(--light);margin:6px 0 0">
-        Spelers kunnen elke spelvorm blijven kiezen. Staat er een uit, dan wordt die
-        partij wel gespeeld en bewaard, maar verschuift er niemand op deze ladder en
-        telt hij niet mee voor de frequentie- en diversiteitsbonus.
+        <b>Zichtbaar</b>: staat in het partijformulier. <b>Telt mee</b>: verschuift de ladder.
+        Telt een spelvorm niet mee, dan wordt de partij wel gespeeld en bewaard, maar
+        verschuift er niemand en telt hij niet mee voor de activiteitsbonussen.
+        Matchplay staat er altijd en telt altijd mee.
       </p>
     </div>
 
@@ -1998,8 +1997,106 @@
               <input type="radio" name="speltype" id="speltype-highlow" value="highlow" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
               <span style="color:var(--dark)">High-Low <span style="font-size:11px;color:var(--light)">(2 teams van 2)</span></span>
             </label>
+            <!-- v5.51.0: zes spelvormen erbij. Welke er per ladder te zien zijn,
+                 bepaalt Beheer → ladder → Instellingen (spelvormZichtbaar in
+                 js/spelvormen.js); js/partij.js verbergt de rest. -->
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-skins-label">
+              <input type="radio" name="speltype" id="speltype-skins" value="skins" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Skins <span style="font-size:11px;color:var(--light)">(2–4 spelers)</span></span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-stableford-label">
+              <input type="radio" name="speltype" id="speltype-stableford" value="stableford" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Stableford <span style="font-size:11px;color:var(--light)">(2–4 spelers)</span></span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-nassau-label">
+              <input type="radio" name="speltype" id="speltype-nassau" value="nassau" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Nassau <span style="font-size:11px;color:var(--light)">(2 spelers)</span></span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-sixes-label">
+              <input type="radio" name="speltype" id="speltype-sixes" value="sixes" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Sixes <span style="font-size:11px;color:var(--light)">(4 spelers, wisselende koppels)</span></span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-wolf-label">
+              <input type="radio" name="speltype" id="speltype-wolf" value="wolf" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Wolf <span style="font-size:11px;color:var(--light)">(4 spelers)</span></span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-bbb-label">
+              <input type="radio" name="speltype" id="speltype-bbb" value="bbb" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Bingo Bango Bongo <span style="font-size:11px;color:var(--light)">(2–4 spelers)</span></span>
+            </label>
           </div>
           <p id="speltype-hint" style="display:none;font-size:11px;color:var(--light);margin-top:6px">Exact 3 spelers · 6 punten per hole · winnaar +2 plekken, verliezer −2</p>
+        </div>
+      </div>
+      <!-- v5.51.0: Taliban, een regel bovenop het Amerikaantje. Alleen te zien
+       als Amerikaantje gekozen is. Bewust BUITEN #speltype-wrap: de clubstijl
+       kleurt daar elk aangevinkt label groen, en dan stond "netto" groen op
+       groen (gezien op de schermafdruk van 13 oktober 2026). -->
+      <div id="taliban-wrap" style="display:none;margin-top:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark)">
+          <input type="checkbox" id="taliban-aan" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+          <span>Taliban-regel</span>
+        </label>
+        <p style="font-size:11px;color:var(--light);margin:4px 0 0">Birdie of beter, en beide anderen minstens 2 slagen slechter: alle 6 punten.</p>
+        <div id="taliban-basis-wrap" style="display:none;margin-top:8px;font-size:13px">
+<div style="color:var(--mid);margin-bottom:2px">Birdie en bogey tellen</div>
+          <div style="display:flex;gap:16px;align-items:center">
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
+            <input type="radio" name="taliban-basis" value="netto" checked style="width:auto;margin:0"> netto</label>
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
+            <input type="radio" name="taliban-basis" value="bruto" style="width:auto;margin:0"> bruto</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- v5.52.0: bonussen bij Skins. Alleen te zien als Skins gekozen is.
+           Buiten #speltype-wrap om dezelfde reden als het Taliban-blok (de
+           clubstijl kleurt daar aangevinkte labels groen). De regels staan in
+           js/spelvormen.js (BONUSSEN). -->
+      <div id="bonus-wrap" style="display:none;margin-top:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff">
+        <div style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Bonussen</div>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="sandy">
+            <span>Sandy <span style="font-size:11px;color:var(--light)">— par of beter na een bunker</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="greenie">
+            <span>Greenie <span style="font-size:11px;color:var(--light)">— par 3: dichtst bij de vlag én par</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="chippie">
+            <span>Chippie <span style="font-size:11px;color:var(--light)">— chip in één keer in</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="birdie">
+            <span>Birdie <span style="font-size:11px;color:var(--light)">— echte birdie of beter — volgt uit de score</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="barkie">
+            <span>Barkie <span style="font-size:11px;color:var(--light)">— par of beter na een boom</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="polie">
+            <span>Polie <span style="font-size:11px;color:var(--light)">— lange putt — de lengte spreken jullie af</span></span>
+          </label>
+        <div style="margin-top:8px;font-size:13px">
+          <div style="color:var(--mid);margin-bottom:2px">Een bonus is</div>
+          <div style="display:flex;gap:16px;align-items:center">
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
+            <input type="radio" name="bonus-waarde" value="skin" checked style="width:auto;margin:0"> een skin</label>
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
+            <input type="radio" name="bonus-waarde" value="punt" style="width:auto;margin:0"> een punt</label>
+          </div>
+          <p style="font-size:11px;color:var(--light);margin:2px 0 0">Skin: telt mee in de uitslag en de ladder. Punt: aparte bonusstand, telt niet mee.</p>
+        </div>
+        <div style="margin-top:8px;font-size:13px">
+<div style="color:var(--mid);margin-bottom:2px">Telt een bonus ook als de hole doorschuift?</div>
+          <div style="display:flex;gap:16px;align-items:center">
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
+            <input type="radio" name="bonus-door" value="ja" checked style="width:auto;margin:0"> ja</label>
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
+            <input type="radio" name="bonus-door" value="nee" style="width:auto;margin:0"> nee</label>
+          </div>
         </div>
       </div>
 
