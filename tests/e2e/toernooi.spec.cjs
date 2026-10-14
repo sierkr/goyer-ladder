@@ -670,6 +670,66 @@ test.describe('Toernooi — de hele route', () => {
   });
 
   // ============================================================
+  //  v6.1.2 — NA HET INLOGGEN OP DE GESTARTE DAG
+  // ============================================================
+  //  Sierk, 14 oktober 2026: "een toernooi met meerdere dagen dan zou de focus
+  //  na inloggen op de gestarte dag moeten komen." Het starten van een dag
+  //  verzet het opgeslagen dagnummer niet; daarom opende een toernooi van twee
+  //  dagen op dag 1 terwijl dag 2 liep. Dit bootst precies dat na.
+  // ============================================================
+  test('DAGFOCUS: na het inloggen kom je op de gestarte dag uit', async ({ browser }) => {
+    test.setTimeout(240000);
+    const ctxCoord  = await browser.newContext();
+    const ctxAnna   = await browser.newContext();
+    const ctxCoord2 = await browser.newContext();
+    try {
+      const coord = await ctxCoord.newPage();
+      jaOpAlles(coord);
+      await inloggen(coord, 'coord@MPladder.stb');
+      await naarToernooi(coord);
+      await vulAanmaakformulier(coord, 'Dagfocus', 2);
+      for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(coord, n);
+      await naarFlightIndeling(coord);
+      await slaOpEnStart(coord);   // dag 1 gestart
+      await expect(coord.locator('#toernooi-detail')).toContainText('Dagfocus', { timeout: 15000 });
+
+      // Dag 1 afgesloten, dag 2 gestart — rechtstreeks in de database, net zoals
+      // de knoppen het wegschrijven. ⚠ Niet via sluitDagAf(): vlak na het starten
+      // gaat het afsluiten soms verloren (gemeten 14 okt 2026: 1 van 3 keer; zie
+      // OPENSTAAND). Dat is een andere fout, en deze proef gaat over iets anders.
+      const t0 = await haalToernooi('Dagfocus', 30, x => x.dagen?.[0]?.gestart === true);
+      const dagen = t0.dagen.map((d, i) => i === 0 ? { ...d, afgerond: true } : { ...d, gestart: true });
+      await beheerDb.doc(`toernooien/${t0._id}`).update({ dagen });
+      const t = await haalToernooi('Dagfocus', 30, x => x.dagen?.[1]?.gestart === true && x.dagen?.[0]?.afgerond === true);
+      expect(t.actiefDagNr ?? 1, 'het opgeslagen dagnummer staat nog op 1 — juist daar ging het mis').toBe(1);
+
+      // ── Een speler logt in: hij komt op dag 2 uit ──
+      const pa = await ctxAnna.newPage();
+      jaOpAlles(pa);
+      await inloggen(pa, 'anna@MPladder.stb');
+      await naarToernooi(pa);
+      await expect(pa.locator('#toernooi-detail [data-dagtab][data-actief]'),
+        'de speler staat op de gestarte dag').toHaveText(/Dag 2/, { timeout: 20000 });
+
+      // ── De wedstrijdleiding op een tweede toestel ook ──
+      const c2 = await ctxCoord2.newPage();
+      jaOpAlles(c2);
+      await inloggen(c2, 'coord@MPladder.stb');
+      await naarToernooi(c2);
+      await openLopendToernooi(c2);
+      await expect(c2.locator('#toernooi-detail [data-dagtab][data-actief]'),
+        'de wedstrijdleiding staat op de gestarte dag').toHaveText(/Dag 2/, { timeout: 20000 });
+      await expect(c2.locator('#toernooi-detail')).toContainText('Scores dag 2');
+
+      // ── Zelf een andere dag kiezen werkt nog gewoon ──
+      await pa.click('#toernooi-detail [data-dagtab="1"]');
+      await expect(pa.locator('#toernooi-detail [data-dagtab][data-actief]')).toHaveText(/Dag 1/);
+    } finally {
+      await ctxCoord.close(); await ctxAnna.close(); await ctxCoord2.close();
+    }
+  });
+
+  // ============================================================
   //  v5.11.1 — DE ONDERLINGE STAND AAN OF UIT VOOR DEELNEMERS
   // ============================================================
   //  Er bestond al een schakelaar, maar verstopt als het inklap-pijltje op de

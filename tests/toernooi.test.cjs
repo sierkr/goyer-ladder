@@ -376,6 +376,41 @@ K._zetWindow('_bekijkDagNr', undefined);
 check('getDag 1-based', K.getDag(t,1).dagNr, 1);
 check('getDag buiten bereik -> null', K.getDag(t,5), null);
 
+// ── v6.1.2: op welke dag kom je uit na het inloggen? ──────────
+//  Sierk, 14 oktober 2026: "een toernooi met meerdere dagen dan zou de focus na
+//  inloggen op de gestarte dag moeten komen." Het starten van een dag verzet
+//  `actiefDagNr` niet; daarom opende een toernooi op dag 1 terwijl dag 2 liep.
+const dagMet = (dagNr, extra) => ({ ...maakDag(dagNr, {}), ...extra });
+K._zetWindow('_bekijkDagNr', undefined);
+t = maakT([A], { actiefDagNr: 1, dagen: [dagMet(1, { gestart: true, afgerond: true }), dagMet(2, { gestart: true })] });
+check('dag 1 afgesloten, dag 2 gestart (actiefDagNr nog 1) → dag 2', K.actieveDag(t).dagNr, 2);
+t = maakT([A], { actiefDagNr: 2, dagen: [dagMet(1, { gestart: true }), dagMet(2, {})] });
+check('dag 2 toegevoegd terwijl dag 1 loopt (actiefDagNr 2) → dag 1', K.actieveDag(t).dagNr, 1);
+t = maakT([A], { actiefDagNr: 1, dagen: [dagMet(1, { gestart: true }), dagMet(2, { gestart: true }), dagMet(3, {})] });
+check('twee dagen tegelijk gestart → de laatste', K.actieveDag(t).dagNr, 2);
+t = maakT([A], { actiefDagNr: 2, dagen: [dagMet(1, { gestart: true, afgerond: true }), dagMet(2, {})] });
+check('niets loopt → zoals altijd actiefDagNr', K.actieveDag(t).dagNr, 2);
+t = maakT([A], { actiefDagNr: 1, dagen: [dagMet(1, { gestart: true, afgerond: true }), dagMet(2, { gestart: true, afgerond: true })] });
+check('alles afgesloten → zoals altijd actiefDagNr', K.actieveDag(t).dagNr, 1);
+t = maakT([A], { actiefDagNr: 1, dagen: [dagMet(1, { gestart: true, afgerond: true }), dagMet(2, { gestart: true })] });
+K._zetWindow('_bekijkDagNr', 1);
+check('zelf een tabblad gekozen gaat altijd voor', K.actieveDag(t).dagNr, 1);
+K._zetWindow('_bekijkDagNr', undefined);
+check('zonder dagen valt hij niet om', K.standaardDagNr({}), 1);
+// De meekijkpagina heeft een kopie (lopendeDagNrLive). Alle combinaties van
+// drie dagen × (concept / gestart / afgesloten) × actiefDagNr 1-3 naast elkaar.
+{
+  const LV = require('./harnas.cjs').laadMarkerKern().meekijk;
+  const standen = [{}, { gestart: true }, { gestart: true, afgerond: true }];
+  let anders = 0, n = 0;
+  for (const a of standen) for (const b of standen) for (const c of standen) for (const act of [1, 2, 3, undefined]) {
+    const tt = { actiefDagNr: act, dagen: [dagMet(1, a), dagMet(2, b), dagMet(3, c)] };
+    n++;
+    if (K.standaardDagNr(tt) !== LV.lopendeDagNrLive(tt)) anders++;
+  }
+  check(`app en meekijkpagina kiezen dezelfde dag (${n} combinaties)`, anders, 0);
+}
+
 console.log('\n══ TOERNOOI — SCORESTATUS ══');
 K._zetLive({});
 t = maakT([A,B], {dagen:[maakDag(1,{a:[null,null], b:[null,null]})]});

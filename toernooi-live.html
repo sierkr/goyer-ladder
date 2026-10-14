@@ -134,8 +134,24 @@ let _docUnsub = null;    // main-doc onSnapshot unsubscribe
 // v5.26.0: 0 betekent Totaal — de stand over alle dagen samen.
 let gekozenDagNr = null;
 
+// v6.1.2: KOPIE van standaardDagNr() uit js/toernooi.js — de dag die gestart en
+// nog niet afgesloten is (bij twee: de laatste), anders actiefDagNr. Zonder deze
+// regel opende deze pagina op dag 1 terwijl dag 2 liep, omdat het starten van
+// een dag `actiefDagNr` niet verzet. De rekentest legt beide kanten naast elkaar.
+function lopendeDagNrLive(t) {
+  const dagen = t?.dagen || [];
+  let lopend = null;
+  dagen.forEach((d, i) => {
+    if (d && (d.gestart === true) && d.afgerond !== true) lopend = i + 1;
+  });
+  return lopend ?? t?.actiefDagNr ?? 1;
+}
+
 function pasGekozenDagToe() {
-  if (!toernooiData || !gekozenDagNr) return;   // null en 0 doen hier niets
+  if (!toernooiData) return;
+  // v6.1.2: geen eigen keuze → de dag die loopt.
+  if (gekozenDagNr === null) { toernooiData.actiefDagNr = lopendeDagNrLive(toernooiData); return; }
+  if (!gekozenDagNr) return;   // 0 (Totaal) doet hier niets
   const aantal = (toernooiData.dagen || []).length;
   if (gekozenDagNr >= 1 && gekozenDagNr <= aantal) {
     toernooiData.actiefDagNr = gekozenDagNr;

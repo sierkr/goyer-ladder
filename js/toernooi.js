@@ -53,10 +53,39 @@ const toernooiFout = meldFout;
 function actieveDag(t) {
   t = t || toernooiData;
   if (!t) return null;
-  const dagNr = window._bekijkDagNr ?? t.actiefDagNr ?? 1;
+  const dagNr = window._bekijkDagNr ?? standaardDagNr(t);
   return (t.dagen || [])[dagNr - 1]
       || (t.dagen || [])[(t.actiefDagNr || 1) - 1]
       || null;
+}
+
+// ============================================================
+//  v6.1.2 — OP WELKE DAG KOM JE UIT?
+// ------------------------------------------------------------
+//  Sierk, 14 oktober 2026: "een toernooi met meerdere dagen dan zou de focus na
+//  inloggen op de gestarte dag moeten komen."
+//
+//  WAT ER MIS WAS. Zonder eigen keuze (`_bekijkDagNr`) gold `t.actiefDagNr`. Dat
+//  getal staat bij het aanmaken op 1 en springt bij "+ Dag toevoegen" naar de
+//  nieuwe dag — maar bij het STARTEN van een dag verandert het niet. Een
+//  toernooi dat met twee dagen werd aangemaakt opende dus op dag 1 terwijl dag 2
+//  liep; en wie dag 2 toevoegde terwijl dag 1 liep, kwam op een dag uit die nog
+//  niet gestart was.
+//
+//  Nu: de dag die GESTART en nog niet afgesloten is. Lopen er twee, de laatste.
+//  Loopt er geen, dan blijft het `actiefDagNr`, zoals altijd. Wordt elke keer
+//  uitgerekend, niet opgeslagen — dus ook een toernooi dat al loopt heeft er
+//  meteen baat bij. Zelf een tabblad kiezen gaat hier altijd voor.
+//  ⚠ toernooi-live.html heeft een kopie (lopendeDagNrLive); de rekentest legt
+//  beide naast elkaar.
+// ============================================================
+function standaardDagNr(t) {
+  const dagen = t?.dagen || [];
+  let lopend = null;
+  dagen.forEach((d, i) => {
+    if (d && (d.gestart === true) && d.afgerond !== true) lopend = i + 1;
+  });
+  return lopend ?? t?.actiefDagNr ?? 1;
 }
 
 // Geeft dag op basis van dagNr (1-based)
@@ -3474,44 +3503,57 @@ async function slaFlightIndelingDagOp() {
 // Sluit dag af — consolideer live-scores naar hoofddoc, zet afgerond=true
 async function sluitDagAf() {
   try {
-    const t   = toernooiData;
-    const dag = actieveDag(t);
-    if (!dag) return;
+    const dag0 = actieveDag(toernooiData);
+    if (!dag0) return;
+    const dagNr = dag0.dagNr;
 
-    if (!confirm(`Dag ${dag.dagNr} afsluiten? Scores zijn daarna niet meer aanpasbaar.`)) return;
+    if (!confirm(`Dag ${dagNr} afsluiten? Scores zijn daarna niet meer aanpasbaar.`)) return;
 
     // v3.0.0-11.106: consolideer live/-subcollectie → dag.scores voordat we afsluiten.
     // Haal verse data op uit Firestore (niet alleen de lokale _liveScores cache).
     let verseLive = null;   // v6.1.0: ook voor de handicaps hieronder
     try {
       const liveSnap = await getDocs(collection(db, 'toernooien', actieveToernooiId, 'live'));
-      if (!dag.scores) dag.scores = {};
       verseLive = {};
-      liveSnap.docs.forEach(liveDoc => {
-        verseLive[liveDoc.id] = liveDoc.data();
-        const scores = _liveScoresVanDag(liveDoc.data(), dag.dagNr);
-        if (scores && scores.length > 0) dag.scores[liveDoc.id] = scores;
-      });
+      liveSnap.docs.forEach(liveDoc => { verseLive[liveDoc.id] = liveDoc.data(); });
     } catch(e) {
+      // Dan de lokale kopie — zie hieronder.
       console.warn('Live scores ophalen bij afsluiten mislukt, val terug op lokale data:', e);
-      // Gebruik _liveScores als fallback
-      if (!dag.scores) dag.scores = {};
-      Object.keys(_liveScores).forEach(uid => {
-        const scores = _liveScoresVanDag(_liveScores[uid], dag.dagNr);
-        if (scores && scores.length > 0) dag.scores[uid] = scores;
-      });
     }
+
+    // ⚠ v6.1.3 — PAK DE DAG OPNIEUW, NA DE VRAAG EN NA HET LEZEN.
+    // Tot hier werd alles op de `dag` van vóór de vraag gezet. Zolang de vraag
+    // openstaat en de live-scores worden opgehaald, kan de meeluisteraar
+    // `toernooiData` vervangen door een verse serverkopie. De oude `dag` wees dan
+    // in het WEGGEGOOIDE object: `afgerond = true` kwam daar terecht en
+    // slaToernooiOp() schreef de NIEUWE kopie weg — zonder afgerond, zonder de
+    // scores, zonder de vastgelegde handicaps. Geen melding: het scherm zei
+    // gewoon "afgesloten". Gemeten 14 oktober 2026: vlak na het starten afsluiten
+    // ging 1 van de 3 keer verloren. Zelfde fout als in startDag() (v5.15.0).
+    // Vanaf hier tot slaToernooiOp() staat GEEN `await` — zo kan er niets meer
+    // tussendoor komen. Bewaakt door tests/afsluiten.test.cjs: die vervangt
+    // `toernooiData` precies tijdens de vraag en tijdens het lezen. (Een
+    // browserproef kon dat toeval niet betrouwbaar opwekken.)
+    const t = toernooiData;
+    const dag = (t?.dagen || []).find(d => d.dagNr === dagNr);
+    if (!dag) { toast('De dag is ondertussen verdwenen — ververs het scherm'); return; }
+
+    const bron = verseLive || _liveScores;
+    if (!dag.scores) dag.scores = {};
+    Object.keys(bron).forEach(uid => {
+      const scores = _liveScoresVanDag(bron[uid], dagNr);
+      if (scores && scores.length > 0) dag.scores[uid] = scores;
+    });
 
     // v6.1.0 — DE PLAYING HANDICAP VAN DEZE DAG VASTLEGGEN. Zo rekent de dag
     // daarna altijd met de handicap waarmee hij gespeeld is, ook als iemand
     // later zijn exact handicap aanpast. `door` onthoudt waar hij vandaan kwam
     // (speler, indeler, of de exact handicap omdat niemand hem invulde).
     // Moet vóór `afgerond = true`: daarna leest spelerPlayingHcp() alleen nog dit.
-    const liveVoorHcp = verseLive || _liveScores;
     const vastgelegdOp = Date.now();
     if (!dag.playingHcp) dag.playingHcp = {};
     (t.spelers || []).forEach(sp => {
-      const p = spelerPlayingHcp(sp, dag, liveVoorHcp[sp.uid]);
+      const p = spelerPlayingHcp(sp, dag, bron[sp.uid]);
       if (p.waarde !== null) dag.playingHcp[sp.uid] = { waarde: p.waarde, op: vastgelegdOp, door: p.door };
     });
 
@@ -3519,7 +3561,7 @@ async function sluitDagAf() {
     dag.uitslagZichtbaar = true;
 
     await slaToernooiOp();
-    toast(`Dag ${dag.dagNr} afgesloten`);
+    toast(`Dag ${dagNr} afgesloten`);
     renderToernooiActief();
   } catch(e) { toernooiFout('Dag afsluiten', e); }
 }
@@ -4650,7 +4692,8 @@ function renderToernooiActief() {
   (t.dagen || []).forEach(d => {
     const actief = !toonToernooiTab && !toonSpelersTab && d.dagNr === dagNr;
     const kleur = d.afgerond ? 'var(--mid)' : 'var(--green)';
-    dagTabsHtml += `<button onclick="selecteerDag(${d.dagNr})"
+    // v6.1.2: data-dagtab/data-actief zodat de browserproef ziet op welke dag je uitkomt.
+    dagTabsHtml += `<button onclick="selecteerDag(${d.dagNr})" data-dagtab="${d.dagNr}"${actief ? ' data-actief="1"' : ''}
       style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px solid ${actief ? kleur : 'var(--border)'};border-bottom:none;background:${actief ? kleur : 'transparent'};color:${actief ? 'white' : 'var(--mid)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">
       Dag ${d.dagNr}${d.afgerond ? ' ✓' : ''}
     </button>`;
@@ -6304,7 +6347,7 @@ function dagPuntenTotaal(t) {
 
 function berekenTPunten(dagNrOverride) {
   const t = toernooiData;
-  const rlDag = dagNrOverride !== undefined ? dagNrOverride : (window._ranglijstDagNr ?? (t.actiefDagNr || 1));
+  const rlDag = dagNrOverride !== undefined ? dagNrOverride : (window._ranglijstDagNr ?? standaardDagNr(t));   // v6.1.2
 
   if (rlDag === 0) {
     // Totaal: optel over alle dagen
@@ -6544,7 +6587,7 @@ function renderTTeamstand() {
   const teams = teamsVan(t);
   if (!t || teams.length === 0) { el.innerHTML = ''; return; }
 
-  const rlDag = window._ranglijstDagNr ?? (t.actiefDagNr || 1);
+  const rlDag = window._ranglijstDagNr ?? standaardDagNr(t);   // v6.1.2: de dag die loopt
   const telling = teamTellingVan(t);
   const hoogWint = teamHoogWint(telling);
   const stand = teamStand(teams, t.spelers || [], teamScoresPerDag(t, rlDag), {
@@ -6591,7 +6634,7 @@ function renderTRanglijst() {
   const t = toernooiData;
   if (!t) return;
 
-  const rlDag = window._ranglijstDagNr ?? (t.actiefDagNr || 1);
+  const rlDag = window._ranglijstDagNr ?? standaardDagNr(t);   // v6.1.2: de dag die loopt
 
   // v5.12.0: de ranglijst volgt de speelwijze van de DAG die je bekijkt. Bij
   // "Totaal" met verschillende speelwijzen is geen van beide tellingen bruikbaar
@@ -6718,7 +6761,7 @@ function renderTMatrix() {
   const t = toernooiData;
   if (!t) return;
   const n = t.spelers.length;
-  const rlDag = window._ranglijstDagNr ?? (t.actiefDagNr || 1);
+  const rlDag = window._ranglijstDagNr ?? standaardDagNr(t);   // v6.1.2: de dag die loopt
   const { matrix, standen } = berekenTPunten(rlDag);
 
   const kleur = { W: '#d4edda', L: '#f8d7da', T: '#fff3cd' };
