@@ -311,7 +311,9 @@ window.verwijderConceptUitStart = verwijderConceptUitStart;
 //
 // v5.11.0: `laag` zegt WIE dit intikte — 'dagen' (de speler zelf),
 // 'markerDagen' (een medespeler uit zijn flight) of 'beheerDagen' (de
-// wedstrijdleiding). De drie
+// wedstrijdleiding). v6.0.2: een medespeler schrijft niet meer in
+// 'markerDagen' maar op zijn EIGEN kaart, laag 'kaart:<zijn uid>' — zie
+// "EEN EIGEN KAART PER INVULLER" bij lagenVanDag(). De
 // lagen staan in hetzelfde document maar raken elkaar niet, dus ze kunnen
 // elkaar ook niet meer overschrijven. De wachttijd loopt per laag apart:
 // anders wist de timer van de medespeler die van de speler.
@@ -328,6 +330,15 @@ window.verwijderConceptUitStart = verwijderConceptUitStart;
 // pas op het moment van versturen opgebouwd: de laatst bekende stand als
 // ondergrond, met mijn eigen getallen eroverheen. Wat een ander intikte blijft
 // staan; wat ik leegmaakte gaat echt weg.
+//
+// ⚠ v6.0.2 — DAT WAS NIET GENOEG. "De laatst bekende stand" is de stand zoals
+// DEZE telefoon hem kent. Loopt die achter — slecht bereik op de baan — dan
+// stuurt hij een rij weg waarin de holes die een ander intussen intikte nog
+// leeg staan, en wist ze alsnog. Nagespeeld: A had bij C holes 1-8 ingevuld, de
+// telefoon van B kende alleen 1-4 en B tikte hole 9 in → op de server holes 5-8
+// leeg. Sinds v6.0.2 heeft elke invuller zijn EIGEN rij (laag 'kaart:<uid>');
+// een rij van een ander wordt nooit meer weggeschreven. Deze bescherming blijft
+// staan voor de wedstrijdleiding en voor wie op twee toestellen tegelijk werkt.
 //
 // ⚠ v5.43.1 — WAT ER MIS WAS, EN HOE HET GEMETEN IS. De lijst ging in v5.43.0
 // in één keer leeg zodra de schrijfactie was gelukt. Dat wist ook de holes die
@@ -374,27 +385,78 @@ function _vergeetVerstuurdeInvoer(sl, verstuurd) {
 // Daarom wordt elke serverkopie eerst langs de eigen, nog niet bevestigde
 // invoer gehaald.
 function _metEigenInvoer(uid, data) {
-  const uit = data || {};
+  let uit = data || {};
   Object.keys(window._tEigenInvoer || {}).forEach(sl => {
     const [sUid, laag, dag] = sl.split('|');
     if (sUid !== uid) return;
     const eigen = window._tEigenInvoer[sl] || {};
     if (Object.keys(eigen).length === 0) return;
-    const perDag = { ...(uit[laag] || {}) };
-    const rij = Array.isArray(perDag[dag]) ? [...perDag[dag]] : [];
+    const rij = [...(_rijVanLaag(uit, laag, dag) || [])];
     Object.keys(eigen).forEach(i => { rij[Number(i)] = eigen[i]; });
-    perDag[dag] = rij;
-    uit[laag] = perDag;
+    uit = _metRijInLaag(uit, laag, dag, rij);
     // Het oude formaat loopt alleen voor de speler mee — zie slaSpelerScoreOp().
     if (laag === 'dagen' && String(uit.dagNr) === dag) uit.scores = rij;
   });
   return uit;
 }
 
+// ============================================================
+//  v6.0.2 — WAAR STAAT DE RIJ VAN EEN LAAG?
+// ------------------------------------------------------------
+//  Een laag is 'dagen' (de speler zelf), 'beheerDagen' (de wedstrijdleiding),
+//  'markerDagen' (de gedeelde flightlaag van v5.43.0–v6.0.1, alleen nog gelezen)
+//  of 'kaart:<uid>' (de eigen kaart van één medespeler, sinds v6.0.2).
+//  De eerste drie zijn per dag één rij; een kaart heeft er één niveau bij:
+//      kaartDagen: { "<dagNr>": { "<uid van de invuller>": [18 getallen] } }
+//  Deze drie functies zijn de enige plek die dat verschil kent. Alles daarboven
+//  (opslaan, de eigen invoer beschermen) praat alleen over "een laag".
+// ============================================================
+function _laagPad(laag) {
+  const s = String(laag || '');
+  if (s.startsWith('kaart:')) return { veld: 'kaartDagen', invuller: s.slice(6) };
+  return { veld: s, invuller: null };
+}
+
+// De rij zoals hij in het document staat, of null. Geen terugval op het oude
+// formaat (`scores` los ernaast) — dat doet alleen _laagVanDag().
+function _rijVanLaag(data, laag, dagNr) {
+  const { veld, invuller } = _laagPad(laag);
+  const perDag = data?.[veld]?.[String(dagNr)];
+  const rij = invuller ? perDag?.[invuller] : perDag;
+  return Array.isArray(rij) ? rij : null;
+}
+
+// Een KOPIE van `data` met deze ene rij erin. Andere lagen, andere dagen en de
+// kaarten van andere invullers blijven ongemoeid.
+function _metRijInLaag(data, laag, dagNr, rij) {
+  const uit = { ...(data || {}) };
+  const { veld, invuller } = _laagPad(laag);
+  const perDag = { ...(uit[veld] || {}) };
+  if (invuller) {
+    const bestaand = perDag[String(dagNr)];
+    const kaarten = (bestaand && !Array.isArray(bestaand) && typeof bestaand === 'object') ? bestaand : {};
+    perDag[String(dagNr)] = { ...kaarten, [invuller]: rij };
+  } else {
+    perDag[String(dagNr)] = rij;
+  }
+  uit[veld] = perDag;
+  return uit;
+}
+
+// In welke laag komt wat ik intik? Eén regel, zodat de test hem kan meten.
+//   wedstrijdleiding → 'beheerDagen'   (beslissend)
+//   medespeler       → 'kaart:<mijn uid>'  (mijn eigen kaart — v6.0.2)
+//   de speler zelf   → 'dagen'
+function _laagVoorInvoer(rol, mijnUid) {
+  if (rol === 'beheer') return 'beheerDagen';
+  if (rol === 'medespeler') return 'kaart:' + mijnUid;
+  return 'dagen';
+}
+
 // De rij zoals hij de deur uit gaat: de laatst bekende stand van deze laag, met
 // mijn eigen holes eroverheen.
 function _rijVoorOpslag(uid, laag, dagNr, aantalHoles) {
-  const bekend = _liveScores[uid]?.[laag]?.[String(dagNr)];
+  const bekend = _rijVanLaag(_liveScores[uid], laag, dagNr);
   const rij = Array.isArray(bekend) ? [...bekend] : [];
   while (rij.length < aantalHoles) rij.push(null);
   const eigen = window._tEigenInvoer[_eigenInvoerSleutel(uid, laag, dagNr)] || {};
@@ -412,7 +474,10 @@ async function slaSpelerScoreOp(uid, dagNr, aantalHoles, laag = 'dagen') {
     const verstuurd = { ...(window._tEigenInvoer[sl] || {}) };
     const scores    = _rijVoorOpslag(uid, laag, dagNr, aantalHoles);
     try {
-      const velden = { [laag]: { [String(dagNr)]: scores }, timestamp: Date.now() };
+      // v6.0.2: voor een kaart wordt dit { kaartDagen: { "1": { "<uid>": rij } } }.
+      // merge:true voegt dat samen met wat er staat, dus de kaarten van de
+      // andere invullers blijven staan — alleen MIJN rij wordt vervangen.
+      const velden = { ..._metRijInLaag({}, laag, dagNr, scores), timestamp: Date.now() };
       // Het oude formaat (`dagNr` + `scores` los ernaast) blijft alleen voor de
       // speler meelopen, zodat schermen die het nog lezen niet omvallen.
       if (laag === 'dagen') { velden.dagNr = dagNr; velden.scores = scores; }
@@ -423,6 +488,13 @@ async function slaSpelerScoreOp(uid, dagNr, aantalHoles, laag = 'dagen') {
       _vergeetVerstuurdeInvoer(sl, verstuurd);
     } catch(e) {
       console.error('Speler score opslaan mislukt:', e);
+      // ⚠ v6.0.2 — ZEG HET. Tot hier stond alleen de regel hierboven, en die
+      // ziet niemand op een telefoon. De speler zag zijn getal gewoon in het
+      // vakje staan, de wedstrijdleiding niet. Zonder verbinding komen we hier
+      // niet: dan wacht de database met versturen tot er weer bereik is (zo
+      // werkt Firestore; op de baan niet nagemeten). Wie hier uitkomt is door de
+      // server geweigerd, en dat lost zichzelf niet op.
+      toast(`⚠ Je score is niet opgeslagen (${e?.code || 'onbekende fout'}). Meld het bij de wedstrijdleiding.`, 9000);
     }
   }, 800);
 }
@@ -494,9 +566,22 @@ function behoudLiveScores(nieuweData) {
 //  ELKE KOLOM VAN DIE FLIGHT TYPEN. De controle zelf is niet veranderd — de
 //  speler in de ene laag, alle medespelers samen in de andere.
 //
-//  Het OPSLAGVELD blijft `markerDagen` heten, ook al bestaat de marker niet
-//  meer. Daar staan de scores van lopende toernooien in; dat veld omdopen zou
-//  ze weggooien. In de code heet de rol wel `medespeler`.
+//  ⚠ v6.0.2 — "ALLE MEDESPELERS SAMEN IN DE ANDERE" WAS DE FOUT. Sierk,
+//  14 oktober 2026, flight Roy, Ton en Sierk: "als Roy een score voor alle drie
+//  invult dan ziet Sierk op zijn kaart de ingevulde score staan bij Ton en Ton
+//  ziet op zijn kaart de score van Roy." Eén gedeelde laag per speler voor de
+//  hele flight betekende: wat Roy bij Ton intikte stond op het scherm van
+//  Sierk, en tikte Sierk daar iets anders, dan OVERSCHREEF hij Roy — zonder
+//  rood, dus zonder controle. Met de vaste marker merkte niemand dat: elke laag
+//  had toen precies één invuller. En wie achterliep (slecht bereik) wiste de
+//  holes van een ander, waardoor de wedstrijdleiding scores miste.
+//  Nu heeft ELKE MEDESPELER ZIJN EIGEN KAART: zie "EEN EIGEN KAART PER
+//  INVULLER" bij lagenVanDag().
+//
+//  Het OPSLAGVELD `markerDagen` (de gedeelde laag van v5.43.0–v6.0.1) wordt
+//  nog GELEZEN, als één extra kaart zonder eigenaar, zodat een toernooi dat
+//  tijdens de uitrol loopt niets kwijtraakt. Er wordt niet meer in geschreven.
+//  In de code heet de rol `medespeler`.
 //
 //  ⚠ Oude toernooidocumenten hebben nog een `markers`-indeling in hun flights
 //  staan. Niets leest die meer. Laat hem staan: hij hoort bij een dag die al
@@ -517,35 +602,88 @@ function zelfdeFlight(spelerUid, andereUid, dag) {
 }
 
 // Haalt één laag van één dag uit een live-document.
-// `laag` is 'dagen', 'markerDagen' of 'beheerDagen'.
+// `laag` is 'dagen', 'markerDagen', 'beheerDagen' of 'kaart:<uid>'.
 function _laagVanDag(data, laag, dagNr) {
   if (!data) return null;
-  const perDag = data[laag]?.[String(dagNr)];
-  if (Array.isArray(perDag)) return perDag;
+  const rij = _rijVanLaag(data, laag, dagNr);
+  if (rij) return rij;
   // v5.3.0-formaat: één losse dag naast `dagen`. Gold alleen voor de speler.
   if (laag === 'dagen' && data.dagNr === dagNr && Array.isArray(data.scores)) return data.scores;
   return null;
 }
 
-// De drie lagen van één speler op één dag, altijd als array (leeg mag).
+// ============================================================
+//  v6.0.2 — EEN EIGEN KAART PER INVULLER
+// ------------------------------------------------------------
+//  Iedere medespeler houdt zijn EIGEN kaart bij. Wat Roy bij Ton intikt staat
+//  in live/{Ton}.kaartDagen["1"][Roy], wat Sierk bij Ton intikt in
+//  live/{Ton}.kaartDagen["1"][Sierk]. Twee rijen naast elkaar, dus:
+//    • Sierk ziet in de kolom van Ton alleen wat Sierk zelf intikte;
+//    • tikt Sierk iets anders dan Roy, dan wordt het vakje ROOD in plaats van
+//      dat Roy stil overschreven wordt;
+//    • niemand kan de holes van een ander nog wissen, ook niet met een
+//      telefoon die achterloopt — je schrijft alleen je eigen rij.
+//  De speler zelf (`dagen`) en de wedstrijdleiding (`beheerDagen`) zijn niet
+//  veranderd.
+//
+//  `marker` is de gedeelde laag van v5.43.0–v6.0.1 (`markerDagen`). Die telt
+//  mee als één kaart zonder eigenaar: niemand ziet hem als "zijn" getal, maar
+//  hij gaat wél mee in de vergelijking en in wat er telt.
+// ============================================================
 function lagenVanDag(data, dagNr) {
+  const kaarten = {};
+  const perInvuller = data?.kaartDagen?.[String(dagNr)];
+  if (perInvuller && typeof perInvuller === 'object' && !Array.isArray(perInvuller)) {
+    // Gesorteerd, zodat elk toestel — en de meekijkpagina — dezelfde volgorde
+    // heeft. Die volgorde bepaalt welk getal telt als de speler zelf niets
+    // invulde en de kaarten het oneens zijn (dan is het rood, en de uitslag dicht).
+    Object.keys(perInvuller).sort().forEach(uid => {
+      if (Array.isArray(perInvuller[uid])) kaarten[uid] = perInvuller[uid];
+    });
+  }
   return {
     speler: _laagVanDag(data, 'dagen',       dagNr) || [],
-    // `marker` heet zo omdat het opslagveld `markerDagen` heet; sinds v5.43.0
-    // staat daar wat een WILLEKEURIGE medespeler uit de flight intikte.
     marker: _laagVanDag(data, 'markerDagen', dagNr) || [],
     beheer: _laagVanDag(data, 'beheerDagen', dagNr) || [],
+    kaarten,
   };
+}
+
+// Wat de flight op deze hole heeft staan: elke kaart, plus de oude gedeelde
+// laag. Lege vakjes gaan gewoon mee; scoreOordeel() slaat die over.
+function medespelerWaarden(l, holeIdx) {
+  const kaarten = l?.kaarten || {};
+  const uit = Object.keys(kaarten).sort().map(uid => kaarten[uid][holeIdx]);
+  uit.push((l?.marker || [])[holeIdx]);
+  return uit;
+}
+
+// Het oordeel over één hole van één speler, uit zijn lagen. Elke plek die een
+// hole beoordeelt gaat hierlangs, zodat de kaarten nergens vergeten worden.
+function holeOordeel(l, holeIdx) {
+  return scoreOordeel((l?.speler || [])[holeIdx], medespelerWaarden(l, holeIdx), (l?.beheer || [])[holeIdx]);
+}
+
+// Hoe lang is de langste rij in deze lagen? (Een rij kan korter zijn dan de dag.)
+function lagenLengte(l) {
+  const kaarten = Object.values(l?.kaarten || {});
+  return Math.max(0, (l?.speler || []).length, (l?.marker || []).length,
+    (l?.beheer || []).length, ...kaarten.map(r => r.length));
 }
 
 // Het oordeel over ÉÉN hole. Dit is de enige plek waar wordt bepaald welke
 // score telt en welke kleur erbij hoort; scorekaart, onderlinge stand,
 // ranglijst, dag afsluiten en de meekijkpagina leunen er allemaal op.
 //
-//   zwart   vastgesteld door de wedstrijdleiding, OF speler en medespeler gelijk
-//   oranje  één van de twee heeft ingevuld, de ander nog niet
-//   rood    allebei ingevuld, verschillend
+//   zwart   vastgesteld door de wedstrijdleiding, OF minstens twee getallen
+//           en die zijn allemaal gelijk
+//   oranje  er staat nog maar één getal
+//   rood    er staan verschillende getallen
 //   leeg    nog niemand
+//
+// `markerWaarde` is één getal (zo rekenen de oudere tests) of een LIJST: de
+// kaarten van de medespelers (v6.0.2). Twee medespelers die hetzelfde getal
+// hebben staan tellen ook als gecontroleerd — twee paar ogen, dezelfde score.
 //
 // ⚠ v5.36.0: 'oranje' is alleen nog een NAAM. Op het scherm is dat vakje zwart
 // met een stippellijn — zie index.html. Die score telt gewoon mee; de
@@ -557,18 +695,21 @@ function lagenVanDag(data, dagNr) {
 function scoreOordeel(spelerWaarde, markerWaarde, beheerWaarde) {
   const leeg = (v) => v === null || v === undefined || v === '';
   const sp = leeg(spelerWaarde) ? null : Number(spelerWaarde);
-  const mk = leeg(markerWaarde) ? null : Number(markerWaarde);
+  const flight = (Array.isArray(markerWaarde) ? markerWaarde : [markerWaarde])
+    .filter(v => !leeg(v)).map(Number);
+  const mk = flight.length > 0 ? flight[0] : null;
   const bh = leeg(beheerWaarde) ? null : Number(beheerWaarde);
 
   if (bh !== null) {
     return { kleur: 'zwart', vast: true, tel: bh, speler: bh, marker: bh, beheer: bh };
   }
   // Wat meetelt zolang er niets is vastgesteld: het getal van de speler zelf.
-  // Heeft alleen een medespeler ingevuld, dan is dat het enige getal dat er is.
+  // Heeft alleen de flight ingevuld, dan het eerste getal van de flight.
   const tel = sp !== null ? sp : mk;
+  const alle = (sp !== null ? [sp] : []).concat(flight);
   let kleur = 'leeg';
-  if (sp !== null && mk !== null) kleur = (sp === mk) ? 'zwart' : 'rood';
-  else if (sp !== null || mk !== null) kleur = 'oranje';
+  if (alle.length >= 2) kleur = alle.every(v => v === alle[0]) ? 'zwart' : 'rood';
+  else if (alle.length === 1) kleur = 'oranje';
 
   return { kleur, vast: false, tel, speler: sp, marker: mk, beheer: null };
 }
@@ -579,11 +720,11 @@ function scoreOordeel(spelerWaarde, markerWaarde, beheerWaarde) {
 function _liveScoresVanDag(data, dagNr) {
   if (!data) return null;
   const l = lagenVanDag(data, dagNr);
-  const lengte = Math.max(l.speler.length, l.marker.length, l.beheer.length);
+  const lengte = lagenLengte(l);   // v6.0.2: de kaarten tellen mee
   if (lengte === 0) return null;
   const uit = [];
   for (let i = 0; i < lengte; i++) {
-    uit.push(scoreOordeel(l.speler[i], l.marker[i], l.beheer[i]).tel);
+    uit.push(holeOordeel(l, i).tel);
   }
   return uit;
 }
@@ -4012,6 +4153,23 @@ function openVerwijderToernooiSpeler() { openToernooiSpelersBeheer(); }
 // ============================================================
 //  SCORES VOLLEDIG CHECK
 // ============================================================
+// v6.0.2: staat er in dit live-document ook maar één score, in welke laag dan
+// ook? ⚠ Hier stonden op twee plekken eigen kopieën die alleen keken naar wat de
+// speler ZELF intikte (`scores`, `dagen`). Had alleen de flight of de
+// wedstrijdleiding iets ingevuld, dan gold het toernooi als "nog zonder scores"
+// en mocht "terug naar het aanmaakscherm" — en dat gooit de live-scores weg.
+// Sinds v6.0.2 komt alles wat een medespeler intikt in `kaartDagen`, dus dat gat
+// werd groter. Eén functie, gebruikt door heeftGeenScores() en bewerkToernooi().
+function _liveHeeftScores(e) {
+  const vol = (arr) => Array.isArray(arr) && arr.some(v => v !== null && v !== undefined);
+  if (vol(e?.scores)) return true;
+  for (const veld of ['dagen', 'markerDagen', 'beheerDagen']) {
+    if (Object.values(e?.[veld] || {}).some(vol)) return true;
+  }
+  return Object.values(e?.kaartDagen || {}).some(perInvuller =>
+    Object.values(perInvuller || {}).some(vol));
+}
+
 // v3.0.0-11.73: Geeft true als het toernooi nog geen enkele score heeft
 // en geen dag is afgerond. Gebruikt om "terug naar aanmaakscherm" toe te staan.
 function heeftGeenScores(t) {
@@ -4022,11 +4180,8 @@ function heeftGeenScores(t) {
   // speeldag beschikbaar bleef terwijl er al volop live-scores waren.
   // v5.3.0: ook het nieuwe per-dag formaat meenemen, anders zou een lopende
   // speeldag onopgemerkt blijven zodra de scores alleen onder `dagen` staan.
-  const liveBezet = Object.values(_liveScores || {}).some(e => {
-    if ((e?.scores || []).some(v => v !== null && v !== undefined)) return true;
-    return Object.values(e?.dagen || {}).some(arr =>
-      (arr || []).some(v => v !== null && v !== undefined));
-  });
+  // ⚠ v6.0.2: ALLE lagen — zie _liveHeeftScores().
+  const liveBezet = Object.values(_liveScores || {}).some(_liveHeeftScores);
   if (liveBezet) return false;
   return t.dagen.every(dag => {
     if (dag.afgerond) return false;
@@ -4063,7 +4218,7 @@ function alleScoresIngevuld(t, dag) {
   return meedoen.every(s => {
     const l = lagenVanDag(_liveScores[s.uid], dag.dagNr);
     return (dag.holes || []).every((_, i) => {
-      const tel = scoreOordeel(l.speler[i], l.marker[i], l.beheer[i]).tel;
+      const tel = holeOordeel(l, i).tel;   // v6.0.2: met de kaarten
       if (tel !== null && tel !== undefined) return true;
       const val = dag.scores?.[s.uid]?.[i];
       return val !== null && val !== undefined && val !== '';
@@ -4826,14 +4981,21 @@ function rolVoorKolom(spelerUid, dag) {
 // Het oordeel over één vakje. Tijdens het spelen is de live/-submap de bron;
 // staat daar voor deze hole niets, dan valt hij terug op het toernooidocument
 // (geconsolideerde scores van een afgesloten dag, of oudere toernooien).
+//
+// v6.0.2: `eigen` is wat er op MIJN kaart staat — het getal dat ik als
+// medespeler zelf intikte. Dat is wat een medespeler te zien krijgt; de kaart
+// van een andere medespeler blijft voor hem onzichtbaar.
 function celOordeel(spelerUid, holeIdx, dag) {
   const l = lagenVanDag(_liveScores[spelerUid], dag.dagNr);
-  const o = scoreOordeel(l.speler[holeIdx], l.marker[holeIdx], l.beheer[holeIdx]);
+  const o = holeOordeel(l, holeIdx);
+  const mij = huidigeBruiker?.uid || null;
+  const opMijnKaart = mij ? (l.kaarten[mij] || [])[holeIdx] : null;
+  o.eigen = (opMijnKaart === null || opMijnKaart === undefined || opMijnKaart === '') ? null : Number(opMijnKaart);
   if (o.kleur !== 'leeg') return o;
   const uitDoc = dag.scores?.[spelerUid]?.[holeIdx];
   if (uitDoc === null || uitDoc === undefined || uitDoc === '') return o;
   const v = Number(uitDoc);
-  return { kleur: 'zwart', vast: false, tel: v, speler: v, marker: v, beheer: null };
+  return { kleur: 'zwart', vast: false, tel: v, speler: v, marker: v, beheer: null, eigen: v };
 }
 
 // Welk getal krijgt DEZE kijker te zien? Ieder ziet wat hij zelf intikte; de
@@ -4848,9 +5010,13 @@ function celOordeel(spelerUid, holeIdx, dag) {
 // daarmee ging de hole onnodig op slot.
 // Nu staat er het getal dat meetelt: dat van de speler, en is dat er niet, dat
 // van de medespeler. Overtikken hoeft dus nergens meer.
+//
+// ⚠ v6.0.2 — DE MEDESPELER ZIET ZIJN EIGEN KAART (`eigen`, gezet door
+// celOordeel()). Hier stond `oordeel.marker`: het getal uit de laag die de hele
+// flight deelde. Daardoor zag Sierk in de kolom van Ton wat Roy had ingetikt.
 function celWaarde(oordeel, rol) {
   if (oordeel.vast) return oordeel.beheer;
-  if (rol === 'medespeler') return oordeel.marker;
+  if (rol === 'medespeler') return oordeel.eigen ?? null;
   if (rol === 'beheer') return oordeel.tel;
   return oordeel.speler;
 }
@@ -4884,8 +5050,9 @@ function meldCelStatus(spelerUid, holeIdx) {
   const rol = rolVoorKolom(spelerUid, dag);
   if (o.kleur === 'rood') {
     toast(rol === 'beheer'
-      ? `Hole ${holeIdx+1}: de speler en een medespeler hebben hier iets anders staan.`
-      : `Hole ${holeIdx+1}: hier staan twee verschillende getallen — overleg even met je flight en pas aan.`, 6000);
+      // v6.0.2: het kunnen ook twee medespelers zijn die het oneens zijn.
+      ? `Hole ${holeIdx+1}: in de flight staan hier verschillende getallen.`
+      : `Hole ${holeIdx+1}: hier staan verschillende getallen — overleg even met je flight en pas aan.`, 6000);
   } else if (o.kleur === 'oranje' && rol !== 'beheer') {
     toast(`Hole ${holeIdx+1}: wacht nog op bevestiging uit je flight.`, 4000);
   }
@@ -5169,20 +5336,20 @@ function updateTScore(spelerId, holeIdx, val) {
   const bestaand = celOordeel(key, holeIdx, dag);
   if (bestaand.vast && rol !== 'beheer') return; // wedstrijdleiding heeft het laatste woord
 
-  const laag  = rol === 'beheer' ? 'beheerDagen' : (rol === 'medespeler' ? 'markerDagen' : 'dagen');
+  // v6.0.2: een medespeler schrijft op zijn EIGEN kaart ('kaart:<mijn uid>'),
+  // niet meer in de laag die de hele flight deelde. Zie _laagVoorInvoer().
+  const laag  = _laagVoorInvoer(rol, huidigeBruiker?.uid || null);
   const dagNr = dag.dagNr || toernooiData.actiefDagNr || 1;   // v4.0.0 (fix 7.4)
 
   // 1. de eigen laag bijwerken (lokaal, zodat de kleur meteen klopt)
   const live   = _liveScores[key] || {};
-  const perDag = { ...(live[laag] || {}) };
-  const rij    = Array.isArray(perDag[String(dagNr)]) ? [...perDag[String(dagNr)]] : [];
+  const rij    = [...(_rijVanLaag(live, laag, dagNr) || [])];
   while (rij.length < dag.holes.length) rij.push(null);
   rij[holeIdx] = val === '' ? null : parseInt(val);
-  perDag[String(dagNr)] = rij;
   // v5.43.0: onthouden dat DIT apparaat deze hole intikte. Zie
   // slaSpelerScoreOp() — de rij wordt pas bij het versturen opgebouwd.
   _onthoudEigenInvoer(key, laag, dagNr, holeIdx, rij[holeIdx]);
-  store._liveScores[key] = { ...live, [laag]: perDag, timestamp: Date.now() };
+  store._liveScores[key] = { ..._metRijInLaag(live, laag, dagNr, rij), timestamp: Date.now() };
   if (laag === 'dagen') {
     store._liveScores[key].dagNr  = dagNr;
     store._liveScores[key].scores = rij;
@@ -5228,7 +5395,7 @@ function openVerschillen(t, dag) {
   (t.spelers || []).forEach(s => {
     const l = lagenVanDag(_liveScores[s.uid], dag.dagNr);
     (dag.holes || []).forEach((_, i) => {
-      if (scoreOordeel(l.speler[i], l.marker[i], l.beheer[i]).kleur === 'rood') {
+      if (holeOordeel(l, i).kleur === 'rood') {   // v6.0.2: met de kaarten
         uit.push({ uid: s.uid, holeNr: i + 1 });
       }
     });
@@ -6438,9 +6605,8 @@ async function bewerkToernooi() {
     let liveDocs = null;
     try {
       liveDocs = await getDocs(collection(db, 'toernooien', actieveToernooiId, 'live'));
-      const liveHeeftScores = liveDocs.docs.some(d =>
-        ((d.data().scores) || []).some(v => v !== null && v !== undefined)
-      );
+      // v6.0.2: alle lagen, niet alleen wat de speler zelf intikte.
+      const liveHeeftScores = liveDocs.docs.some(d => _liveHeeftScores(d.data()));
       if (liveHeeftScores) {
         toast('Er zijn al live-scores ingevoerd — teruggaan naar het aanmaakscherm kan niet meer');
         return;

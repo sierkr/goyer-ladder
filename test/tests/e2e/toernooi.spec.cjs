@@ -532,9 +532,30 @@ test.describe('Toernooi — de hele route', () => {
       await wachtOpKleur(speler, uidSpeler, 0, 'zwart');
       expect(await getalIn(mede, uidSpeler, 0),
         'de 5 van de medespeler staat er nog').toBe('5');
-      // En de flight deelt één laag: de derde ziet wat de medespeler intikte.
-      await expect.poll(() => getalIn(derde, uidSpeler, 0),
-        { timeout: 20000, message: 'de derde ziet de 5 van de medespeler' }).toBe('5');
+
+      // ⚠ v6.0.2 — IEDERE MEDESPELER ZIJN EIGEN KAART. Hier stond tot v6.0.1
+      // "de derde ziet de 5 van de medespeler": de flight deelde één laag. Precies
+      // dat meldde Sierk op 14 oktober 2026 als fout ("als Roy een score voor alle
+      // drie invult dan ziet Sierk op zijn kaart de ingevulde score staan bij
+      // Ton"). Nu ziet de derde op hole 1 een LEEG vakje — hij heeft daar zelf
+      // niets ingetikt — terwijl het vakje wél zwart is (speler en medespeler
+      // kwamen overeen).
+      await wachtOpKleur(derde, uidSpeler, 0, 'zwart');
+      expect(await getalIn(derde, uidSpeler, 0),
+        'de derde ziet NIET wat de medespeler intikte').toBe('');
+
+      // Tikt de derde iets anders in dan de medespeler, dan overschrijft hij hem
+      // niet maar wordt het vakje ROOD — bij de speler én de wedstrijdleiding.
+      await derde.evaluate(({ uid }) => window.updateTScore(uid, 0, 6), { uid: uidSpeler });
+      await wachtOpKleur(speler, uidSpeler, 0, 'rood');
+      await wachtOpKleur(coord,  uidSpeler, 0, 'rood');
+      expect(await getalIn(mede, uidSpeler, 0),
+        'de 5 van de medespeler is niet overschreven').toBe('5');
+      expect(await getalIn(derde, uidSpeler, 0), 'de derde ziet zijn eigen 6').toBe('6');
+      // Uitgepraat: de derde zet hem op 5, en alles is weer zwart.
+      await derde.evaluate(({ uid }) => window.updateTScore(uid, 0, 5), { uid: uidSpeler });
+      await wachtOpKleur(speler, uidSpeler, 0, 'zwart');
+      await wachtOpKleur(coord,  uidSpeler, 0, 'zwart');
 
       // ── 8. De wedstrijdleiding stelt vast en zet de hole op slot ──
       await speler.evaluate(({ uid }) => window.updateTScore(uid, 1, 4), { uid: uidSpeler });

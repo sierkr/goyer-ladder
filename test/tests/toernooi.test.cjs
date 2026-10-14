@@ -385,6 +385,18 @@ check('een score -> false', K.heeftGeenScores(t), false);
 K._zetLive({a:{dagNr:1, scores:[4,null]}});
 t = maakT([A,B], {dagen:[maakDag(1,{a:[null,null], b:[null,null]})]});
 check('alleen live-scores -> false', K.heeftGeenScores(t), false);
+// ⚠ v6.0.2: hier keek de controle alleen naar wat de speler ZELF intikte. Had
+// alleen de flight of de wedstrijdleiding iets ingevuld, dan gold het toernooi
+// als leeg en mocht "terug naar het aanmaakscherm" — dat gooit de scores weg.
+t = maakT([A,B], {dagen:[maakDag(1,{a:[null,null], b:[null,null]})]});
+K._zetLive({a:{kaartDagen:{'1':{b:[4,null]}}}});
+check('alleen een medespeler vulde in (eigen kaart) -> false', K.heeftGeenScores(t), false);
+K._zetLive({a:{markerDagen:{'1':[4,null]}}});
+check('alleen de oude gedeelde flightlaag -> false', K.heeftGeenScores(t), false);
+K._zetLive({a:{beheerDagen:{'1':[null,5]}}});
+check('alleen de wedstrijdleiding -> false', K.heeftGeenScores(t), false);
+K._zetLive({a:{kaartDagen:{'1':{b:[null,null]}}, markerDagen:{'1':[null]}}});
+check('lege kaarten tellen niet als scores', K.heeftGeenScores(t), true);
 K._zetLive({});
 t = maakT([A,B], {dagen:[{dagNr:1, holes:holes18, scores:{}, afgerond:true}]});
 check('afgeronde dag -> false', K.heeftGeenScores(t), false);
@@ -440,6 +452,13 @@ t = maakT([A,B], {dagen:[leegDag(holes2)]});
 check('alleen een medespeler vulde in -> uitslag mag open',
   K.alleScoresIngevuld(t, t.dagen[0]), true);
 
+// v6.0.2: hetzelfde, maar dan op de EIGEN kaart van die medespeler — zo staat
+// het er sinds v6.0.2 in.
+K._zetLive({ a:{kaartDagen:{'1':{b:[3,4]}}}, b:{kaartDagen:{'1':{a:[4,4]}}} });
+t = maakT([A,B], {dagen:[leegDag(holes2)]});
+check('alleen een medespeler vulde in op zijn eigen kaart -> uitslag mag open',
+  K.alleScoresIngevuld(t, t.dagen[0]), true);
+
 // Een echt gat blijft een gat, ook in de lagen.
 K._zetLive({ a:{dagen:{'1':[3,null]}}, b:{dagen:{'1':[4,4]}} });
 t = maakT([A,B], {dagen:[leegDag(holes2)]});
@@ -452,7 +471,13 @@ K._zetLive({});
 //  medespeler had ingevuld — en tikte zij die score over, waarmee de hole op
 //  slot ging. (v5.43.0: de rol heet `medespeler`; tot v5.42.0 was dat `marker`,
 //  de ene speler die je was toegewezen.)
-const zicht = (sp, mk, bh, rol) => K.celWaarde(K.scoreOordeel(sp, mk, bh), rol);
+//
+//  ⚠ v6.0.2: een medespeler ziet wat er op ZIJN EIGEN kaart staat — `eigen`, dat
+//  celOordeel() erbij zet. Hier is `mk` dus "wat de kijkende medespeler zelf
+//  intikte". Wat een ANDERE medespeler intikte ziet hij niet; dat staat in de
+//  suite "Twee paar ogen & scorelagen", blok ROY, TON EN SIERK.
+const zicht = (sp, mk, bh, rol) =>
+  K.celWaarde({ ...K.scoreOordeel(sp, mk, bh), eigen: mk ?? null }, rol);
 check('beheer ziet het getal van de speler',
   zicht(5, null, null, 'beheer'), 5);
 check('beheer ziet de medespeler als de speler niets invulde',
@@ -465,6 +490,13 @@ check('speler en medespeler zien elkaars getal nog steeds niet',
   [zicht(5, 6, null, 'speler'), zicht(5, 6, null, 'medespeler')], [5, 6]);
 check('de medespeler ziet niets als hij zelf niets invulde',
   zicht(5, null, null, 'medespeler'), null);
+// v6.0.2: twee medespelers. Roy tikte 5, Sierk niets: Sierk ziet een leeg vakje,
+// ook al telt de 5 van Roy wél mee (en ziet de wedstrijdleiding die).
+const tweeKaarten = K.scoreOordeel(null, [5, null], null);
+check('een medespeler ziet niet wat een ANDERE medespeler intikte',
+  K.celWaarde({ ...tweeKaarten, eigen: null }, 'medespeler'), null);
+check('de wedstrijdleiding ziet die wel',
+  K.celWaarde({ ...tweeKaarten, eigen: null }, 'beheer'), 5);
 
 // ============================================================
 //  v5.22.0 — WACHT HET, OF LOOPT HET?

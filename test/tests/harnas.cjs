@@ -62,6 +62,11 @@ function laadToernooiKern() {
     // v5.11.0: _liveScoresVanDag lost nu de drie scorelagen op en heeft deze
     // drie nodig. Ze worden ECHT uit de app geknipt, net als de rest.
     '_laagVanDag', 'lagenVanDag', 'scoreOordeel',
+    // v6.0.2: de eigen kaart per invuller. _laagVanDag leest via _rijVanLaag en
+    // _laagPad; _liveScoresVanDag en alleScoresIngevuld beoordelen een hole via
+    // holeOordeel; heeftGeenScores kijkt via _liveHeeftScores in álle lagen.
+    '_laagPad', '_rijVanLaag', 'medespelerWaarden', 'holeOordeel', 'lagenLengte',
+    '_liveHeeftScores',
     // v5.36.0: celWaarde bepaalt WELK getal ieder in zijn vakje ziet. De
     // wedstrijdleiding hoort het getal te zien dat meetelt, ook als alleen de
     // marker heeft ingevuld — anders tikt zij een leeg vakje over.
@@ -256,6 +261,13 @@ function laadNaamKern() {
 //  bestaat niet meer. In hun plaats staan hier de drie functies die samen
 //  voorkomen dat twee mensen in dezelfde kolom elkaars holes wissen.
 // ============================================================
+//
+//  v6.0.2: hier wordt ook de ECHTE invoer geknipt — updateTScore(), met
+//  rolVoorKolom(), celOordeel() en celWaarde() — zodat de test kan naspelen wat
+//  Sierk op 14 oktober 2026 zag: Roy vult de kaart voor de hele flight in, en
+//  Sierk en Ton zien dat. Alles wat updateTScore() verder aanroept om het scherm
+//  bij te werken staat hieronder als lege stub; de test kijkt naar wat er in de
+//  lagen staat en wat ieder in zijn vakje te zien krijgt.
 function laadMarkerKern() {
   const bron = `
     let _liveScores = {};
@@ -265,12 +277,33 @@ function laadMarkerKern() {
     // want juist in die tussentijd ging het mis.
     const actieveToernooiId = 't1';
     const db = {};
-    const doc = () => ({});
+    const doc = (_db, _c, _id, _sub, uid) => ({ uid });
     let _schrijf = async () => {};
-    const setDoc = (ref, velden) => _schrijf(velden);
+    const setDoc = (ref, velden) => _schrijf(velden, ref.uid);
+    // v6.0.2: wie is er ingelogd, en is dat de wedstrijdleiding?
+    let huidigeBruiker = null;
+    let _isLeiding = false;
+    const magToernooiLeidenRol = () => _isLeiding;
+    // De meldingen die de app op het scherm zou zetten.
+    const _meldingen = [];
+    const toast = (tekst) => { _meldingen.push(tekst); };
+    // Wat updateTScore() verder nodig heeft. Het scherm bestaat hier niet.
+    let toernooiData = null;
+    let _dag = null;
+    const actieveDag = () => _dag;
+    const alleToernooien = [];
+    const store = { get _liveScores() { return _liveScores; }, set _liveScores(v) { _liveScores = v; } };
+    const updateTTotaalRijInline = () => {};
+    const verversScoreKleuren = () => {};
+    const renderTMatrix = () => {};
+    const renderTRanglijst = () => {};
+    const verversUitslagKnop = () => {};
     ${knip('js/toernooi.js', ['zelfdeFlight', 'scoreOordeel', 'kaartOordeel',
       '_eigenInvoerSleutel', '_onthoudEigenInvoer', '_vergeetVerstuurdeInvoer',
-      '_metEigenInvoer', '_rijVoorOpslag'])}
+      '_metEigenInvoer', '_rijVoorOpslag',
+      '_laagPad', '_rijVanLaag', '_metRijInLaag', '_laagVoorInvoer',
+      'medespelerWaarden', 'holeOordeel', 'lagenLengte',
+      'rolVoorKolom', 'celOordeel', 'celWaarde', 'updateTScore'])}
     ${knip('js/toernooi.js', ['slaSpelerScoreOp'], 'async ')}
     ${knip('js/toernooi.js', ['lagenVanDag', '_laagVanDag', '_liveScoresVanDag'])}
     return {
@@ -278,11 +311,15 @@ function laadMarkerKern() {
       zelfdeFlight, scoreOordeel, kaartOordeel,
       _onthoudEigenInvoer, _rijVoorOpslag, _vergeetVerstuurdeInvoer,
       _metEigenInvoer, slaSpelerScoreOp,
+      rolVoorKolom, celOordeel, celWaarde, updateTScore,
       _zetLive:      (v) => { _liveScores = v || {}; },
       _leesLive:     ()  => _liveScores,
       _leegEigen:    ()  => { window._tEigenInvoer = {}; },
       _leesEigen:    ()  => window._tEigenInvoer,
       _zetSchrijver: (f) => { _schrijf = f; },
+      _zetMij:       (uid, leiding = false) => { huidigeBruiker = uid ? { uid } : null; _isLeiding = leiding; },
+      _zetDag:       (dag) => { _dag = dag; toernooiData = { id: 't1', dagen: [dag] }; },
+      _meldingen,
     };
   `;
   const app = new Function(bron)();
@@ -296,10 +333,10 @@ function laadMarkerKern() {
   //  Dit is wat er wél te meten valt: de twee kanten uit de bron knippen en
   //  naast elkaar leggen. Lopen ze uit de pas, dan valt de test om.
   const meekijk = new Function(`
-    ${knip('toernooi-live.html', ['tellendGetal', 'laagVanDagLive', 'getLiveScoresVoorDag'])}
+    ${knip('toernooi-live.html', ['tellendGetal', 'laagVanDagLive', 'kaartenVanDagLive', 'getLiveScoresVoorDag'])}
     let _liveScoresMap = {};
     return {
-      tellendGetal, laagVanDagLive, getLiveScoresVoorDag,
+      tellendGetal, laagVanDagLive, kaartenVanDagLive, getLiveScoresVoorDag,
       _zetLiveMap: (v) => { _liveScoresMap = v || {}; },
     };
   `)();
