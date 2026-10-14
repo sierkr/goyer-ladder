@@ -416,7 +416,9 @@ exports.wisselToernooiPin = onCall(
     // poging op een coordinator niet de pincode voor de hele flight op slot zet.
     const spelerSnap = await fs.collection('spelers').doc(spelerUid).get();
     const rol = spelerSnap.exists ? (spelerSnap.data() || {}).rol : null;
-    if (rol === 'coordinator' || rol === 'beheerder') {
+    // v6.0.0: de toernooileider hoort bij de wedstrijdleiding — ook hij komt
+    // niet met de gedeelde pincode binnen.
+    if (rol === 'coordinator' || rol === 'beheerder' || rol === 'toernooileider') {
       throw new HttpsError('permission-denied',
         'Wedstrijdleiding logt in met het eigen wachtwoord, niet met de pincode.');
     }
@@ -583,6 +585,48 @@ exports.maakRondeQr = onCall(
 
     // Foutcorrectie M en een rustrand van 4 vakjes: dezelfde keuzes als bij de
     // vaste QR uit v5.37.0, en om dezelfde reden.
+    const svg = await QRCode.toString(url, {
+      type: 'svg', errorCorrectionLevel: 'M', margin: 4,
+      color: { dark: '#000000', light: '#ffffff' },
+    });
+    return { url, svg };
+  }
+);
+
+/**
+ * v6.0.0 — de QR-code naar één toernooi (…/toernooi/?t=<id>).
+ * Wie hem scant komt meteen bij de namen van dat toernooi en het vakje voor
+ * de pincode. Er zit GEEN geheim in: alleen de link. Toch alleen voor wie
+ * toernooien leidt — het is de knop van de wedstrijdleiding.
+ *
+ * Input:  { toernooiId, basis, isTest? }   basis = …/toernooi/ van de app zelf
+ * Output: { url, svg }
+ */
+exports.maakToernooiQr = onCall(
+  { region: 'europe-west1' },
+  async (request) => {
+    weigerPinSessie(request);
+    weigerRondeSessie(request);
+    const { auth, data } = request;
+    if (!auth?.uid) throw new HttpsError('unauthenticated', 'Je moet ingelogd zijn.');
+    const fs = fsVoor(data?.isTest === true);
+    const ik = await fs.collection('spelers').doc(auth.uid).get();
+    const rol = ik.exists ? (ik.data() || {}).rol : null;
+    if (rol !== 'coordinator' && rol !== 'beheerder' && rol !== 'toernooileider') {
+      throw new HttpsError('permission-denied', 'Alleen de wedstrijdleiding maakt deze code.');
+    }
+    const toernooiId = String(data?.toernooiId ?? '').trim();
+    const basis = String(data?.basis ?? '').trim();
+    if (!toernooiId) throw new HttpsError('invalid-argument', 'Onbekend toernooi.');
+    // Alleen een http(s)-adres. Zonder deze toets kon iemand een code laten
+    // maken die ergens anders heen wijst.
+    if (!/^https?:\/\/[^\s"']+$/.test(basis)) {
+      throw new HttpsError('invalid-argument', 'Ongeldig webadres.');
+    }
+    const tSnap = await fs.collection('toernooien').doc(toernooiId).get();
+    if (!tSnap.exists) throw new HttpsError('not-found', 'Dit toernooi bestaat niet.');
+    const scheiding = basis.includes('?') ? '&' : '?';
+    const url = `${basis}${scheiding}t=${encodeURIComponent(toernooiId)}`;
     const svg = await QRCode.toString(url, {
       type: 'svg', errorCorrectionLevel: 'M', margin: 4,
       color: { dark: '#000000', light: '#ffffff' },
@@ -2638,8 +2682,11 @@ exports.verwijderWeesAccount = onCall(
     const fs = fsVoor(isTest);
     const callerSnap = await fs.collection('spelers').doc(auth.uid).get();
     const rol = callerSnap.exists ? callerSnap.data().rol : null;
-    if (rol !== 'beheerder' && rol !== 'coordinator') {
-      throw new HttpsError('permission-denied', 'Alleen een beheerder of coordinator mag dit.');
+    // v6.0.0: ook de toernooileider — hij maakt en ruimt de gastaccounts van
+    // zijn toernooien op. De veiligheidsklep hieronder (alleen accounts ZONDER
+    // profiel) blijft voor iedereen gelden.
+    if (rol !== 'beheerder' && rol !== 'coordinator' && rol !== 'toernooileider') {
+      throw new HttpsError('permission-denied', 'Alleen een beheerder, coordinator of toernooileider mag dit.');
     }
 
     if (!targetUid) {

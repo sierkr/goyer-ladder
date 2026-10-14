@@ -49,7 +49,8 @@ async function haalToernooi(naam, pogingen = 20, klaar = null) {
   let laatste = null;
   for (let i = 0; i < pogingen; i++) {
     const snap = await beheerDb.collection('toernooien').get();
-    const gevonden = snap.docs.map(d => d.data()).find(d => d.naam === naam);
+    // v6.0.0: met het documentnummer erbij (_id), voor de link …/toernooi/?t=…
+    const gevonden = snap.docs.map(d => ({ _id: d.id, ...d.data() })).find(d => d.naam === naam);
     if (gevonden) {
       laatste = gevonden;
       if (!klaar || klaar(gevonden)) return gevonden;
@@ -72,8 +73,12 @@ test.beforeEach(async () => {
 const WACHTWOORD = 'test1234';
 const klikInloggen = (page) => page.click('#login-knop');   // v5.38.0: eigen id
 
+// v6.0.0: het toernooi heeft een eigen ingang (…/toernooi/, eigen inlog). Alle
+// toernooiproeven gaan daar binnen; de ladder-app heeft geen toernooischerm meer.
+const TOERNOOI_PAGINA = '/toernooi/';
+
 const inloggen = async (page, login) => {
-  await page.goto('/index.html');
+  await page.goto(TOERNOOI_PAGINA);
   await page.waitForSelector('#login-scherm', { state: 'visible' });
   await page.fill('#login-email', login);
   await page.fill('#login-pass', WACHTWOORD);
@@ -233,9 +238,20 @@ async function naarSetupTab(page, tab) {
 //  proef dat die voorwaarde klopt.
 // ============================================================
 async function pinInloggen(pagina, naam, pin) {
-  await pagina.goto('/index.html');
+  await pagina.goto(TOERNOOI_PAGINA);
   await pagina.waitForSelector('#login-scherm', { state: 'visible' });
   await pagina.waitForSelector('#toernooi-inlog', { state: 'visible', timeout: 25000 });
+  // v6.0.0: lopen er meer toernooien (en kwam je niet via de link van één),
+  // dan kies je eerst het toernooi — het toernooi waar deze naam in staat.
+  if (await pagina.locator('#toernooi-inlog-keuze-wrap').isVisible()) {
+    const opties = await pagina.locator('#toernooi-inlog-toernooi option').evaluateAll(
+      els => els.map(o => o.value).filter(Boolean));
+    for (const id of opties) {
+      await pagina.selectOption('#toernooi-inlog-toernooi', id);
+      const namen = await pagina.locator('#toernooi-inlog-speler option').allTextContents();
+      if (namen.includes(naam)) break;
+    }
+  }
   await pagina.selectOption('#toernooi-inlog-speler', { label: naam });
   await pagina.fill('#toernooi-inlog-pin', pin);
   await pagina.click('#toernooi-inlog button.btn-primary');
@@ -1074,16 +1090,15 @@ test.describe('Toernooi — de hele route', () => {
     await expect(venster, 'het venster gaat open').toHaveClass(/open/, { timeout: 10000 });
     await expect(venster.locator('svg'), 'er staat een getekende code in').toBeVisible();
 
-    // Een QR-code van dit adres heeft 29x29 vakjes; ruim 400 daarvan zijn
-    // zwart. Is het er één, dan is er iets misgegaan in het tekenen.
-    const vakjes = await venster.locator('svg rect').count();
-    expect(vakjes, 'de code bestaat uit honderden vakjes').toBeGreaterThan(300);
-
-    // Het adres hoort er in gewone letters onder te staan, zodat je altijd zelf
-    // kunt zien waar de code heen wijst. De testwebserver draait niet onder
-    // /test/, dus hier hoort het live-adres te staan.
-    await expect(venster.locator('#qr-code-adres'))
-      .toHaveText('https://sierkr.github.io/goyer-ladder/');
+    // v6.0.0: de code wijst naar de link van DIT toernooi (…/toernooi/?t=…),
+    // getekend door de server (maakToernooiQr). Wie hem scant komt meteen bij
+    // de namen van dit toernooi.
+    const t = await haalToernooi('QR');
+    await expect(venster.locator('#qr-code-titel')).toHaveText('QR-code naar dit toernooi');
+    await expect(venster.locator('#qr-code-adres'), 'het adres van dit toernooi staat eronder')
+      .toHaveText(new RegExp(`/toernooi/\\?t=${t._id || ''}`), { timeout: 20000 });
+    const svgHtml = await venster.locator('#qr-code-vak').innerHTML();
+    expect(svgHtml.length, 'de code is echt getekend (geen foutmelding)').toBeGreaterThan(1000);
 
     await venster.locator('button:has-text("Sluiten")').click();
     await expect(venster, 'en weer dicht').not.toHaveClass(/open/, { timeout: 10000 });
@@ -1499,8 +1514,16 @@ test.describe('Toernooi — de hele route', () => {
   //  twee momenten geworden. Sierk, 14 september 2026: zoveel wachtende
   //  toernooien als je wilt, maar één tegelijk gestart. De test controleert nu
   //  precies dat — beide helften.
-  test('TWEE TOERNOOIEN: klaarzetten mag, tegelijk starten niet', async ({ page }) => {
-    test.setTimeout(180000);
+  // ============================================================
+  //  v6.0.0 — TWEE TOERNOOIEN TEGELIJK
+  // ------------------------------------------------------------
+  //  Tot v6.0.0 toetste deze proef het omgekeerde: "klaarzetten mag, tegelijk
+  //  starten niet". Sierk, 13 oktober 2026: "de mogelijkheid om meerdere
+  //  toernooien gelijktijdig … te organiseren". Nu: beide lopen, en wie via de
+  //  link van een toernooi binnenkomt ziet dát toernooi — niet het nieuwste.
+  // ============================================================
+  test('TWEE TOERNOOIEN: tegelijk starten mag, en de link bepaalt het toernooi', async ({ page, browser }) => {
+    test.setTimeout(240000);
     jaOpAlles(page);
     await inloggen(page, 'coord@MPladder.stb');
     await naarToernooi(page);
@@ -1508,31 +1531,45 @@ test.describe('Toernooi — de hele route', () => {
     await vulAanmaakformulier(page, 'Eerste', 1);
     for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
     await naarFlightIndeling(page);
-    await slaOpEnStart(page);   // deze gaat écht lopen
+    await slaOpEnStart(page);
     await expect(page.locator('#toernooi-detail')).toContainText('Eerste', { timeout: 15000 });
 
-    // Een tweede klaarzetten MAG nu. v5.24.0: via het startscherm.
     await naarToernooiStart(page);
     await vulAanmaakformulier(page, 'Tweede', 1);
     for (const n of ['Cees Speler', 'Nina Nieuw']) await kiesSpeler(page, n);
     await naarFlightIndeling(page);
-    await slaToernooiOp(page);
+    await slaOpEnStart(page);   // mag nu, terwijl "Eerste" loopt
+    await expect(page.locator('#toernooi-detail')).toContainText('Tweede', { timeout: 15000 });
 
-    await expect.poll(async () => (await haalAlleToernooien()).map(t => t.naam).sort(),
-      { timeout: 20000, message: 'beide toernooien staan in de database' })
-      .toEqual(['Eerste', 'Tweede']);
-
-    // Maar starten gaat niet zolang "Eerste" loopt.
-    // v5.24.0: kiezen doe je op het startscherm, niet meer op een naamknop
-    // boven het toernooi.
-    await naarToernooiStart(page);
-    await page.click('#toernooi-start-wrap div:has-text("Tweede") >> button:has-text("Openen")');
-    await naarDagTab(page, 1);
-    await page.click('#toernooi-detail button:has-text("Dag 1 starten")');
-    await expect(page.locator('#toast')).toContainText('loopt nog', { timeout: 10000 });
-
+    const eerste = await haalToernooi('Eerste');
     const tweede = await haalToernooi('Tweede');
-    expect(tweede.dagen[0].gestart, 'en hij is dus niet gestart').toBeFalsy();
+    expect(eerste.dagen[0].gestart, 'Eerste loopt').toBe(true);
+    expect(tweede.dagen[0].gestart, 'en Tweede ook').toBe(true);
+
+    // Op het startscherm staan ze allebei onder "Loopt nu".
+    await naarToernooiStart(page);
+    const startScherm = page.locator('#toernooi-start-wrap');
+    await expect(startScherm).toContainText('Eerste');
+    await expect(startScherm).toContainText('Tweede');
+
+    // Via de link van het OUDSTE toernooi kom je bij dat toernooi, niet bij het
+    // nieuwste (dat was tot v6.0.0 de keuze op 18 plekken).
+    const ctx = await browser.newContext();
+    try {
+      const anna = await ctx.newPage();
+      await anna.goto(`${TOERNOOI_PAGINA}?t=${encodeURIComponent(eerste._id)}`);
+      await anna.waitForSelector('#login-scherm', { state: 'visible' });
+      await anna.fill('#login-email', 'anna@MPladder.stb');
+      await anna.fill('#login-pass', WACHTWOORD);
+      await anna.click('#login-knop');
+      await anna.waitForSelector('#login-scherm', { state: 'hidden', timeout: 20000 });
+      await expect(anna.locator('#page-toernooi'), 'de toernooipagina').toHaveClass(/active/, { timeout: 15000 });
+      await expect(anna.locator('#h1-second'), 'met de naam van het toernooi uit de link')
+        .toHaveText('Eerste', { timeout: 20000 });
+      await expect(anna.locator('#nav-ladder-btn'), 'en geen ladder').toBeHidden();
+    } finally {
+      await ctx.close();
+    }
   });
 
   test('MEERDAAGS: dag 2 wordt NIET vooraf ingedeeld, maar zegt dat wel', async ({ page }) => {
@@ -2085,7 +2122,7 @@ test.describe('Toernooi — de hele route', () => {
       .toBe('sierk.voorjaarscup');
   });
 
-  test('HERSTELLEN: kan niet zolang er een toernooi loopt', async ({ page }) => {
+  test('HERSTELLEN: kan ook als er een ander toernooi loopt (v6.0.0)', async ({ page }) => {
     test.setTimeout(240000);
     jaOpAlles(page);
 
@@ -2106,16 +2143,14 @@ test.describe('Toernooi — de hele route', () => {
     await slaOpEnStart(page);   // v5.21.0: opslaan én dag 1 starten
     await expect(page.locator('#toernooi-detail')).toContainText('Nieuwtje', { timeout: 25000 });
 
-    // ⚠ HIER GING HET MIS. Bij het AANMAKEN weigert de app sinds v5.9.0 een
-    // tweede actief toernooi; bij het HERSTELLEN controleerde niets dat. Er
-    // stonden dan twee actieve toernooien naast elkaar, en welke een speler te
-    // zien kreeg was willekeurig — `alleToernooien[0]` uit een zoekopdracht
-    // zonder sorteervolgorde.
+    // v6.0.0: tot hier toetste deze proef dat herstellen NIET kon zolang er een
+    // ander toernooi liep (anders kreeg een speler een willekeurig toernooi te
+    // zien). Nu mogen er meer tegelijk lopen en kiest standaardToernooi() per
+    // sessie het juiste — herstellen kan dus gewoon.
     await page.evaluate((id) => window.herstelGeannuleerdToernooi(id), oud.id);
-    await page.waitForTimeout(4000);
-    const actief = (await beheerDb.collection('toernooien').get()).docs
-      .filter(d => d.data().status === 'actief').map(d => d.data().naam);
-    expect(actief, 'er blijft precies één toernooi actief').toEqual(['Nieuwtje']);
+    await expect.poll(async () => (await beheerDb.collection('toernooien').get()).docs
+      .filter(d => d.data().status === 'actief').map(d => d.data().naam).sort(),
+      { timeout: 20000, message: 'beide toernooien zijn actief' }).toEqual(['Nieuwtje', 'Oudje']);
   });
 
   // ============================================================
@@ -2272,6 +2307,108 @@ test.describe('Toernooi — de hele route', () => {
     await page.waitForTimeout(2500);
     const na = await haalToernooi('Holes');
     expect((na.dagen || []).length, 'de dag wordt niet stilletjes toegevoegd').toBe(2);
+  });
+
+
+  // ============================================================
+  //  v6.0.0 — HET TOERNOOI OP EEN EIGEN ADRES
+  // ------------------------------------------------------------
+  //  Ontwerp: ONTWERP-TOERNOOI-APART.md. Drie dingen die nieuw zijn en die
+  //  geen enkele oude proef kon zien: twee losse inlogs op één telefoon, de
+  //  ladder-app die alleen nog verwijst, en de toernooileider.
+  // ============================================================
+
+  test('APART: ladder en toernooi zijn twee losse inlogs', async ({ browser }) => {
+    test.setTimeout(180000);
+    const ctx = await browser.newContext();   // één "telefoon"
+    try {
+      const p = await ctx.newPage();
+      // Ingelogd in de LADDER-app als Anna…
+      await p.goto('/index.html');
+      await p.waitForSelector('#login-scherm', { state: 'visible' });
+      await p.fill('#login-email', 'anna@MPladder.stb');
+      await p.fill('#login-pass', WACHTWOORD);
+      await p.click('#login-knop');
+      await p.waitForSelector('#login-scherm', { state: 'hidden', timeout: 20000 });
+      await expect(p.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
+
+      // …de ladder-app verwijst naar het toernooi in plaats van het te tonen…
+      const tab = p.locator('#nav-toernooi-btn');
+      await expect(tab, 'Toernooi staat er, voor iedereen').toBeVisible();
+      await tab.click();
+      await p.waitForURL(/\/toernooi\/$/, { timeout: 15000 });
+
+      // …en daar is ze NIET ingelogd: een eigen inlog.
+      await expect(p.locator('#login-scherm'), 'de toernooipagina vraagt om in te loggen')
+        .toHaveClass(/actief/, { timeout: 20000 });
+      await expect(p.locator('#login-scherm .login-logo')).toHaveText('Toernooi');
+
+      // Log in op de toernooipagina als Coen…
+      await p.fill('#login-email', 'coord@MPladder.stb');
+      await p.fill('#login-pass', WACHTWOORD);
+      await p.click('#login-knop');
+      await p.waitForSelector('#login-scherm', { state: 'hidden', timeout: 20000 });
+      await expect(p.locator('#page-toernooi')).toHaveClass(/active/, { timeout: 15000 });
+      await expect(p.locator('#nav-ladder-btn'), 'geen ladder in de toernooipagina').toBeHidden();
+      await expect(p.locator('#nav-admin-btn'), 'en geen beheer').toBeHidden();
+
+      // …en terug in de ladder-app is het nog steeds Anna.
+      await p.goto('/index.html');
+      await expect(p.locator('#logout-btn'), 'de ladder-inlog is ongemoeid')
+        .toHaveText(/^Anna/, { timeout: 25000 });
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  test('APART: het inlogscherm van de ladder-app verwijst naar de toernooipagina', async ({ page }) => {
+    await page.goto('/index.html');
+    await page.waitForSelector('#login-scherm', { state: 'visible' });
+    await expect(page.locator('#toernooi-inlog'), 'geen pincode-blok meer in de ladder-app').toBeHidden();
+    const link = page.locator('#toernooi-inlog-link a');
+    await expect(link).toBeVisible({ timeout: 15000 });
+    await expect(link).toHaveAttribute('href', /\/toernooi\/$/);
+  });
+
+  test('TOERNOOILEIDER: maakt een toernooi met een gast, zonder ladder', async ({ page }) => {
+    test.setTimeout(240000);
+    // De toernooileider: een account met een profiel, in geen enkele ladder.
+    const email = 'leider@mpladder.stb';
+    let uid;
+    try { uid = (await admin.auth().getUserByEmail(email)).uid; }
+    catch { uid = (await admin.auth().createUser({ email, password: WACHTWOORD })).uid; }
+    await beheerDb.doc(`spelers/${uid}`).set({ uid, naam: 'Toos Leider', email, rol: 'toernooileider', hcp: 0, eersteLogin: false });
+
+    const antwoorden = ['Karel Gast', '15'];
+    page.on('dialog', async d => {
+      if (d.type() === 'prompt') await d.accept(antwoorden.shift() ?? '');
+      else await d.accept();
+    });
+    await inloggen(page, email);
+    await naarToernooi(page);
+    await expect(page.locator('#toernooi-start-wrap'), 'het startscherm van de wedstrijdleiding')
+      .toContainText('Nieuw toernooi', { timeout: 20000 });
+
+    await vulAanmaakformulier(page, 'Leiderstoernooi', 1);
+    // Geen ladderkeuze voor de toernooileider.
+    await naarSetupTab(page, 'toernooi');
+    await expect(page.locator('#t-ranking-ladders')).toContainText('een toernooileider koppelt geen ladder');
+    await kiesSpeler(page, 'Anna Speler');
+    await page.fill('#t-toernooi-pin', '4321');
+    await page.click('#toernooi-setup-wrap button:has-text("Gastspeler toevoegen")');
+    await expect(page.locator('#t-geselecteerde-spelers')).toContainText('Karel Gast');
+    await naarFlightIndeling(page);
+    await slaOpEnStart(page);
+    await expect(page.locator('#toernooi-detail')).toContainText('Leiderstoernooi', { timeout: 20000 });
+
+    // De gast krijgt een inlog — met de databaseregels aan is dit precies wat
+    // vóór v6.0.0 misging bij iedereen behalve de beheerder.
+    await expect.poll(async () => {
+      const x = await haalToernooi('Leiderstoernooi');
+      return (x.spelers || []).filter(sp => sp.gast && sp.login).length;
+    }, { timeout: 30000, message: 'de gast heeft een inlog' }).toBe(1);
+    const t = await haalToernooi('Leiderstoernooi');
+    expect((t.rankingLadderIds || []).length, 'en het toernooi hangt aan geen ladder').toBe(0);
   });
 
 });

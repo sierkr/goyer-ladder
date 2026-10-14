@@ -17,6 +17,7 @@ const suites = [
   ['Bekijk als gewone speler',   './kijkalsspeler.test.cjs'],   // v5.47.0
   ['Trage start',                './trage-start.test.cjs'],     // v5.48.0
   ['Spelvormen',                 './spelvormen.test.cjs'],      // v5.51.0
+  ['Toernooipagina',             './toernooipagina.test.cjs'],  // v6.0.0
 ];
 
 let totOk = 0, totFout = 0;

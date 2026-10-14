@@ -327,6 +327,20 @@ async function laadToernooi() {
         document.getElementById('inhoud').innerHTML = '<div class="fout">Geen actief toernooi gevonden.</div>';
         return;
       }
+      // v6.0.0: er kunnen meer toernooien tegelijk lopen. Eén: dat toernooi.
+      // Meer: een lijst om te kiezen — nooit stilletjes het eerste nemen. De
+      // knop en de QR in de app geven de link (?t=…) altijd mee.
+      if (snap.size > 1) {
+        const esc = x => String(x ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+        const lijst = snap.docs
+          .map(d => ({ id: d.id, naam: d.data().naam || 'Toernooi' }))
+          .sort((a, b) => a.naam.localeCompare(b.naam, 'nl'))
+          .map(t => `<li style="margin:8px 0"><a href="?t=${encodeURIComponent(t.id)}" style="color:var(--green);font-weight:600">${esc(t.naam)}</a></li>`)
+          .join('');
+        document.getElementById('inhoud').innerHTML =
+          `<div style="padding:16px"><p>Er lopen meer toernooien. Welke wil je volgen?</p><ul style="list-style:none;padding:0">${lijst}</ul></div>`;
+        return;
+      }
       toernooiId = snap.docs[0].id;
       toernooiData = snap.docs[0].data();
       pasGekozenDagToe();

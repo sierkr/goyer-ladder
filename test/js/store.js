@@ -173,6 +173,29 @@ export function isGastProfiel(u) {
   return !!u && (u.toernooiGast === true || u.rondeGast === true);
 }
 
+// ============================================================
+//  v6.0.0 — WELK TOERNOOI KOOS DEZE SESSIE VIA DE LINK?
+// ------------------------------------------------------------
+//  Elk toernooi heeft een eigen link: …/toernooi/?t=<id>. Wie die opent hoeft
+//  niets te kiezen. De keuze wordt per tabblad bewaard (sessionStorage), zodat
+//  hij een herladen en het inloggen overleeft — het adres wordt na het inloggen
+//  niet schoongeveegd, maar een gebruiker kan zelf ook navigeren.
+// ============================================================
+const TOERNOOI_KEUZE_SLEUTEL = 'goyer_toernooi_t';
+export function gekozenToernooiId() {
+  try {
+    const uitAdres = new URLSearchParams(location.search).get('t');
+    if (uitAdres) { sessionStorage.setItem(TOERNOOI_KEUZE_SLEUTEL, uitAdres); return uitAdres; }
+    return sessionStorage.getItem(TOERNOOI_KEUZE_SLEUTEL) || null;
+  } catch (_) { return null; }
+}
+export function zetGekozenToernooi(id) {
+  try {
+    if (id) sessionStorage.setItem(TOERNOOI_KEUZE_SLEUTEL, id);
+    else sessionStorage.removeItem(TOERNOOI_KEUZE_SLEUTEL);
+  } catch (_) { /* privémodus: dan alleen via het adres */ }
+}
+
 // ─── Aangepaste banen ───────────────────────────────────────
 export let aangepasteBanen = [];
 export let _verwijderdePartijIds = new Set();

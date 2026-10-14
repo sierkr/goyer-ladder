@@ -1,13 +1,13 @@
 {
   "name": "goyer-ladder-tests",
-  "version": "5.52.0",
+  "version": "6.0.0",
   "private": true,
   "description": "Testgereedschap voor de Goyer Golf MP Ladder. Alleen nodig voor de emulator- en browsertests; de rekentests draaien zonder dit alles.",
   "scripts": {
     "regels": "firebase emulators:exec --project demo-goyer --only firestore \"node tests/emulator/rules.test.cjs\"",
     "functies": "firebase emulators:exec --project demo-goyer --only firestore,auth,functions \"node tests/emulator/functions.test.cjs\"",
     "browser": "firebase emulators:exec --project demo-goyer --only firestore,auth,functions \"node tests/e2e/seed.cjs && playwright test --config=playwright.config.cjs\"",
-    "browser-regels": "firebase emulators:exec --config firebase.regels.json --project demo-goyer --only firestore,auth,functions \"node tests/e2e/seed.cjs && playwright test --config=playwright.config.cjs -g 'RONDE-QR|SPELERS-QR|SPELVORM-'\"",
+    "browser-regels": "firebase emulators:exec --config firebase.regels.json --project demo-goyer --only firestore,auth,functions \"node tests/e2e/seed.cjs && playwright test --config=playwright.config.cjs app.spec -g 'RONDE-QR|SPELERS-QR|SPELVORM-' && playwright test --config=playwright.config.cjs toernooi.spec\"",
     "linter": "eslint --config tests/eslint.config.mjs --no-config-lookup js sw.js tests"
   },
   "devDependencies": {

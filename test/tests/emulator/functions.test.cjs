@@ -401,6 +401,15 @@ async function main() {
   // op de eerste tee wordt rondverteld de sleutel tot het hele beheerscherm.
   await R.magNiet('de WEDSTRIJDLEIDING komt er niet in met de pincode',
     () => roepAan('wisselToernooiPin', { toernooiId: 't_pin', spelerUid: BEHEERDER, pin: '1234' }, null));
+  // v6.0.0: ook de toernooileider hoort bij de wedstrijdleiding.
+  await db.doc('spelers/uid_tl_pin_000000000000').set({ naam: 'Tim', rol: 'toernooileider', hcp: 0 });
+  await db.doc('toernooien/t_pin').set({ spelers: [
+    { uid: SPELER_A,  naam: 'Anna', hcp: 10, gast: false },
+    { uid: BEHEERDER, naam: 'Bea',  hcp: 10, gast: false },
+    { uid: 'uid_tl_pin_000000000000', naam: 'Tim', hcp: 0, gast: false },
+  ] }, { merge: true });
+  await R.magNiet('ook de TOERNOOILEIDER komt er niet in met de pincode',
+    () => roepAan('wisselToernooiPin', { toernooiId: 't_pin', spelerUid: 'uid_tl_pin_000000000000', pin: '1234' }, null));
 
   // En dan de goede afloop: een deelnemer met de juiste pincode.
   const pinUit = await roepAan('wisselToernooiPin',
@@ -582,6 +591,37 @@ async function main() {
     () => roepAan('wisselRondeSleutel',
       { ladderId: 'mp', partijId: 'p1', sleutel: spelerSleutel, soort: 'speler',
         spelerUid: SPELER_A }, null));
+
+  // ══ v6.0.0 — TOERNOOI APART: TOERNOOILEIDER EN DE QR PER TOERNOOI ══
+  //  Ontwerp: ONTWERP-TOERNOOI-APART.md.
+  const TLEIDER = 'uid_toernooileider_00000';
+  await db.doc(`spelers/${TLEIDER}`).set({ naam: 'Toos', rol: 'toernooileider', hcp: 0 });
+  const tokenTl = await tokenVoor(TLEIDER);
+  await db.doc('toernooien/t_qr').set({ naam: 'QR Cup', status: 'actief', spelers: [] });
+  const TBASIS = 'https://sierkr.github.io/goyer-ladder/toernooi/';
+  await R.magNiet('een speler kan geen toernooi-QR laten maken',
+    () => roepAan('maakToernooiQr', { toernooiId: 't_qr', basis: TBASIS }, tokenA));
+  await R.magNiet('zonder inlog ook niet',
+    () => roepAan('maakToernooiQr', { toernooiId: 't_qr', basis: TBASIS }, null));
+  await R.magNiet('een adres dat geen webadres is wordt geweigerd',
+    () => roepAan('maakToernooiQr', { toernooiId: 't_qr', basis: 'javascript:alert(1)' }, tokenTl));
+  await R.magNiet('een toernooi dat niet bestaat heeft geen QR',
+    () => roepAan('maakToernooiQr', { toernooiId: 't_bestaat_niet', basis: TBASIS }, tokenTl));
+  const tqr = await roepAan('maakToernooiQr', { toernooiId: 't_qr', basis: TBASIS }, tokenTl);
+  R.check('de toernooileider krijgt een QR', (tqr?.svg || '').includes('<svg'), true);
+  R.check('die naar dit toernooi wijst', tqr?.url, TBASIS + '?t=t_qr');
+  const tqrBeh = await roepAan('maakToernooiQr', { toernooiId: 't_qr', basis: TBASIS }, tokenBeh);
+  R.check('de beheerder ook', tqrBeh?.url, TBASIS + '?t=t_qr');
+  // Met een echte regel: bij een lege lijst stopt de functie al vóór de
+  // rolcontrole (er verandert dan ook niets) — dan zegt "geweigerd" niets.
+  await R.magNiet('een toernooileider kan GEEN ladderpunten verwerken',
+    () => roepAan('verwerkToernooiStanden', { ladderId: 'mp', standen: [{ uid: SPELER_A, rank: 1 }] }, tokenTl));
+  await R.magNiet('een toernooileider kan GEEN ladder terugdraaien',
+    () => roepAan('draaiPartijTerug', { ladderId: 'mp', partijId: 'p1' }, tokenTl));
+  await R.magNiet('wees-account: MET profiel ook voor de toernooileider niet',
+    () => roepAan('verwijderWeesAccount', { targetUid: SPELER_A }, tokenTl));
+  const weesTl = await roepAan('verwijderWeesAccount', { targetUid: 'uid_bestaat_niet_00000' }, tokenTl);
+  R.check('de toernooileider mag een wees-account opruimen', weesTl?.success, true);
 
   // ══ v5.51.0 — DE NIEUWE SPELVORMEN ══════════════════════════
   //  Een Skins-partij met drie spelers: de eindstand gaat in plekken, en de
