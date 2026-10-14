@@ -2311,7 +2311,14 @@
       niet meer.
     </div>
     <div id="ronde-qr-vak" style="width:100%;max-width:260px;margin:0 auto;background:#ffffff;border-radius:8px;min-height:120px"></div>
-    <div id="ronde-qr-adres" style="text-align:center;font-family:'DM Mono',monospace;font-size:10px;color:var(--mid);margin-top:10px;word-break:break-all"></div>
+    <div id="ronde-qr-adres" style="text-align:center;font-family:'DM Mono',monospace;font-size:11px;color:var(--mid);margin-top:10px;word-break:break-all;user-select:all;-webkit-user-select:all"></div>
+    <!-- v6.0.1: de link onder de code doorsturen. Sierk: "De QR codes zouden
+         kopieerbaar worden om met whatsapp te versturen". Functies in js/app.js. -->
+    <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+      <button type="button" class="btn btn-ghost btn-sm" style="flex:1;min-width:0" onclick="kopieerQrLink('ronde')">📋 Kopieer link</button>
+      <button type="button" class="btn btn-ghost btn-sm qr-deel-knop" style="flex:1;min-width:0;display:none" onclick="deelQrLink('ronde')">📤 Delen</button>
+      <button type="button" class="btn btn-ghost btn-sm" style="flex:1;min-width:0" onclick="whatsappQrLink('ronde')">WhatsApp</button>
+    </div>
     <div style="display:flex;gap:8px;margin-top:16px">
       <button class="btn btn-primary btn-block" onclick="closeModal('modal-ronde-qr')">Sluiten</button>
     </div>
@@ -2326,7 +2333,14 @@
       inlogpagina van de Matchplay Ladder.
     </div>
     <div id="qr-code-vak" style="width:100%;max-width:260px;margin:0 auto;background:#ffffff;border-radius:8px"></div>
-    <div id="qr-code-adres" style="text-align:center;font-family:'DM Mono',monospace;font-size:11px;color:var(--mid);margin-top:10px;word-break:break-all"></div>
+    <div id="qr-code-adres" style="text-align:center;font-family:'DM Mono',monospace;font-size:11px;color:var(--mid);margin-top:10px;word-break:break-all;user-select:all;-webkit-user-select:all"></div>
+    <!-- v6.0.1: de link onder de code doorsturen. Sierk: "De QR codes zouden
+         kopieerbaar worden om met whatsapp te versturen". Functies in js/app.js. -->
+    <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+      <button type="button" class="btn btn-ghost btn-sm" style="flex:1;min-width:0" onclick="kopieerQrLink('toernooi')">📋 Kopieer link</button>
+      <button type="button" class="btn btn-ghost btn-sm qr-deel-knop" style="flex:1;min-width:0;display:none" onclick="deelQrLink('toernooi')">📤 Delen</button>
+      <button type="button" class="btn btn-ghost btn-sm" style="flex:1;min-width:0" onclick="whatsappQrLink('toernooi')">WhatsApp</button>
+    </div>
     <div style="display:flex;gap:8px;margin-top:16px">
       <button class="btn btn-primary btn-block" onclick="closeModal('modal-qr-code')">Sluiten</button>
     </div>
