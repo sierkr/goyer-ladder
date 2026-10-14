@@ -268,7 +268,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v6.0.0';
+  const VERSION = 'v6.0.1';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -312,7 +312,7 @@ window.kiesTRankingLadder = kiesTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v6.0.0';
+  const LOKALE_VERSIE = 'v6.0.1';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 
@@ -410,6 +410,52 @@ try {
   initApp();
 } catch(e) {
   console.error('initApp mislukt:', e);
+}
+
+// ============================================================
+//  v6.0.1 — DE LINK ONDER EEN QR-CODE DOORSTUREN
+// ------------------------------------------------------------
+//  Sierk, 14 oktober 2026: "De QR codes zouden kopieerbaar worden om met
+//  whatsapp te versturen … Graag toevoegen." Twee vensters hebben een link
+//  onder de code: de flight-QR van een ronde en de QR van een toernooi.
+//
+//  ⚠ In de link van een ronde zit de sleutel van die ronde. Wie het bericht
+//  heeft, kan de ronde in tot de partij verwerkt is — net als wie de QR ziet.
+//  Op Sierks eigen verzoek (OPENSTAAND, wensenlijst 13 oktober 2026).
+// ============================================================
+const QR_LINK = {
+  ronde:    { vak: 'ronde-qr-adres', tekst: 'Doe mee in onze ronde: open deze link en kies je naam.' },
+  toernooi: { vak: 'qr-code-adres',  tekst: 'Doe mee aan het toernooi: open deze link, kies je naam en tik de pincode.' },
+};
+function _qrLink(soort) {
+  const def = QR_LINK[soort];
+  const url = (document.getElementById(def?.vak)?.textContent || '').trim();
+  if (!/^https?:\/\//.test(url)) { toast('Er is nog geen link — wacht tot de code er staat'); return null; }
+  return { url, tekst: def.tekst };
+}
+window.kopieerQrLink = async function (soort) {
+  const l = _qrLink(soort); if (!l) return;
+  try {
+    await navigator.clipboard.writeText(l.url);
+    toast('Link gekopieerd — plak hem in WhatsApp ✓');
+  } catch (_) {
+    // Geen klembord (oudere browser, of geen toestemming): de link laten zien,
+    // zodat hij met de hand te kopiëren is.
+    prompt('Kopieer deze link:', l.url);
+  }
+};
+window.deelQrLink = async function (soort) {
+  const l = _qrLink(soort); if (!l) return;
+  try { await navigator.share({ text: l.tekst, url: l.url }); }
+  catch (e) { if (e?.name !== 'AbortError') window.whatsappQrLink(soort); }
+};
+window.whatsappQrLink = function (soort) {
+  const l = _qrLink(soort); if (!l) return;
+  window.open('https://wa.me/?text=' + encodeURIComponent(`${l.tekst}\n${l.url}`), '_blank', 'noopener');
+};
+// "Delen" alleen tonen waar de telefoon een deelmenu heeft.
+if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+  document.querySelectorAll('.qr-deel-knop').forEach(k => { k.style.display = ''; });
 }
 
 // v5.35.0: de HELP-tab heeft twee handleidingen — Partij & Ronde en Toernooi.

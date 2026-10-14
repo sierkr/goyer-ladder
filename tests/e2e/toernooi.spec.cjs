@@ -1100,6 +1100,13 @@ test.describe('Toernooi — de hele route', () => {
     const svgHtml = await venster.locator('#qr-code-vak').innerHTML();
     expect(svgHtml.length, 'de code is echt getekend (geen foutmelding)').toBeGreaterThan(1000);
 
+    // v6.0.1: de link doorsturen via WhatsApp.
+    await page.evaluate(() => { window.__geopend = []; window.open = (u) => { window.__geopend.push(u); }; });
+    await venster.locator('button:has-text("WhatsApp")').click();
+    const wa = (await page.evaluate(() => window.__geopend))[0] || '';
+    expect(decodeURIComponent(wa.split('text=')[1] || ''), 'WhatsApp krijgt de link van dit toernooi mee')
+      .toContain(`/toernooi/?t=${t._id}`);
+
     await venster.locator('button:has-text("Sluiten")').click();
     await expect(venster, 'en weer dicht').not.toHaveClass(/open/, { timeout: 10000 });
   });

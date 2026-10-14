@@ -243,7 +243,8 @@ test.describe.serial('Partij en scores', () => {
   // Sierk: "je hebt maar 1 QR code nodig waarmee ook gastspelers hun naam kiezen."
   test('RONDE-QR: een gastspeler uit de flight scant, kiest zijn naam en staat in de ronde', async ({ browser }) => {
     test.setTimeout(240000);
-    const ctxLid = await browser.newContext();
+    // v6.0.1: met klembord, voor de knop "Kopieer link".
+    const ctxLid = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
     const lid = await ctxLid.newPage();
     try {
       // ⚠ Cees en Nina, niet Anna en Bram. Die twee zitten in de volle reeks al
@@ -282,6 +283,16 @@ test.describe.serial('Partij en scores', () => {
       expect(adres, 'het adres wijst naar deze ronde').toMatch(/[?&]r=/);
       expect(adres, 'en draagt een sleutel').toMatch(/[?&]k=.{10,}/);
       expect(adres, 'het is de code waarmee je je naam kiest').toMatch(/[?&]s=1/);
+
+      // ── v6.0.1: de link doorsturen ───────────────────────────
+      await lid.click('#modal-ronde-qr button:has-text("Kopieer link")');
+      expect(await lid.evaluate(() => navigator.clipboard.readText()), 'Kopieer link zet het adres op het klembord')
+        .toBe(adres);
+      await lid.evaluate(() => { window.__geopend = []; window.open = (u) => { window.__geopend.push(u); }; });
+      await lid.click('#modal-ronde-qr button:has-text("WhatsApp")');
+      const wa = (await lid.evaluate(() => window.__geopend))[0] || '';
+      expect(wa, 'WhatsApp opent met een bericht').toMatch(/^https:\/\/wa\.me\/\?text=/);
+      expect(decodeURIComponent(wa.split('text=')[1] || ''), 'waarin de link staat').toContain(adres);
 
       // ── Het tweede venster doet wat scannen doet ─────────────
       const ctxGast = await browser.newContext();
