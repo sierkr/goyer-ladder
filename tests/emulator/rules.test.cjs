@@ -271,6 +271,20 @@ async function main() {
   await R.magNiet('speler kan een live-document niet verwijderen',
     () => speler.doc(`toernooien/t1/live/${SPELER2}`).delete());
 
+  // ══ v6.1.0: de handicap die een speler zelf bevestigt ═════════
+  // Een flightgenoot mag zijn scores bijhouden, maar NIET zijn handicap zetten.
+  const hcp = (playing) => ({ hcpDagen: { '1': { exact: 18.4, playing, op: 1 } } });
+  await R.magWel('een speler mag zijn EIGEN handicap van de dag bevestigen',
+    () => speler.doc(`toernooien/t1/live/${SPELER}`).set(hcp(21), { merge: true }));
+  await R.magNiet('een speler mag de handicap van een flightgenoot NIET zetten',
+    () => speler.doc(`toernooien/t1/live/${SPELER2}`).set(hcp(30), { merge: true }));
+  await R.magNiet('ook niet in een nieuw document',
+    () => speler.doc('toernooien/t1/live/uid_nieuw_dddddddddddd').set(hcp(30)));
+  await R.magWel('de wedstrijdleiding mag het wel',
+    () => coord.doc(`toernooien/t1/live/${SPELER2}`).set(hcp(20), { merge: true }));
+  await R.magWel('scores bijhouden bij een flightgenoot mag nog steeds, ook nu er een handicap in zijn document staat',
+    () => speler.doc(`toernooien/t1/live/${SPELER2}`).set({ kaartDagen: { '1': { [SPELER]: [5] } } }, { merge: true }));
+
   // ══ v5.38.0 — DE TOERNOOI-PINCODE ══════════════════════════
   //  Wie met de pincode binnenkwam heeft zijn EIGEN wachtwoord niet gebruikt:
   //  één getal van vier cijfers, gedeeld met de hele flight, was genoeg. Zo

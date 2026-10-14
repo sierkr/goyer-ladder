@@ -532,9 +532,30 @@ test.describe('Toernooi — de hele route', () => {
       await wachtOpKleur(speler, uidSpeler, 0, 'zwart');
       expect(await getalIn(mede, uidSpeler, 0),
         'de 5 van de medespeler staat er nog').toBe('5');
-      // En de flight deelt één laag: de derde ziet wat de medespeler intikte.
-      await expect.poll(() => getalIn(derde, uidSpeler, 0),
-        { timeout: 20000, message: 'de derde ziet de 5 van de medespeler' }).toBe('5');
+
+      // ⚠ v6.0.2 — IEDERE MEDESPELER ZIJN EIGEN KAART. Hier stond tot v6.0.1
+      // "de derde ziet de 5 van de medespeler": de flight deelde één laag. Precies
+      // dat meldde Sierk op 14 oktober 2026 als fout ("als Roy een score voor alle
+      // drie invult dan ziet Sierk op zijn kaart de ingevulde score staan bij
+      // Ton"). Nu ziet de derde op hole 1 een LEEG vakje — hij heeft daar zelf
+      // niets ingetikt — terwijl het vakje wél zwart is (speler en medespeler
+      // kwamen overeen).
+      await wachtOpKleur(derde, uidSpeler, 0, 'zwart');
+      expect(await getalIn(derde, uidSpeler, 0),
+        'de derde ziet NIET wat de medespeler intikte').toBe('');
+
+      // Tikt de derde iets anders in dan de medespeler, dan overschrijft hij hem
+      // niet maar wordt het vakje ROOD — bij de speler én de wedstrijdleiding.
+      await derde.evaluate(({ uid }) => window.updateTScore(uid, 0, 6), { uid: uidSpeler });
+      await wachtOpKleur(speler, uidSpeler, 0, 'rood');
+      await wachtOpKleur(coord,  uidSpeler, 0, 'rood');
+      expect(await getalIn(mede, uidSpeler, 0),
+        'de 5 van de medespeler is niet overschreven').toBe('5');
+      expect(await getalIn(derde, uidSpeler, 0), 'de derde ziet zijn eigen 6').toBe('6');
+      // Uitgepraat: de derde zet hem op 5, en alles is weer zwart.
+      await derde.evaluate(({ uid }) => window.updateTScore(uid, 0, 5), { uid: uidSpeler });
+      await wachtOpKleur(speler, uidSpeler, 0, 'zwart');
+      await wachtOpKleur(coord,  uidSpeler, 0, 'zwart');
 
       // ── 8. De wedstrijdleiding stelt vast en zet de hole op slot ──
       await speler.evaluate(({ uid }) => window.updateTScore(uid, 1, 4), { uid: uidSpeler });
@@ -550,6 +571,101 @@ test.describe('Toernooi — de hele route', () => {
     } finally {
       await ctxCoord.close(); await ctxSpeler.close();
       await ctxMede.close();  await ctxDerde.close();
+    }
+  });
+
+  // ============================================================
+  //  v6.1.0 — EXACT EN PLAYING HANDICAP
+  // ============================================================
+  //  Sierk, 14 oktober 2026: de exact handicap staat op het tabblad Spelers, de
+  //  playing handicap verschilt per dag en de speler bevestigt hem zelf op zijn
+  //  scorekaart. Spelregels: (1) wijzigen tot de eerste score van die dag,
+  //  (2) de wedstrijdleiding ziet wie nog niet bevestigde, (3) meer dan 2
+  //  punten verschil in de exact handicap geeft een ⚠ tot "akkoord".
+  //  Drie vensters, drie echte inlogs; met en zonder databaseregels.
+  // ============================================================
+  test('HANDICAP: speler bevestigt exact en playing, ⚠ en akkoord, slot na de eerste score', async ({ browser }) => {
+    test.setTimeout(240000);
+    const ctxCoord = await browser.newContext();
+    const ctxAnna  = await browser.newContext();
+    const ctxBram  = await browser.newContext();
+    try {
+      const coord = await ctxCoord.newPage();
+      jaOpAlles(coord);
+      await inloggen(coord, 'coord@MPladder.stb');
+      await naarToernooi(coord);
+      await vulAanmaakformulier(coord, 'Handicapproef', 1);
+      for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(coord, n);
+      await naarFlightIndeling(coord);
+      await slaOpEnStart(coord);
+      await expect(coord.locator('#toernooi-detail')).toContainText('Handicapproef', { timeout: 15000 });
+
+      const t = await haalToernooi('Handicapproef');
+      const uidVan = (voornaam) => t.spelers.find(s => s.naam.startsWith(voornaam)).uid;
+      const anna = uidVan('Anna'), bram = uidVan('Bram'), cees = uidVan('Cees');
+
+      // ── 1. Spelregel 2: de wedstrijdleiding ziet wie nog niet bevestigde ──
+      await expect(coord.locator('#t-hcp-open')).toContainText('Anna', { timeout: 20000 });
+
+      // ── 2. Anna bevestigt: exact 15,1 (was 12 — meer dan 2), playing 17 ──
+      const pa = await ctxAnna.newPage();
+      jaOpAlles(pa);
+      await inloggen(pa, 'anna@MPladder.stb');
+      await naarToernooi(pa);
+      await expect(pa.locator('#t-mijn-hcp')).toBeVisible({ timeout: 20000 });
+      expect(await pa.inputValue('#t-hcp-exact'), 'de exact handicap van de spelers-tab staat er al').toBe('12');
+      expect(await pa.inputValue('#t-hcp-playing'), 'de playing handicap is leeg: die vult zij zelf in').toBe('');
+      await pa.fill('#t-hcp-exact', '15,1');
+      await pa.fill('#t-hcp-playing', '17');
+      await pa.click('#t-hcp-bevestig');
+      await expect(pa.locator('#t-mijn-hcp-status')).toContainText('Bevestigd', { timeout: 15000 });
+      await expect.poll(async () =>
+        (await beheerDb.doc(`toernooien/${t._id}/live/${anna}`).get()).data()?.hcpDagen?.['1']?.playing,
+        { timeout: 15000, message: 'de bevestiging staat in haar eigen live-document' }).toBe(17);
+
+      // ── 3. Bij de wedstrijdleiding: kolomkop 17, Anna van de lijst af ──
+      await expect.poll(async () => (await coord.locator(`[data-kop-hcp="${anna}"]`).textContent() || '').trim(),
+        { timeout: 20000, message: 'de kolomkop toont de playing handicap van vandaag' }).toBe('hcp 17');
+      await expect(coord.locator('#t-hcp-open')).not.toContainText('Anna', { timeout: 20000 });
+      await expect(coord.locator('#t-hcp-open')).toContainText('Bram');
+
+      // ── 4. Spelregel 3: op de spelers-tab 15,1 met een ⚠, tot "akkoord" ──
+      await naarSpelersTab(coord);
+      await expect(coord.locator(`#t-spelers-lijst input[data-hcp-uid="${anna}"]`)).toHaveValue('15,1', { timeout: 20000 });
+      const waarschuwing = coord.locator(`#t-spelers-lijst .t-hcp-waarschuwing[data-hcp-uid="${anna}"]`);
+      await expect(waarschuwing).toContainText('15,1');
+      await expect(waarschuwing).toContainText('was 12');
+      await waarschuwing.locator('button').click();
+      await expect(waarschuwing).toHaveCount(0, { timeout: 15000 });
+      const naAkkoord = await haalToernooi('Handicapproef', 20, x => x.spelers.find(s => s.uid === anna)?.hcp === 15.1);
+      expect(naAkkoord.spelers.find(s => s.uid === anna).hcpOp, 'het akkoord staat met tijdstip vast').toBeGreaterThan(0);
+
+      // ── 5. De indeler zet een exact handicap met decimaal ──
+      const bramVak = coord.locator(`#t-spelers-lijst input[data-hcp-uid="${bram}"]`);
+      await bramVak.fill('13,7');
+      await bramVak.press('Tab');
+      await haalToernooi('Handicapproef', 20, x => x.spelers.find(s => s.uid === bram)?.hcp === 13.7);
+
+      // ── 6. Spelregel 1: Bram tikt Anna's eerste score in → haar handicap op slot ──
+      const pb = await ctxBram.newPage();
+      jaOpAlles(pb);
+      await inloggen(pb, 'bram@MPladder.stb');
+      await naarToernooi(pb);
+      await pb.evaluate(({ uid }) => window.updateTScore(uid, 0, 5), { uid: anna });
+      await expect(pa.locator('#t-hcp-exact'), 'geen invulvakjes meer').toHaveCount(0, { timeout: 20000 });
+      await expect(pa.locator('#t-mijn-hcp')).toContainText('🔒');
+      await expect(pa.locator('#t-mijn-hcp')).toContainText('playing 17');
+
+      // ── 7. Dag afsluiten legt de playing handicap vast ──
+      await naarDagTab(coord, 1);
+      await coord.evaluate(() => window.sluitDagAf());
+      const afgesloten = await haalToernooi('Handicapproef', 30, x => x.dagen?.[0]?.afgerond === true);
+      const vast = afgesloten.dagen[0].playingHcp || {};
+      expect(vast[anna], 'Anna: door haarzelf bevestigd').toMatchObject({ waarde: 17, door: 'speler' });
+      expect(vast[cees], 'Cees: niemand vulde iets in, dus zijn exact handicap').toMatchObject({ waarde: 16, door: 'exact' });
+      expect(vast[bram], 'Bram: zijn nieuwe exact handicap').toMatchObject({ waarde: 13.7, door: 'exact' });
+    } finally {
+      await ctxCoord.close(); await ctxAnna.close(); await ctxBram.close();
     }
   });
 

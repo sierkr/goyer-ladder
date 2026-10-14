@@ -279,14 +279,64 @@ window.laadData = async function() {
 //  hele flight bij — dan komt het in `markerDagen` terecht en bleef deze pagina
 //  leeg tot "dag afsluiten". Ook een score die de wedstrijdleiding vaststelde
 //  was hier onzichtbaar.
+//
+//  ⚠ v6.0.2: elke medespeler heeft nu een EIGEN kaart (`kaartDagen`, per dag
+//  per invuller). `markerWaarde` mag daarom ook een LIJST zijn: de kaarten in
+//  gesorteerde volgorde, met de oude gedeelde laag `markerDagen` achteraan —
+//  precies zoals medespelerWaarden() in js/toernooi.js.
 // ============================================================
 function tellendGetal(spelerWaarde, markerWaarde, beheerWaarde) {
   const leeg = (v) => v === null || v === undefined || v === '';
   const bh = leeg(beheerWaarde) ? null : Number(beheerWaarde);
   if (bh !== null) return bh;          // de wedstrijdleiding heeft het laatste woord
   const sp = leeg(spelerWaarde) ? null : Number(spelerWaarde);
-  const mk = leeg(markerWaarde) ? null : Number(markerWaarde);
-  return sp !== null ? sp : mk;        // anders de speler; is die er niet, zijn flight
+  if (sp !== null) return sp;          // anders de speler zelf
+  const flight = (Array.isArray(markerWaarde) ? markerWaarde : [markerWaarde]).filter(v => !leeg(v));
+  return flight.length > 0 ? Number(flight[0]) : null;   // is die er niet, zijn flight
+}
+
+// ============================================================
+//  v6.1.0 — DE PLAYING HANDICAP VAN EEN DAG
+// ------------------------------------------------------------
+//  ⚠ KOPIE van _hcpGetal(), spelerExactHcp() en spelerPlayingHcp() uit
+//  js/toernooi.js, maar alleen het getal. Zie daar "EXACT HANDICAP EN PLAYING
+//  HANDICAP PER DAG". De rekentest legt beide kanten naast elkaar.
+//  Wijzig je hier iets, wijzig het dan ook in js/toernooi.js.
+// ============================================================
+function hcpGetalLive(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(String(v).trim().replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+}
+
+function exactHcpLive(s, live) {
+  const indeler = hcpGetalLive(s?.hcp);
+  let laatste = null;
+  Object.values(live?.hcpDagen || {}).forEach(b => {
+    if (!b || hcpGetalLive(b.exact) === null) return;
+    if (!laatste || (Number(b.op) || 0) > (Number(laatste.op) || 0)) laatste = b;
+  });
+  if (laatste && (Number(laatste.op) || 0) > (Number(s?.hcpOp) || 0)) return hcpGetalLive(laatste.exact);
+  return indeler;
+}
+
+function playingHcpLive(s, dag, live) {
+  const vanIndeler = dag?.playingHcp?.[s?.uid] || null;
+  const indelerWaarde = hcpGetalLive(vanIndeler?.waarde);
+  if (dag?.afgerond) return indelerWaarde !== null ? indelerWaarde : hcpGetalLive(s?.hcp);
+  const indelerTelt = indelerWaarde !== null && vanIndeler.door !== 'exact';
+  const vanSpeler = live?.hcpDagen?.[String(dag?.dagNr)] || null;
+  const spelerWaarde = hcpGetalLive(vanSpeler?.playing);
+  if (spelerWaarde !== null && (!indelerTelt || (Number(vanSpeler?.op) || 0) > (Number(vanIndeler?.op) || 0))) return spelerWaarde;
+  if (indelerTelt) return indelerWaarde;
+  return exactHcpLive(s, live);
+}
+
+// v6.0.2: de kaarten van de medespelers voor één dag, gesorteerd op invuller.
+function kaartenVanDagLive(data, dagNr) {
+  const per = data?.kaartDagen?.[String(dagNr)];
+  if (!per || typeof per !== 'object' || Array.isArray(per)) return [];
+  return Object.keys(per).sort().map(uid => per[uid]).filter(Array.isArray);
 }
 
 // Eén laag van één dag uit een live-document, altijd als array.
@@ -308,10 +358,13 @@ function getLiveScoresVoorDag(dag) {
     const speler = laagVanDagLive(e, 'dagen',       dag.dagNr);
     const marker = laagVanDagLive(e, 'markerDagen', dag.dagNr);
     const beheer = laagVanDagLive(e, 'beheerDagen', dag.dagNr);
-    const lengte = Math.max(speler.length, marker.length, beheer.length);
+    const kaarten = kaartenVanDagLive(e, dag.dagNr);   // v6.0.2
+    const lengte = Math.max(speler.length, marker.length, beheer.length, ...kaarten.map(k => k.length));
     if (lengte === 0) return;   // deze speler heeft niets voor deze dag
     const rij = [];
-    for (let i = 0; i < lengte; i++) rij.push(tellendGetal(speler[i], marker[i], beheer[i]));
+    for (let i = 0; i < lengte; i++) {
+      rij.push(tellendGetal(speler[i], kaarten.map(k => k[i]).concat([marker[i]]), beheer[i]));
+    }
     result[uid] = rij;
   });
   return result;
@@ -736,7 +789,9 @@ function berekenStrokeplayRanglijst(t, dagNrOverride) {
   const aantalHoles = holes.length;
   return t.spelers.map(s => {
     const sScores = scores?.[s.uid] || scores?.[String(s.uid)] || [];
-    const hcp = Math.round(s.hcp);
+    // v6.1.0: de playing handicap van DEZE dag — zie playingHcpLive().
+    const ph = playingHcpLive(s, dag, _liveScoresMap[s.uid]);
+    const hcp = Math.round(ph === null ? Number(s.hcp) : ph);
     let bruttoTotaal = 0, nettoSlagen = 0, stableford = 0, holesGespeeld = 0;
     holes.forEach((hole, i) => {
       const val = sScores[i];
