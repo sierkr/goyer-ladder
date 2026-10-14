@@ -3,7 +3,7 @@
 // uitrollen.sh leest het versienummer van deze regel en controleert het; het
 // nummer dat daar gecontroleerd wordt is dus precies het nummer dat de service
 // worker gebruikt (zie kiesBron hieronder). Beide ophogen bij elke versie.
-const CACHE_VERSION = 'v324'; const APP_VERSIE = 'v5.52.0';
+const CACHE_VERSION = 'v325'; const APP_VERSIE = 'v6.0.0';
 // v3.0.0-11.33: detecteer test-omgeving via SW-scope URL.
 // Service worker draaiend onder /test/* → aparte cache, voorkomt conflict met productie.
 const IS_TEST_ENV = self.registration && self.registration.scope.includes('/test/');
@@ -36,6 +36,10 @@ const STATIC_ASSETS = [
   // scorekaart van een nieuwe spelvorm offline niet openen (zelfde les als
   // hcp.js hierboven).
   './js/spelvormen.js',
+  // v6.0.0: het toernooi op een eigen adres. Dezelfde code; alleen de pagina
+  // en het manifest zijn eigen. Zonder deze regels opende …/toernooi offline niet.
+  './toernooi/',
+  './manifest-toernooi.json',
   './handleiding-partij-ronde.html',
   // v5.35.0: de tweede handleiding hoort er ook in — anders is hij offline niet
   // te openen, en die lijst groeit niet vanzelf mee.

@@ -1,0 +1,2988 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<base href="../">
+<!-- GEMAAKT DOOR tests/maak-toernooi-pagina.cjs UIT index.html — NIET MET DE HAND WIJZIGEN -->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Toernooi">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#2d6a4f">
+<meta name="color-scheme" content="light">
+<link rel="manifest" href="manifest-toernooi.json">
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<title>Goyer Toernooi</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap');
+
+  html { color-scheme: light; }
+
+  :root {
+    --green: #2d6a4f;
+    --green-light: #40916c;
+    --green-pale: #d8f3dc;
+    --gold: #b5882a;
+    --gold-light: #e9c46a;
+    --cream: #f8f4e9;
+    --dark: #1a1a1a;
+    --mid: #4a4a4a;
+    --light: #9a9a9a;
+    --white: #ffffff;
+    --red: #c0392b;
+    --blue: #2471a3;
+    --radius: 12px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.10);
+    --card-bg: #ffffff;
+    --border: #f0ede4;
+    --input-bg: #ffffff;
+    --nav-bg: #ffffff;
+    /* v11.15: semantische variabelen voor alerts/info/warning/soft */
+    --alert-bg: #fde8e8;        /* foutmeldingen, delete-knoppen */
+    --alert-text: #c0392b;      /* tekst op alert-bg */
+    --info-bg: #f0f7f4;         /* info-boxes (registratie info) */
+    --info-text: #1a3d2a;       /* tekst op info-bg */
+    --warning-bg: #fff3cd;      /* waarschuwingen, CB-badges */
+    --warning-text: #856404;    /* tekst op warning-bg */
+    --soft-bg: #f9f7f2;         /* subtle highlights, boxes rond checkboxes */
+    --soft-text: #4a4a4a;       /* tekst op soft-bg (gelijk aan --mid in light) */
+    --subtle-bg: #fafaf7;       /* hover-states, extra subtle */
+    --success-bg: #d4edda;      /* success messages (weinig gebruikt) */
+    --success-text: #155724;    /* tekst op success-bg */
+    --on-primary: #ffffff;      /* tekst op groene/gouden/rode knoppen */
+    --on-dark-surface: #f0f0f0; /* tekst op donker-groene headers (login-scherm) */
+  }
+
+  /* v3.0.0-11.29: dark mode block volledig verwijderd. App rendert altijd in light. */
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--cream);
+    color: var(--dark);
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    overscroll-behavior-y: none;
+  }
+
+  /* Prevent iOS double-tap zoom on buttons */
+  button, input, select { touch-action: manipulation; }
+
+  /* HEADER */
+  header {
+    background: var(--green);
+    color: white;
+    padding: 0 16px;
+    padding-top: env(safe-area-inset-top);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: calc(56px + env(safe-area-inset-top));
+    padding-bottom: 4px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+  }
+  header h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    /* v5.8.7: schaalt mee met de schermbreedte zodat de titel op een regel past */
+    font-size: clamp(17px, 5vw, 26px);
+    letter-spacing: 1px;
+    color: var(--gold-light);
+    line-height: 1.15;
+  }
+  @media (max-width: 380px) {
+    header h1 #h1-second { padding-left: 0; }
+    header .brand-logo { width: 32px; height: 32px; }
+  }
+  header .subtitle { font-size: 11px; color: rgba(255,255,255,0.6); letter-spacing: 1px; text-transform: uppercase; }
+
+  /* v5.8.6: beeldlogo i.p.v. golfvlag-emoji */
+  header .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  header .brand-logo { width: 36px; height: 36px; flex-shrink: 0; display: block; }
+  .merk-logo { display: block; margin: 0 auto; width: 96px; height: 96px; }
+  .merk-logo-klein { display: block; margin: 0 auto 10px; width: 84px; height: 84px; }
+
+  /* v5.47.0: "Bekijk als gewone speler" — de gele balk van MatchCheck v3.21.0.
+     In alle drie de weergaven dezelfde kleur: hij moet opvallen, want zolang
+     hij er staat zie je de app NIET als beheerder. Inkt op geel: 10 : 1. */
+  #kijk-balk {
+    background: #fff4d6; border-bottom: 1px solid #e8c96a; color: #4a3b00;
+    padding: 8px 16px; display: flex; align-items: center; gap: 10px;
+    flex-wrap: wrap; font-size: 14px;
+  }
+
+  /* NAV TABS */
+  nav {
+    display: flex;
+    gap: 6px;
+    padding: 6px 8px;
+    background: var(--nav-bg);
+    border-bottom: 2px solid var(--border);
+    overflow-x: auto;
+    scrollbar-width: none;
+    position: sticky;
+    top: calc(56px + env(safe-area-inset-top));
+    z-index: 99;
+  }
+  nav::-webkit-scrollbar { display: none; }
+  nav button {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 0 0 auto;
+    padding: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--dark);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    transition: all 0.2s;
+    white-space: nowrap;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  nav button span.nav-label {
+    display: inline-block;
+    padding: 4px 8px;
+    border: 1.5px solid var(--dark);
+    border-radius: 6px;
+    background: var(--card-bg);
+    color: var(--dark);
+    transition: all 0.2s;
+  }
+  nav button span.nav-label::before { content: none !important; }
+  nav button.active span.nav-label {
+    background: var(--green);
+    border-color: var(--green);
+    color: var(--on-primary);
+  }
+  nav button.active {
+    color: var(--green);
+    border-bottom-color: transparent;
+  }
+
+  /* PAGES */
+  .page { display: none; padding: 16px; max-width: 600px; margin: 0 auto; }
+  .page.active { display: block; }
+
+  /* CARDS */
+  .card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  /* v11.16: partij-card mag dropdown laten uitsteken (anders wordt speler-dropdown geclipt) */
+  #page-partij .card { overflow: visible; }
+  .card-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card-header h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    letter-spacing: 1px;
+    color: var(--green);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card-body { padding: 16px; }
+
+  /* BUTTONS */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 18px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    transition: all 0.15s;
+    -webkit-user-select: none;
+    user-select: none;
+    min-height: 44px; /* iOS minimum touch target */
+  }
+  .btn-primary { background: var(--green); color: white; }
+  .btn-primary:active { background: var(--green-light); }
+  .btn-gold { background: var(--gold); color: white; }
+  .btn-gold:active { background: var(--gold-light); color: var(--dark); }
+  .btn-sm { padding: 8px 14px; font-size: 13px; min-height: 36px; }
+  .btn-ghost { background: transparent; border: 1.5px solid #ccc; color: var(--mid); }
+  .btn-ghost:active { border-color: var(--green); color: var(--green); }
+  .btn-danger { background: var(--red); color: white; }
+  .btn-block { width: 100%; justify-content: center; }
+
+  /* INPUTS */
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--mid); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+  input, select {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px; /* 16px prevents iOS auto-zoom */
+    background: var(--card-bg);
+    color: var(--dark);
+    transition: border 0.2s;
+    min-height: 44px;
+  }
+  input:not([type=checkbox]):not([type=radio]) { -webkit-appearance: none; }
+  input:focus, select:focus { outline: none; border-color: var(--green); }
+  input[type=number] { font-family: 'DM Mono', monospace; }
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none !important; margin: 0 !important; }
+  input[type=number] { -moz-appearance: textfield !important; appearance: textfield !important; }
+
+  /* LADDER */
+  .ladder-item {
+    display: flex;
+    align-items: center;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+    min-height: 56px;
+  }
+  .ladder-item:last-child { border-bottom: none; }
+  .ladder-item:active { background: var(--subtle-bg); }
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    color: var(--light);
+    min-width: 32px;
+    text-align: center;
+  }
+  .rank-badge.top3 { color: var(--gold); }
+  .rank-badge.zelf { color: var(--green); font-weight:800; }
+  .player-name { flex: 1; font-weight: 500; font-size: 15px; }
+  .player-hcp {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--light);
+    background: var(--border);
+    padding: 2px 7px;
+    border-radius: 4px;
+  }
+  .player-stats { font-size: 12px; color: var(--light); text-align: right; line-height: 1.4; }
+  .delta-up { color: #27ae60; font-size: 11px; font-weight: 700; }
+  .delta-down { color: var(--red); font-size: 11px; font-weight: 700; }
+
+  /* PARTIJ SETUP */
+  .player-slot { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; position: relative; }
+  .player-slot select { flex: 1; }
+  .hcp-input { width: 70px !important; text-align: center; }
+  .speler-zoek-wrap { flex: 1; position: relative; }
+  .speler-zoek-input { width: 100%; }
+  .speler-zoek-lijst { position: absolute; top: 100%; left: 0; right: 0; background: var(--card-bg); border: 1.5px solid var(--green); border-radius: 8px; max-height: 200px; overflow-y: auto; z-index: 9999; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: none; margin-top: 2px; color: var(--dark); }
+  .speler-zoek-item { padding: 10px 14px; cursor: pointer; font-size: 14px; border-bottom: 1px solid var(--border); color: var(--dark); background: var(--card-bg); }
+  .speler-zoek-item:last-child { border-bottom: none; }
+  .speler-zoek-item:hover { background: var(--green-pale); color: var(--green); }
+  .speler-zoek-item.geselecteerd { color: var(--light); cursor: default; font-style: italic; }
+
+  /* SCOREKAART */
+  .scorecard {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .scorecard th {
+    background: var(--green);
+    color: white;
+    padding: 7px 6px;
+    text-align: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .scorecard th.player-col { text-align: left; font-family: 'DM Sans', sans-serif; font-size: 12px; }
+  .scorecard td {
+    padding: 6px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .scorecard td.player-col { text-align: left; padding-left: 4px; font-weight: 500; font-size: 13px; }
+  .scorecard input[type=number] {
+    width: 42px;
+    padding: 4px;
+    text-align: center;
+    font-size: 14px;
+    font-family: 'DM Mono', monospace;
+    border: 1.5px solid #e0ddd4;
+    border-radius: 6px;
+  }
+  .scorecard input[type=number]:focus { border-color: var(--green); outline: none; }
+  .hole-par { font-size: 11px; color: var(--mid); display: block; font-weight: 600; }
+  .hole-si { font-size: 11px; color: var(--gold); font-weight: 600; }
+
+  /* RESULT CELL */
+  .res-W { background: var(--success-bg); color: var(--success-text); font-weight: 700; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
+  .res-L { background: var(--alert-bg); color: var(--alert-text); font-weight: 700; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
+  .res-T { background: var(--warning-bg); color: var(--warning-text); font-weight: 700; border-radius: 4px; padding: 2px 6px; font-size: 12px; }
+
+  /* MATCH OVERZICHT */
+  .match-card {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    gap: 8px;
+  }
+  .match-card:last-child { border-bottom: none; }
+  .match-player { flex: 1; font-size: 14px; font-weight: 500; }
+  .match-player.right { text-align: right; }
+  .match-vs { font-family: 'Bebas Neue', sans-serif; font-size: 16px; color: var(--light); padding: 0 8px; }
+  .match-score {
+    font-family: 'DM Mono', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    min-width: 50px;
+    text-align: center;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: var(--border);
+  }
+  .match-score.leading { background: var(--green-pale); color: var(--green); }
+
+  /* INKLAPBARE KAARTEN */
+  .card-header.inklapbaar {
+    cursor: pointer;
+    user-select: none;
+  }
+  .card-header.inklapbaar:hover { background: var(--subtle-bg); }
+  .card-header.inklapbaar::after {
+    content: '▾';
+    font-size: 16px;
+    color: var(--light);
+    transition: transform 0.2s;
+    margin-left: 8px;
+  }
+  .card-header.inklapbaar.ingeklapt::after {
+    transform: rotate(-90deg);
+  }
+  .card-collapse {
+    overflow: hidden;
+    transition: max-height 0.25s ease;
+    max-height: 20000px;
+  }
+  .card-collapse.ingeklapt {
+    max-height: 0;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .badge-green { background: var(--green-pale); color: var(--green); }
+  .badge-gold { background: #fef3cd; color: var(--gold); }
+  .badge-red { background: #fde8e8; color: var(--red); }
+  .badge-grey { background: #f0ede4; color: var(--light); }
+
+  /* SECTION TITLE */
+  .section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 15px;
+    letter-spacing: 1px;
+    color: var(--light);
+    text-transform: uppercase;
+    margin: 20px 0 8px;
+  }
+
+  /* TOAST */
+  /* v5.11.2 — DE INFORMATIEBALK MOET TE LEZEN ZIJN.
+     ⚠ WAT ER MIS WAS: `white-space: nowrap` zonder maximale breedte. Een korte
+     bevestiging paste, maar sinds v5.9.0 noemen foutmeldingen de ECHTE oorzaak
+     en die zijn lang. Zo'n melding werd één regel die aan beide kanten buiten
+     het scherm liep — juist de tekst die je nodig hebt was onleesbaar.
+     Sierk, 12 september 2026: "de informatiebalk heeft geen regelterugloop en
+     verdwijnt buiten beeld."
+     Nu loopt hij door over meerdere regels, blijft hij binnen het scherm, en
+     kun je hem wegtikken in plaats van negen seconden te wachten. */
+  #toast {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: #1a1a1a;
+    color: #ffffff;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    opacity: 0;
+    transition: all 0.3s;
+    z-index: 999;
+    pointer-events: none;
+    /* Breed genoeg om te lezen, smal genoeg om binnen het scherm te blijven.
+       De 92vw wint op een telefoon, de 420px op een breed scherm. */
+    max-width: min(92vw, 420px);
+    box-sizing: border-box;
+    text-align: center;
+    line-height: 1.35;
+    overflow-wrap: anywhere;   /* een lange foutcode breekt af i.p.v. eruit te lopen */
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; cursor: pointer; }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 200;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--card-bg);
+    border-radius: 20px 20px 0 0;
+    padding: 24px 20px;
+    width: 100%;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  .modal h3 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    color: var(--green);
+    margin-bottom: 16px;
+    letter-spacing: 1px;
+  }
+  .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+
+  /* STANDING CHANGE */
+  .standing-result {
+    background: linear-gradient(135deg, var(--green) 0%, var(--green-light) 100%);
+    color: white;
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .standing-result .name { font-size: 16px; font-weight: 600; }
+  .standing-result .change { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 1px; }
+
+  /* EMPTY STATE */
+  .empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--light);
+  }
+  .empty-icon { font-size: 40px; margin-bottom: 10px; }
+  .empty p { font-size: 14px; }
+
+  /* ADMIN */
+  .admin-row {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  .admin-row:last-child { border-bottom: none; }
+  .admin-row .name { flex: 1; font-weight: 500; }
+  .admin-row .hcp { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--light); }
+
+  .divider { height: 1px; background: var(--border); margin: 12px 0; }
+
+  .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .tag {
+    background: var(--green-pale);
+    color: var(--green);
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+  }
+  .tag.selected { background: var(--green); color: white; }
+  .tag:hover:not(.selected) { border-color: var(--green); }
+
+  /* LAAD OVERLAY */
+  #laad-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--cream);
+    z-index: 999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+  }
+  #laad-overlay .laad-logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 32px;
+    letter-spacing: 3px;
+    color: var(--green);
+  }
+  #laad-overlay .laad-spinner {
+    width: 36px; height: 36px;
+    border: 3px solid #d8f3dc;
+    border-top-color: var(--green);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* v5.48.0: stap en balk op het logo-scherm (zetLaadStap in js/auth.js). */
+  #laad-overlay .laad-stap { font-size: 13px; color: var(--mid); text-align: center; padding: 0 24px; }
+  #laad-overlay .laad-balk {
+    width: 180px; height: 6px; border-radius: 3px; background: #d8f3dc; overflow: hidden;
+  }
+  #laad-balk-vulling { height: 100%; background: var(--green); transition: width 0.4s ease; }
+  /* De uitleg na 5 seconden komt met opmaak, niet met code: juist bij de trage
+     eerste start na een update draait de app-code dan misschien nog niet. De
+     animatie begint opnieuw zodra het logo opnieuw verschijnt. */
+  #laad-overlay .laad-traag {
+    font-size: 12px; color: var(--mid); text-align: center; max-width: 280px; padding: 0 16px;
+    opacity: 0; animation: laad-traag-in 0.3s ease 5s forwards;
+  }
+  @keyframes laad-traag-in { to { opacity: 1; } }
+
+  /* LOGIN SCHERM */
+  #login-scherm {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: var(--green);
+    z-index: 500;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  #login-scherm.actief { display: flex; }
+  .login-box {
+    background: var(--card-bg);
+    border-radius: 20px;
+    padding: 32px 24px;
+    width: 100%;
+    max-width: 360px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.25);
+  }
+  .login-logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    letter-spacing: 2px;
+    color: var(--green);
+    text-align: center;
+    margin-bottom: 4px;
+  }
+  .login-sub {
+    text-align: center;
+    font-size: 12px;
+    color: var(--light);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 24px;
+  }
+  .login-fout {
+    background: var(--alert-bg);
+    color: var(--alert-text);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    margin-bottom: 12px;
+    display: none;
+  }
+
+  /* UI-stijl keuzeknoppen (Beheer) — werkt in beide stijlen via var(--green) */
+  .uistijl-optie { justify-content: flex-start !important; text-align: left; }
+  .uistijl-optie.uistijl-actief {
+    border-color: var(--green) !important;
+    background: var(--green-pale) !important;
+    color: var(--green) !important;
+    font-weight: 700;
+  }
+
+  /* ============================================================
+     MATCHCHECK-STIJL — v4.1.0
+     Alleen het uiterlijk verandert (kleuren, lettertype, randen i.p.v.
+     schaduw, dichtheid). De HTML-structuur en werking van elk scherm
+     blijven ONGEWIJZIGD — er wordt hier bewust niets herschreven, alleen
+     overschreven met CSS. Actief zodra <html data-theme="matchcheck">.
+     ============================================================ */
+  /* v5.7.2: gekozen knop in de afsluitmodals. Een groene rand met groene
+     letters was op een licht knopje nauwelijks te zien — spelers merkten niet
+     dat de eindstand al goed stond en dachten dat ze hem moesten invullen. */
+  .keuze-knop { background: var(--card-bg); border: 1.5px solid var(--border); color: var(--dark); }
+  .keuze-actief { background: var(--green) !important; border-color: var(--green) !important;
+                  color: #fff !important; font-weight: 700; }
+  .aanpas-link { background: none; border: none; color: var(--green); cursor: pointer;
+                 font-size: 12px; text-decoration: underline; padding: 4px 0;
+                 font-family: 'DM Sans', sans-serif; }
+
+  /* v5.6.0: gekozen weergave-optie in het profiel */
+  .weergave-optie { background: var(--card-bg); border: 1.5px solid var(--border); color: var(--dark); }
+  .weergave-actief { border-color: var(--green); color: var(--green); font-weight: 600; }
+
+  html[data-theme="matchcheck"] {
+    --green: #1a7a4a;
+    --green-light: #23935c;
+    --green-pale: #d5f0e2;
+    --gold: #926507;    /* v5.28.0: was #b5882a, 2,90 : 1 in badges */
+    --gold-light: #e9c46a;
+    --cream: #f7f8fa;
+    --dark: #1a1a2e;
+    --mid: #616876;     /* v5.28.0: was #6b7280, 4,00 : 1 op groen */
+    --light: #6b717b;   /* v5.28.0: was #9aa0aa, haalde 2,48 : 1 */
+    --white: #ffffff;
+    --red: #c0392b;
+    --blue: #2471a3;
+    --radius: 10px;
+    --shadow: none;
+    --card-bg: #ffffff;
+    --border: #dde1e7;
+    --input-bg: #ffffff;
+    --nav-bg: #ffffff;
+    --alert-bg: #fdecea;
+    --alert-text: #c0392b;
+    --info-bg: #d6eaf8;
+    --info-text: #1a3d5c;
+    --warning-bg: #fdebd0;
+    --warning-text: #7d3a00;
+    --soft-bg: #f7f8fa;
+    --soft-text: #6b7280;
+    --subtle-bg: #f7f8fa;
+    --success-bg: #d5f0e2;
+    --success-text: #0f5a30;
+    --on-primary: #ffffff;
+    --on-dark-surface: #f0f0f0;
+  }
+
+  /* Eén systeemfont overal, i.p.v. Bebas Neue / DM Sans / DM Mono. Dit raakt
+     alleen lettertype-weergave — geen enkel element wordt verplaatst of
+     verwijderd. !important is nodig omdat sommige plekken in de code het
+     lettertype rechtstreeks per element instellen i.p.v. via dit stijlblad. */
+  html[data-theme="matchcheck"] * {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  }
+  /* iOS-zoom-preventie blijft intact: invoervelden minimaal 16px lettergrootte */
+  html[data-theme="matchcheck"] input,
+  html[data-theme="matchcheck"] select { font-size: 16px !important; }
+
+  html[data-theme="matchcheck"] body { background: var(--cream); }
+
+  html[data-theme="matchcheck"] header {
+    background: var(--card-bg);
+    color: var(--dark);
+    box-shadow: none;
+    border-bottom: 1px solid var(--border);
+  }
+  html[data-theme="matchcheck"] header h1 { color: var(--green) !important; font-size: 17px !important; font-weight: 600 !important; letter-spacing: 0 !important; }
+  html[data-theme="matchcheck"] header .subtitle { color: var(--mid) !important; }
+  html[data-theme="matchcheck"] #logout-btn,
+  html[data-theme="matchcheck"] #versie-badge { color: var(--mid) !important; background: transparent !important; border: 1px solid var(--border) !important; }
+
+  html[data-theme="matchcheck"] nav { background: var(--card-bg); border-bottom: 1px solid var(--border); box-shadow: none; }
+  /* Dun kader om elk tab-label (i.p.v. het dikke 1.5px kader van de standaardstijl),
+     met een groen vlak bij het actieve tab i.p.v. een onderstreping. */
+  html[data-theme="matchcheck"] nav button span.nav-label {
+    border: 1px solid var(--border) !important;
+    border-radius: 6px !important;
+    background: var(--card-bg) !important;
+    color: var(--mid) !important;
+    padding: 5px 10px !important;
+  }
+  html[data-theme="matchcheck"] nav button.active span.nav-label {
+    border-color: var(--green) !important;
+    background: var(--green) !important;
+    color: var(--on-primary) !important;
+    font-weight: 600 !important;
+  }
+
+  html[data-theme="matchcheck"] .card { box-shadow: none; border: 1px solid var(--border); border-radius: var(--radius); }
+  html[data-theme="matchcheck"] .card-header h2 { color: var(--dark) !important; font-size: 14px !important; font-weight: 600 !important; letter-spacing: 0 !important; text-transform: none !important; }
+
+  /* Compactere "boxen": minder padding/hoogte voor knoppen, invoervelden en
+     de speltype-keuzevakjes. Lettergrootte van invoervelden blijft 16px
+     (voorkomt automatisch inzoomen op iPhone) — alleen de ruimte eromheen krimpt. */
+  html[data-theme="matchcheck"] .btn { border-radius: 6px; box-shadow: none; padding: 9px 14px !important; min-height: 38px !important; }
+  html[data-theme="matchcheck"] .btn-sm { padding: 6px 12px !important; min-height: 32px !important; }
+  html[data-theme="matchcheck"] input,
+  html[data-theme="matchcheck"] select {
+    border-radius: 6px;
+    padding: 8px 12px !important;
+    min-height: 38px !important;
+  }
+  /* v5.51.0: de keuzes onder een hole (Wolf, Bingo Bango Bongo). Letter blijft
+     16px (iPhone-zoom), alleen de ruimte erin krimpt zodat er drie op een regel
+     passen. */
+  html[data-theme="matchcheck"] tr.spelvorm-extra select {
+    padding: 4px 4px !important;
+    min-height: 32px !important;
+  }
+  html[data-theme="matchcheck"] #speltype-wrap label {
+    padding: 8px 10px !important;
+  }
+  /* Groene vulling voor de geselecteerde speltype-optie (Matchplay/Amerikaantje/
+     High-Low), i.p.v. alleen een groene rand. Werkt puur via CSS (:has), geen
+     wijziging aan partij.js nodig. */
+  html[data-theme="matchcheck"] #speltype-wrap label:has(input:checked) {
+    background: var(--green) !important;
+    border-color: var(--green) !important;
+  }
+  html[data-theme="matchcheck"] #speltype-wrap label:has(input:checked) span {
+    color: var(--on-primary) !important;
+  }
+
+  /* Ladderlijst compacter: minder padding/regelhoogte en kleinere tekst,
+     zelfde rijen/velden/volgorde als in de standaardstijl. */
+  html[data-theme="matchcheck"] .ladder-item { padding: 9px 14px !important; min-height: auto !important; gap: 8px !important; }
+  html[data-theme="matchcheck"] .rank-badge { font-size: 13px !important; min-width: 22px !important; color: var(--light) !important; }
+  html[data-theme="matchcheck"] .rank-badge.top3 { color: var(--gold) !important; }
+  html[data-theme="matchcheck"] .rank-badge.zelf { color: var(--green) !important; }
+  html[data-theme="matchcheck"] .player-name { font-size: 13px !important; }
+  html[data-theme="matchcheck"] .player-hcp { font-size: 11px !important; }
+  html[data-theme="matchcheck"] .player-stats { font-size: 11px !important; }
+  /* Eigen rij: vlakke groene balk i.p.v. groene rand-highlight (border-left komt
+     als inline stijl uit ladder.js mee — hier bewust overschreven, geen JS-wijziging). */
+  html[data-theme="matchcheck"] .ladder-item { border-left: none !important; margin-left: 0 !important; }
+
+  html[data-theme="matchcheck"] .scorecard th { background: var(--green) !important; color: #fff !important; }
+  html[data-theme="matchcheck"] .scorecard input[type=number] { border: 1px solid var(--border) !important; border-radius: 6px !important; }
+  html[data-theme="matchcheck"] .hole-si { color: var(--gold) !important; }
+  html[data-theme="matchcheck"] .match-vs { color: var(--light) !important; font-size: 13px !important; }
+
+  html[data-theme="matchcheck"] .modal { border-radius: 10px 10px 0 0; box-shadow: none; border: 1px solid var(--border); }
+  html[data-theme="matchcheck"] .modal h3 { color: var(--dark) !important; font-size: 16px !important; letter-spacing: 0 !important; }
+
+  html[data-theme="matchcheck"] #login-scherm { background: var(--cream); }
+  html[data-theme="matchcheck"] .login-box { box-shadow: none; border: 1px solid var(--border); border-radius: 10px; }
+  html[data-theme="matchcheck"] .login-logo { color: var(--dark) !important; font-size: 18px !important; letter-spacing: 0 !important; }
+  html[data-theme="matchcheck"] .login-sub { letter-spacing: 0.04em !important; }
+
+  html[data-theme="matchcheck"] #laad-overlay { background: var(--cream); }
+  html[data-theme="matchcheck"] #laad-overlay .laad-logo { color: var(--dark) !important; font-size: 18px !important; letter-spacing: 0 !important; }
+
+  html[data-theme="matchcheck"] .standing-result { background: var(--green); }
+  html[data-theme="matchcheck"] .standing-result .change { font-size: 22px !important; letter-spacing: 0 !important; }
+
+  html[data-theme="matchcheck"] .section-title { color: var(--mid) !important; font-size: 11px !important; letter-spacing: 0.06em !important; text-transform: uppercase; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ============================================================
+     v5.11.0 — DE KLEUREN VAN DE TOERNOOIKAART
+     ------------------------------------------------------------
+     gewone rand  = klopt (vastgesteld, of speler en medespeler gelijk)
+     stippellijn  = één van de twee heeft ingevuld, de ander nog niet
+     dubbele rand = allebei ingevuld, verschillend
+
+     v5.36.0: de stippellijn was oranje en is nu zwart. Alleen de RAND verschilt
+     dus nog — dat is met opzet: kleur alleen is op een telefoon in de zon
+     slecht te zien, en niet iedereen onderscheidt kleuren even goed.
+
+     ⚠ !important is hier nodig, niet netjes-bedoeld. Hierboven staat
+     `html[data-theme="matchcheck"] .scorecard input[type=number] { border: ...
+     !important }` — de standaardstijl van de club. Zonder !important wint die
+     rand van de kleur en ziet niemand het verschil. De browsertest TWEE PAAR OGEN
+     ving dit op: hij leest de rand zoals hij echt op het scherm staat.
+     ============================================================ */
+
+  /* ============================================================
+     PAPIER-STIJL — v5.27.0
+     ------------------------------------------------------------
+     Het idee: de scorekaart is een vel Japans schrijfpapier
+     (genko yoshi) — een raster van lege hokjes waar je tekens in
+     schrijft. Dat is letterlijk wat een scorekaart is, dus de vorm
+     komt hier uit de inhoud en niet uit een sfeerplaatje.
+
+     Drie regels waar de rest uit volgt:
+      1. De lege ruimte doet het werk. Geen streepje onder elke rij;
+         er blijft er precies een over, na hole 9, waar de ronde
+         ook echt breekt.
+      2. Inkt op papier, nooit wit op een kleurvlak. De groene balk
+         met witte namen en half-doorzichtige handicaps was buiten
+         in de zon het slechtst leesbare stukje van de app.
+      3. Een accent — vermiljoen, de kleur van een naamstempel — en
+         dat gaat naar het vakje waar je NU in typt. Verder nergens.
+
+     Net als bij de andere twee stijlen verandert hier alleen het
+     uiterlijk. Geen enkel scherm wordt anders opgebouwd; js/ronde.js
+     is niet aangeraakt.
+
+     De maten van de scorekaart staan in js/ronde.js rechtstreeks op
+     de elementen (style="width:38px..."). Daar win je alleen van met
+     !important. Dat is hier geen truc maar het bestaande patroon van
+     dit stijlblad — zie de t-cel-regels onderaan.
+     ============================================================ */
+  html[data-theme="papier"] {
+    --green: #2e6b4f;          /* dennengroen, de clubherkenning */
+    --green-light: #3d8463;
+    --green-pale: #e6efe9;
+    --gold: #7c6c40;           /* gedempt, geen glim */
+    --gold-light: #c9bc94;
+    --cream: #fbfaf7;          /* het papier */
+    --dark: #22252a;           /* inkt */
+    --mid: #5c6269;
+    --light: #6d7279;          /* lichte inkt */
+    --white: #ffffff;
+    --red: #c0392b;            /* vermiljoen, het stempel */
+    --blue: #2f5d7c;
+    --radius: 2px;             /* papier heeft geen ronde hoeken */
+    --shadow: none;
+    --card-bg: #ffffff;
+    --border: #e4e1da;         /* de potloodlijn van het raster */
+    --input-bg: #ffffff;
+    --nav-bg: #fbfaf7;
+    --alert-bg: #fbecea;
+    --alert-text: #a33427;
+    --info-bg: #eaf0f4;
+    --info-text: #2f5d7c;
+    --warning-bg: #f7f0e2;
+    --warning-text: #7a5c1e;
+    --soft-bg: #f5f4f0;
+    --soft-text: #5c6269;
+    --subtle-bg: #f5f4f0;
+    --success-bg: #e6efe9;
+    --success-text: #1f4d38;
+    --on-primary: #ffffff;
+    --on-dark-surface: #f0f0f0;
+  }
+
+  /* Een letterfamilie voor alles. Zen Kaku Gothic New is gekozen om
+     zijn cijfers: op een scorekaart is het verschil tussen een 6 en
+     een 8 op een armlengte afstand het hele werk. */
+  html[data-theme="papier"] * {
+    font-family: 'Zen Kaku Gothic New', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  }
+  /* iOS zoomt in op velden onder 16px — dat blijft zo. */
+  html[data-theme="papier"] input,
+  html[data-theme="papier"] select { font-size: 16px !important; }
+
+  html[data-theme="papier"] body { background: var(--cream); color: var(--dark); }
+
+  html[data-theme="papier"] header {
+    background: var(--cream); border-bottom: 1px solid var(--border); box-shadow: none;
+  }
+  html[data-theme="papier"] header h1 {
+    color: var(--dark) !important; font-size: 17px !important;
+    font-weight: 700 !important; letter-spacing: 0.02em !important;
+  }
+  html[data-theme="papier"] header .subtitle { color: var(--light) !important; }
+  html[data-theme="papier"] #logout-btn,
+  html[data-theme="papier"] #versie-badge {
+    color: var(--light) !important; background: transparent !important;
+    border: 1px solid var(--border) !important; border-radius: 2px !important;
+    font-size: 12px !important;
+  }
+
+  html[data-theme="papier"] nav {
+    background: var(--nav-bg); border-bottom: 1px solid var(--border); box-shadow: none;
+  }
+  html[data-theme="papier"] nav button span.nav-label {
+    color: var(--light) !important; font-size: 13px !important; font-weight: 500 !important;
+  }
+  /* v5.28.0: de actieve tab had donkere inkt op vol groen — 2,44 : 1, het
+     slechtste van de hele app. Nu inkt op lichtgroen: 13,09 : 1. Het blokje
+     blijft herkenbaar; groen is nu de vulling en niet de inkt. */
+  html[data-theme="papier"] nav button.active span.nav-label {
+    background: var(--green-pale) !important;
+    border-color: var(--green) !important;
+    color: var(--dark) !important;
+    font-weight: 700 !important;
+  }
+
+  /* Kaarten zijn vellen papier: een dunne lijn, geen schaduw, geen ronding. */
+  html[data-theme="papier"] .card {
+    box-shadow: none; border: 1px solid var(--border); border-radius: 2px; background: var(--card-bg);
+  }
+  html[data-theme="papier"] .card-header h2 {
+    color: var(--dark) !important; font-size: 16px !important; font-weight: 700 !important;
+    letter-spacing: 0 !important;
+  }
+
+  html[data-theme="papier"] .btn {
+    border-radius: 2px; box-shadow: none; padding: 10px 16px !important; min-height: 40px !important;
+  }
+  html[data-theme="papier"] .btn-sm { padding: 7px 12px !important; min-height: 34px !important; }
+  html[data-theme="papier"] input,
+  html[data-theme="papier"] select {
+    border: 1px solid var(--border); border-radius: 2px; background: var(--input-bg); color: var(--dark);
+  }
+
+  html[data-theme="papier"] .ladder-item {
+    padding: 10px 14px !important; min-height: auto !important; gap: 8px !important;
+    border-left: none !important; margin-left: 0 !important;
+  }
+  html[data-theme="papier"] .rank-badge {
+    font-size: 13px !important; min-width: 22px !important; color: var(--light) !important;
+    font-variant-numeric: tabular-nums;
+  }
+  html[data-theme="papier"] .rank-badge.top3 { color: var(--gold) !important; }
+  html[data-theme="papier"] .rank-badge.zelf { color: var(--green) !important; font-weight: 700 !important; }
+  html[data-theme="papier"] .player-name { font-size: 15px !important; }
+  html[data-theme="papier"] .player-hcp,
+  html[data-theme="papier"] .player-stats { font-size: 13px !important; color: var(--light) !important; }
+  html[data-theme="papier"] .match-vs { color: var(--light) !important; font-size: 13px !important; }
+
+  html[data-theme="papier"] .modal {
+    border-radius: 2px; box-shadow: none; border: 1px solid var(--border);
+  }
+  html[data-theme="papier"] .modal h3 {
+    color: var(--dark) !important; font-size: 16px !important; letter-spacing: 0 !important;
+  }
+  html[data-theme="papier"] #login-scherm { background: var(--cream); }
+  html[data-theme="papier"] .login-box {
+    box-shadow: none; border: 1px solid var(--border); border-radius: 2px;
+  }
+  html[data-theme="papier"] .login-logo {
+    color: var(--dark) !important; font-size: 18px !important; letter-spacing: 0.02em !important;
+  }
+
+  /* ------------------------------------------------------------
+     DE SCOREKAART — hier zit de stijl echt in
+     ------------------------------------------------------------ */
+
+  /* De kleine teksten op de kaart (par, slagenindex, handicap, "Totaal")
+     staan bewust op --mid en niet op --light. Gemeten op wit: --light haalt
+     3,21 : 1 en --mid 6,17 : 1. Onder de 4,5 valt kleine tekst buiten in de
+     zon weg, en juist daar wordt deze kaart gebruikt. Niet lichter maken. */
+  /* Cijfers krijgen overal dezelfde breedte, anders staan de kolommen
+     scheef zodra er een 1 tussen staat. */
+  html[data-theme="papier"] .scorecard { font-variant-numeric: tabular-nums; }
+
+  /* De kop: inkt op papier in plaats van wit op groen. Een enkele lijn
+     eronder scheidt de namen van het raster. */
+  html[data-theme="papier"] .scorecard th {
+    background: transparent !important;
+    color: var(--dark) !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    padding: 4px 6px 8px !important;
+    border-bottom: 1px solid var(--dark) !important;
+    vertical-align: bottom !important;
+  }
+  html[data-theme="papier"] .scorecard th.player-col {
+    font-weight: 500 !important; font-size: 13px !important; color: var(--mid) !important;
+  }
+  /* De handicap onder de naam. Stond wit-op-groen op 60% dekking; nu
+     gewoon leesbaar. */
+  /* v5.31.0: dit is niet langer het handicapregeltje maar de NAAM zelf.
+     Aantikken opent het venster om de handicap aan te passen; het streepje
+     eronder is de enige hint dat er iets gebeurt. */
+  html[data-theme="papier"] .scorecard th span[onclick*="editPartijHcp"] {
+    color: var(--dark) !important;
+    border-bottom: 1px dashed var(--light) !important;
+  }
+  /* Het team-label bij High-Low (T1 / T2). */
+  html[data-theme="papier"] .scorecard th span:not([onclick]) {
+    background: var(--green-pale) !important;
+    color: var(--green) !important;
+    border-radius: 2px !important;
+    font-size: 10px !important;
+  }
+
+  /* Geen streepje onder elke rij: de ruimte scheidt de holes. */
+  html[data-theme="papier"] .scorecard td {
+    border-bottom: none !important;
+    padding: 3px 6px !important;
+  }
+
+  /* De enige lijn die overblijft: na hole 9. De :not() zorgt dat hij
+     wegblijft bij een ronde van 9 holes — dan is rij 9 de laatste hole
+     en valt de lijn samen met de totaalregel. */
+  html[data-theme="papier"] .scorecard tbody tr:nth-child(9):not(:nth-last-child(2)) td {
+    border-bottom: 1px solid var(--border) !important;
+    padding-bottom: 9px !important;
+  }
+  html[data-theme="papier"] .scorecard tbody tr:nth-child(10) td { padding-top: 9px !important; }
+
+  /* Het holenummer groot, par en slagenindex klein en stil eronder. */
+  html[data-theme="papier"] .scorecard td.player-col,
+  html[data-theme="papier"] .scorecard tbody td:first-child {
+    color: var(--dark) !important;
+  }
+  html[data-theme="papier"] .scorecard tbody td:first-child span[style*="font-size:15px"] {
+    font-size: 17px !important; font-weight: 700 !important;
+  }
+  html[data-theme="papier"] .hole-par { color: var(--mid) !important; font-weight: 500 !important; font-size: 13px !important; }
+  html[data-theme="papier"] .hole-si  { color: var(--mid) !important; font-weight: 500 !important; font-size: 13px !important; }
+
+  /* De hokjes. Breder en met grotere cijfers dan in de andere twee
+     stijlen: dit is het enige element in de app waar iemand met een
+     handschoen aan, in de zon, op moet mikken. */
+  html[data-theme="papier"] table.scorecard input[type=number] {
+    width: 52px !important;
+    height: 44px !important;
+    padding: 2px !important;
+    font-size: 18px !important;
+    font-weight: 500 !important;
+    color: var(--dark) !important;
+    background: var(--input-bg) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 2px !important;
+    -moz-appearance: textfield;
+  }
+  html[data-theme="papier"] .scorecard input[type=number]::-webkit-outer-spin-button,
+  html[data-theme="papier"] .scorecard input[type=number]::-webkit-inner-spin-button {
+    -webkit-appearance: none; margin: 0;
+  }
+  /* Het enige accent in de hele stijl: waar je nu in typt. */
+  html[data-theme="papier"] .scorecard input[type=number]:focus {
+    border-color: var(--red) !important;
+    box-shadow: inset 0 -3px 0 var(--red) !important;
+    outline: none !important;
+  }
+
+  /* De totaalregel: een dunne lijn erboven, en het totaal zwaarder dan
+     de losse scores zodat je hem in een oogopslag vindt. */
+  html[data-theme="papier"] .scorecard tbody tr:last-child td {
+    border-top: 1px solid var(--dark) !important;
+    border-bottom: none !important;
+    padding-top: 10px !important;
+    font-size: 17px !important;
+    font-weight: 700 !important;
+    color: var(--dark) !important;
+  }
+  html[data-theme="papier"] .scorecard tbody tr:last-child td:first-child {
+    font-size: 13px !important; font-weight: 500 !important; color: var(--mid) !important;
+  }
+
+  /* Uitslagcellen elders in de app: rustiger, zonder gevulde blokjes. */
+  html[data-theme="papier"] .res-W,
+  html[data-theme="papier"] .res-L,
+  html[data-theme="papier"] .res-T {
+    border-radius: 2px !important; font-weight: 700 !important;
+  }
+
+
+  /* ============================================================
+     v5.31.0 — DICHTHEID B, DOORGETROKKEN NAAR ALLE TABBLADEN
+     ------------------------------------------------------------
+     Gekozen uit vier proeven: letter 16px, boxhoogte 31px. De
+     BREEDTE blijft overal ongemoeid — die past precies op de
+     telefoon en dat was de voorwaarde.
+
+     16px is ook de ondergrens: wordt de letter in een invoerveld
+     kleiner, dan zoomt iOS bij het aantikken vanzelf in en staat
+     het scherm scheef.
+
+     Buiten schot, met opzet:
+      - aanvink- en keuzerondjes (staan in de :not() hieronder)
+      - het meerregelige tekstvak: alleen de letter, niet de hoogte
+      - de invulvakjes van de scorekaart: die hebben hun eigen maat
+      - de ronde pilletjes in de toernooi-ranglijst: ander onderdeel
+      - knoppen: die moet je met koude handen kunnen raken
+     ============================================================ */
+  html[data-theme="papier"] input:not([type=checkbox]):not([type=radio]),
+  html[data-theme="papier"] select {
+    font-size: 16px !important;
+    padding: 0 14px !important;
+    min-height: 31px !important;
+    height: 31px !important;
+    line-height: 1 !important;
+  }
+  html[data-theme="papier"] textarea { font-size: 16px !important; }
+
+  /* ============================================================
+     v5.33.0 — DE BOLLETJES ZELF TEKENEN
+     ------------------------------------------------------------
+     Tot v5.32.0 lieten we dit aan het toestel over. Op de Mint
+     kwam er 13x13 uit bij een letter van 16px — keurig. Op een
+     iPhone tekent iOS ze zelf, veel groter, en trekt zich van
+     opgegeven maten niets aan. Daarom tekenen we ze nu zelf:
+     dan is de maat op elk toestel gelijk en kunnen de keuzeblokken
+     op dezelfde 31px als de rest.
+
+     0,8em: iets kleiner dan de letter, zodat het bolletje nooit
+     zwaarder oogt dan het woord ernaast.
+
+     Alle 18 aanvinkvakjes en keuzerondjes in de app zitten in een
+     <label>. Het kleinere bolletje maakt het aantikken dus niet
+     moeilijker — de hele regel blijft het doelwit.
+     ============================================================ */
+  html[data-theme="papier"] input[type=checkbox],
+  html[data-theme="papier"] input[type=radio] {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    width: 0.8em !important;
+    height: 0.8em !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 1.5px solid var(--mid) !important;
+    background: var(--input-bg) !important;
+    flex-shrink: 0 !important;
+    display: inline-block !important;
+    position: relative !important;
+    vertical-align: middle !important;
+    cursor: pointer !important;
+  }
+  html[data-theme="papier"] input[type=radio]    { border-radius: 50% !important; }
+  html[data-theme="papier"] input[type=checkbox] { border-radius: 1px !important; }
+
+  html[data-theme="papier"] input[type=radio]:checked {
+    border-color: var(--dark) !important;
+  }
+  html[data-theme="papier"] input[type=radio]:checked::after {
+    content: '' !important;
+    position: absolute !important;
+    inset: 2px !important;
+    border-radius: 50% !important;
+    background: var(--dark) !important;
+  }
+  html[data-theme="papier"] input[type=checkbox]:checked {
+    background: var(--dark) !important;
+    border-color: var(--dark) !important;
+  }
+  html[data-theme="papier"] input[type=checkbox]:checked::after {
+    content: '' !important;
+    position: absolute !important;
+    left: 50% !important;
+    top: 45% !important;
+    width: 0.20em !important;
+    height: 0.42em !important;
+    border: solid var(--input-bg) !important;
+    border-width: 0 2px 2px 0 !important;
+    transform: translate(-50%, -50%) rotate(45deg) !important;
+  }
+  /* Zichtbaar waar je bent bij bediening met een toetsenbord. */
+  html[data-theme="papier"] input[type=checkbox]:focus-visible,
+  html[data-theme="papier"] input[type=radio]:focus-visible {
+    outline: 2px solid var(--red) !important;
+    outline-offset: 1px !important;
+  }
+
+  /* ============================================================
+     v5.33.0 — EEN KNOP BREEKT ZIJN TEKST NIET MEER AF
+     ------------------------------------------------------------
+     In het uitslagscherm staat de knop "✕ overslaan" in een rij
+     die de ruimte verdeelt met de spelersnamen. Werden die namen
+     lang, dan werd de knop samengedrukt en kwam de ✕ boven het
+     woord te staan. Nu geeft de knop zijn ruimte niet meer op en
+     breekt zijn tekst niet af; de namen krijgen de rest en lopen
+     door naar een tweede regel.
+     ============================================================ */
+  html[data-theme="papier"] .btn,
+  html[data-theme="papier"] button {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* De zeven keuzeblokken: speltype, handicapverdeling, slagplaatsing en
+     de omgevingskeuze bij de reservekopie. Herkenbaar aan hun eigen
+     padding, want ze hebben geen klasse. */
+  html[data-theme="papier"] label[style*="padding:10px 12px"] {
+    font-size: 16px !important;
+    padding: 0 12px !important;
+    min-height: 31px !important;
+    height: 31px !important;
+    line-height: 1 !important;
+  }
+
+
+  /* ============================================================
+     v5.32.0 — ALLES IN HOOFDLETTERS (alleen Papier)
+     ------------------------------------------------------------
+     Op uitdrukkelijk verzoek van Sierk: overal, elk tabblad, ook
+     de lopende zinnen. Ik heb erbij gezegd dat hoofdletters in
+     hele zinnen slechter leesbaar zijn — woorden verliezen hun
+     vorm zonder op- en neergaande stokken — en hij wil het toch.
+     Zijn app, zijn keuze. Dit is dus geen vergissing; haal het
+     niet "op" zonder het hem te vragen.
+
+     Let op: dit verandert alleen wat je ZIET. Wat een speler
+     intypt wordt onveranderd opgeslagen; de omzetting zit in de
+     weergave, niet in de gegevens.
+     ============================================================ */
+  html[data-theme="papier"] *,
+  html[data-theme="papier"] *::before,
+  html[data-theme="papier"] *::after {
+    text-transform: uppercase !important;
+  }
+  html[data-theme="papier"] input::placeholder,
+  html[data-theme="papier"] textarea::placeholder {
+    text-transform: uppercase !important;
+  }
+
+  /* ⚠ De keuzes hieronder zijn zwaarder gemaakt dan ze eruitzien: de
+     clubstijl gebruikt `html[data-theme="matchcheck"] .scorecard
+     input[type=number]` mét !important, en dat weegt zwaarder dan een gewone
+     klasse. Vandaar `html ... input[type=number].t-cel.t-cel-<kleur>`. */
+  html .scorecard input[type=number].t-cel, html .scorecard span.t-cel {
+    width: 46px;
+    padding: 4px;
+    text-align: center;
+    font-size: 14px;
+    font-family: 'DM Mono', monospace;
+    border-radius: 5px;
+    background: var(--input-bg);
+    color: var(--dark);
+  }
+  html .scorecard span.t-cel { display: inline-block; }
+  html .scorecard input[type=number].t-cel.t-cel-zwart,
+  html .scorecard span.t-cel.t-cel-zwart {
+    border: 1.5px solid var(--border) !important;
+  }
+  html .scorecard input[type=number].t-cel.t-cel-vast,
+  html .scorecard span.t-cel.t-cel-vast {
+    border: 1.5px solid var(--green) !important;
+  }
+  /* v5.36.0 — de stippellijn blijft, de oranje kleur is eruit. Oranje las als
+     "deze score doet nog niet mee", en daardoor tikte de wedstrijdleiding hem
+     over. Hij doet wél mee: zolang de wedstrijdleiding niets vaststelt telt
+     het getal van de speler. De stippellijn zegt alleen: pas één van de twee
+     heeft ingevuld. De klasse heet intern nog t-cel-oranje; alleen het
+     uiterlijk is veranderd. */
+  html .scorecard input[type=number].t-cel.t-cel-oranje,
+  html .scorecard span.t-cel.t-cel-oranje {
+    border: 2px dashed var(--dark) !important;
+    color: var(--dark) !important;
+  }
+  html .scorecard input[type=number].t-cel.t-cel-rood,
+  html .scorecard span.t-cel.t-cel-rood {
+    border: 3px double #c0392b !important;
+    color: #c0392b !important;
+    font-weight: 700;
+  }
+</style>
+</head>
+<body>
+
+<div id="laad-overlay">
+  <img src="logo.png" alt="Goyer MP Ladder" class="merk-logo">
+  <div class="laad-logo">Matchplay Ladder</div>
+  <div class="laad-spinner"></div>
+  <!-- v5.48.0: stap en balk. Stap 1 staat hier vast — de app-code draait dan
+       nog niet; daarna zet zetLaadStap() in js/auth.js stap 2 en 3. -->
+  <div id="laad-stap" class="laad-stap">Stap 1 van 3 — App laden…</div>
+  <div class="laad-balk"><div id="laad-balk-vulling" style="width:33%"></div></div>
+  <div class="laad-traag">Dit duurt langer dan normaal. Vlak na een update is dat gewoon: dan wordt de nieuwe versie opgehaald.</div>
+</div>
+
+<!-- REGISTRATIE SCHERM (via uitnodigingslink) -->
+<div id="registratie-scherm" style="display:none;position:fixed;inset:0;background:var(--cream);z-index:300;overflow-y:auto;padding:24px 16px">
+  <div style="max-width:400px;margin:0 auto">
+    <img src="logo.png" alt="Goyer MP Ladder" class="merk-logo-klein">
+    <div class="login-logo" style="margin-bottom:4px">Matchplay Ladder</div>
+    <div class="login-sub" style="margin-bottom:24px">Registreren</div>
+
+    <div id="reg-fout" style="background:var(--alert-bg);color:var(--alert-text);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:12px;display:none"></div>
+    <div id="reg-succes" style="background:var(--green-pale);color:var(--green);border-radius:8px;padding:14px;font-size:13px;margin-bottom:12px;display:none"></div>
+
+    <div id="reg-formulier">
+      <div class="form-group">
+        <label>Voornaam</label>
+        <input type="text" id="reg-voornaam" placeholder="Jan" autocomplete="given-name">
+      </div>
+      <div class="form-group">
+        <label>Achternaam</label>
+        <input type="text" id="reg-achternaam" placeholder="de Vries" autocomplete="family-name">
+      </div>
+      <div style="background:var(--info-bg);color:var(--info-text);border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
+        <strong>Account-gegevens:</strong><br>
+        Je login en wachtwoord worden automatisch aangemaakt op basis van je naam.
+        Bij eerste inloggen kies je een eigen wachtwoord en stel je je handicap in.
+      </div>
+      <div style="background:var(--soft-bg);border-radius:10px;padding:14px;margin:12px 0;font-size:12px;color:var(--mid);line-height:1.6;max-height:220px;overflow-y:auto">
+        <strong style="font-size:13px;color:var(--dark);display:block;margin-bottom:8px">Welkom bij de Goyer Golf MP Ladder</strong>
+        <strong>Over de ladder</strong><br>
+        De Goyer-ladder is een gezelligheidsinitiatief en heeft een minimaal competitief karakter. Echter streeft de commissie naar een levendige ladder met aan het eind een acceptabele en niet al te verrassende winnaar.<br><br>
+        Iedereen kan meedoen aan de slotwedstrijd die een eigen uitslag kent. Alleen de deelnemers met 5 of meer ladderwedstrijden doen mee voor het eindklassement.<br><br>
+        <strong>Speldeelname</strong><br>
+        Je neemt vrijwillig deel aan de matchplay competitie van Goyer Golf Club. De beheerder kan je account verwijderen als je langere tijd inactief bent.<br><br>
+        <strong>Gegevens die worden opgeslagen</strong><br>
+        Je naam (voor inloggen en identificatie), je handicap (voor eerlijk spel) en je speelresultaten: gespeelde partijen, gewonnen partijen en rankingpositie.<br><br>
+        <strong>Gebruik van je gegevens</strong><br>
+        Je gegevens zijn zichtbaar voor andere deelnemers. Ze worden niet gedeeld met derden en bewaard zolang je deelneemt. Je kunt ze laten verwijderen via de beheerder.<br><br>
+        <strong>Technisch</strong><br>
+        De app gebruikt Google Firebase voor opslag en authenticatie.
+      </div>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;padding:10px;background:var(--soft-bg);border-radius:8px">
+        <input type="checkbox" id="reg-akkoord" style="accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
+        <span style="font-size:13px;color:var(--mid)">Ik heb de informatie gelezen en ga akkoord</span>
+      </label>
+      <button class="btn btn-primary btn-block" onclick="registreerSpeler()" style="margin-top:8px">Registreren →</button>
+      <p style="font-size:12px;color:var(--light);text-align:center;margin-top:16px">
+        Al een account? <button onclick="document.getElementById('registratie-scherm').style.display='none';document.getElementById('login-scherm').classList.add('actief')" style="background:none;border:none;color:var(--green);cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif">Ga naar inloggen</button>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN SCHERM -->
+<!-- v3.0.6: NIET standaard 'actief'. De laad-overlay staat bovenop tijdens het
+     opstarten; het loginscherm wordt pas getoond nadat Firebase heeft bevestigd
+     dat er geen (herstelde) sessie is. Zo flikkert het loginscherm niet meer
+     op bij een geldige sessie (o.a. iOS koude start). -->
+<div id="login-scherm">
+  <div class="login-box">
+    <img src="logo.png" alt="Goyer MP Ladder" class="merk-logo-klein">
+    <div class="login-logo">Matchplay Ladder</div>
+    <div class="login-sub">Goyer Golf Club</div>
+    <div class="login-fout" id="login-fout"></div>
+
+    <!-- ============================================================
+         MEEDOEN AAN HET TOERNOOI — v5.38.0
+         ------------------------------------------------------------
+         Sierk: "Je kunt alleen maar meedoen met een toernooi als je naam
+         voorkomt en het toernooi gestart is. Om die reden wil ik het inloggen
+         vereenvoudigen."
+
+         Dit blok staat er alleen als er OP DIT MOMENT een toernooi loopt, en
+         het wordt gevuld door vulToernooiInlog() in js/auth.js. Staat er geen
+         toernooi, dan is dit scherm precies zoals het was.
+
+         ⚠ inputmode + type="tel" samen, met opzet. `inputmode="numeric"` geeft
+         op iOS het cijferpaneel; oudere iOS-versies kijken alleen naar
+         `type="tel"`. Wat er op een iPhone werkelijk verschijnt is hier niet na
+         te meten — iOS tekent dat paneel zelf.
+         ============================================================ -->
+    <div id="toernooi-inlog" style="display:none;margin-bottom:18px">
+      <!-- v6.0.0: was color:var(--on-dark-surface,…) — op het lichte inlogvak
+           stond deze zin daardoor wit op wit (schermafdruk 14 oktober 2026). -->
+      <div style="font-size:13px;color:var(--dark);margin-bottom:10px">
+        Doe je mee aan <strong id="toernooi-inlog-naam"></strong>? Kies je naam
+        en tik de pincode die je van de wedstrijdleiding hebt gekregen.
+      </div>
+      <!-- v6.0.0: lopen er meer toernooien en kwam je niet via de link van één
+           toernooi binnen, dan kies je hier eerst welk toernooi. -->
+      <div class="form-group" id="toernooi-inlog-keuze-wrap" style="display:none">
+        <label>Toernooi</label>
+        <select id="toernooi-inlog-toernooi" style="width:100%" onchange="kiesToernooiBijInlog(this.value)"></select>
+      </div>
+      <div class="form-group">
+        <label>Je naam</label>
+        <select id="toernooi-inlog-speler" style="width:100%"></select>
+      </div>
+      <div class="form-group">
+        <label>Pincode</label>
+        <input id="toernooi-inlog-pin" type="tel" inputmode="numeric" pattern="[0-9]*"
+               maxlength="4" autocomplete="off" placeholder="••••"
+               style="letter-spacing:.5em;text-align:center;font-size:20px"
+               onkeydown="if(event.key==='Enter') toernooiPinInloggen()">
+      </div>
+      <button class="btn btn-primary btn-block" onclick="toernooiPinInloggen()">Meedoen →</button>
+      <div style="display:flex;align-items:center;gap:10px;margin:18px 0 4px">
+        <div style="flex:1;height:1px;background:var(--border);opacity:.5"></div>
+        <span style="font-size:11px;color:var(--light)">of log in met je eigen account</span>
+        <div style="flex:1;height:1px;background:var(--border);opacity:.5"></div>
+      </div>
+    </div>
+    <!-- v6.0.0: in de LADDER-app staat hier alleen een verwijzing. Meedoen aan
+         een toernooi gaat via de toernooipagina (…/toernooi), met een eigen inlog. -->
+    <div id="toernooi-inlog-link" style="display:none;margin-bottom:14px;font-size:13px;text-align:center">
+      <a id="toernooi-inlog-link-a" href="toernooi/" style="color:var(--green);font-weight:600">Meedoen aan een toernooi? Naar de toernooipagina →</a>
+    </div>
+
+    <!-- Google login (tijdelijk uitgeschakeld) -->
+    <button class="btn btn-block" onclick="loginMetGoogle()" style="display:none;background:var(--card-bg);color:var(--dark);border:1.5px solid var(--border);margin-bottom:12px;gap:10px;font-size:15px">
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.8 2.4 30.2 0 24 0 14.6 0 6.6 5.4 2.6 13.3l7.8 6C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/><path fill="#FBBC05" d="M10.4 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.8-6A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l7.8-6z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.2-7.7 2.2-6.3 0-11.6-3.7-13.6-9.2l-7.8 6C6.6 42.6 14.6 48 24 48z"/></svg>
+      Inloggen met Google
+    </button>
+
+    <div class="form-group">
+      <label>Login</label>
+      <input type="text" id="login-email" placeholder="voornaam.achternaam" autocomplete="username" inputmode="email">
+      <!-- ⚠ v5.44.0: hier stond dat een toernooigast hier zijn inlognaam en
+           wachtwoord kon intikken. Die weg is weg (Sierk, 25 september 2026):
+           nieuwe gastaccounts krijgen een willekeurig wachtwoord dat niemand
+           kent. Een gast kiest zijn naam uit de lijst BOVEN dit vak en tikt
+           vier cijfers. Dit vak is dus alleen nog voor clubleden.
+           De tekst wijst nu naar die lijst, zodat een gast die hier begint niet
+           blijft proberen. -->
+      <p style="font-size:11px;color:var(--light);margin:4px 0 0">
+        Alleen voor clubleden. Doe je als gast mee aan een toernooi? Kies dan
+        hierboven je naam uit de lijst en vul de pincode in die je van de
+        organisatie hebt gekregen.
+      </p>
+    </div>
+    <div class="form-group">
+      <label>Wachtwoord</label>
+      <input type="password" id="login-pass" placeholder="••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter') loginSubmit()">
+    </div>
+    <!-- v5.38.0: een eigen id. Sinds het toernooiblok erboven staat, zijn er
+         TWEE knoppen met de klasse btn-primary op dit scherm, en een proef die
+         op de klasse zocht klikte de verkeerde (de verborgen). -->
+    <button id="login-knop" class="btn btn-primary btn-block" onclick="loginSubmit()" style="margin-top:4px">Inloggen →</button>
+    <button onclick="openWachtwoordVergeten()" style="background:none;border:none;color:var(--light);font-size:13px;margin-top:12px;width:100%;cursor:pointer;font-family:'DM Sans',sans-serif">
+      Wachtwoord vergeten?
+    </button>
+    <div class="login-versie" style="text-align:right;margin-top:8px;font-size:11px;color:var(--light);font-family:'DM Mono',monospace">v2.x</div>
+  </div>
+</div>
+
+<!-- Toernooi speler beheer modal -->
+<div class="modal-overlay" id="modal-toernooi-spelers">
+  <div class="modal">
+    <h3>Spelers beheren</h3>
+
+    <!-- Verwijderen -->
+    <p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:8px">Verwijderen</p>
+    <div id="toernooi-speler-verwijder-lijst" style="margin-bottom:16px"></div>
+
+    <div class="divider"></div>
+
+    <!-- Bestaande speler toevoegen -->
+    <p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:8px">Bestaande speler toevoegen</p>
+    <div style="position:relative;margin-bottom:8px">
+      <input type="text" id="toernooi-speler-zoek" placeholder="Zoek speler..." autocomplete="off"
+        oninput="zoekToernooiSpelerModal(this.value)" onfocus="zoekToernooiSpelerModal(this.value)"
+        onblur="setTimeout(sluitToernooiSpelerModal, 150)">
+      <div id="toernooi-speler-zoek-lijst" style="position:absolute;top:100%;left:0;right:0;background:var(--card-bg);color:var(--dark);border:1.5px solid var(--green);border-radius:8px;max-height:160px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,0.1);display:none;margin-top:2px"></div>
+    </div>
+    <button class="btn btn-primary btn-block btn-sm" onclick="voegBestaandeSpelerToeAanToernooi()" style="margin-bottom:16px">+ Toevoegen</button>
+
+    <div class="divider"></div>
+
+    <!-- Gastspeler toevoegen -->
+    <p style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:8px">Gastspeler toevoegen</p>
+    <div style="display:grid;grid-template-columns:1fr 80px;gap:8px;margin-bottom:8px">
+      <input type="text" id="toernooi-gast-naam" placeholder="Naam gastspeler">
+      <input type="number" id="toernooi-gast-hcp" placeholder="hcp" style="text-align:center">
+    </div>
+    <!-- v5.10.0: alleen zinvol als dit toernooi een gastwachtwoord heeft.
+         renderToernooiGastInlogKeuze() zet dit blok aan of uit. -->
+    <label id="toernooi-gast-inlog-wrap" style="display:none;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--dark);margin-bottom:8px">
+      <input type="checkbox" id="toernooi-gast-inlog" style="accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
+      <!-- v5.17.0: zie index.html bij het inlogscherm — een gast met alleen een
+           voornaam logt in met "karel", niet met voor- en achternaam. -->
+      <span>Met eigen inlog<br><span style="font-size:11px;color:var(--mid)">Krijgt een eigen inlognaam plus het toernooiwachtwoord</span></span>
+    </label>
+    <button class="btn btn-primary btn-block btn-sm" onclick="voegGastspelerToeAanToernooi()" style="margin-bottom:8px">+ Gastspeler toevoegen</button>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-block" onclick="closeModal('modal-toernooi-spelers')">Sluiten</button>
+    </div>
+  </div>
+</div>
+
+<!-- Knockout ronde indeling modal -->
+<div class="modal-overlay" id="modal-knockout-indeling" style="align-items:flex-end">
+  <div class="modal" style="max-width:480px;width:100%;display:flex;flex-direction:column;max-height:92vh;border-radius:16px 16px 0 0;margin:0">
+    <h3 style="flex-shrink:0">Ronde 1 indeling</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:8px;flex-shrink:0">Gebruik de ↑↓ knoppen om de volgorde aan te passen. Op desktop kun je ook slepen.</p>
+    <div id="knockout-indeling-lijst" style="flex:1;overflow-y:auto;min-height:0;-webkit-overflow-scrolling:touch;padding-bottom:8px"></div>
+    <div class="modal-actions" style="flex-shrink:0;margin-top:8px;padding-bottom:env(safe-area-inset-bottom)">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-knockout-indeling')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="bevestigKnockoutIndeling()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ladder instellingen modal -->
+<div class="modal-overlay" id="modal-ladder-instellingen">
+  <div class="modal">
+    <h3 id="ladder-instellingen-titel">Ladder instellingen</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">Stel de rankingregels in voor deze ladder.</p>
+
+    <div class="section-title">Lager gerankte wint</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div class="form-group" style="margin:0">
+        <label>Winnaar stijgt</label>
+        <input type="number" id="cfg-laag-stijg" min="1" max="20" value="4" style="text-align:center">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Verliezer zakt</label>
+        <input type="number" id="cfg-laag-zak" min="1" max="20" value="2" style="text-align:center">
+      </div>
+    </div>
+
+    <div class="section-title">Hoger gerankte wint</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div class="form-group" style="margin:0">
+        <label>Winnaar stijgt</label>
+        <input type="number" id="cfg-hoog-stijg" min="1" max="20" value="1" style="text-align:center">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>Verliezer zakt</label>
+        <input type="number" id="cfg-hoog-zak" min="1" max="20" value="1" style="text-align:center">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark)">
+        <input type="checkbox" id="cfg-verliezer-naar-winnaar" style="width:18px;height:18px;accent-color:var(--green)">
+        Verliezer zakt naar plek van winnaar (als verschil ≤ drempel)
+      </label>
+    </div>
+    <div id="cfg-drempel-wrap" style="display:none;margin-top:8px">
+      <div class="form-group">
+        <label>Drempelwaarde (max verschil)</label>
+        <input type="number" id="cfg-drempel" min="1" max="20" value="4" style="text-align:center;width:80px">
+      </div>
+    </div>
+
+    <!-- Activiteitssysteem -->
+    <div class="section-title" style="margin-top:20px">Activiteitssysteem</div>
+
+    <p style="font-size:12px;color:var(--mid);margin:0 0 12px;line-height:1.5">
+      Sinds v5.1.0 staat dit los van de partijen. Een partij verschuift spelers
+      alleen volgens de win/verlies-regels hierboven; de activiteitscorrectie
+      wordt periodiek verwerkt en geeft spelers dan een nieuwe plek.
+    </p>
+
+    <div class="form-group">
+      <label>Wanneer wordt de activiteit verwerkt?</label>
+      <select id="cfg-activiteit-periode" style="width:auto">
+        <option value="maand">Maandelijks — eerste maandag van de maand, 04:00</option>
+        <option value="week">Wekelijks — elke maandag, 04:00</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Referentiedatum — "actief" telt vanaf deze dag</label>
+      <input type="date" id="cfg-inactiviteit-referentiedatum" value="2026-04-01" style="width:auto">
+    </div>
+
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark)">
+        <input type="checkbox" id="cfg-inactiviteit-aan" style="width:18px;height:18px;accent-color:var(--green)">
+        Inactiviteitsval — spelers zakken bij lange inactiviteit
+      </label>
+    </div>
+    <div id="cfg-inactiviteit-wrap" style="display:none;margin-top:4px;padding:10px 12px;background:var(--green-pale);border-radius:8px">
+      <div class="form-group" style="margin:0">
+        <label>Straf start na (weken zonder partij)</label>
+        <input type="number" id="cfg-inactiviteit-drempel" min="1" max="12" value="4" style="text-align:center;width:80px">
+      </div>
+      <div class="form-group" style="margin:10px 0 0">
+        <label>Strafmodel</label>
+        <select id="cfg-inactiviteit-model" style="width:auto">
+          <option value="zacht">Zacht — geleidelijk zakken, maximaal 6 plekken</option>
+          <option value="middel">Gemiddeld — sneller zakken, maximaal 14 plekken</option>
+          <option value="fors">Fors — actieve spelers altijd boven inactieve</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-top:12px">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark)">
+        <input type="checkbox" id="cfg-frequentie-aan" style="width:18px;height:18px;accent-color:var(--green)">
+        Frequentie-bonus — extra stijging voor actieve spelers
+      </label>
+    </div>
+    <div id="cfg-frequentie-wrap" style="display:none;margin-top:4px;padding:10px 12px;background:var(--green-pale);border-radius:8px">
+      <div class="form-group" style="margin:0">
+        <label>Bonus vanaf méér dan (partijen deze maand)</label>
+        <input type="number" id="cfg-frequentie-partijen" min="1" max="20" value="3" style="text-align:center;width:80px">
+      </div>
+      <div class="form-group" style="margin:10px 0 0">
+        <label>Bonus (plekken omhoog)</label>
+        <input type="number" id="cfg-frequentie-plekken" min="1" max="10" value="1" style="text-align:center;width:80px">
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-top:12px">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark)">
+        <input type="checkbox" id="cfg-diversiteit-aan" style="width:18px;height:18px;accent-color:var(--green)">
+        Diversiteitsbonus — beloning voor spelen tegen nieuwe tegenstanders
+      </label>
+    </div>
+    <div id="cfg-diversiteit-wrap" style="display:none;margin-top:4px;padding:10px 12px;background:var(--green-pale);border-radius:8px">
+      <div class="form-group" style="margin:0">
+        <label>Bonus vanaf méér dan (unieke tegenstanders deze maand)</label>
+        <input type="number" id="cfg-diversiteit-drempel" min="1" max="40" value="6" style="text-align:center;width:80px">
+      </div>
+      <div class="form-group" style="margin:10px 0 0">
+        <label>Bonus (plekken omhoog)</label>
+        <input type="number" id="cfg-diversiteit-plekken" min="1" max="10" value="2" style="text-align:center;width:80px">
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-top:12px">
+      <button type="button" class="btn btn-sm btn-ghost" onclick="draaiActiviteitNu()"
+        title="Verwerk de activiteitscorrectie meteen, zonder tot maandag te wachten">
+        ⏱ Activiteit nu verwerken
+      </button>
+      <p style="font-size:11px;color:var(--light);margin:6px 0 0">
+        Handig om na een wijziging meteen het effect te zien. Sla de instellingen eerst op.
+      </p>
+    </div>
+
+    <div class="form-group" style="margin-top:12px">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark)">
+        <input type="checkbox" id="cfg-icoon-aan" style="width:18px;height:18px;accent-color:var(--green)">
+        Activiteitsicoontjes tonen in de ladder (🔥 frequent · ⭐ divers · ⏳ let op · ⬇️ inactief)
+      </label>
+    </div>
+
+    <!-- v5.41.0 / v5.51.0: per spelvorm twee keuzes voor DEZE ladder.
+         Sierk, 13 oktober 2026: "Maak in beheer twee selecties ook voor de
+         bestaande spelvormen, 1 zichtbaar ja/nee, 2 telt mee ja/nee.
+         Uitzondering onderlinge matchplay, die is altijd zichtbaar en telt
+         altijd mee." De rijen worden getekend door js/beheer.js uit het
+         register in js/spelvormen.js. -->
+    <div class="divider"></div>
+    <div class="form-group" style="margin-top:12px">
+      <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Spelvormen op deze ladder</label>
+      <div id="cfg-spelvormen-tabel" style="margin-top:6px"></div>
+      <p style="font-size:11px;color:var(--light);margin:6px 0 0">
+        <b>Zichtbaar</b>: staat in het partijformulier. <b>Telt mee</b>: verschuift de ladder.
+        Telt een spelvorm niet mee, dan wordt de partij wel gespeeld en bewaard, maar
+        verschuift er niemand en telt hij niet mee voor de activiteitsbonussen.
+        Matchplay staat er altijd en telt altijd mee.
+      </p>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-ladder-instellingen')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="slaLadderInstellingenOp()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- v4.2.0: "Stand aanpassen"-modal (pijltjes-omhoog/omlaag) verwijderd —
+     puntenaanpassing loopt nu via de "Spelers"-modal (modal-ladder-spelers). -->
+
+<!-- Flight indeling modal -->
+<div class="modal-overlay" id="modal-flight-indeling">
+  <div class="modal" style="max-width:520px">
+    <h3>Flight indeling</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:14px">Verdeel de deelnemers over flights en pas indien nodig de handicap aan.</p>
+    <div id="flight-lijst"></div>
+    <button class="btn btn-ghost btn-block btn-sm" onclick="voegFlightToe()" style="margin-top:8px">+ Flight toevoegen</button>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-flight-indeling')">← Terug</button>
+      <button class="btn btn-primary" style="flex:2" id="flight-modal-start-btn">Toernooi opslaan →</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-nieuwe-dag">
+  <div class="modal" style="max-width:420px">
+    <h3 id="modal-dag-titel">Nieuwe dag toevoegen</h3>
+    <!-- v5.13.0: hier stond het dagformulier een tweede keer, uitgetikt en net
+         iets anders dan dat op het aanmaakscherm. Nu wordt deze container
+         gevuld door dagFormulierHtml() in js/toernooi.js — dezelfde bron als
+         het aanmaakscherm. Zie ONTWERP-TOERNOOISCHERM.md. -->
+    <div id="modal-dag-formulier" class="dag-formulier"></div>
+    <p style="font-size:12px;color:var(--mid);margin:8px 0" id="modal-dag-uitleg">De flight indeling voor deze dag stel je in na het toevoegen via de Flights knop in de scorekaart.</p>
+    <!-- v5.9.1: dit venster doet nu twee dingen — een dag toevoegen en een
+         bestaande dag wijzigen. De knop wisselt van opschrift en handeling,
+         net als bij de flightindeling. -->
+    <button class="btn btn-ghost btn-block btn-sm" id="modal-dag-verwijder-btn" onclick="verwijderDag()"
+      style="display:none;color:var(--red);margin-bottom:10px">🗑 Deze dag verwijderen</button>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-nieuwe-dag')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" id="modal-dag-opslaan-btn" onclick="voegDagToe()">Dag toevoegen →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Nieuwe ladder modal -->
+<div class="modal-overlay" id="modal-nieuwe-ladder">
+  <div class="modal">
+    <h3>Nieuwe ladder</h3>
+    <div class="form-group">
+      <label>Naam</label>
+      <input type="text" id="nieuwe-ladder-naam" placeholder="bijv. Dames">
+    </div>
+    <div class="form-group">
+      <label>Type</label>
+      <select id="nieuwe-ladder-type">
+        <option value="ranking">Ranking ladder</option>
+        <option value="knockout">Knock-out ladder</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-nieuwe-ladder')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="maakNieuweLadder()">Aanmaken</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ladder spelers modal -->
+<div class="modal-overlay" id="modal-ladder-spelers">
+  <div class="modal">
+    <h3 id="ladder-spelers-titel">Spelers in ladder</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:12px">Vink aan wie in deze ladder speelt.</p>
+    <div id="ladder-spelers-lijst"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-ladder-spelers')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="slaLadderSpelersOp()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Snapshots modal -->
+<div class="modal-overlay" id="modal-snapshots">
+  <div class="modal">
+    <h3>Ladderstand herstellen</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:12px">Kies een moment om naar terug te keren. Snapshots worden 2 jaar bewaard. De huidige stand wordt automatisch vastgelegd voordat er hersteld wordt.</p>
+    <div id="snapshots-list"></div>
+    <button class="btn btn-ghost btn-block" style="margin-top:16px" onclick="closeModal('modal-snapshots')">Sluiten</button>
+  </div>
+</div>
+
+<!-- v3.0.0-11.104: Spelermatrix modal -->
+<div class="modal-overlay" id="modal-spelermatrix">
+  <div class="modal" style="max-width:min(95vw,1100px);width:auto">
+    <h3 id="spelermatrix-titel">Spelermatrix</h3>
+    <div id="spelermatrix-inhoud" style="margin-top:8px"></div>
+    <button class="btn btn-ghost btn-block" style="margin-top:16px" onclick="closeModal('modal-spelermatrix')">Sluiten</button>
+  </div>
+</div>
+
+<!-- Ladderverloop per speler (v3.0.7) -->
+<div class="modal-overlay" id="modal-ladderverloop">
+  <div class="modal" style="max-width:min(95vw,560px);width:100%">
+    <h3 id="ladderverloop-titel">Ladderverloop</h3>
+    <div id="ladderverloop-inhoud" style="margin-top:8px"></div>
+    <button class="btn btn-ghost btn-block" style="margin-top:16px" onclick="closeModal('modal-ladderverloop')">Sluiten</button>
+  </div>
+</div>
+
+<!-- Wachtwoord vergeten modal -->
+<div class="modal-overlay" id="modal-wachtwoord-vergeten" style="z-index:600">
+  <div class="modal">
+    <h3>Wachtwoord herstellen</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">Voer je e-mailadres in. Je ontvangt een link om je wachtwoord te resetten.</p>
+    <div class="form-group">
+      <label>E-mailadres</label>
+      <input type="email" id="reset-email" placeholder="naam@email.com" inputmode="email">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-wachtwoord-vergeten')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="stuurResetEmail()">Verstuur link</button>
+    </div>
+  </div>
+</div>
+
+<!-- Wachtwoord wijzigen modal (ingelogd) -->
+<div class="modal-overlay" id="modal-wachtwoord-wijzigen">
+  <div class="modal">
+    <h3>Wachtwoord wijzigen</h3>
+    <div class="form-group">
+      <label>Huidig wachtwoord</label>
+      <input type="password" id="huidig-wachtwoord" placeholder="••••••">
+    </div>
+    <div class="form-group">
+      <label>Nieuw wachtwoord</label>
+      <input type="password" id="nieuw-wachtwoord" placeholder="minimaal 6 tekens">
+    </div>
+    <div class="form-group">
+      <label>Bevestig nieuw wachtwoord</label>
+      <input type="password" id="bevestig-wachtwoord" placeholder="••••••">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-wachtwoord-wijzigen')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="wijzigWachtwoord()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Nieuw seizoen modal -->
+<div class="modal-overlay" id="modal-nieuw-seizoen" style="align-items:center">
+  <div class="modal" style="border-radius:16px;max-height:90vh">
+    <h3>Nieuw seizoen starten</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">
+      Per ladder: eindstand wordt gearchiveerd, scorekaarten en snapshots worden verwijderd,
+      ranks hernummerd (1..N), tellers partijen/gewonnen op 0.
+    </p>
+    <div class="form-group">
+      <label>Naam seizoen</label>
+      <input type="text" id="seizoen-naam" placeholder="bijv. Seizoen 2026">
+    </div>
+    <div class="form-group">
+      <label>Welke ladders?</label>
+      <div id="nieuw-seizoen-ladders" style="margin-top:6px"></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px;background:var(--soft-bg);border-radius:8px;margin-bottom:12px">
+      <input type="checkbox" id="seizoen-omdraaien" style="accent-color:var(--green);width:18px;height:18px">
+      <span style="font-size:13px;color:var(--mid)">↕️ Volgorde omdraaien: eerste wordt laatste, laatste wordt eerste</span>
+    </label>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-nieuw-seizoen')">Annuleren</button>
+      <button class="btn btn-gold" style="flex:2" onclick="bevestigNieuwSeizoen()">🏆 Archiveren & resetten</button>
+    </div>
+  </div>
+</div>
+
+<!-- Archief seizoen detail modal -->
+<div class="modal-overlay" id="modal-live-scorebord">
+  <div class="modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <h3 id="live-scorebord-titel">Live scorebord</h3>
+      <button onclick="verversLiveScoreBord()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:16px" title="Vernieuwen">🔄</button>
+    </div>
+    <div id="live-scorebord-tijd" style="font-size:11px;color:var(--light);margin-bottom:12px"></div>
+    <div id="live-scorebord-inhoud" style="overflow-y:auto;max-height:65vh"></div>
+    <button class="btn btn-primary btn-block" style="margin-top:16px" onclick="closeModal('modal-live-scorebord')">Sluiten</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-archief-detail">
+  <div class="modal">
+    <h3 id="archief-detail-titel">Seizoen</h3>
+    <div id="archief-detail-inhoud"></div>
+    <button class="btn btn-primary btn-block" style="margin-top:16px" onclick="closeModal('modal-archief-detail')">Sluiten</button>
+  </div>
+</div>
+
+<!-- Beheer actieve partij modal (beheerder) -->
+<div class="modal-overlay" id="modal-beheer-partij">
+  <div class="modal">
+    <h3 id="beheer-partij-titel">Partij beheren</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">Wijs winnaars aan of verwijder de partij.</p>
+    <div id="beheer-partij-matches"></div>
+    <div class="modal-actions" style="flex-direction:column;gap:8px">
+      <button class="btn btn-primary btn-block" onclick="bevestigBeheerUitslag()">✓ Uitslag verwerken</button>
+      <button class="btn btn-block" style="background:#fde8e8;color:var(--red);border:none" onclick="verwijderActievePartij()">✕ Partij verwijderen</button>
+      <button class="btn btn-ghost btn-block" onclick="closeModal('modal-beheer-partij')">Annuleren</button>
+    </div>
+  </div>
+</div>
+
+<!-- GEBRUIKER BEWERKEN MODAL -->
+<div class="modal-overlay" id="modal-edit-user">
+  <div class="modal">
+    <h3>Account bewerken</h3>
+    <div class="form-group">
+      <label>Gebruikersnaam</label>
+      <input type="text" id="edit-user-name" placeholder="bijv. jan.devries">
+    </div>
+    <div class="form-group">
+      <label>Nieuw wachtwoord <span style="color:var(--light);font-weight:400">(leeg = ongewijzigd)</span></label>
+      <input type="password" id="edit-user-pass" placeholder="minimaal 6 tekens">
+    </div>
+    <div class="form-group">
+      <label>Rol</label>
+      <select id="edit-user-rol">
+        <option value="speler">Speler</option>
+        <option value="coordinator">Coordinator</option>
+        <option value="toernooileider">Toernooileider</option>
+        <option value="beheerder">Beheerder</option>
+      </select>
+    </div>
+    <input type="hidden" id="edit-user-idx">
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-edit-user')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="saveEditUser()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- GEBRUIKER TOEVOEGEN MODAL -->
+<div class="modal-overlay" id="modal-add-user">
+  <div class="modal">
+    <h3>Account aanmaken</h3>
+    <div class="form-group">
+      <label>E-mailadres</label>
+      <input type="email" id="new-user-name" placeholder="naam@email.com" inputmode="email">
+    </div>
+    <div class="form-group">
+      <label>Wachtwoord</label>
+      <input type="password" id="new-user-pass" placeholder="minimaal 6 tekens">
+    </div>
+    <div class="form-group">
+      <label>Rol</label>
+      <select id="new-user-rol">
+        <option value="speler">Speler</option>
+        <option value="coordinator">Coordinator</option>
+        <option value="toernooileider">Toernooileider</option>
+        <option value="beheerder">Beheerder</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Ladder toewijzen</label>
+      <div id="new-user-ladders" style="display:flex;flex-direction:column;gap:6px;margin-top:4px"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-add-user')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="saveNewUser()">Account aanmaken</button>
+    </div>
+  </div>
+</div>
+
+
+<header>
+  <div class="brand">
+    <img src="logo.png" alt="Goyer MP Ladder" class="brand-logo">
+    <h1><span id="h1-second">Matchplay Ladder</span></h1>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span id="versie-badge" style="display:none;font-size:10px;color:rgba(255,255,255,0.4);font-family:'DM Mono',monospace">v2.x</span>
+    <button id="logout-btn" onclick="uitloggen()" style="display:none;background:rgba(255,255,255,0.15);border:none;color:white;padding:5px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif">Uitloggen</button>
+  </div>
+</header>
+
+<!-- v5.47.0: alleen zichtbaar voor een beheerder die als gewone speler kijkt
+     (toonKijkBalk in js/auth.js) -->
+<div id="kijk-balk" style="display:none">
+  <span>Je kijkt als <strong>gewone speler</strong>.</span>
+  <button class="btn btn-sm btn-primary" onclick="kijkAlsSpeler(false)">Terug naar beheerder</button>
+</div>
+
+<nav>
+  <button id="nav-ladder-btn" class="active" onclick="showPage('ladder', event)"><span class="nav-label">Ladder</span></button>
+  <button id="nav-partij-btn" onclick="showPage('partij', event)"><span class="nav-label">Partij</span></button>
+  <button id="nav-ronde-btn" onclick="showPage('ronde', event)"><span class="nav-label">Ronde</span></button>
+  <button id="nav-uitslagen-btn" onclick="showPage('uitslagen', event)"><span class="nav-label">Uitslag</span></button>
+  <button id="nav-help-btn" onclick="showPage('help', event)"><span class="nav-label">Help</span></button>
+  <button onclick="showPage('archief', event)" id="nav-archief-btn" style="display:none"><span class="nav-label">Archief</span></button>
+  <button onclick="showPage('toernooi', event)" id="nav-toernooi-btn" style="display:none"><span class="nav-label">Toernooi</span></button>
+  <button id="nav-profiel-btn" onclick="showPage('profiel', event)" style="display:none"><span class="nav-label">Profiel</span></button>
+  <button id="nav-admin-btn" onclick="showPage('admin', event)" style="display:none"><span class="nav-label">Beheer</span></button>
+</nav>
+
+<!-- ==================== LADDER ==================== -->
+<div id="page-ladder" class="page active">
+  <!-- v5.48.0: deze kaart staat er tot de ladder getekend is. Zonder dit zag je
+       op een trage verbinding alleen de tabbladen en een leeg scherm, als het
+       vangnet van 10 seconden het logo weghaalde. -->
+  <div id="ladder-kaarten"><div class="card"><div class="empty"><div class="empty-icon">⏳</div><p>Je gegevens worden opgehaald…</p><p style="font-size:12px;color:var(--light)">Dit gaat meestal vanzelf.</p></div></div></div>
+</div>
+
+<!-- ==================== PARTIJ ==================== -->
+<div id="page-partij" class="page">
+  <div class="card">
+    <div class="card-header">
+      <h2 id="partij-card-titel">Nieuwe Partij</h2>
+    </div>
+    <div class="card-body">
+      <div class="form-group" id="partij-ladder-wrap">
+        <label>Ladder</label>
+        <select id="partij-ladder-select">
+          <option value="">— Selecteer ladder —</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Baan</label>
+        <select id="baan-select" onchange="onBaanSelect()">
+          <option value="">— Selecteer baan —</option>
+        </select>
+      </div>
+      <div id="baan-handmatig" style="display:none">
+        <div id="holes-handmatig"></div>
+      </div>
+      <div id="baan-beheer-wrap" style="display:none;margin-top:8px">
+        <button class="btn btn-ghost btn-sm" onclick="verwijderAangepasteBaan()" style="color:var(--red);border-color:#f5c6cb">✕ Baan verwijderen</button>
+      </div>
+      <div class="divider"></div>
+      <div style="display:flex;gap:12px">
+        <div class="form-group" style="flex:1">
+          <label>Starthole</label>
+          <input type="number" id="start-hole" min="1" max="18" value="1" style="width:100%">
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>Aantal holes</label>
+          <input type="number" id="aantal-holes" min="1" max="18" value="18" style="width:100%">
+        </div>
+        <!-- v5.8.0: HCP % is geen vaste 75 meer maar een keuze per partij -->
+        <div class="form-group" style="flex:1">
+          <label>HCP %</label>
+          <input type="number" id="hcp-pct" min="0" max="100" step="5" value="75" style="width:100%" oninput="onHcpOptieChange()">
+        </div>
+      </div>
+      <p id="partij-vergrendeld-hint" style="display:none;font-size:11px;color:var(--light);margin:-4px 0 8px">Baan en starthole liggen vast zolang er scores op de kaart staan.</p>
+      <div class="divider"></div>
+      <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px;">Spelers (2–4)</label><p style="font-size:11px;color:var(--light);margin-bottom:8px">Voer de playing handicap in over 18 holes</p>
+      <div id="player-slots"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+        <button class="btn btn-ghost btn-sm" onclick="addPlayerSlot()" id="add-player-btn">+ Speler toevoegen</button>
+        <button class="btn btn-ghost btn-sm" onclick="voegGastSpelerToeAanPartij()" id="add-guest-btn">+ Gastspeler</button>
+      </div>
+      <div id="speltype-wrap" style="display:none">
+        <div class="divider"></div>
+        <div class="form-group">
+          <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Speltype</label>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-matchplay-label">
+              <input type="radio" name="speltype" id="speltype-matchplay" value="matchplay" checked onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Matchplay</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-amerikaantje-label">
+              <input type="radio" name="speltype" id="speltype-amerikaantje" value="amerikaantje" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Amerikaantje</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-highlow-label">
+              <input type="radio" name="speltype" id="speltype-highlow" value="highlow" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">High-Low <span style="font-size:11px;color:var(--light)">(2 teams van 2)</span></span>
+            </label>
+            <!-- v5.51.0: zes spelvormen erbij. Welke er per ladder te zien zijn,
+                 bepaalt Beheer → ladder → Instellingen (spelvormZichtbaar in
+                 js/spelvormen.js); js/partij.js verbergt de rest. -->
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-skins-label">
+              <input type="radio" name="speltype" id="speltype-skins" value="skins" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Skins <span style="font-size:11px;color:var(--light)">(2–4 spelers)</span></span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-stableford-label">
+              <input type="radio" name="speltype" id="speltype-stableford" value="stableford" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Stableford <span style="font-size:11px;color:var(--light)">(2–4 spelers)</span></span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-nassau-label">
+              <input type="radio" name="speltype" id="speltype-nassau" value="nassau" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Nassau <span style="font-size:11px;color:var(--light)">(2 spelers)</span></span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-sixes-label">
+              <input type="radio" name="speltype" id="speltype-sixes" value="sixes" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Sixes <span style="font-size:11px;color:var(--light)">(4 spelers, wisselende koppels)</span></span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-wolf-label">
+              <input type="radio" name="speltype" id="speltype-wolf" value="wolf" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Wolf <span style="font-size:11px;color:var(--light)">(4 spelers)</span></span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="speltype-bbb-label">
+              <input type="radio" name="speltype" id="speltype-bbb" value="bbb" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Bingo Bango Bongo <span style="font-size:11px;color:var(--light)">(2–4 spelers)</span></span>
+            </label>
+          </div>
+          <p id="speltype-hint" style="display:none;font-size:11px;color:var(--light);margin-top:6px">Exact 3 spelers · 6 punten per hole · winnaar +2 plekken, verliezer −2</p>
+        </div>
+      </div>
+      <!-- v5.51.0: Taliban, een regel bovenop het Amerikaantje. Alleen te zien
+       als Amerikaantje gekozen is. Bewust BUITEN #speltype-wrap: de clubstijl
+       kleurt daar elk aangevinkt label groen, en dan stond "netto" groen op
+       groen (gezien op de schermafdruk van 13 oktober 2026). -->
+      <div id="taliban-wrap" style="display:none;margin-top:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark)">
+          <input type="checkbox" id="taliban-aan" onchange="onSpeltypeChange()" style="flex-shrink:0;width:auto;margin:0">
+          <span>Taliban-regel</span>
+        </label>
+        <p style="font-size:11px;color:var(--light);margin:4px 0 0">Birdie of beter, en beide anderen minstens 2 slagen slechter: alle 6 punten.</p>
+        <div id="taliban-basis-wrap" style="display:none;margin-top:8px;font-size:13px">
+<div style="color:var(--mid);margin-bottom:2px">Birdie en bogey tellen</div>
+          <div style="display:flex;gap:16px;align-items:center">
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
+            <input type="radio" name="taliban-basis" value="netto" checked style="width:auto;margin:0"> netto</label>
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
+            <input type="radio" name="taliban-basis" value="bruto" style="width:auto;margin:0"> bruto</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- v5.52.0: bonussen bij Skins. Alleen te zien als Skins gekozen is.
+           Buiten #speltype-wrap om dezelfde reden als het Taliban-blok (de
+           clubstijl kleurt daar aangevinkte labels groen). De regels staan in
+           js/spelvormen.js (BONUSSEN). -->
+      <div id="bonus-wrap" style="display:none;margin-top:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff">
+        <div style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Bonussen</div>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="sandy">
+            <span>Sandy <span style="font-size:11px;color:var(--light)">— par of beter na een bunker</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="greenie">
+            <span>Greenie <span style="font-size:11px;color:var(--light)">— par 3: dichtst bij de vlag én par</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="chippie">
+            <span>Chippie <span style="font-size:11px;color:var(--light)">— chip in één keer in</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="birdie">
+            <span>Birdie <span style="font-size:11px;color:var(--light)">— echte birdie of beter — volgt uit de score</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="barkie">
+            <span>Barkie <span style="font-size:11px;color:var(--light)">— par of beter na een boom</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:2px 0">
+            <input type="checkbox" class="bonus-aan" style="flex-shrink:0;width:auto;margin:0" value="polie">
+            <span>Polie <span style="font-size:11px;color:var(--light)">— lange putt — de lengte spreken jullie af</span></span>
+          </label>
+        <div style="margin-top:8px;font-size:13px">
+          <div style="color:var(--mid);margin-bottom:2px">Een bonus is</div>
+          <div style="display:flex;gap:16px;align-items:center">
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
+            <input type="radio" name="bonus-waarde" value="skin" checked style="width:auto;margin:0"> een skin</label>
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
+            <input type="radio" name="bonus-waarde" value="punt" style="width:auto;margin:0"> een punt</label>
+          </div>
+          <p style="font-size:11px;color:var(--light);margin:2px 0 0">Skin: telt mee in de uitslag en de ladder. Punt: aparte bonusstand, telt niet mee.</p>
+        </div>
+        <div style="margin-top:8px;font-size:13px">
+<div style="color:var(--mid);margin-bottom:2px">Telt een bonus ook als de hole doorschuift?</div>
+          <div style="display:flex;gap:16px;align-items:center">
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
+            <input type="radio" name="bonus-door" value="ja" checked style="width:auto;margin:0"> ja</label>
+          <label style="display:inline-flex;align-items:center;gap:4px;text-transform:none;font-weight:500;cursor:pointer">
+            <input type="radio" name="bonus-door" value="nee" style="width:auto;margin:0"> nee</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- v5.8.0: hoe de handicapslagen verdeeld worden -->
+      <div id="hcp-opties-wrap">
+        <div class="divider"></div>
+        <div class="form-group" id="hcp-verdeling-wrap" style="display:none">
+          <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Verdeling van de slagen</label>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="hcp-verdeling-volledig-label">
+              <input type="radio" name="hcp-verdeling" id="hcp-verdeling-volledig" value="volledig" checked onchange="onHcpOptieChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Eigen handicap <span style="font-size:11px;color:var(--light)" id="hcp-verdeling-volledig-uitleg">— ieder zijn eigen handicap × 75%</span></span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="hcp-verdeling-relatief-label">
+              <input type="radio" name="hcp-verdeling" id="hcp-verdeling-relatief" value="relatief" onchange="onHcpOptieChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Onderling verschil <span style="font-size:11px;color:var(--light)" id="hcp-verdeling-relatief-uitleg">— laagste krijgt niets, de rest het verschil × 75%</span></span>
+            </label>
+          </div>
+        </div>
+        <div class="form-group" id="hcp-plaatsing-wrap">
+          <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px">Op welke holes</label>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="hcp-plaatsing-laag-label">
+              <input type="radio" name="hcp-plaatsing" id="hcp-plaatsing-laag" value="laag" checked onchange="onHcpOptieChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Laagste SI <span style="font-size:11px;color:var(--light)">— bij 4 slagen: SI 1 t/m 4</span></span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;font-size:14px;font-weight:500;color:var(--dark);padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:#fff" id="hcp-plaatsing-vanaf-label">
+              <input type="radio" name="hcp-plaatsing" id="hcp-plaatsing-vanaf" value="vanaf" onchange="onHcpOptieChange()" style="flex-shrink:0;width:auto;margin:0">
+              <span style="color:var(--dark)">Vanaf de volgende SI <span style="font-size:11px;color:var(--light)">— bij 4 slagen: SI 5 t/m 8</span></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <button class="btn btn-primary btn-block" id="partij-start-btn" onclick="startPartij()">Partij starten →</button>
+      <!-- v5.8.0: alleen zichtbaar als een lopende partij aangepast wordt -->
+      <button class="btn btn-ghost btn-block" id="partij-annuleer-btn" style="display:none;margin-top:8px" onclick="annuleerPartijBewerken()">Annuleren</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== RONDE (live scorekaart) ==================== -->
+<div id="page-ronde" class="page">
+  <div id="ronde-empty" class="empty">
+    <div class="empty-icon">🏌️</div>
+    <p>Geen actieve partij.<br>Start een nieuwe partij via het Partij-tabblad.</p>
+  </div>
+  <div id="ronde-content" style="display:none">
+    <div class="card" id="ronde-info-card">
+      <div class="card-header">
+        <h2 id="ronde-baan-naam">—</h2>
+        <span class="badge badge-gold" id="ronde-holes-badge">18 holes</span>
+        <span class="badge badge-gold" id="ronde-watch-pin" style="display:none;cursor:pointer" title="Tik om een PIN voor je horloge te maken (6 cijfers, 15 minuten geldig, eenmalig)">⌚ Koppel horloge</span>
+      </div>
+      <!-- v5.8.0: alles wijzigen gaat via het partijformulier, niet meer via
+           losse knopjes verspreid over de scorekaart. De ingevulde scores
+           blijven daarbij staan. -->
+      <div class="card-body" style="padding-top:10px">
+        <button id="ronde-instellingen-btn" class="btn btn-ghost btn-block btn-sm" onclick="bewerkPartijInstellingen()">⚙ Partij-instellingen aanpassen</button>
+        <!-- v5.40.0: de QR waarmee een gast in DEZE ronde komt. Staat er niet
+             voor wie zelf met zo'n QR binnen is — die hoeft hem niet door te
+             geven en het zou hem alleen maar in verwarring brengen. -->
+        <!-- v5.40.2: een getekend QR-tekentje in plaats van een emoji. Een emoji
+             wordt door elk toestel zelf ingevuld en ziet er overal anders uit;
+             dit is op elke telefoon hetzelfde. `currentColor` laat het meelopen
+             met de tekstkleur van de knop, ook in een andere clubstijl. -->
+        <button id="ronde-qr-btn" class="btn btn-ghost btn-block btn-sm" style="margin-top:8px"
+          onclick="toonRondeQr('speler')"><svg width="14" height="14" viewBox="0 0 21 21"
+            aria-hidden="true" focusable="false" shape-rendering="crispEdges"
+            style="vertical-align:-2px;margin-right:6px"><path fill="currentColor"
+            fill-rule="evenodd" d="M0 0h7v7H0zM1 1h5v5H1zM2 2h3v3H2zM14 0h7v7h-7zM15 1h5v5h-5zM16 2h3v3h-3zM0 14h7v7H0zM1 15h5v5H1zM2 16h3v3H2z"/><path
+            fill="currentColor" d="M9 0h2v2H9zM9 4h2v2H9zM9 9h2v2H9zM12 9h2v2h-2zM16 9h2v2h-2zM9 13h2v2H9zM13 13h2v2h-2zM17 16h2v2h-2zM13 17h2v2h-2z"/></svg>QR-code voor de flight</button>
+        <!-- v5.50.0: ÉÉN code. Sierk, 12 oktober 2026: "je hebt maar 1 QR code
+             nodig waarmee ook gastspelers hun naam kiezen." Wie scant tikt zijn
+             naam aan uit de flight — clubleden én gastspelers (die staan met
+             een gast_-nummer in de partij). De aparte gastencode en de knop
+             ronde-spelers-qr-btn uit v5.49.0 zijn weg. Iemand die niet
+             meespeelt komt er bewust niet mee binnen (keuze van Sierk). -->
+      </div>
+    </div>
+
+    <!-- Handicap slagen blok -->
+    <div class="card">
+      <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+        <h2>Handicap slagen</h2>
+      </div>
+      <div class="card-collapse ingeklapt">
+        <div id="ronde-hcp-blok" style="padding:0 12px"></div>
+      </div>
+    </div>
+
+    <!-- Match overzicht -->
+    <div class="card">
+      <div class="card-header"><h2>Onderlinge stand</h2></div>
+      <div id="match-overview"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-header inklapbaar" onclick="toggleAdminKaart(this)">
+        <h2>Scorekaart</h2>
+      </div>
+      <div class="card-collapse">
+        <div style="overflow-x:auto">
+        <form onsubmit="return false" action="#">
+        <table class="scorecard" id="scorecard-table">
+          <thead id="scorecard-head"></thead>
+          <tbody id="scorecard-body"></tbody>
+        </table>
+        </form>
+        </div>
+      </div>
+    </div>
+
+    <button id="ronde-afsluiten-btn" class="btn btn-gold btn-block" onclick="openUitslagModal()" style="margin-bottom:16px">
+      ✓ Partij afsluiten & uitslag verwerken
+    </button>
+  </div>
+</div>
+
+<!-- v5.8.0: de losse modal "Speler toevoegen tijdens ronde" is vervallen.
+     Spelers toevoegen, verwijderen en handicaps wijzigen gebeurt voortaan via
+     "Partij-instellingen aanpassen" op het rondescherm, zodat er nog maar een
+     plek is waar dit soort wijzigingen wordt gemaakt. -->
+
+<!-- ==================== UITSLAGEN ==================== -->
+<div id="page-uitslagen" class="page">
+  <div class="card" id="actieve-partijen-card">
+    <div class="card-header">
+      <h2>Bezig</h2>
+      <span class="badge badge-gold" id="actief-count">0</span>
+    </div>
+    <div id="actieve-partijen-list">
+      <div class="empty"><div class="empty-icon">🏌️</div><p>Geen actieve partijen.</p></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <h2>Gespeelde partijen</h2>
+      <span class="badge badge-grey" id="uitslagen-count">0</span>
+    </div>
+    <div id="uitslagen-list">
+      <div class="empty"><div class="empty-icon">📋</div><p>Nog geen uitslagen.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== HELP ==================== -->
+<div id="page-help" class="page">
+  <!-- v5.35.0: er zijn twee handleidingen. De bestaande gaat over een partij
+       tussen twee mensen; de nieuwe over een toernooi. Twee knoppen die het
+       ene venster van bron wisselen — geen tweede scherm. -->
+  <div style="display:flex;gap:6px;padding:10px 16px 0">
+    <button id="help-knop-partij" class="btn btn-sm" onclick="kiesHandleiding('partij')">Partij &amp; Ronde</button>
+    <button id="help-knop-toernooi" class="btn btn-sm btn-ghost" onclick="kiesHandleiding('toernooi')">Toernooi</button>
+  </div>
+  <iframe id="help-frame" src="handleiding-partij-ronde.html" style="width:100%;height:calc(100vh - 165px);border:none;display:block"></iframe>
+</div>
+
+<!-- ==================== UITLEG SCOREKAART (v5.35.0) ====================
+     Korte hulp voor de DEELNEMER, achter het ?-knopje op de scorekaart.
+     Bewust een venster en geen pagina: je staat midden in een ronde. -->
+<!-- ==================== QR-CODE NAAR DE SITE (v5.37.0) ====================
+     De code zelf wordt hier niet opgehaald maar getekend door qrSvg() in
+     js/toernooi.js. Geen internetdienst en geen extra bibliotheek: op de baan
+     is er lang niet altijd bereik, en dan hoort dit venster het juist te doen.
+     Het adres staat er in gewone letters onder — zo zie je altijd zelf waar de
+     code heen wijst, ook als je op de testomgeving kijkt.
+     ========================================================================= -->
+<!-- ==================== QR-CODE VAN EEN RONDE (v5.40.0) ====================
+     Anders dan de vaste QR hierboven kan deze niet vooraf worden uitgerekend:
+     hij draagt een sleutel die bij DEZE ronde hoort. Hij wordt daarom op de
+     server getekend en hier alleen getoond.
+     ========================================================================= -->
+<!-- ==================== WIE BEN JIJ? (v5.49.0) ====================
+     Na het scannen van de spelerscode. De namen komen van de server en zijn
+     alleen die van deze flight. -->
+<div class="modal-overlay" id="modal-ronde-naam" style="z-index:10001">
+  <div class="modal">
+    <h3>Wie ben jij?</h3>
+    <div style="font-size:14px;line-height:1.5;color:var(--dark);margin-bottom:12px">
+      Tik op je naam. Je komt dan in deze ronde en kunt de scores bijhouden.
+    </div>
+    <div id="ronde-naam-lijst"></div>
+    <div id="ronde-naam-fout" style="display:none;color:var(--alert-text);font-size:13px;margin-top:10px"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-ronde-qr">
+  <div class="modal">
+    <h3 id="ronde-qr-titel">QR-code voor de flight</h3>
+    <div id="ronde-qr-uitleg" style="font-size:14px;line-height:1.5;color:var(--dark);margin-bottom:12px">
+      Laat dit zien aan je medespelers, ook gasten. Wie scant tikt zijn eigen
+      naam aan en komt in deze ronde. Zodra de partij is verwerkt werkt de code
+      niet meer.
+    </div>
+    <div id="ronde-qr-vak" style="width:100%;max-width:260px;margin:0 auto;background:#ffffff;border-radius:8px;min-height:120px"></div>
+    <div id="ronde-qr-adres" style="text-align:center;font-family:'DM Mono',monospace;font-size:10px;color:var(--mid);margin-top:10px;word-break:break-all"></div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-primary btn-block" onclick="closeModal('modal-ronde-qr')">Sluiten</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-qr-code">
+  <div class="modal">
+    <h3 id="qr-code-titel">QR-code naar de app</h3>
+    <div id="qr-code-uitleg" style="font-size:14px;line-height:1.5;color:var(--dark);margin-bottom:12px">
+      Laat dit scherm zien; wie zijn telefooncamera erop richt, komt op de
+      inlogpagina van de Matchplay Ladder.
+    </div>
+    <div id="qr-code-vak" style="width:100%;max-width:260px;margin:0 auto;background:#ffffff;border-radius:8px"></div>
+    <div id="qr-code-adres" style="text-align:center;font-family:'DM Mono',monospace;font-size:11px;color:var(--mid);margin-top:10px;word-break:break-all"></div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-primary btn-block" onclick="closeModal('modal-qr-code')">Sluiten</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-scorekaart-hulp">
+  <div class="modal">
+    <h3>Zo werkt de scorekaart</h3>
+    <div style="font-size:14px;line-height:1.6;color:var(--dark)">
+      <p style="margin-bottom:10px"><strong>Jouw kolom</strong> staat op je eigen naam. Daar vul je je eigen score in.</p>
+      <p style="margin-bottom:10px"><strong>De andere kolommen</strong> van je flight mag je ook invullen — allemaal. Wie de kaart bijhoudt, maakt niet uit; met z'n tweeen mag ook. Zo wordt elke score twee keer geteld: door de speler zelf en door iemand uit zijn flight.</p>
+      <p style="margin-bottom:6px"><strong>De kleuren:</strong></p>
+      <ul style="margin:0 0 10px 18px;padding:0">
+        <li style="margin-bottom:4px">leeg — nog niets ingevuld</li>
+        <li style="margin-bottom:4px"><strong>gestippeld</strong> — pas één van jullie heeft ingevuld. Jouw getal telt al mee; de stippellijn verdwijnt zodra de ander hetzelfde intikt.</li>
+        <li style="margin-bottom:4px"><strong>zwart</strong> — jullie hebben hetzelfde getal: dat is de score</li>
+        <li style="margin-bottom:4px"><span style="color:var(--red);font-weight:600">rood</span> — jullie getallen verschillen; overleg even</li>
+      </ul>
+      <p style="margin-bottom:10px">Vult de wedstrijdleiding een getal in, dan geldt dat en staat de hole vast.</p>
+      <p style="margin-bottom:0"><strong>Opslaan hoeft niet.</strong> Alles wordt vanzelf bewaard, ook als je even geen bereik hebt.</p>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-primary btn-block" onclick="closeModal('modal-scorekaart-hulp')">Begrepen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PROFIEL ==================== -->
+<div id="page-profiel" class="page">
+  <div class="card">
+    <div class="card-header">
+      <h2>Mijn profiel</h2>
+    </div>
+    <div class="card-body">
+      <div id="profiel-info"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h2>Statistieken</h2></div>
+    <div id="profiel-stats" class="card-body"></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><h2>Instellingen</h2></div>
+    <div class="card-body">
+      <div class="form-group">
+        <label>Playing Handicap</label>
+        <div style="display:flex;gap:10px;align-items:center">
+          <input type="number" id="profiel-hcp-input" min="-10" max="54" step="1" placeholder="bijv. 12" style="width:100px;flex:none">
+          <button class="btn btn-primary btn-sm" onclick="slaProfielHcpOp()">Opslaan</button>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <!-- v5.6.0: weergave per speler. Drie standen, want zonder de eerste kon
+           een speler die eenmaal koos nooit meer terug naar de clubinstelling
+           en bereikte een latere wijziging van de beheerder hem nooit meer. -->
+      <div class="form-group">
+        <label>Weergave</label>
+        <div id="weergave-keuze" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn btn-sm weergave-optie" data-weergave="standaard"
+            onclick="kiesWeergave('standaard')">Standaard</button>
+          <button type="button" class="btn btn-sm weergave-optie" data-weergave="matchcheck"
+            onclick="kiesWeergave('matchcheck')">Helder</button>
+          <button type="button" class="btn btn-sm weergave-optie" data-weergave="club"
+            onclick="kiesWeergave('club')">Klassiek</button>
+          <button type="button" class="btn btn-sm weergave-optie" data-weergave="papier"
+            onclick="kiesWeergave('papier')">Papier</button>
+        </div>
+        <p style="font-size:11px;color:var(--light);margin-top:6px">
+          Geldt alleen op dit apparaat. &quot;Standaard&quot; volgt de instelling van de club.
+        </p>
+      </div>
+      <div class="divider"></div>
+      <button class="btn btn-ghost btn-block" onclick="openWachtwoordWijzigen()" style="margin-bottom:10px">🔑 Wachtwoord wijzigen</button>
+      <button class="btn btn-ghost btn-block" onclick="uitloggen()" style="color:var(--red);border-color:#f5c6cb">↩ Uitloggen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== ARCHIEF ==================== -->
+<div id="page-archief" class="page">
+  <div class="card">
+    <div class="card-header">
+      <h2>Seizoensarchief</h2>
+      <span class="badge badge-grey" id="archief-count">0</span>
+    </div>
+    <div id="archief-list">
+      <div class="empty"><div class="empty-icon">📁</div><p>Nog geen afgesloten seizoenen.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== TOERNOOI ==================== -->
+<div id="page-toernooi" class="page">
+
+  <!-- Geen actief toernooi -->
+  <!-- v5.24.0: het startscherm van het tabblad TOERNOOI. Sierk, 14 september
+       2026: "de toernooi tab zelf moet een beginscherm hebben. met daarin nieuw
+       toernooi, concept en oud." Wordt gevuld door renderToernooiStart(). -->
+  <div id="toernooi-start-wrap" style="display:none"></div>
+
+  <div id="toernooi-setup-wrap" style="display:none">
+    <!-- v3.0.9: standaard verborgen; renderToernooi() toont dit alleen voor coordinators.
+         Voorkomt dat een deelnemer het aanmaakscherm ("NIEUW TOERNOOI") ziet. -->
+    <!-- ⚠ v5.34.0: hier was geen weg terug. Sinds v5.24.0 heeft het detailscherm
+         "← Toernooien", maar het aanmaakscherm niet. Begon je een nieuw toernooi
+         en bedacht je je, dan kon je alleen verder of de pagina verversen. -->
+    <div style="padding:0 0 10px">
+      <button class="btn btn-ghost btn-sm" onclick="toonToernooiStart()" style="font-size:13px">← Toernooien</button>
+    </div>
+    <div class="card">
+      <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+        <h2>Nieuw Toernooi</h2>
+      </div>
+      <div class="card-collapse ingeklapt">
+        <div class="card-body">
+        <!-- ============================================================
+             HET AANMAAKSCHERM HEEFT DEZELFDE TABBLADEN  (v5.21.0)
+             ------------------------------------------------------------
+             Sierk, 14 september 2026: "als ik op nieuw toernooi aanmaken klik
+             dan wil ik daar toernooi/spelers/dagen tabs. het volledige toernooi
+             kunnen aanmaken."
+
+             Eén rij: [Toernooi] [Spelers] [Dag 1] [Dag 2] [+ Dag toevoegen] —
+             precies de rij die een opgeslagen toernooi ook heeft. De rij wordt
+             gebouwd door renderSetupTabs() in js/toernooi.js; hieronder staan de
+             drie panelen die hij aan- en uitzet.
+
+             ⚠ Hier stond "Aantal dagen", een keuzelijst 1 t/m 4. Twee manieren
+             om hetzelfde te zeggen: de dagtabbladen met + Dag toevoegen en ✕
+             deden het echte werk al. De keuzelijst is nu een verborgen teller
+             (#t-aantal-dagen) die alleen nog door de code wordt bijgehouden.
+             ============================================================ -->
+        <input type="hidden" id="t-aantal-dagen" value="1">
+        <div id="t-setup-tabs"></div>
+
+        <div id="t-setup-paneel-toernooi" class="t-setup-paneel">
+          <div class="form-group">
+            <label>Naam</label>
+            <input type="text" id="t-naam" placeholder="bijv. Clubkampioenschap 2025">
+          </div>
+          <!-- v5.12.8: hier stond "Spelers ladder(s)", een rij vakjes om de
+               spelerslijst voor te filteren op een of meer ladders. Sierk:
+               "het kiezen van meerdere ladders komt nooit voor". Weg; je zoekt
+               spelers op naam. De id t-ranking-ladders-wrap blijft:
+               pasSpeelwijzeToe() en de browsertest verbergen en tonen dit blok
+               bij strokeplay. -->
+          <div class="form-group" id="t-ranking-ladders-wrap">
+            <label>Ranking ladder</label>
+            <div id="t-ranking-ladders" style="margin-top:4px"></div>
+          </div>
+          <div id="t-matchplay-instellingen">
+            <!-- v5.13.0: hier stonden Winst/Gelijk/Verlies en het HCP-percentage
+                 voor het hele toernooi. Ze staan nu per dag in het dagtabblad.
+                 ⚠ Dit omhulsel BLIJFT bestaan: pasSpeelwijzeToe() toont en
+                 verbergt het, en de browsertest controleert dat. -->
+            <div class="note" style="margin-top:12px;font-size:12px">
+              De punten en de handicapverrekening stel je <strong>per dag</strong> in,
+              op het tabblad van die dag.
+            </div>
+          </div>
+          <div id="t-strokeplay-instellingen" style="display:none">
+            <div class="note" style="margin-top:12px;font-size:12px">
+              Bij <strong>Brutto</strong> telt de ruwe score. Bij <strong>Netto</strong> wordt de playing handicap afgetrokken van het totaal. Bij <strong>Stableford</strong> worden punten per hole berekend (netto): eagle=4, birdie=3, par=2, bogey=1, dubbel bogey+=0.
+            </div>
+          </div>
+          <!-- v5.21.1: "Inlog voor gastspelers" stond hier, op het tabblad
+               Toernooi. Dat was een indelingsfout: het gaat over de inlog van je
+               GASTSPELERS, dus je moest voor één handeling twee keer van
+               tabblad wisselen. Het blok staat nu op het tabblad Spelers, onder
+               de knoppen waarmee je die gasten toevoegt. -->
+        </div>
+
+        <div id="t-setup-paneel-spelers" class="t-setup-paneel" style="display:none">
+          <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:8px">Deelnemers selecteren</label>
+          <div style="position:relative;margin-bottom:8px">
+            <input type="text" id="t-speler-zoek" placeholder="🔍 Zoek en selecteer speler..." autocomplete="off"
+              oninput="zoekToernooiSpeler(this.value)" onfocus="zoekToernooiSpeler(this.value)"
+              onblur="setTimeout(sluitToernooiSpelerLijst, 150)">
+            <div id="t-speler-zoek-lijst" style="position:absolute;top:100%;left:0;right:0;background:var(--card-bg);color:var(--dark);border:1.5px solid var(--green);border-radius:8px;max-height:200px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,0.1);display:none;margin-top:2px"></div>
+          </div>
+          <div id="t-geselecteerde-spelers" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
+          <button class="btn btn-ghost btn-sm btn-block" onclick="voegGastspelerToe()" style="margin-bottom:8px">+ Gastspeler toevoegen</button>
+          <!-- v5.21.0: plakken kon alleen bij een opgeslagen toernooi. Juist bij
+               het aanmaken heb je die lijst uit Excel bij de hand. -->
+          <button class="btn btn-ghost btn-sm btn-block" onclick="openGastenPlakken('setup')" style="margin-bottom:12px">⬆ Gasten plakken (lijst uit Excel)</button>
+          <!-- v5.10.0: gastlogins. Laat je dit leeg, dan krijgen gastspelers geen
+               inlog en werkt alles zoals voorheen.
+               v5.21.1: verhuisd van het tabblad Toernooi naar hier — het hoort
+               bij de gasten die je hierboven toevoegt. -->
+          <div class="divider"></div>
+          <!-- v5.38.0: hier stond een vrij wachtwoord van minstens zes tekens.
+               Het is een pincode van vier cijfers geworden — het enige dat de
+               wedstrijdleiding nog hoeft rond te vertellen. -->
+          <label style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px">Pincode voor de deelnemers</label>
+          <div class="form-group" style="margin-bottom:6px">
+            <input type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="4"
+                   id="t-toernooi-pin" placeholder="4 cijfers" autocomplete="off"
+                   style="letter-spacing:.4em;text-align:center">
+          </div>
+          <p style="font-size:11px;color:var(--light);margin:0 0 12px">
+            Iedereen die meedoet komt hiermee binnen: op het inlogscherm kiest hij zijn
+            naam uit een lijst en tikt deze vier cijfers. Eén getal dus, voor de hele
+            flight. Na afloop van het toernooi werkt hij niet meer.<br>
+            <strong>Jij niet:</strong> wedstrijdleiding logt altijd in met het eigen
+            wachtwoord. Anders zou dit getal ook het beheerscherm openen.
+          </p>
+        </div>
+
+        <div id="t-setup-paneel-dagen" class="t-setup-paneel" style="display:none">
+          <!-- v5.13.0: hier stonden Starttijd en Interval voor het HELE toernooi.
+               Elke dag kreeg daardoor dezelfde tijd. Ze staan nu in het
+               dagformulier, samen met de punten en de handicap. -->
+          <div id="t-dag-blokken"></div>
+        </div>
+
+        <!-- v5.39.0: deze balk wijst naar de VOLGENDE stap; de tekst wordt
+             gezet door renderSetupTabs(). Zie setupVolgendeStap() in
+             js/toernooi.js. De tekst hier is alleen wat je ziet vóór de eerste
+             hertekening. -->
+        <button id="t-setup-volgende" class="btn btn-primary btn-block" onclick="klikSetupVolgende()">Spelers →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actief toernooi -->
+  <div id="toernooi-actief-wrap" style="display:none">
+    <div class="card">
+      <div class="card-header">
+        <h2 id="t-actief-naam">Toernooi</h2>
+        <span class="badge badge-gold" id="t-actief-badge">Bezig</span>
+      </div>
+      <div class="card-body" style="padding:10px 16px;font-size:13px;color:var(--mid)">
+        <span id="t-actief-info"></span>
+      </div>
+    </div>
+
+    <!-- Handicap slagen blok -->
+    <div class="card">
+      <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+        <h2>Handicap slagen</h2>
+      </div>
+      <div class="card-collapse ingeklapt">
+        <div id="toernooi-hcp-blok" style="padding:0 12px"></div>
+      </div>
+    </div>
+
+    <!-- Ranglijst -->
+    <div class="card">
+      <div class="card-header"><h2>Ranglijst</h2></div>
+      <div id="t-ranglijst-modus" style="display:none">
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:5px;padding:3px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:12px;font-weight:600">
+            <input type="radio" name="t-ranglijst-keuze" value="brutto" checked onchange="wisselRanglijstModus(this.value)" style="accent-color:var(--green)"> Brutto
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;padding:3px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:12px;font-weight:600">
+            <input type="radio" name="t-ranglijst-keuze" value="netto" onchange="wisselRanglijstModus(this.value)" style="accent-color:var(--green)"> Netto
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;padding:3px 10px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;font-size:12px;font-weight:600">
+            <input type="radio" name="t-ranglijst-keuze" value="stableford" onchange="wisselRanglijstModus(this.value)" style="accent-color:var(--green)"> Stableford
+          </label>
+        </div>
+      </div>
+      <div id="t-ranglijst"></div>
+    </div>
+
+    <!-- Scorekaart -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Scores invoeren</h2>
+        <button class="btn btn-sm btn-ghost" onclick="toggleTScorecard()">Toon/verberg</button>
+      </div>
+      <div id="t-scorecard-wrap" style="overflow-x:auto">
+        <table class="scorecard" id="t-scorecard-table">
+          <thead id="t-scorecard-head"></thead>
+          <tbody id="t-scorecard-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Onderlinge matrix -->
+    <div class="card">
+      <div class="card-header"><h2>Onderlinge stand</h2></div>
+      <div id="t-matrix" style="overflow-x:auto;padding:8px"></div>
+    </div>
+
+    <button class="btn btn-gold btn-block" onclick="openToernooiAfsluiten()" style="margin-bottom:8px">
+      ✓ Toernooi afsluiten
+    </button>
+    <button class="btn btn-ghost btn-block" onclick="annuleerToernooi()" style="margin-bottom:16px;color:var(--red)">
+      Toernooi annuleren
+    </button>
+  </div>
+</div>
+
+<!-- Toernooi afsluiten modal -->
+<div class="modal-overlay" id="modal-toernooi-afsluiten">
+  <div class="modal">
+    <h3>Toernooi afsluiten</h3>
+    <div id="t-eindstand"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-toernooi-afsluiten')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="bevestigToernooiAfsluiten()">✓ Bevestigen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== ADMIN ==================== -->
+<div id="page-admin" class="page">
+  <!-- v5.47.0: "Bekijk als gewone speler" — wens Sierk, zelfde opzet als
+       MatchCheck v3.21.0. Alleen voor de beheerder (renderAdmin in js/admin.js). -->
+  <div class="card" id="admin-sectie-kijkalsspeler" style="display:none">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+      <h2>Bekijk als gewone speler</h2>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">
+          Zie de app zoals een gewone speler hem ziet: zonder Beheer, Archief en de knoppen van de
+          wedstrijdleiding. Bovenaan staat dan een gele balk met een knop om terug te gaan; uitloggen
+          of de app afsluiten zet het ook weer uit. Je kijkt met je eigen account, dus met jouw
+          ladders, partijen en toernooien. Wat je in deze stand doet gebeurt echt, en de database
+          kent je nog steeds als beheerder.
+        </p>
+        <button class="btn btn-primary btn-block" onclick="kijkAlsSpeler(true)">👁 Bekijk als gewone speler</button>
+      </div>
+    </div>
+  </div>
+  <div class="card" id="admin-sectie-spelers">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+      <h2>Spelers & accounts</h2>
+      <div style="display:flex;gap:8px" onclick="event.stopPropagation()">
+        <button class="btn btn-sm btn-primary" onclick="openAddPlayer()">+ Speler</button>
+        <!-- v5.18.0: hier stond "⬆ Bulk import". Die maakte clubaccounts aan en
+             hoorde nooit thuis bij een toernooi; gasten importeren gaat nu per
+             toernooi, op het tabblad Spelers. "+ Speler" is ongewijzigd. -->
+      </div>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div id="admin-player-list"></div>
+      <div style="padding:10px 16px;font-size:12px;color:var(--light);border-top:1px solid var(--border)">
+        💡 Om een emailadres te wijzigen: Firebase Console → Authentication → gebruiker zoeken → ✏️
+      </div>
+    </div>
+  </div>
+  <div class="card" id="admin-sectie-ladders">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+      <h2>Ladders beheren</h2>
+      <div onclick="event.stopPropagation()">
+        <button class="btn btn-sm btn-primary" onclick="openNieuweLadderModal()">+ Ladder</button>
+      </div>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div id="admin-ladders-list"></div>
+    </div>
+  </div>
+  <div class="card">
+    <!-- v3.0.8: Ladder herstellen UI weer standaard zichtbaar voor de beheerder.
+         Automatische snapshots worden aangemaakt en bewaard; terugzetten kan hier. -->
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+      <h2>Ladder herstellen</h2>
+      <div onclick="event.stopPropagation()">
+        <button class="btn btn-sm btn-ghost" onclick="maakSnapshotNu()" title="Leg de huidige stand vast voordat je iets ingrijpends doet">📸 Snapshot maken</button>
+        <button class="btn btn-sm btn-ghost" onclick="openSnapshotsModal()">Bekijk snapshots</button>
+      </div>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid)">Na elke afgeronde partij wordt automatisch een snapshot opgeslagen. Je kunt de ladderstand terugzetten naar elk moment van de afgelopen 30 dagen.</p>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+      <h2>Uitnodigingslink</h2>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">Genereer een link per ladder om via WhatsApp te versturen. Nieuwe spelers worden automatisch toegevoegd aan de gekozen ladder.</p>
+        <div class="form-group">
+          <label>Ladder</label>
+          <select id="invite-ladder-select"></select>
+        </div>
+        <div id="invite-status" style="font-size:13px;color:var(--light);margin-bottom:12px">Geen actieve uitnodiging.</div>
+        <button class="btn btn-primary btn-block" onclick="genereerInviteLink()">🔗 Nieuwe uitnodigingslink genereren</button>
+        <div id="invite-link-wrap" style="display:none;margin-top:12px">
+          <div style="background:var(--soft-bg);border-radius:8px;padding:10px 12px;font-size:12px;font-family:'DM Mono',monospace;word-break:break-all;margin-bottom:8px" id="invite-link-text"></div>
+          <button class="btn btn-ghost btn-block btn-sm" onclick="kopieerInviteLink()">📋 Kopieer link</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="card" id="admin-sectie-seizoen">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+      <h2>Seizoen</h2>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">Start een nieuw seizoen om de huidige ladder en uitslagen te archiveren. De rankings en statistieken worden gereset.</p>
+        <button class="btn btn-gold btn-block" onclick="openNieuwSeizoenModal()">🏆 Nieuw seizoen starten</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- v3.0.0-11.60: Initieel wachtwoord beheer — alleen zichtbaar voor beheerder -->
+  <div class="card" id="admin-sectie-wachtwoord">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+      <h2>Initieel wachtwoord</h2>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">
+          Dit is het tijdelijke wachtwoord dat nieuwe spelers krijgen bij aanmelding of na een reset.
+          Bij eerste login worden ze verplicht het te wijzigen.
+        </p>
+        <button class="btn btn-secondary btn-block" onclick="toggleWachtwoordBeheer()">🔑 Wachtwoord wijzigen</button>
+        <div id="admin-wachtwoord-wrap" style="display:none;margin-top:14px">
+          <label style="font-size:13px;color:var(--mid);display:block;margin-bottom:6px">Nieuw initieel wachtwoord</label>
+          <input id="admin-nieuw-wachtwoord" type="text" class="input" placeholder="minimaal 6 tekens"
+            style="margin-bottom:10px;font-family:'DM Mono',monospace;letter-spacing:1px">
+          <button class="btn btn-primary btn-block" onclick="slaInitieelWachtwoordOp()">✓ Opslaan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- v4.1.0: Globale UI-stijl (huidige stijl / MatchCheck-stijl) -->
+  <div class="card" id="admin-sectie-uistijl">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+      <h2>UI-stijl</h2>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">
+          Bepaalt het uiterlijk (kleuren, lettertype, randen) van de app voor <strong>alle</strong> gebruikers.
+          De opbouw en werking van elk scherm blijven in beide stijlen exact hetzelfde.
+        </p>
+        <div id="uistijl-keuze" style="display:flex;flex-direction:column;gap:8px">
+          <button type="button" class="btn btn-ghost btn-block uistijl-optie" data-stijl="club" onclick="kiesUiStijl('club')">Klassiek</button>
+          <button type="button" class="btn btn-ghost btn-block uistijl-optie" data-stijl="matchcheck" onclick="kiesUiStijl('matchcheck')">Helder</button>
+          <button type="button" class="btn btn-ghost btn-block uistijl-optie" data-stijl="papier" onclick="kiesUiStijl('papier')">Papier</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- v3.0.0-11.103: Data backup & herstel (volledige database) -->
+  <div class="card" id="admin-sectie-backup">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
+      <h2>Data backup</h2>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">
+          Maak een volledige backup van de database als JSON-bestand, of zet een backup terug.
+          Terugzetten schrijft naar de <strong id="backup-omgeving-label">huidige</strong> database
+          en overschrijft de bestaande data.
+        </p>
+        <button class="btn btn-secondary btn-block" style="margin-bottom:10px" onclick="maakBackup()">💾 Backup maken (download JSON)</button>
+        <input type="file" id="backup-file-input" accept="application/json,.json" style="display:none" onchange="kiesBackupBestand(event)">
+        <button class="btn btn-ghost btn-block" onclick="document.getElementById('backup-file-input').click()">📥 Backup terugzetten…</button>
+        <div id="backup-status" style="font-size:13px;color:var(--light);margin-top:12px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- v3.0.0-11.104: Spelermatrix per ladder -->
+  <div class="card" id="admin-sectie-matrix">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this); if(window.vulMatrixSelect) window.vulMatrixSelect()">
+      <h2>Spelermatrix</h2>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">
+          Overzicht van het aantal onderlinge ladderpartijen per spelerpaar. Op de diagonaal:
+          groen met het aantal partijen deze maand, of rood met het aantal weken inactiviteit.
+        </p>
+        <div class="form-group">
+          <label>Ladder</label>
+          <select id="matrix-ladder-select"></select>
+        </div>
+        <button class="btn btn-primary btn-block" onclick="openSpelermatrix(document.getElementById('matrix-ladder-select').value)">📊 Matrix openen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- v3.0.0-11.105: Ladder-integriteit (wees-standen, ontbrekende standen, rang-normalisatie) -->
+  <div class="card" id="admin-sectie-integriteit">
+    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this); if(window.vulIntegriteitSelect) window.vulIntegriteitSelect()">
+      <h2>Ladder-integriteit</h2>
+    </div>
+    <div class="card-collapse ingeklapt">
+      <div class="card-body">
+        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">
+          Controleer of de spelerslijst en de standen consistent zijn: wees-standen,
+          ontbrekende standen, en rang-gaten of dubbele rangen. Herstellen ruimt op en
+          hernummert de rangen netjes naar 1–N.
+        </p>
+        <div class="form-group">
+          <label>Ladder</label>
+          <select id="integriteit-ladder-select"></select>
+        </div>
+        <button class="btn btn-secondary btn-block" style="margin-bottom:10px" onclick="controleerLadderIntegriteit()">🔍 Controleren</button>
+        <button class="btn btn-ghost btn-block" onclick="herstelLadderIntegriteitUI()">🛠️ Herstellen</button>
+        <div id="integriteit-resultaat" style="margin-top:12px;font-size:13px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Uitslag modal -->
+<div class="modal-overlay" id="modal-uitslag">
+  <div class="modal">
+    <h3>Partij afsluiten</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:16px;">Controleer de uitslagen en bevestig. Bij gelijke stand: kies de winnaar.</p>
+    <div id="modal-matches"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-uitslag')">← Terug</button>
+      <button class="btn btn-primary" style="flex:2" onclick="bevestigUitslag()">✓ Uitslag verwerken</button>
+    </div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0ede4;text-align:center">
+      <button class="btn btn-ghost btn-block" onclick="annuleerEigenPartij()" style="color:var(--red);border-color:#f5c6cb;font-size:13px">
+        ✕ Partij annuleren zonder uitslag op te slaan
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit player modal -->
+<div class="modal-overlay" id="modal-edit-player">
+  <div class="modal">
+    <h3>Speler bewerken</h3>
+    <div class="form-group">
+      <label>Naam</label>
+      <input type="text" id="edit-player-name" placeholder="Voornaam Achternaam">
+    </div>
+    <div class="form-group">
+      <label>Handicap</label>
+      <input type="number" id="edit-player-hcp" step="1" min="-10" max="54">
+    </div>
+    <div class="form-group" id="edit-player-rol-wrap">
+      <label>Rol</label>
+      <select id="edit-player-rol">
+        <option value="speler">Speler</option>
+        <option value="coordinator">Coordinator</option>
+        <option value="toernooileider">Toernooileider</option>
+        <option value="beheerder">Beheerder</option>
+      </select>
+    </div>
+    <div id="edit-player-email-info" style="font-size:12px;color:var(--light);padding:4px 0 8px"></div>
+    <input type="hidden" id="edit-player-id">
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-edit-player')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" onclick="saveEditPlayer()">Opslaan</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-ladder-result">
+  <div class="modal">
+    <h3>Ladderwijzigingen</h3>
+    <div id="ladder-changes"></div>
+    <button class="btn btn-primary btn-block" onclick="sluitUitslagEnGaNaarLadder()">Bekijk ladder →</button>
+  </div>
+</div>
+
+<!-- Add player modal -->
+<div class="modal-overlay" id="modal-add-player" style="align-items:center">
+  <div class="modal" style="border-radius:16px;max-height:90vh">
+    <h3>Speler toevoegen</h3>
+    <!-- Kies uit bestaande accounts -->
+    <div id="add-player-accounts-wrap">
+      <p style="font-size:13px;color:var(--mid);margin-bottom:12px">Kies een geregistreerd account om toe te voegen als speler:</p>
+      <div id="add-player-accounts-lijst"></div>
+      <div class="divider"></div>
+      <p style="font-size:12px;color:var(--light);margin-bottom:8px">Of voeg handmatig toe (voor spelers zonder account):</p>
+      <button class="btn btn-ghost btn-sm btn-block" onclick="toggleHandmatigToevoegen()">+ Handmatig toevoegen</button>
+    </div>
+    <!-- Handmatig toevoegen (ingeklapt) -->
+    <div id="add-player-handmatig" style="display:none">
+      <div class="form-group">
+        <label>Voornaam</label>
+        <input type="text" id="new-player-voornaam" placeholder="Jan" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label>Achternaam</label>
+        <input type="text" id="new-player-achternaam" placeholder="de Vries" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label>Playing handicap (18 holes)</label>
+        <input type="number" id="new-player-hcp" step="1" min="-10" max="54" value="10" inputmode="numeric">
+      </div>
+      <div class="form-group">
+        <label>Ladder toewijzen</label>
+        <div id="new-player-ladders" style="display:flex;flex-direction:column;gap:6px;margin-top:4px"></div>
+      </div>
+      <p style="font-size:11px;color:var(--light);margin-top:4px">
+        Login en wachtwoord worden automatisch aangemaakt.
+        De speler kiest bij eerste inloggen een eigen wachtwoord.
+      </p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-add-player')">Annuleren</button>
+      <button class="btn btn-primary" style="flex:2" id="add-player-save-btn" onclick="saveNewPlayer()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- v5.18.0: het venster "Bulk import toernooi-spelers" stond hier. Dat maakte
+     clubaccounts aan. Hieronder de vervanger: gasten voor ÉÉN toernooi, zonder
+     account en zonder iets buiten dat toernooi. -->
+<div class="modal-overlay" id="modal-gasten-plakken">
+  <div class="modal" style="max-width:520px">
+    <h3>Gasten plakken</h3>
+    <p style="font-size:13px;color:var(--mid);margin-bottom:12px">
+      Eén speler per regel: naam en handicap. Plak gerust rechtstreeks uit Excel.
+      Ze doen alleen aan dit toernooi mee en worden nergens anders bewaard.
+    </p>
+    <textarea id="gasten-plak-tekst" rows="8" oninput="toonGastenPlakTelling()"
+      placeholder="Karel Jansen	12&#10;Anna de Wit	8,4&#10;Karel	18"
+      style="width:100%;font-family:'DM Mono',monospace;font-size:13px"></textarea>
+    <div id="gasten-plak-telling" style="font-size:12px;color:var(--mid);margin:6px 0 12px">Plak hierboven je lijst.</div>
+    <p style="font-size:11px;color:var(--light);margin:0 0 12px">
+      Ze komen in de spelerspool van elke dag; daar deel je ze in met ⇄ Verdelen
+      (✈ Flights). Een inlog krijgen ze met "Gastlogins aanmaken".
+    </p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-gasten-plakken')">Sluiten</button>
+      <button class="btn btn-primary" style="flex:2" id="gasten-plak-knop" onclick="startGastenPlakken()">Toevoegen</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast">Opgeslagen</div>
+
+<script type="module">
+  import './js/app.js';
+</script>
+<script>
+  // Globale foutafhandeling — vang onverwachte JS fouten
+  window.addEventListener('unhandledrejection', event => {
+    console.error('Onafgehandelde promise fout:', event.reason);
+    // Stil falen — geen toast want kan storend zijn tijdens spelen
+  });
+  window.onerror = (msg, src, line, col, err) => {
+    console.error('JS fout:', msg, 'in', src, 'regel', line);
+    return false; // laat browser ook loggen
+  };
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+        .catch(err => console.warn('SW registratie mislukt:', err));
+    });
+  }
+</script>
+</body>
+</html>

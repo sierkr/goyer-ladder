@@ -53,7 +53,41 @@ export const firebaseConfig = {
   appId: "1:124116031878:web:10d9b113b1afcd1dc73407"
 };
 
-export const app = initializeApp(firebaseConfig);
+// ============================================================
+//  v6.0.0 — HET TOERNOOI OP EEN EIGEN ADRES: …/toernooi
+// ------------------------------------------------------------
+//  Sierk, 13 oktober 2026: "De toernooi mode apart. … de werking exact
+//  hetzelfde … de scheiding zit in inloggen, niet hoeven te kiezen en de
+//  mogelijkheid om meerdere toernooien gelijktijdig ook helemaal buiten de
+//  ladder om te organiseren." Ontwerp: ONTWERP-TOERNOOI-APART.md.
+//
+//  Eén app, twee ingangen. `toernooi/index.html` is een kopie van index.html
+//  met `<base href="../">` (gemaakt door tests/maak-toernooi-pagina.cjs; de
+//  rekentest bewaakt dat de kopie gelijk loopt). Hier wordt alleen bepaald
+//  langs welke ingang de app binnenkwam.
+//
+//  ⚠ EEN EIGEN INLOG. Ladder en toernooi staan op hetzelfde adres
+//  (sierkr.github.io), en de browser bewaart een Firebase-inlog per adres +
+//  app-naam. Met dezelfde naam zou wie met de toernooi-pincode binnen is, in de
+//  ladder-app ook als die pincode-sessie binnenkomen. Een eigen app-naam
+//  ('toernooi') geeft een eigen bewaarde inlog: twee losse inlogs op één
+//  telefoon. Database, project en regels zijn dezelfde.
+// ============================================================
+export const IS_TOERNOOI_APP = typeof location !== 'undefined'
+  && /\/toernooi\/?(index\.html)?$/.test(location.pathname);
+
+// Het adres van de toernooipagina, eventueel van één toernooi. Werkt vanuit
+// beide ingangen: in de toernooipagina is document.baseURI de hoofdmap (door
+// <base href="../">), in de ladder-app ook. Op test komt er vanzelf /test/ in.
+export function toernooiAdres(toernooiId) {
+  const u = new URL('toernooi/', typeof document !== 'undefined' ? document.baseURI : location.href);
+  if (toernooiId) u.searchParams.set('t', toernooiId);
+  return u.href;
+}
+
+export const app = IS_TOERNOOI_APP
+  ? initializeApp(firebaseConfig, 'toernooi')
+  : initializeApp(firebaseConfig);
 
 // v3.0.0-11.100: App Check — reCAPTCHA v3. Beschermt Firestore/Auth tegen
 // requests van buiten de echte app. Moet vóór getFirestore/getAuth gebeuren.

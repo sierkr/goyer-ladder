@@ -72,6 +72,28 @@ service cloud.firestore {
          getSpelerData(request.auth.uid).rol == 'beheerder');
     }
     // ============================================================
+    //  v6.0.0 — DE TOERNOOILEIDER
+    // ------------------------------------------------------------
+    //  Sierk, 13 oktober 2026: toernooien ook "helemaal buiten de ladder om"
+    //  organiseren, door een toernooileider die niets te zeggen heeft over de
+    //  ladder. Hij mag alles wat de coördinator met TOERNOOIEN mag, en verder
+    //  niets: geen ladders, standen, uitslagen, archief, config.
+    //  ⚠ isCoordinator() blijft precies zoals hij was; magToernooi() is een
+    //  aparte vraag en staat alleen op de toernooiregels.
+    // ============================================================
+    function isToernooiLeider() {
+      return isIngelogd() &&
+        getSpelerData(request.auth.uid) != null &&
+        getSpelerData(request.auth.uid).rol == 'toernooileider';
+    }
+    function magToernooi() {
+      return isCoordinator() || isToernooiLeider();
+    }
+    // Geen pincode-sessie, of een pincode-sessie van DIT toernooi.
+    function pinInDitToernooi(toernooiId) {
+      return !viaToernooiPin() || request.auth.token.get('toernooiId', '') == toernooiId;
+    }
+    // ============================================================
     //  v5.38.0 — DE TOERNOOI-PINCODE
     // ------------------------------------------------------------
     //  Wie via de pincode van een toernooi binnenkomt, krijgt van de server
@@ -165,11 +187,21 @@ service cloud.firestore {
       // Create: zelf-registratie OF beheerder voegt speler handmatig toe via admin UI
       // v5.38.0: `!viaToernooiPin()` staat vooraan bij elke schrijfregel buiten
       // /toernooien. Zie viaToernooiPin() hierboven.
-      allow create: if !viaBeperkteSessie() && (request.auth.uid == uid || isBeheerder());
+      // v6.0.0: de wedstrijdleiding (coördinator, toernooileider) mag ook een
+      // profiel aanmaken — maar UITSLUITEND voor een toernooigast, met de rol
+      // speler. Tot v6.0.0 mocht alleen de beheerder dat, en kreeg een gast van
+      // een toernooi dat een coördinator aanmaakte geen profiel en dus geen
+      // inlog (stap 0 van ONTWERP-TOERNOOI-APART.md, gemeten 13 okt 2026).
+      allow create: if !viaBeperkteSessie() && (request.auth.uid == uid || isBeheerder()
+                       || (magToernooi()
+                           && request.resource.data.get('toernooiGast', false) == true
+                           && request.resource.data.get('rol', '') == 'speler'));
       allow update: if !viaBeperkteSessie() &&
                        ((request.auth.uid == uid && (onlyHcp() || isEersteLoginVoltooien()))
                         || isBeheerder());
-      allow delete: if !viaBeperkteSessie() && isBeheerder();
+      // v6.0.0: en weer opruimen, ook alleen een toernooigast.
+      allow delete: if !viaBeperkteSessie() && (isBeheerder()
+                       || (magToernooi() && resource.data.get('toernooiGast', false) == true));
     }
 
     // --- ladders ----------------------------------------------
@@ -289,14 +321,14 @@ service cloud.firestore {
     // Die grendel zit in js/toernooi.js; hier staat waarom hij nodig is.
     match /toernooien/{doc} {
       allow read:  if isIngelogd() || resource.data.get('publiek', true) == true;
-      allow write: if isCoordinator();
+      allow write: if magToernooi();   // v6.0.0: ook de toernooileider
 
       // v5.10.0: het wachtwoord voor de gastlogins van dit toernooi. Een
       // ONDERLIGGENDE map erft de regels van het document er NIET van - daarom
       // kan dit geheim blijven terwijl het toernooi zelf openbaar leesbaar is.
       // Alleen de coordinator komt erbij.
       match /beheer/{stuk} {
-        allow read, write: if isCoordinator();
+        allow read, write: if magToernooi();
       }
 
       // v3.0.0-11.106: live-scores subcollectie - spelers schrijven scores hier.
@@ -333,12 +365,14 @@ service cloud.firestore {
       // precies waarvoor die sessie bestaat.
       match /live/{uid} {
         allow read:   if true;
-        allow create: if isIngelogd() && !viaRondeSessie() &&
-                        (!request.resource.data.keys().hasAny(['beheerDagen']) || isCoordinator());
-        allow update: if isIngelogd() && !viaRondeSessie() &&
+        // v6.0.0: een pincode-sessie schrijft alleen in ZIJN EIGEN toernooi
+        // (meerdere toernooien tegelijk). pinInDitToernooi() staat bovenaan.
+        allow create: if isIngelogd() && !viaRondeSessie() && pinInDitToernooi(doc) &&
+                        (!request.resource.data.keys().hasAny(['beheerDagen']) || magToernooi());
+        allow update: if isIngelogd() && !viaRondeSessie() && pinInDitToernooi(doc) &&
                         (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['beheerDagen'])
-                         || isCoordinator());
-        allow delete: if isCoordinator();
+                         || magToernooi());
+        allow delete: if magToernooi();
       }
     }
 

@@ -4,14 +4,15 @@
 //  v11.106: live/-subcollectie als bron van waarheid; scorekaart bovenaan voor spelers
 //  Datastructuur: t.dagen[dagNr-1].{datum,baan,holes,flights,scores,afgerond}
 // ============================================================
-import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr, functions, httpsCallable, IS_TEST, IS_EMULATOR, EMAIL_SUFFIX, firebaseConfig, loginNaamVan } from './config.js';
+import { db, auth, LADDERS_COL, TOERNOOIEN_COL, UITSLAGEN_COL, SNAPSHOTS_COL, ARCHIEF_DOC, UITDAGINGEN_DOC, USERS_DOC, INVITE_DOC, BANEN_DOC, DEFAULT_STATE, esc, escAttr, functions, httpsCallable, IS_TEST, IS_EMULATOR, EMAIL_SUFFIX, firebaseConfig, loginNaamVan, toernooiAdres } from './config.js';
 // v5.2.1: toernooi-uitslag schrijft standen en punten samen weg (server-side).
 const _verwerkToernooiStandenFn = httpsCallable(functions, 'verwerkToernooiStanden');
 // v5.10.0: verwijdert een Auth-account waarvan het profiel al weg is. Bestond
 // al voor wees-accounts uit de bulk-import; hier hergebruikt voor gastlogins.
 const _verwijderGastAccountFn = httpsCallable(functions, 'verwijderWeesAccount');
-import { store, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tRankingLadderIds, _flights, _flightPool, _liveScores } from './store.js';
-import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen, foutTekst, meldFout } from './auth.js';
+import { store, alleLadders, activeLadderId, alleSpelersData, huidigeBruiker, archiefData, toernooiData, alleToernooien, actieveToernooiId, _vasteListeners, _toernooiListeners, _tGeselecteerdeSpelers, _tRankingLadderIds, _flights, _flightPool, _liveScores, gekozenToernooiId } from './store.js';
+import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen, foutTekst, meldFout,
+  magToernooiLeidenRol, isToernooiLeiderRol, pinToernooiVanSessie } from './auth.js';
 import { renderHcpBlok, alleBANEN, renderHandmatigHoles, kortNaamMap } from './partij.js';
 import { renderLadder } from './ladder.js';
 import { slaSnapshotOp } from './beheer.js';
@@ -81,7 +82,7 @@ async function slaToernooiOp(delay) {
 //  RENDER TOERNOOI (hoofd)
 // ============================================================
 function renderToernooi() {
-  const isBeheerder = isCoordinatorRol();
+  const isBeheerder = magToernooiLeidenRol();
   const uid = huidigeBruiker?.uid;
 
   // v5.12.1: de melding "Geen actief toernooi" ALTIJD eerst weghalen.
@@ -662,6 +663,32 @@ window.addEventListener('baanToegevoegd', (e) => {
 });
 
 // ============================================================
+//  v6.0.0 — WELK TOERNOOI HOORT BIJ DEZE SESSIE?
+// ------------------------------------------------------------
+//  Tot v6.0.0 gold op 18 plekken "het eerste in de lijst" als het toernooi.
+//  Daarom mocht er maar één tegelijk lopen. Nu kan het er meer zijn, en kiest
+//  deze ene functie:
+//    1. pincode-sessie: ALLEEN zijn eigen toernooi — is dat er niet (meer),
+//       dan geen. Nooit stilletjes een ander toernooi tonen.
+//    2. via de link (…/toernooi/?t=…) gekozen: dat toernooi;
+//    3. het toernooi dat open staat (actieveToernooiId);
+//    4. anders het nieuwste.
+//  `lijst` is meestal alleToernooien; bij afsluiten de lijst zonder het
+//  afgesloten toernooi.
+// ============================================================
+export function standaardToernooi(lijst = alleToernooien) {
+  const l = Array.isArray(lijst) ? lijst : [];
+  const pin = pinToernooiVanSessie();
+  if (pin) return l.find(t => t.id === pin) || null;
+  for (const id of [gekozenToernooiId(), actieveToernooiId]) {
+    if (!id) continue;
+    const t = l.find(x => x.id === id);
+    if (t) return t;
+  }
+  return l.slice().sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0] || null;
+}
+
+// ============================================================
 //  HERLAAD TOERNOOIEN
 // ============================================================
 async function herlaadToernooien() {
@@ -677,11 +704,11 @@ async function herlaadToernooien() {
       .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     if (actieveToernooiId) {
       const gevonden = alleToernooien.find(t => t.id === actieveToernooiId);
-      store.toernooiData = gevonden || (alleToernooien.length > 0 ? alleToernooien[0] : null);
+      store.toernooiData = gevonden || (standaardToernooi());
     }
     if (!toernooiData && alleToernooien.length > 0) {
-      store.toernooiData = alleToernooien[0];
-      store.actieveToernooiId = alleToernooien[0].id;
+      store.toernooiData = standaardToernooi();
+      store.actieveToernooiId = toernooiData?.id || null;
     }
     if (toernooiData) store.actieveToernooiId = toernooiData.id;
 
@@ -762,7 +789,7 @@ function herlaadToernooiListeners() {
         if (gewijzigd) {
           updateTTotaalRijInline();
           renderTMatrix();
-          if (isCoordinatorRol()) {
+          if (magToernooiLeidenRol()) {
             const btn = document.getElementById('t-refresh-btn');
             if (btn) btn.style.display = '';
           }
@@ -782,7 +809,7 @@ alleToernooien.forEach(t => {
     const idx = alleToernooien.findIndex(x => x.id === snap.id);
     if (idx >= 0) alleToernooien[idx] = nieuweData;
     if (actieveToernooiId === snap.id) {
-      const isBeheerder = isCoordinatorRol();
+      const isBeheerder = magToernooiLeidenRol();
       const detail = document.getElementById('toernooi-detail');
 
       // v3.0.0-11.106 / v5.11.0: behoud de lokaal ingevoerde scores van elke
@@ -809,7 +836,7 @@ alleToernooien.forEach(t => {
           // Toernooi afgesloten of geannuleerd — verwijder uit lokale lijst en herrender
           if (nieuweData.status !== 'actief' && oudeStatus === 'actief') {
             store.alleToernooien = alleToernooien.filter(x => x.id !== snap.id);
-            store.toernooiData   = alleToernooien.length > 0 ? alleToernooien[0] : null;
+            store.toernooiData   = standaardToernooi();
             store.actieveToernooiId = store.toernooiData?.id || null;
             renderToernooi();
             window.dispatchEvent(new CustomEvent('toernooiModusGewijzigd'));
@@ -1029,7 +1056,13 @@ function initToernooiSetup() {
   // verzameling met nul of één ladder, zodat het opslaan, "Toernooi opnieuw
   // instellen" en het afsluiten ongewijzigd blijven werken.
   const rankingLaddersEl = document.getElementById('t-ranking-ladders');
-  if (rankingLaddersEl) {
+  // v6.0.0: een toernooileider heeft niets te zeggen over de ladder (Sierk,
+  // 13 oktober 2026). Hij ziet geen ladderkeuze, en de server weigert hem
+  // sowieso bij het verwerken van ladderpunten (verwerkToernooiStanden).
+  if (rankingLaddersEl && isToernooiLeiderRol()) {
+    store._tRankingLadderIds = new Set();
+    rankingLaddersEl.innerHTML = `<div style="font-size:13px;color:var(--mid)">Geen — een toernooileider koppelt geen ladder.</div>`;
+  } else if (rankingLaddersEl) {
     const gekozen = [..._tRankingLadderIds][0] || '';
     rankingLaddersEl.innerHTML = `
       <select class="input" onchange="kiesTRankingLadder(this.value)" style="width:100%">
@@ -2898,9 +2931,8 @@ function toernooiLoopt(t) {
     !toernooiIsConcept(t);
 }
 
-function lopendToernooi(behalveId) {
-  return (alleToernooien || []).find(t => t.id !== behalveId && toernooiLoopt(t));
-}
+// v6.0.0: lopendToernooi() is weg — hij bestond alleen voor de grens "één
+// toernooi tegelijk gestart", en die is opgeheven.
 
 function dagIsGestart(dag) {
   if (!dag) return false;
@@ -3256,16 +3288,10 @@ async function startDag() {
     const dag = actieveDag(t);
     if (!dag) { toast('Geen dag gevonden om te starten'); return; }
     if (dagIsGestart(dag)) { toast(`Dag ${dag.dagNr} is al gestart`); return; }
-    // v5.21.0: de grens die tot v5.20.0 op AANMAKEN zat, zit nu hier. Twee
-    // toernooien tegelijk laten lopen maakt het willekeurig welk toernooi een
-    // speler te zien krijgt — op meerdere plekken wordt alleToernooien[0]
-    // gebruikt uit een zoekopdracht zonder sorteervolgorde.
-    const alLopend = lopendToernooi(actieveToernooiId);
-    if (alLopend) {
-      toast(`"${alLopend.naam || 'Een toernooi'}" loopt nog. Sluit dat eerst af of annuleer het — `
-          + `daarna kun je deze starten.`, 9000);
-      return;
-    }
+    // v6.0.0: hier stond "één toernooi tegelijk gestart" (v5.21.0). Die grens
+    // bestond omdat op 18 plekken het eerste toernooi uit de lijst als "het"
+    // toernooi gold. Dat is nu standaardToernooi(): elke sessie heeft zijn eigen
+    // toernooi. Sierk, 13 oktober 2026: "meerdere toernooien gelijktijdig".
     if (!(dag.flights || []).some(f => (f.spelerIds || []).length > 0)) {
       // Zonder indeling toont de scorekaart holes zonder spelerskolommen —
       // precies het beeld "er is geen indeling" uit de meting van 11 september.
@@ -4267,7 +4293,7 @@ window.prijsWijzig = prijsWijzig;
 // startscherm met Nieuw toernooi, Loopt nu, Concept en Oud.
 function gaNaarToernooiOverzicht() {
   store.actieveToernooiId = null;
-  store.toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
+  store.toernooiData = standaardToernooi();
   window._toernooiScherm = 'start';
   renderToernooi();
 }
@@ -4279,7 +4305,7 @@ function renderToernooiActief() {
   const t = toernooiData;
   if (!t) return;
 
-  const isBeheerder   = isCoordinatorRol();
+  const isBeheerder   = magToernooiLeidenRol();
   const dag           = actieveDag(t);
   const dagNr         = dag?.dagNr || t.actiefDagNr || 1; // v4.0.0: bekeken dag (fix 7.4)
   const aantalDagen   = (t.dagen || []).length;
@@ -4658,20 +4684,10 @@ function renderToernooiActief() {
         🏅 Toernooi afsluiten${!heeftStrokeplayDag(t) && (t.rankingLadderIds?.length > 0 || t.ladderId) ? ' & ladder bijwerken' : ''}
       </button>
       ` : ''}
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border);margin-bottom:8px">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;font-size:13px;color:var(--dark)">
-          <input type="checkbox" id="t-toernooi-modus-chk"
-            ${t.toernooiModus ? 'checked' : ''}
-            onchange="toggleToernooiModus(this.checked)"
-            style="accent-color:var(--green);width:18px;height:18px;flex-shrink:0">
-          <span><strong>Toernooi-modus</strong><br><span style="font-size:11px;color:var(--mid)">Deelnemers zien alleen de Toernooi-tab. Titelbalk toont toernooinaam.</span></span>
-        </label>
-      </div>
-      ${!t.toernooiModus && !dagAfgerond ? `
-      <div style="padding:6px 16px 10px;background:var(--gold-pale);border-radius:8px;margin-bottom:8px;font-size:12px;color:var(--gold)">
-        💡 <strong>Tip:</strong> Zet toernooi-modus aan zodat deelnemers direct hun scorekaart zien en niet per ongeluk een ladderpartij starten.
-      </div>
-      ` : ''}
+      <!-- v6.0.0: de schakelaar "Toernooi-modus" (deelnemers zien in de LADDER-app
+           alleen de Toernooi-tab) is weg: het toernooi heeft een eigen adres, en
+           deelnemers zitten daar. Het veld toernooiModus blijft in oude
+           documenten staan maar doet niets meer. -->
       <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border);margin-bottom:8px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;font-size:13px;color:var(--dark)">
           <input type="checkbox" id="t-matrix-zichtbaar-chk"
@@ -4799,7 +4815,7 @@ window.selecteerRanglijstDag = selecteerRanglijstDag;
 
 // Welke rol heeft de ingelogde gebruiker in de kolom van deze speler?
 function rolVoorKolom(spelerUid, dag) {
-  if (isCoordinatorRol()) return 'beheer';
+  if (magToernooiLeidenRol()) return 'beheer';
   const mij = huidigeBruiker?.uid || null;
   if (!mij) return 'kijker';
   if (mij === spelerUid) return 'speler';
@@ -4925,7 +4941,7 @@ function renderTScorecard() {
   const dag = actieveDag(t);
   if (!dag) return;
 
-  const isBeheerder = isCoordinatorRol();
+  const isBeheerder = magToernooiLeidenRol();
   const flights = dag.flights || [];
   const mijnUid2 = huidigeBruiker?.uid || null;
 
@@ -5184,7 +5200,7 @@ function updateTScore(spelerId, holeIdx, val) {
   updateTTotaalRijInline();
   verversScoreKleuren();
 
-  const isBeheerder = isCoordinatorRol();
+  const isBeheerder = magToernooiLeidenRol();
   if (isBeheerder) {
     renderTMatrix();
   } else {
@@ -5280,7 +5296,7 @@ function editToernooiHcp(spelerId) {
   const dag = actieveDag(t);
   const flights = dag?.flights || [];
   let hcpSpelers = t.spelers;
-  if (!isCoordinatorRol() && flights.length > 0) {
+  if (!magToernooiLeidenRol() && flights.length > 0) {
     const voornaam = (huidigeBruiker?.gebruikersnaam || '').toLowerCase().split(' ')[0];
     const mijnFlight = flights.find(f => (f.spelerIds || []).some(sid => {
       const sp = t.spelers.find(s => s.uid === sid);
@@ -6225,7 +6241,7 @@ async function bevestigToernooiAfsluiten() {
 
       stap = 'scherm bijwerken';
       store.alleToernooien = alleToernooien.filter(x => x.id !== actieveToernooiId);
-      store.toernooiData = store.alleToernooien.length > 0 ? store.alleToernooien[0] : null;
+      store.toernooiData = standaardToernooi(store.alleToernooien);
       store.actieveToernooiId = store.toernooiData?.id || null;
       renderToernooi();
       toast('Toernooi afgesloten ✓');
@@ -6322,42 +6338,49 @@ async function bevestigToernooiAfsluiten() {
       }
     }
 
-    // Archief — sla alle dagen op
-    // v3.1.0: lees de bestaande archieftoernooien VERS uit het document i.p.v. een
-    // mogelijk lege in-memory cache. Voorheen werd, als de archiefpagina nog niet
-    // was geopend, op een lege lijst geunshift → alle eerdere toernooien gewist.
-    stap = 'archief bijwerken';
-    let bestaandeToernooien = [];
-    try {
-      const _archiefSnap = await getDoc(ARCHIEF_DOC);
-      if (_archiefSnap.exists()) bestaandeToernooien = _archiefSnap.data().toernooien || [];
-    } catch (e) {
-      console.warn('Archief vers lezen mislukt, terugval op cache:', e);
-      bestaandeToernooien = window._archiefToernooienCache || [];
-    }
-    const archief = { seizoenen: archiefData, toernooien: bestaandeToernooien };
-    if (!archief.toernooien) archief.toernooien = [];
+    // v6.0.0: het archief (ladder/archief) hoort bij de LADDER — daarin staan
+    // ook de seizoenen. Een toernooileider heeft niets te zeggen over de ladder
+    // en mag dat document niet schrijven (firestore.rules). Bij hem blijft het
+    // toernooi gewoon bewaard in toernooien/, met status afgerond; alleen de
+    // regel in het ladder-archief komt er niet.
+    if (isCoordinatorRol()) {
+      // Archief — sla alle dagen op
+      // v3.1.0: lees de bestaande archieftoernooien VERS uit het document i.p.v. een
+      // mogelijk lege in-memory cache. Voorheen werd, als de archiefpagina nog niet
+      // was geopend, op een lege lijst geunshift → alle eerdere toernooien gewist.
+      stap = 'archief bijwerken';
+      let bestaandeToernooien = [];
+      try {
+        const _archiefSnap = await getDoc(ARCHIEF_DOC);
+        if (_archiefSnap.exists()) bestaandeToernooien = _archiefSnap.data().toernooien || [];
+      } catch (e) {
+        console.warn('Archief vers lezen mislukt, terugval op cache:', e);
+        bestaandeToernooien = window._archiefToernooienCache || [];
+      }
+      const archief = { seizoenen: archiefData, toernooien: bestaandeToernooien };
+      if (!archief.toernooien) archief.toernooien = [];
 
-    const matrixArchief = {};
-    t.spelers.forEach((sA, i) => {
-      t.spelers.forEach((sB, j) => {
-        matrixArchief[`${i}_${j}`] = i === j ? 'X' : (matrix[i][j] || '-');
+      const matrixArchief = {};
+      t.spelers.forEach((sA, i) => {
+        t.spelers.forEach((sB, j) => {
+          matrixArchief[`${i}_${j}`] = i === j ? 'X' : (matrix[i][j] || '-');
+        });
       });
-    });
 
-    archief.toernooien.unshift({
-      naam:  t.naam,
-      dagen: (t.dagen || []).map(d => ({ dagNr: d.dagNr, datum: d.datum, baan: d.baan, holes: d.holes.length })),
-      ptWin: t.ptWin, ptTie: t.ptTie, ptLoss: t.ptLoss,
-      ranglijst: volgorde.map(e => ({ naam: e.s.naam, hcp: Math.round(e.s.hcp), punten: e.pt, won: e.w, tied: e.ti, lost: e.l })),
-      // v5.11.0: ook in het archief unieke korte namen — anders staan er in de
-      // bewaarde matrix drie kolommen "Arjan" en is hij achteraf onleesbaar.
-      spelerNamen: (nm => t.spelers.map(s => nm[s.uid]))(kortNaamMap(t.spelers)),
-      matrix: matrixArchief,
-      timestamp: Date.now()
-    });
-    await setDoc(ARCHIEF_DOC, archief);
-    window._archiefToernooienCache = archief.toernooien; // v3.1.0: cache synchroon houden
+      archief.toernooien.unshift({
+        naam:  t.naam,
+        dagen: (t.dagen || []).map(d => ({ dagNr: d.dagNr, datum: d.datum, baan: d.baan, holes: d.holes.length })),
+        ptWin: t.ptWin, ptTie: t.ptTie, ptLoss: t.ptLoss,
+        ranglijst: volgorde.map(e => ({ naam: e.s.naam, hcp: Math.round(e.s.hcp), punten: e.pt, won: e.w, tied: e.ti, lost: e.l })),
+        // v5.11.0: ook in het archief unieke korte namen — anders staan er in de
+        // bewaarde matrix drie kolommen "Arjan" en is hij achteraf onleesbaar.
+        spelerNamen: (nm => t.spelers.map(s => nm[s.uid]))(kortNaamMap(t.spelers)),
+        matrix: matrixArchief,
+        timestamp: Date.now()
+      });
+      await setDoc(ARCHIEF_DOC, archief);
+      window._archiefToernooienCache = archief.toernooien; // v3.1.0: cache synchroon houden
+    }
 
     stap = 'uitslag wegschrijven';
     if (actieveToernooiId) await setDoc(doc(db, 'toernooien', actieveToernooiId), { ...toernooiData, status: 'afgerond' });
@@ -6383,7 +6406,7 @@ async function bevestigToernooiAfsluiten() {
 
     stap = 'scherm bijwerken';
     store.alleToernooien = alleToernooien.filter(t => t.id !== actieveToernooiId);
-    store.toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
+    store.toernooiData = standaardToernooi();
     store.actieveToernooiId = toernooiData?.id || null;
 
     closeModal('modal-toernooi-afsluiten');
@@ -6465,7 +6488,7 @@ async function bewerkToernooi() {
 
     // Update lokale state
     store.alleToernooien = alleToernooien.filter(x => x.id !== actieveToernooiId);
-    store.toernooiData   = alleToernooien.length > 0 ? alleToernooien[0] : null;
+    store.toernooiData   = standaardToernooi();
     store.actieveToernooiId = store.toernooiData?.id || null;
 
     // Herlaad setup-state vanuit het verwijderde document
@@ -6642,7 +6665,7 @@ async function verwijderConceptToernooi() {
       + `Het is een concept zonder scores. Dit kan niet ongedaan worden gemaakt.`)) return;
     await _verwijderToernooiDocument(id);
     store.alleToernooien = alleToernooien.filter(x => x.id !== id);
-    store.toernooiData = alleToernooien[0] || null;
+    store.toernooiData = standaardToernooi();
     store.actieveToernooiId = toernooiData?.id || null;
     window._bekijkDagNr = null;
     window._tTabblad = null;
@@ -6699,7 +6722,7 @@ async function annuleerToernooi() {
     // de inhoud van het andere. Nu wordt alleen het statusveld gezet.
     if (actieveToernooiId) await updateDoc(doc(db, 'toernooien', actieveToernooiId), { status: 'geannuleerd' });
     store.alleToernooien = alleToernooien.filter(t => t.id !== actieveToernooiId);
-    store.toernooiData = alleToernooien.length > 0 ? alleToernooien[0] : null;
+    store.toernooiData = standaardToernooi();
     store.actieveToernooiId = toernooiData?.id || null;
     window._bekijkDagNr = null;
     window._toernooiScherm = 'start';   // v5.24.0: terug naar het overzicht
@@ -6789,13 +6812,8 @@ async function herstelGeannuleerdToernooi(id) {
     // krijgt — op meerdere plekken wordt `alleToernooien[0]` gebruikt uit een
     // zoekopdracht zonder sorteervolgorde. Dit is de derde manier om op
     // "Geen actief toernooi" uit te komen.
-    // v5.21.0: alleen een toernooi dat ECHT loopt blokkeert; wachtende
-    // toernooien mogen naast elkaar staan.
-    const lopend = lopendToernooi(id);
-    if (lopend) {
-      toast(`"${lopend.naam || 'Een toernooi'}" loopt nog. Sluit dat eerst af of annuleer het.`, 9000);
-      return;
-    }
+    // v6.0.0: geen grendel meer — meerdere toernooien mogen tegelijk lopen
+    // (zie startDag en standaardToernooi).
     if (!confirm('Dit toernooi herstellen? Het wordt weer actief, inclusief alle eerder ingevoerde scores.')) return;
     await updateDoc(doc(db, 'toernooien', id), { status: 'actief' });
     await herlaadToernooien();
@@ -7059,22 +7077,51 @@ function qrSvg(patroon) {
 }
 
 // ▶ Het venster met de code. Staat in de Toernooi-tab, naast de meekijklink.
-function toonToernooiQR() {
-  const url  = IS_TEST ? QR_TEST_URL : QR_LIVE_URL;
-  const code = IS_TEST ? QR_TEST     : QR_LIVE;
+//
+// v6.0.0: de code wijst naar de link van DIT toernooi (…/toernooi/?t=…).
+// Wie hem scant komt meteen bij de namen van dit toernooi en het vakje voor de
+// pincode — niets te kiezen, ook als er meer toernooien tegelijk lopen. Een
+// link per toernooi kan niet vooraf worden uitgerekend; de server tekent hem
+// (maakToernooiQr), net als de QR van een ronde. Zonder toernooi: de vaste
+// code naar de app, zoals voorheen.
+const _maakToernooiQrFn = httpsCallable(functions, 'maakToernooiQr');
+async function toonToernooiQR() {
   const vak  = document.getElementById('qr-code-vak');
   const adres = document.getElementById('qr-code-adres');
   if (!vak || !adres) { toast('Het QR-venster ontbreekt in dit scherm'); return; }
-  vak.innerHTML = qrSvg(code);
-  adres.textContent = url;
+  const titel = document.getElementById('qr-code-titel');
+  const uitleg = document.getElementById('qr-code-uitleg');
   document.getElementById('modal-qr-code').classList.add('open');
+  if (!actieveToernooiId) {
+    if (titel) titel.textContent = 'QR-code naar de app';
+    if (uitleg) uitleg.textContent = 'Laat dit scherm zien; wie zijn telefooncamera erop richt, komt op de inlogpagina.';
+    vak.innerHTML = qrSvg(IS_TEST ? QR_TEST : QR_LIVE);
+    adres.textContent = IS_TEST ? QR_TEST_URL : QR_LIVE_URL;
+    return;
+  }
+  if (titel) titel.textContent = 'QR-code naar dit toernooi';
+  if (uitleg) uitleg.textContent = 'Laat dit scherm zien; wie zijn telefooncamera erop richt, komt meteen bij dit toernooi: naam kiezen en de pincode intikken.';
+  vak.innerHTML = '<div style="padding:18px;text-align:center;color:var(--mid);font-size:13px">Code maken…</div>';
+  adres.textContent = toernooiAdres(actieveToernooiId);
+  try {
+    const uit = await _maakToernooiQrFn({ toernooiId: actieveToernooiId, basis: toernooiAdres(), isTest: IS_TEST });
+    const svg = uit?.data?.svg;
+    if (!svg) throw new Error('geen code ontvangen');
+    vak.innerHTML = svg.replace('<svg', '<svg style="width:100%;height:auto;display:block"');
+    adres.textContent = uit.data.url || toernooiAdres(actieveToernooiId);
+  } catch (e) {
+    vak.innerHTML = '<div style="padding:18px;text-align:center;color:var(--alert-text);font-size:13px">'
+      + 'De code kon niet gemaakt worden. De link hieronder werkt wel.</div>';
+    console.warn('toernooi-QR mislukt:', e?.code || e?.message);
+  }
 }
 window.toonToernooiQR = toonToernooiQR;
 
 function kopieerLiveLink() {
   if (!actieveToernooiId) { toast('Geen actief toernooi'); return; }
-  const base = window.location.href.split('/').slice(0, -1).join('/');
-  const url = `${base}/toernooi-live.html?t=${actieveToernooiId}`;
+  // v6.0.0: vanaf de hoofdmap (document.baseURI), niet vanaf de huidige pagina:
+  // vanaf …/toernooi/ kwam hier anders …/toernooi/toernooi-live.html uit.
+  const url = new URL(`toernooi-live.html?t=${encodeURIComponent(actieveToernooiId)}`, document.baseURI).href;
   navigator.clipboard.writeText(url).then(() => {
     toast('Link gekopieerd! Deel deze in WhatsApp om mee te laten kijken ✓');
   }).catch(() => {
@@ -7087,8 +7134,7 @@ window.kopieerLiveLink = kopieerLiveLink;
 // staat in de lijst "Eerdere toernooien", want een afgerond toernooi is
 // nergens anders meer te bereiken.
 function kopieerUitslagLink(id) {
-  const base = window.location.href.split('/').slice(0, -1).join('/');
-  const url = `${base}/toernooi-live.html?t=${id}`;
+  const url = new URL(`toernooi-live.html?t=${encodeURIComponent(id)}`, document.baseURI).href;   // v6.0.0
   navigator.clipboard.writeText(url).then(() => {
     toast('Link gekopieerd — hier blijft de uitslag staan ✓');
   }).catch(() => {
@@ -7334,7 +7380,8 @@ async function toonGastlogins() {
     // gast. Het blok hierboven wordt door `gastloginTekst()` gemaakt, zodat de
     // rekentest de opmaak kan natellen.
     const tekst = gastloginTekst({
-      adres: `${window.location.origin}${window.location.pathname}`,
+      // v6.0.0: de link van DIT toernooi — wie hem opent hoeft niets te kiezen.
+      adres: toernooiAdres(t.id),
       wachtwoord: ww,
       pincode: pin,
       regels: gasten.map(g => ({ naam: g.naam, inlog: inlogVan(g) })),

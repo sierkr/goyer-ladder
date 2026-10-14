@@ -144,7 +144,10 @@ jobs:
       # v5.51.0: ook de spelvormproeven (SPELVORM-): de keuzes van de wolf en
       # bingo/bango/bongo worden in de scoredocumenten geschreven, en dat moet
       # onder de echte regels lukken.
-      - name: QR- en spelvormproeven met databaseregels
+      # v6.0.0: en ALLE toernooiproeven. Met de regels aan bleek gast-inloggen
+      # te falen voor een coördinator (alleen een beheerder mocht een
+      # gastprofiel maken) — dat zag de reeks zonder regels nooit.
+      - name: QR-, spelvorm- en toernooiproeven met databaseregels
         env:
           GCLOUD_PROJECT: demo-goyer
           CI: 'true'
@@ -152,7 +155,7 @@ jobs:
           ./tests/node_modules/.bin/firebase emulators:exec
           --config firebase.regels.json
           --project demo-goyer --only firestore,auth,functions
-          "node tests/e2e/seed.cjs && ./tests/node_modules/.bin/playwright test --config=playwright.config.cjs -g 'RONDE-QR|SPELERS-QR|SPELVORM-'"
+          "node tests/e2e/seed.cjs && ./tests/node_modules/.bin/playwright test --config=playwright.config.cjs app.spec -g 'RONDE-QR|SPELERS-QR|SPELVORM-' && ./tests/node_modules/.bin/playwright test --config=playwright.config.cjs toernooi.spec"
 
       - name: Rapport bewaren bij een fout
         if: failure()

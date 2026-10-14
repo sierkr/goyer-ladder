@@ -7,6 +7,7 @@ import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
   INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB_MIGRATIE, esc, escAttr,
   EMAIL_SUFFIX, DEFAULT_HCP, CONFIG_DOC, IS_TEST, laadInitieelWachtwoord,
+  IS_TOERNOOI_APP, toernooiAdres,
   laadUiStijl, pasUiStijlToe, laadBanen, effectieveStijl, normaliseerClubStijl,
   genereerEmail, loginNaamVan, functions, httpsCallable,
   isVerbindingGesloten } from './config.js';
@@ -14,12 +15,13 @@ import { store, DEFAULT_LADDER_CONFIG,
   alleLadders, activeLadderId, alleSpelersData, huidigeBruiker,
   _usersCache, archiefData, uitdagingenData, toernooiData, alleToernooien,
   actieveToernooiId, _firestoreReady, _vasteListeners, _toernooiListeners,
-  _bezigMetRegistratie, playerSlotCount, _verwijderdePartijIds } from './store.js';
+  _bezigMetRegistratie, playerSlotCount, _verwijderdePartijIds,
+  gekozenToernooiId, zetGekozenToernooi } from './store.js';
 import { renderLadder } from './ladder.js';
 import { toonUitdagingBadge } from './archief.js';
 import { closeModal, renderAdmin, renderProfiel } from './admin.js';
 import { renderRonde } from './ronde.js';
-import { renderToernooi, getActiefToernooiMetModus, herlaadToernooiListeners, behoudLiveScores, toernooiLoopt } from './toernooi.js';
+import { renderToernooi, herlaadToernooiListeners, behoudLiveScores, toernooiLoopt, standaardToernooi } from './toernooi.js';
 import { renderUitslagen } from './uitslagen.js';
 import { leesScores } from './scores.js';
 import { startAlleStandenListeners, stopAlleStandenListeners,
@@ -170,28 +172,18 @@ function updateSiteTitel() {
   const h1Second = document.getElementById('h1-second');
   if (!h1Second) return;
 
-  // v3.0.0-11.74: toernooiSpeler-vlag op profiel heeft prioriteit — toont de toernooijnaam
-  // die bij aanmaken is meegegeven. Onafhankelijk van de globale toernooi-modus checkbox,
-  // zodat andere ladder-spelers de normale titelbalk zien.
-  if (huidigeBruiker.toernooiSpeler && huidigeBruiker.toernooiNaam) {
+  // v6.0.0: in de toernooipagina staat de naam van het toernooi (of
+  // "Toernooi") in de titel; in de ladder-app altijd de ladder. De oude regels
+  // met toernooiSpeler-vlag en toernooimodus horen bij de toernooimodus IN de
+  // ladder-app, en die bestaat niet meer.
+  if (IS_TOERNOOI_APP) {
     if (h1First) h1First.style.display = 'none';
-    h1Second.textContent = huidigeBruiker.toernooiNaam;
+    // De wedstrijdleiding kan meer toernooien hebben en begint op het
+    // startscherm: dan zou de naam van één toernooi misleiden. Deelnemers
+    // zien de naam van hun toernooi.
+    h1Second.textContent = magToernooiLeidenRol() ? 'Toernooi' : (toernooiData?.naam || 'Toernooi');
     h1Second.style.paddingLeft = '0';
     return;
-  }
-
-  // Coordinator/beheerder of gewone deelnemer in toernooi-modus: toon toernooinaam
-  // v3.0.0-11.74: ook gewone spelers die deelnemen aan toernooi met toernooiModus aan
-  const actiefToernooi = getActiefToernooiMetModus();
-  if (actiefToernooi) {
-    const isDeelnemer = isCoordinatorRol() ||
-      (actiefToernooi.spelers || []).some(s => s.uid === huidigeBruiker.uid);
-    if (isDeelnemer) {
-      if (h1First) h1First.style.display = 'none';
-      h1Second.textContent = actiefToernooi.naam;
-      h1Second.style.paddingLeft = '0';
-      return;
-    }
   }
 
   // Herstel normale staat
@@ -333,8 +325,60 @@ async function slaEersteLoginOp() {
 // ============================================================
 //  TOERNOOI-MODUS NAV
 // ============================================================
+// ============================================================
+//  v6.0.0 — TWEE INGANGEN
+// ------------------------------------------------------------
+//  Toernooipagina (…/toernooi): alleen het toernooi, voor iedereen die daar
+//  binnenkomt — deelnemer met pincode, toernooileider, coördinator, beheerder.
+//  Ladder-app: geen toernooischerm meer; het tabblad Toernooi is een link.
+//  De oude "toernooimodus" (tabs verbergen voor deelnemers IN de ladder-app)
+//  vervalt daarmee: deelnemers zitten nu in de toernooipagina.
+// ============================================================
+function zetToernooiTabAlsLink() {
+  const knop = document.getElementById('nav-toernooi-btn');
+  if (!knop) return;
+  knop.style.display = '';
+  knop.onclick = (e) => { e?.preventDefault?.(); location.href = toernooiAdres(); };
+}
+
+// Vóór het inloggen: teksten en tabbladen van de toernooipagina.
+function zetToernooiIngang() {
+  const logo = document.querySelector('#login-scherm .login-logo');
+  if (logo) logo.textContent = 'Toernooi';
+  const h1First  = document.getElementById('h1-first');
+  const h1Second = document.getElementById('h1-second');
+  if (h1First) h1First.style.display = 'none';
+  if (h1Second) { h1Second.textContent = 'Toernooi'; h1Second.style.paddingLeft = '0'; }
+  toonAlleenToernooi();
+}
+
+function toonAlleenToernooi() {
+  ['ladder', 'partij', 'ronde', 'uitslagen', 'help', 'archief', 'profiel', 'admin'].forEach(tab => {
+    const b = document.getElementById(`nav-${tab}-btn`);
+    if (b) b.style.display = 'none';
+  });
+  const tBtn = document.getElementById('nav-toernooi-btn');
+  if (tBtn) tBtn.style.display = '';
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-toernooi')?.classList.add('active');
+  tBtn?.classList.add('active');
+}
+
 function pasToernooiModusNavToe() {
   if (!huidigeBruiker) return;
+  // v6.0.0: de toernooipagina toont alleen het toernooi. De wedstrijdleiding
+  // houdt Help, met de toernooihandleiding voorop.
+  if (IS_TOERNOOI_APP) {
+    toonAlleenToernooi();
+    if (magToernooiLeidenRol()) {
+      const help = document.getElementById('nav-help-btn');
+      if (help) help.style.display = '';
+      if (typeof window.kiesHandleiding === 'function') window.kiesHandleiding('toernooi');
+    }
+    renderToernooi();
+    return;
+  }
   // v5.38.0: wie met de toernooi-pincode binnenkwam ziet ALLEEN het toernooi.
   // Hij heeft zijn eigen wachtwoord niet gebruikt, dus de rest van de app is
   // niet van hem.
@@ -363,48 +407,21 @@ function pasToernooiModusNavToe() {
   }
 
   const isPin = isPinSessie();
-  if (!isPin && (isBeheerderRol() || isCoordinatorRol())) return; // beheerders altijd volledig zicht
-
-  // v3.0.0-11.74: twee paden — toernooiSpeler-vlag op profiel (batch-import)
-  // of deelnemer van een actief toernooi met toernooiModus aan.
-  const isToernooiSpeler = huidigeBruiker.toernooiSpeler === true;
-  const actief = getActiefToernooiMetModus();
-  const isDeelnemerViaToernooiModus = actief &&
-    (actief.spelers || []).some(s => s.uid === huidigeBruiker.uid);
-
-  if (!isPin && !isToernooiSpeler && !isDeelnemerViaToernooiModus) {
-    // v3.0.9: geen actieve toernooi-modus (meer) → herstel de normale tabs.
-    // Voorheen een early-return, waardoor eerder verborgen tabs verborgen bleven
-    // en de deelnemer na einde/annulering met alleen 'Profiel' achterbleef (app onbruikbaar).
-    ['ladder', 'partij', 'ronde', 'uitslagen', 'help', 'profiel'].forEach(tab => {
-      const b = document.getElementById(`nav-${tab}-btn`);
-      if (b) b.style.display = '';
-    });
+  // v6.0.0: een pincode-sessie hoort in de toernooipagina. Komt er (van vóór
+  // v6.0.0) nog een in de ladder-app terecht: uitloggen en de weg wijzen.
+  if (isPin) {
+    uitloggen();
+    toonLoginFout('Je was ingelogd voor een toernooi. Dat gaat nu via de toernooipagina.');
     return;
   }
+  if (isBeheerderRol() || isCoordinatorRol()) return; // beheerders altijd volledig zicht
 
-  // Verberg alle tabs behalve Toernooi en Uitslag
-  // v3.0.0-11.74: uitslagen verborgen — ladder-partijen zijn niet relevant voor toernooi-deelnemers
-  const verbergTabs = ['ladder', 'partij', 'ronde', 'uitslagen', 'help', 'archief', 'profiel', 'admin'];
-  verbergTabs.forEach(tab => {
-    const idBtn = document.getElementById(`nav-${tab}-btn`);
-    if (idBtn) idBtn.style.display = 'none';
+  // v6.0.0: de toernooimodus (tabs verbergen voor deelnemers in de
+  // ladder-app) bestaat niet meer — deelnemers zitten in de toernooipagina.
+  ['ladder', 'partij', 'ronde', 'uitslagen', 'help', 'profiel'].forEach(tab => {
+    const b = document.getElementById(`nav-${tab}-btn`);
+    if (b) b.style.display = '';
   });
-
-  // Zorg dat Toernooi actief is als huidige pagina verborgen wordt
-  const actievePagina = document.querySelector('.page.active');
-  const actieveId = actievePagina?.id?.replace('page-', '');
-  if (actieveId && verbergTabs.includes(actieveId)) {
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-    document.getElementById('page-toernooi')?.classList.add('active');
-    document.getElementById('nav-toernooi-btn')?.classList.add('active');
-  }
-
-  // v3.0.9: render de toernooipagina meteen, zodat de deelnemer zijn scorekaart
-  // ziet i.p.v. de standaard-HTML ("NIEUW TOERNOOI"). Voorheen werd de pagina wel
-  // geactiveerd maar niet gerenderd, waardoor pas na een modus-toggle iets verscheen.
-  renderToernooi();
 }
 
 // Luister naar toernooiModusGewijzigd event vanuit toernooi.js
@@ -428,17 +445,11 @@ async function vervolgIngelogd() {
     adminBtn.style.display = '';
     document.getElementById('nav-archief-btn').style.display  = '';
     document.getElementById('nav-toernooi-btn').style.display = '';
-  } else {
-    const uid = huidigeBruiker?.uid;
-    const mijnToernooien = alleToernooien.filter(t =>
-      (t.spelers || []).some(s => uid && s.uid === uid)
-    );
-    // v3.0.0-11.74: toernooiSpeler-vlag toont ook de toernooi-tab, ook als nog
-    // niet in een toernooispelers-lijst staat (toernooi nog niet aangemaakt).
-    if (mijnToernooien.length > 0 || huidigeBruiker.toernooiSpeler) {
-      document.getElementById('nav-toernooi-btn').style.display = '';
-    }
   }
+  // v6.0.0: in de LADDER-app is "Toernooi" een link naar de toernooipagina
+  // (Sierk: "De tab kan een link worden voor de toernooi locatie"), voor
+  // iedereen. In de toernooipagina zelf regelt pasToernooiModusNavToe() de tabs.
+  if (!IS_TOERNOOI_APP) zetToernooiTabAlsLink();
   profielBtn.style.display = '';
   logoutBtn.style.display  = '';
   logoutBtn.textContent    = huidigeBruiker.gebruikersnaam.split(' ')[0] + ' ↩';
@@ -562,6 +573,19 @@ async function vulToernooiInlog() {
   if (!blok) return;
   blok.style.display = 'none';
   _toernooiInlog = null;
+  _lopendBijInlog = [];
+
+  // v6.0.0: in de LADDER-app alleen een verwijzing naar de toernooipagina.
+  // Meedoen gaat daar, met een eigen inlog (zie IS_TOERNOOI_APP in config.js).
+  const link = document.getElementById('toernooi-inlog-link');
+  if (!IS_TOERNOOI_APP) {
+    const a = document.getElementById('toernooi-inlog-link-a');
+    if (a) a.href = toernooiAdres();
+    if (link) link.style.display = '';
+    return;
+  }
+  if (link) link.style.display = 'none';
+
   try {
     const snap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
     // `toernooiLoopt` is dezelfde toets die het toernooischerm gebruikt: niet
@@ -569,22 +593,27 @@ async function vulToernooiInlog() {
     // volgende week hoort hier niet te staan — daar kun je nog niet aan meedoen.
     const lopend = snap.docs
       .map(d => ({ id: d.id, ...d.data() }))
-      .filter(t => toernooiLoopt(t) && (t.spelers || []).length > 0);
-    if (lopend.length !== 1) return;   // geen, of meerdere: dan geen gok doen
+      .filter(t => toernooiLoopt(t) && (t.spelers || []).length > 0)
+      .sort((a, b) => String(a.naam || '').localeCompare(String(b.naam || ''), 'nl'));
+    if (!lopend.length) return;
+    _lopendBijInlog = lopend;
 
-    const t = lopend[0];
-    const keuze = document.getElementById('toernooi-inlog-speler');
-    const naam  = document.getElementById('toernooi-inlog-naam');
-    if (!keuze || !naam) return;
-
-    naam.textContent = t.naam || 'het toernooi';
-    keuze.innerHTML = '<option value="">— kies je naam —</option>'
-      + (t.spelers || [])
-          .slice()
-          .sort((a, b) => String(a.naam || '').localeCompare(String(b.naam || ''), 'nl'))
-          .map(sp => `<option value="${escAttr(sp.uid)}">${esc(sp.naam || '')}</option>`)
-          .join('');
-    _toernooiInlog = { id: t.id, naam: t.naam || '' };
+    // v6.0.0: kwam je via de link van één toernooi, dan is het dat toernooi —
+    // niets te kiezen. Anders: één lopend = dat; meer = eerst kiezen.
+    const viaLink = lopend.find(t => t.id === gekozenToernooiId());
+    const keuzeWrap = document.getElementById('toernooi-inlog-keuze-wrap');
+    const keuzeEl   = document.getElementById('toernooi-inlog-toernooi');
+    if (viaLink || lopend.length === 1) {
+      if (keuzeWrap) keuzeWrap.style.display = 'none';
+      vulNamenBijInlog(viaLink || lopend[0]);
+    } else {
+      if (keuzeEl) {
+        keuzeEl.innerHTML = '<option value="">— kies het toernooi —</option>'
+          + lopend.map(t => `<option value="${escAttr(t.id)}">${esc(t.naam || 'Toernooi')}</option>`).join('');
+      }
+      if (keuzeWrap) keuzeWrap.style.display = '';
+      vulNamenBijInlog(null);
+    }
     blok.style.display = '';
   } catch (e) {
     // Lukt het niet, dan blijft het gewone inlogscherm staan. Dat is de veilige
@@ -592,6 +621,37 @@ async function vulToernooiInlog() {
     console.warn('toernooi-inlog vullen mislukt:', e?.code || e?.message);
   }
 }
+
+let _lopendBijInlog = [];
+
+// De namen van één toernooi in de keuzelijst (of leeg, als er nog geen
+// toernooi gekozen is).
+function vulNamenBijInlog(t) {
+  const keuze = document.getElementById('toernooi-inlog-speler');
+  const naam  = document.getElementById('toernooi-inlog-naam');
+  if (!keuze || !naam) return;
+  if (!t) {
+    naam.textContent = 'een toernooi';
+    keuze.innerHTML = '<option value="">— kies eerst het toernooi —</option>';
+    _toernooiInlog = null;
+    return;
+  }
+  naam.textContent = t.naam || 'het toernooi';
+  keuze.innerHTML = '<option value="">— kies je naam —</option>'
+    + (t.spelers || [])
+        .slice()
+        .sort((a, b) => String(a.naam || '').localeCompare(String(b.naam || ''), 'nl'))
+        .map(sp => `<option value="${escAttr(sp.uid)}">${esc(sp.naam || '')}</option>`)
+        .join('');
+  _toernooiInlog = { id: t.id, naam: t.naam || '' };
+}
+
+function kiesToernooiBijInlog(id) {
+  const t = _lopendBijInlog.find(x => x.id === id) || null;
+  if (t) zetGekozenToernooi(t.id);
+  vulNamenBijInlog(t);
+}
+window.kiesToernooiBijInlog = kiesToernooiBijInlog;
 
 async function toernooiPinInloggen() {
   const keuze = document.getElementById('toernooi-inlog-speler');
@@ -610,6 +670,7 @@ async function toernooiPinInloggen() {
     const token = uit?.data?.customToken;
     if (!token) throw new Error('geen token ontvangen');
     if (pinEl) pinEl.value = '';
+    zetGekozenToernooi(_toernooiInlog.id);   // v6.0.0
     await signInWithCustomToken(auth, token);
   } catch (e) {
     // De serverfunctie schrijft zelf een leesbare reden ("Die pincode klopt
@@ -630,6 +691,7 @@ window.toernooiPinInloggen = toernooiPinInloggen;
 let _viaPinSessie = false;
 let _viaRondePartij = null;   // v5.40.0: partijnummer uit de ronde-QR
 let _viaRondeLadder = null;   // v5.49.0: en de ladder waar die partij in loopt
+let _viaPinToernooi = null;   // v6.0.0: het toernooi van de pincode-sessie
 
 async function sessieViaPin() {
   try {
@@ -637,13 +699,17 @@ async function sessieViaPin() {
     _viaPinSessie   = res?.claims?.viaPin === true;
     _viaRondePartij = res?.claims?.viaRonde || null;
     _viaRondeLadder = res?.claims?.ladderId || null;
-  } catch (_) { _viaPinSessie = false; _viaRondePartij = null; _viaRondeLadder = null; }
+    _viaPinToernooi = _viaPinSessie ? (res?.claims?.toernooiId || null) : null;
+  } catch (_) { _viaPinSessie = false; _viaRondePartij = null; _viaRondeLadder = null; _viaPinToernooi = null; }
   return _viaPinSessie;
 }
 
 // Synchroon op te vragen nadat sessieViaPin() één keer is gedraaid. De
 // schermopbouw kan niet wachten op een belofte.
 function isPinSessie() { return _viaPinSessie === true; }
+// v6.0.0: bij twee toernooien tegelijk mag een pincode-sessie alleen zijn
+// EIGEN toernooi zien (en firestore.rules laat hem alleen daar schrijven).
+function pinToernooiVanSessie() { return _viaPinToernooi; }
 
 // v5.40.0: in welke ronde zit deze sessie, als hij met een QR binnenkwam?
 // Geeft het partijnummer of null. De ronde-tab zoekt normaal de partij waar je
@@ -987,6 +1053,8 @@ function uitloggen() {
   document.getElementById('logout-btn').style.display       = 'none';
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  // v6.0.0: in de toernooipagina blijft het toernooi de pagina.
+  if (IS_TOERNOOI_APP) { toonAlleenToernooi(); return; }
   document.getElementById('page-ladder').classList.add('active');
   document.querySelector('nav button').classList.add('active');
 }
@@ -1108,6 +1176,8 @@ async function initFirestore() {
   toonLaadOverlay(true);
   // v5.48.0: de app-code draait — stap 2 op het logo-scherm.
   zetLaadStap(2);
+  // v6.0.0: de toernooipagina ziet er vanaf het begin uit als het toernooi.
+  if (IS_TOERNOOI_APP) zetToernooiIngang();
 
   const heeftInvite = new URLSearchParams(location.search).has('invite');
   if (heeftInvite) {
@@ -1291,10 +1361,12 @@ async function initFirestore() {
     (snap) => {
       store.alleToernooien = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-      // Actief toernooi bijhouden
+      // Actief toernooi bijhouden. v6.0.0: niet meer "het eerste in de lijst"
+      // maar het toernooi van deze sessie — zie standaardToernooi().
       if (!toernooiData && alleToernooien.length > 0) {
-        store.toernooiData      = alleToernooien[0];
-        store.actieveToernooiId = alleToernooien[0].id;
+        const keuze = standaardToernooi(alleToernooien);
+        store.toernooiData      = keuze;
+        store.actieveToernooiId = keuze?.id || null;
       } else if (toernooiData) {
         const bijgewerkt = alleToernooien.find(t => t.id === actieveToernooiId);
         // v5.11.0: ⚠ hier ging het mis. De serverversie bevat de scores van een
@@ -1304,8 +1376,9 @@ async function initFirestore() {
         // in js/toernooi.js; de meeluisteraar daar gebruikt dezelfde functie.
         if (bijgewerkt) store.toernooiData = behoudLiveScores(bijgewerkt);
         else if (alleToernooien.length > 0) {
-          store.toernooiData      = alleToernooien[0];
-          store.actieveToernooiId = alleToernooien[0].id;
+          const keuze = standaardToernooi(alleToernooien);
+          store.toernooiData      = keuze;
+          store.actieveToernooiId = keuze?.id || null;
         } else {
           store.toernooiData      = null;
           store.actieveToernooiId = null;
@@ -2075,6 +2148,17 @@ function isCoordinatorRol() {
 function isBeheerderRol() {
   return huidigeBruiker?.rol === 'beheerder';
 }
+// v6.0.0: de toernooileider (Sierk, 13 oktober 2026: "Ook toernooileider").
+// Mag toernooien aanmaken en leiden, en heeft niets te zeggen over de ladder.
+function isToernooiLeiderRol() {
+  return huidigeBruiker?.rol === 'toernooileider';
+}
+// Mag deze gebruiker toernooien beheren? Coördinator, beheerder of
+// toernooileider. Alleen voor het TOERNOOI; voor de ladder blijft
+// isCoordinatorRol() de vraag.
+function magToernooiLeidenRol() {
+  return isCoordinatorRol() || isToernooiLeiderRol();
+}
 
 // v5.9.0: `ms` is optioneel en verandert niets aan de bestaande aanroepen.
 // Een foutmelding die de echte oorzaak noemt is langer dan "Opgeslagen ✓" en
@@ -2466,6 +2550,7 @@ export {
   genereerInviteLink, kopieerInviteLink, checkInviteLink,
   registreerSpeler, laadInviteStatus, autoAdvance,
   isCoordinatorRol, isBeheerderRol, rondeVanSessie, isPinSessie,
+  isToernooiLeiderRol, magToernooiLeidenRol, pinToernooiVanSessie,
   toast, foutTekst, meldFout, registreerNotificatieToken, laadUitdagingen,
   herstelVerbinding, controleerVerbinding, leesHerstelSpoor, magHerstellen,
   leesOpstartSpoor, opstartTekst,

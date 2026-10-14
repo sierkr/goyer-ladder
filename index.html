@@ -1351,9 +1351,17 @@
          te meten — iOS tekent dat paneel zelf.
          ============================================================ -->
     <div id="toernooi-inlog" style="display:none;margin-bottom:18px">
-      <div style="font-size:13px;color:var(--on-dark-surface,var(--dark));margin-bottom:10px">
+      <!-- v6.0.0: was color:var(--on-dark-surface,…) — op het lichte inlogvak
+           stond deze zin daardoor wit op wit (schermafdruk 14 oktober 2026). -->
+      <div style="font-size:13px;color:var(--dark);margin-bottom:10px">
         Doe je mee aan <strong id="toernooi-inlog-naam"></strong>? Kies je naam
         en tik de pincode die je van de wedstrijdleiding hebt gekregen.
+      </div>
+      <!-- v6.0.0: lopen er meer toernooien en kwam je niet via de link van één
+           toernooi binnen, dan kies je hier eerst welk toernooi. -->
+      <div class="form-group" id="toernooi-inlog-keuze-wrap" style="display:none">
+        <label>Toernooi</label>
+        <select id="toernooi-inlog-toernooi" style="width:100%" onchange="kiesToernooiBijInlog(this.value)"></select>
       </div>
       <div class="form-group">
         <label>Je naam</label>
@@ -1372,6 +1380,11 @@
         <span style="font-size:11px;color:var(--light)">of log in met je eigen account</span>
         <div style="flex:1;height:1px;background:var(--border);opacity:.5"></div>
       </div>
+    </div>
+    <!-- v6.0.0: in de LADDER-app staat hier alleen een verwijzing. Meedoen aan
+         een toernooi gaat via de toernooipagina (…/toernooi), met een eigen inlog. -->
+    <div id="toernooi-inlog-link" style="display:none;margin-bottom:14px;font-size:13px;text-align:center">
+      <a id="toernooi-inlog-link-a" href="toernooi/" style="color:var(--green);font-weight:600">Meedoen aan een toernooi? Naar de toernooipagina →</a>
     </div>
 
     <!-- Google login (tijdelijk uitgeschakeld) -->
@@ -1850,6 +1863,7 @@
       <select id="edit-user-rol">
         <option value="speler">Speler</option>
         <option value="coordinator">Coordinator</option>
+        <option value="toernooileider">Toernooileider</option>
         <option value="beheerder">Beheerder</option>
       </select>
     </div>
@@ -1878,6 +1892,7 @@
       <select id="new-user-rol">
         <option value="speler">Speler</option>
         <option value="coordinator">Coordinator</option>
+        <option value="toernooileider">Toernooileider</option>
         <option value="beheerder">Beheerder</option>
       </select>
     </div>
@@ -2303,8 +2318,8 @@
 
 <div class="modal-overlay" id="modal-qr-code">
   <div class="modal">
-    <h3>QR-code naar de app</h3>
-    <div style="font-size:14px;line-height:1.5;color:var(--dark);margin-bottom:12px">
+    <h3 id="qr-code-titel">QR-code naar de app</h3>
+    <div id="qr-code-uitleg" style="font-size:14px;line-height:1.5;color:var(--dark);margin-bottom:12px">
       Laat dit scherm zien; wie zijn telefooncamera erop richt, komt op de
       inlogpagina van de Matchplay Ladder.
     </div>
@@ -2856,6 +2871,7 @@
       <select id="edit-player-rol">
         <option value="speler">Speler</option>
         <option value="coordinator">Coordinator</option>
+        <option value="toernooileider">Toernooileider</option>
         <option value="beheerder">Beheerder</option>
       </select>
     </div>

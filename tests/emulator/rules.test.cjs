@@ -22,6 +22,7 @@ const SPELER      = 'uid_speler_aaaaaaaaaaaaa';
 const SPELER2     = 'uid_speler_bbbbbbbbbbbbb';
 const BUITEN      = 'uid_buitenstaander_00000';
 const PUNTENBAAS  = 'uid_puntenbeheerder_0000';
+const TLEIDER     = 'uid_toernooileider_00000';   // v6.0.0
 
 async function main() {
   await wachtOpPoort(8080);
@@ -46,6 +47,11 @@ async function main() {
     await db.doc(`spelers/${SPELER2}`).set({ naam: 'Sil Speler', rol: 'speler', hcp: 20 });
     await db.doc(`spelers/${BUITEN}`).set({ naam: 'Bas Buiten', rol: 'speler', hcp: 24 });
     await db.doc(`spelers/${PUNTENBAAS}`).set({ naam: 'Piet Punten', rol: 'speler', hcp: 8, puntenBeheerder: true });
+    await db.doc(`spelers/${TLEIDER}`).set({ naam: 'Toos Toernooi', rol: 'toernooileider', hcp: 0 });   // v6.0.0
+    // v6.0.0: een bestaande toernooigast, om het opruimen te toetsen, en een
+    // tweede lopend toernooi (twee tegelijk).
+    await db.doc('spelers/gast_oud').set({ naam: 'Gerda Gast', rol: 'speler', toernooiGast: true });
+    await db.doc('toernooien/t2').set({ naam: 'Najaar', status: 'actief' });
 
     await db.doc('ladders/mp').set({ naam: 'MP', spelerIds: [SPELER, SPELER2, COORDINATOR, PUNTENBAAS] });
     await db.doc(`ladders/mp/standen/${SPELER}`).set({ rank: 1, partijen: 3, gewonnen: 2, hcp: 18 });
@@ -85,7 +91,10 @@ async function main() {
   // v5.38.0: dezelfde speler, maar binnengekomen met de toernooi-pincode. De
   // stempel `viaPin` komt van de server (createCustomToken) en zit in het
   // inlogtoken — een client kan hem niet zelf zetten.
-  const pinSessie = testEnv.authenticatedContext(SPELER, { viaPin: true }).firestore();
+  // v6.0.0: met het toernooi erin, zoals wisselToernooiPin het token maakt
+  // (createCustomToken(spelerUid, { viaPin: true, toernooiId })).
+  const pinSessie = testEnv.authenticatedContext(SPELER, { viaPin: true, toernooiId: 't1' }).firestore();
+  const tleider   = testEnv.authenticatedContext(TLEIDER).firestore();   // v6.0.0
   // v5.40.0: een gast die de QR van ronde p_test scande. Uid is het tijdelijke
   // profiel dat de serverfunctie aanmaakt; de stempel draagt het partijnummer.
   const rondeGast = testEnv.authenticatedContext('rondegast_p_test',
@@ -367,6 +376,57 @@ async function main() {
     () => coord.doc('uitslagen/u1').update({ datum: '2026-08-02' }));
 
   // ══ alles wat niet expliciet is toegestaan ═════════════════
+  // ══ v6.0.0 — TOERNOOILEIDER, GASTPROFIELEN, TWEE TOERNOOIEN ══
+  //  Ontwerp: ONTWERP-TOERNOOI-APART.md. De toernooileider mag alles met
+  //  toernooien en NIETS met de ladder.
+  await R.magWel('toernooileider kan een toernooi aanmaken',
+    () => tleider.doc('toernooien/t_tl').set({ naam: 'Clubkampioenschap', status: 'actief' }));
+  await R.magWel('toernooileider kan een toernooi wijzigen',
+    () => tleider.doc('toernooien/t1').set({ naam: 'Zomer!' }, { merge: true }));
+  await R.magWel('toernooileider kan de gastlogin lezen en zetten',
+    () => tleider.doc('toernooien/t1/beheer/gastlogin').set({ pin: '1234' }, { merge: true }));
+  await R.magWel('toernooileider mag als wedstrijdleiding vaststellen (beheerDagen)',
+    () => tleider.doc(`toernooien/t1/live/${SPELER}`).set({ beheerDagen: { '1': [4] } }, { merge: true }));
+  await R.magNiet('toernooileider kan de ladder NIET wijzigen',
+    () => tleider.doc('ladders/mp').set({ naam: 'gehackt' }, { merge: true }));
+  await R.magNiet('toernooileider kan standen NIET wijzigen',
+    () => tleider.doc(`ladders/mp/standen/${SPELER}`).update({ rank: 9 }));
+  await R.magNiet('toernooileider kan het ladder-archief NIET schrijven',
+    () => tleider.doc('ladder/archief').set({ lijst: ['x'] }));
+  await R.magNiet('toernooileider kan de config NIET lezen',
+    () => tleider.doc('ladder/config').get());
+  await R.magNiet('toernooileider kan een rol NIET wijzigen',
+    () => tleider.doc(`spelers/${SPELER}`).update({ rol: 'beheerder' }));
+  await R.magNiet('een gewone speler kan GEEN toernooi aanmaken',
+    () => speler.doc('toernooien/t_sp').set({ naam: 'Eigen', status: 'actief' }));
+
+  // Gastprofielen: alleen voor een toernooigast met rol speler.
+  await R.magWel('coördinator kan een gastprofiel aanmaken (was de fout van stap 0)',
+    () => coord.doc('spelers/gast_c').set({ naam: 'Karel Gast', rol: 'speler', toernooiGast: true }));
+  await R.magWel('toernooileider kan een gastprofiel aanmaken',
+    () => tleider.doc('spelers/gast_t').set({ naam: 'Bep Gast', rol: 'speler', toernooiGast: true }));
+  await R.magNiet('maar GEEN profiel dat geen toernooigast is',
+    () => tleider.doc('spelers/nep_lid').set({ naam: 'Nep', rol: 'speler' }));
+  await R.magNiet('en GEEN toernooigast met een andere rol',
+    () => tleider.doc('spelers/nep_baas').set({ naam: 'Nep', rol: 'beheerder', toernooiGast: true }));
+  await R.magNiet('een gewone speler kan GEEN gastprofiel aanmaken',
+    () => speler.doc('spelers/gast_s').set({ naam: 'X', rol: 'speler', toernooiGast: true }));
+  await R.magWel('toernooileider kan een gastprofiel opruimen',
+    () => tleider.doc('spelers/gast_oud').delete());
+  await R.magNiet('maar GEEN clublid verwijderen',
+    () => tleider.doc(`spelers/${SPELER2}`).delete());
+
+  // Twee toernooien tegelijk: de pincode van t1 werkt niet in t2.
+  await R.magWel('pincode van t1 schrijft in t1',
+    () => pinSessie.doc(`toernooien/t1/live/${SPELER}`).set({ dagen: { '1': [5] } }, { merge: true }));
+  await R.magNiet('pincode van t1 schrijft NIET in t2',
+    () => pinSessie.doc(`toernooien/t2/live/${SPELER}`).set({ dagen: { '1': [5] } }, { merge: true }));
+  await R.magNiet('een pincode zonder toernooi schrijft nergens',
+    () => testEnv.authenticatedContext(SPELER, { viaPin: true }).firestore()
+      .doc(`toernooien/t1/live/${SPELER}`).set({ dagen: { '1': [6] } }, { merge: true }));
+  await R.magWel('een gewone inlog schrijft in beide (geen pincode)',
+    () => speler.doc(`toernooien/t2/live/${SPELER}`).set({ dagen: { '1': [5] } }, { merge: true }));
+
   await R.magNiet('onbekende collectie is dicht',
     () => speler.doc('geheimen/x').get());
   await R.magNiet('onbekende collectie is niet schrijfbaar',
