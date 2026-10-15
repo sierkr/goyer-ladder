@@ -1220,15 +1220,18 @@ test.describe.serial('Spelvormen', () => {
       await cees.click('#ronde-afsluiten-btn');
       await expect(cees.locator('#modal-uitslag')).toHaveClass(/open/, { timeout: 10000 });
       await expect(cees.locator('#spelvorm-keuze')).toContainText('Winnaar +2');
-      const voor = async naam => {
-        const s = (await beheerDb.collection('spelers').where('naam', '==', naam).get()).docs[0];
-        return (await beheerDb.doc(`ladders/mp/standen/${s.id}`).get()).data() || {};
-      };
-      const ninaVoor = await voor('Nina Nieuw');
+      // v6.1.5: op uid, niet op naam. De proef SPELERS-QR laat een tweede
+      // spelersdocument "Nina Nieuw" achter (rondespeler_…, zonder stand).
+      // Zoeken op naam pakte docs[0], en welke dat is hangt af van de
+      // willekeurige uid: begon die met een letter ná de 'r', dan kwam de
+      // QR-kopie eerst en faalde deze proef (GitHub, 15 oktober 2026).
+      const voor = async uid =>
+        (await beheerDb.doc(`ladders/mp/standen/${uid}`).get()).data() || {};
+      const ninaVoor = await voor(nina.uid);
       await cees.click('#modal-uitslag button:has-text("Uitslag verwerken")');
       await expect.poll(async () => ((await beheerDb.doc('ladders/mp').get()).data()?.actievePartijen || [])
         .some(p => p.partijId === partij.partijId), { timeout: 20000, message: 'de partij is afgerond' }).toBe(false);
-      const ninaNa = await voor('Nina Nieuw');
+      const ninaNa = await voor(nina.uid);
       expect(ninaNa.gewonnen, 'Nina boekt een winst').toBe((ninaVoor.gewonnen || 0) + 1);
       expect(ninaNa.rank, 'en staat hoger dan voorheen').toBeLessThan(ninaVoor.rank);
     } finally {
