@@ -2515,11 +2515,10 @@ test.describe('Toernooi — de hele route', () => {
       await p.waitForSelector('#login-scherm', { state: 'hidden', timeout: 20000 });
       await expect(p.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
 
-      // …de ladder-app verwijst naar het toernooi in plaats van het te tonen…
-      const tab = p.locator('#nav-toernooi-btn');
-      await expect(tab, 'Toernooi staat er, voor iedereen').toBeVisible();
-      await tab.click();
-      await p.waitForURL(/\/toernooi\/$/, { timeout: 15000 });
+      // …v6.1.4: een gewone speler ziet in de ladder-app geen toernooi. Ze komt
+      // er via de link van de organisatie — hier nagebootst met het adres.
+      await expect(p.locator('#nav-toernooi-btn'), 'geen tabblad Toernooi voor een gewone speler').toBeHidden();
+      await p.goto(TOERNOOI_PAGINA);
 
       // …en daar is ze NIET ingelogd: een eigen inlog.
       await expect(p.locator('#login-scherm'), 'de toernooipagina vraagt om in te loggen')
@@ -2544,13 +2543,41 @@ test.describe('Toernooi — de hele route', () => {
     }
   });
 
-  test('APART: het inlogscherm van de ladder-app verwijst naar de toernooipagina', async ({ page }) => {
+  // v6.1.4 (Sierk, 15 oktober 2026): "een ladder speler die inlogt moet een
+  // ladder spelen en niet geconfronteerd worden met een toernooi". Tot v6.1.3
+  // stond hier dat het inlogscherm naar de toernooipagina verwees.
+  test('APART: het inlogscherm van de ladder-app noemt geen toernooi', async ({ page }) => {
     await page.goto('/index.html');
     await page.waitForSelector('#login-scherm', { state: 'visible' });
-    await expect(page.locator('#toernooi-inlog'), 'geen pincode-blok meer in de ladder-app').toBeHidden();
-    const link = page.locator('#toernooi-inlog-link a');
-    await expect(link).toBeVisible({ timeout: 15000 });
-    await expect(link).toHaveAttribute('href', /\/toernooi\/$/);
+    await expect(page.locator('#toernooi-inlog'), 'geen pincode-blok in de ladder-app').toBeHidden();
+    await expect(page.locator('#login-scherm a[href*="toernooi"]'), 'geen link naar de toernooipagina').toHaveCount(0);
+    // innerText: alleen wat er werkelijk te zien is (het verborgen pincode-blok
+    // bevat het woord wél).
+    expect(await page.locator('#login-scherm').innerText(), 'en nergens het woord toernooi').not.toMatch(/toernooi/i);
+  });
+
+  test('APART: de toernooipagina houdt de uitleg voor gasten', async ({ page }) => {
+    await page.goto(TOERNOOI_PAGINA);
+    await page.waitForSelector('#login-scherm', { state: 'visible' });
+    await expect(page.locator('#login-gast-uitleg')).toBeVisible({ timeout: 15000 });
+  });
+
+  test('TOERNOOILEIDER: ziet in de ladder-app het tabblad en de handleiding', async ({ page }) => {
+    const email = 'leider@mpladder.stb';
+    let uid;
+    try { uid = (await admin.auth().getUserByEmail(email)).uid; }
+    catch { uid = (await admin.auth().createUser({ email, password: WACHTWOORD })).uid; }
+    await beheerDb.doc(`spelers/${uid}`).set({ uid, naam: 'Toos Leider', email, rol: 'toernooileider', hcp: 0, eersteLogin: false });
+
+    await page.goto('/index.html');
+    await page.waitForSelector('#login-scherm', { state: 'visible' });
+    await page.fill('#login-email', email);
+    await page.fill('#login-pass', WACHTWOORD);
+    await page.click('#login-knop');
+    await page.waitForSelector('#login-scherm', { state: 'hidden', timeout: 20000 });
+    await expect(page.locator('#nav-toernooi-btn'), 'het tabblad Toernooi').toBeVisible({ timeout: 20000 });
+    await expect(page.locator('#help-knop-toernooi'), 'de toernooihandleiding').toBeAttached();
+    await expect(page.locator('#help-knop-toernooi')).not.toHaveCSS('display', 'none');
   });
 
   test('TOERNOOILEIDER: maakt een toernooi met een gast, zonder ladder', async ({ page }) => {
