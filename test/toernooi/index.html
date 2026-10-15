@@ -1383,11 +1383,10 @@
         <div style="flex:1;height:1px;background:var(--border);opacity:.5"></div>
       </div>
     </div>
-    <!-- v6.0.0: in de LADDER-app staat hier alleen een verwijzing. Meedoen aan
-         een toernooi gaat via de toernooipagina (…/toernooi), met een eigen inlog. -->
-    <div id="toernooi-inlog-link" style="display:none;margin-bottom:14px;font-size:13px;text-align:center">
-      <a id="toernooi-inlog-link-a" href="toernooi/" style="color:var(--green);font-weight:600">Meedoen aan een toernooi? Naar de toernooipagina →</a>
-    </div>
+    <!-- v6.1.4: hier stond (v6.0.0) een link "Meedoen aan een toernooi? Naar de
+         toernooipagina". Weg op verzoek van Sierk (15 oktober 2026): een
+         ladderspeler hoort niet met een toernooi geconfronteerd te worden.
+         Een deelnemer komt binnen via de link of QR-code van de organisatie. -->
 
     <!-- Google login (tijdelijk uitgeschakeld) -->
     <button class="btn btn-block" onclick="loginMetGoogle()" style="display:none;background:var(--card-bg);color:var(--dark);border:1.5px solid var(--border);margin-bottom:12px;gap:10px;font-size:15px">
@@ -1405,10 +1404,12 @@
            vier cijfers. Dit vak is dus alleen nog voor clubleden.
            De tekst wijst nu naar die lijst, zodat een gast die hier begint niet
            blijft proberen. -->
+      <!-- v6.1.4: de zin over gasten staat alleen in de toernooipagina; in de
+           ladder-app staat er geen namenlijst boven dit vak (vulToernooiInlog). -->
       <p style="font-size:11px;color:var(--light);margin:4px 0 0">
-        Alleen voor clubleden. Doe je als gast mee aan een toernooi? Kies dan
+        Alleen voor clubleden.<span id="login-gast-uitleg" style="display:none"> Doe je als gast mee aan een toernooi? Kies dan
         hierboven je naam uit de lijst en vul de pincode in die je van de
-        organisatie hebt gekregen.
+        organisatie hebt gekregen.</span>
       </p>
     </div>
     <div class="form-group">

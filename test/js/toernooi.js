@@ -53,10 +53,39 @@ const toernooiFout = meldFout;
 function actieveDag(t) {
   t = t || toernooiData;
   if (!t) return null;
-  const dagNr = window._bekijkDagNr ?? t.actiefDagNr ?? 1;
+  const dagNr = window._bekijkDagNr ?? standaardDagNr(t);
   return (t.dagen || [])[dagNr - 1]
       || (t.dagen || [])[(t.actiefDagNr || 1) - 1]
       || null;
+}
+
+// ============================================================
+//  v6.1.2 — OP WELKE DAG KOM JE UIT?
+// ------------------------------------------------------------
+//  Sierk, 14 oktober 2026: "een toernooi met meerdere dagen dan zou de focus na
+//  inloggen op de gestarte dag moeten komen."
+//
+//  WAT ER MIS WAS. Zonder eigen keuze (`_bekijkDagNr`) gold `t.actiefDagNr`. Dat
+//  getal staat bij het aanmaken op 1 en springt bij "+ Dag toevoegen" naar de
+//  nieuwe dag — maar bij het STARTEN van een dag verandert het niet. Een
+//  toernooi dat met twee dagen werd aangemaakt opende dus op dag 1 terwijl dag 2
+//  liep; en wie dag 2 toevoegde terwijl dag 1 liep, kwam op een dag uit die nog
+//  niet gestart was.
+//
+//  Nu: de dag die GESTART en nog niet afgesloten is. Lopen er twee, de laatste.
+//  Loopt er geen, dan blijft het `actiefDagNr`, zoals altijd. Wordt elke keer
+//  uitgerekend, niet opgeslagen — dus ook een toernooi dat al loopt heeft er
+//  meteen baat bij. Zelf een tabblad kiezen gaat hier altijd voor.
+//  ⚠ toernooi-live.html heeft een kopie (lopendeDagNrLive); de rekentest legt
+//  beide naast elkaar.
+// ============================================================
+function standaardDagNr(t) {
+  const dagen = t?.dagen || [];
+  let lopend = null;
+  dagen.forEach((d, i) => {
+    if (d && (d.gestart === true) && d.afgerond !== true) lopend = i + 1;
+  });
+  return lopend ?? t?.actiefDagNr ?? 1;
 }
 
 // Geeft dag op basis van dagNr (1-based)
@@ -897,10 +926,23 @@ function herlaadToernooiListeners() {
         // v5.43.1: elke serverkopie eerst langs de eigen, nog niet bevestigde
         // invoer — anders springt een net ingetikt getal een tel terug. Zie
         // _metEigenInvoer().
+        // v6.1.0: is er een handicap bevestigd? Dan moeten de spelers-tab (⚠),
+        // de kolomkoppen en de stand opnieuw — die rekenen ermee.
+        let hcpGewijzigd = false;
         liveSnap.docs.forEach(liveDoc => {
+          const oudeHcp = JSON.stringify(_liveScores[liveDoc.id]?.hcpDagen || null);
           store._liveScores[liveDoc.id] = _metEigenInvoer(liveDoc.id, liveDoc.data());
+          if (JSON.stringify(store._liveScores[liveDoc.id]?.hcpDagen || null) !== oudeHcp) hcpGewijzigd = true;
         });
+        if (hcpGewijzigd) verversSpelersLijst();
         if (!dag || dag.afgerond) return;
+        verversMijnHcpBlok();   // v6.1.0: op slot na de eerste score
+        if (hcpGewijzigd) {
+          const wrap = document.getElementById('t-scorecard-wrap');
+          if (!wrap || !wrap.contains(document.activeElement)) renderTScorecard();
+          renderTMatrix();
+          if (dag.uitslagZichtbaar || dagModus(toernooiData, dag) === 'strokeplay') renderTRanglijst();
+        }
         let gewijzigd = false;
         liveSnap.docs.forEach(liveDoc => {
           const uid = liveDoc.id;
@@ -1874,7 +1916,7 @@ function verdeelOpStand(spelers, aantalFlights, volgorde) {
 // 4. OP INDIVIDUELE HANDICAP — laagste handicaps bij elkaar, in banden.
 function verdeelOpHandicapBanden(spelers, aantalFlights) {
   const gesorteerd = [...(spelers || [])]
-    .map((sp, i) => ({ sp, i, h: Number(sp?.hcp) }))
+    .map((sp, i) => ({ sp, i, h: Number(exactHcpVan(sp) ?? NaN) }))   // v6.1.0: de exact hcp die nu geldt
     .sort((a, b) => {
       const ah = Number.isFinite(a.h) ? a.h : Number.MAX_SAFE_INTEGER;
       const bh = Number.isFinite(b.h) ? b.h : Number.MAX_SAFE_INTEGER;
@@ -1888,7 +1930,7 @@ function verdeelOpHandicapBanden(spelers, aantalFlights) {
 //    is. Slangsgewijs: 1-2-3-4, dan 4-3-2-1, enzovoort.
 function verdeelOpFlightHandicap(spelers, aantalFlights) {
   const gesorteerd = [...(spelers || [])]
-    .map((sp, i) => ({ sp, i, h: Number(sp?.hcp) }))
+    .map((sp, i) => ({ sp, i, h: Number(exactHcpVan(sp) ?? NaN) }))   // v6.1.0: de exact hcp die nu geldt
     .sort((a, b) => {
       const ah = Number.isFinite(a.h) ? a.h : Number.MAX_SAFE_INTEGER;
       const bh = Number.isFinite(b.h) ? b.h : Number.MAX_SAFE_INTEGER;
@@ -2164,16 +2206,27 @@ function renderFlightLijst() {
         </div>
       </div>
       <div style="padding:8px">
+        ${f.spelers.length > 0 ? `
+          <div style="display:flex;align-items:center;gap:8px;font-size:10px;color:var(--light);text-transform:uppercase">
+            <span style="flex:1"></span>
+            <span style="width:56px;flex-shrink:0;text-align:center">Exact</span>
+            ${window._flightDagModus ? `<span style="width:68px;flex-shrink:0;text-align:center">Playing</span>` : ''}
+            <span style="flex-shrink:0;${flightKeuzeBreedte()}"></span>
+          </div>` : ''}
         ${f.spelers.map((s, si) => `
           <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
             <span style="flex:1;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.naam)}</span>
-            <input type="number" value="${Math.round(s.hcp)}" min="-10" max="54"
+            <!-- v6.1.0: de EXACT handicap, met decimaal. Geldt voor alle dagen,
+                 hetzelfde vak als op het tabblad Spelers. -->
+            <input type="text" inputmode="decimal" value="${escAttr(hcpTekst(exactHcpVan(s)))}"
+              title="Exact handicap" data-flight-exact="${escAttr(s.uid)}"
               onchange="wijzigFlightHcp(${fi}, ${si}, this.value)"
-              style="width:48px;padding:3px 6px;text-align:center;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;font-size:13px;flex-shrink:0">
+              style="width:56px;padding:3px 6px;text-align:center;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;font-size:13px;flex-shrink:0">
+            ${window._flightDagModus ? flightPlayingVak(s) : ''}
             <!-- v5.19.0: dit menu stond er alleen bij twee of meer flights. Nu
                  altijd, want ook met één flight kun je iemand terug in de pool
                  zetten. -->
-            <select onchange="verplaatsSpelerFlight(${fi}, ${si}, this.value)" title="Verplaats naar een andere flight of terug naar de pool" style="font-size:12px;border:1.5px solid var(--border);border-radius:5px;padding:3px 5px;background:var(--card-bg);color:var(--dark);flex-shrink:0;min-width:104px;max-width:150px">
+            <select onchange="verplaatsSpelerFlight(${fi}, ${si}, this.value)" title="Verplaats naar een andere flight of terug naar de pool" style="font-size:12px;border:1.5px solid var(--border);border-radius:5px;padding:3px 5px;background:var(--card-bg);color:var(--dark);flex-shrink:0;${flightKeuzeBreedte()}">
               ${_flights.map((lf, lfi) => `<option value="${lfi}" ${lfi === fi ? 'selected' : ''}>${esc(lf.naam)}</option>`).join('')}
               <option value="pool">→ Pool</option>
             </select>
@@ -2213,7 +2266,65 @@ function verwijderFlight(fi) {
 }
 
 function wijzigFlightNaam(fi, naam) { if (_flights[fi]) _flights[fi].naam = naam; bewaarFlightsInConcept(); }
-function wijzigFlightHcp(fi, si, val) { if (_flights[fi]?.spelers[si]) _flights[fi].spelers[si].hcp = parseFloat(val) || 0; bewaarFlightsInConcept(); }
+function wijzigFlightHcp(fi, si, val) {
+  const sp = _flights[fi]?.spelers[si];
+  if (!sp) return;
+  // v6.1.0: met decimaal (18,4 mag), en met het moment erbij: wat de indeler nu
+  // invult gaat voor op een oudere bevestiging van de speler.
+  const h = _hcpGetal(val);
+  sp.hcp = h === null ? 0 : Math.round(h * 10) / 10;
+  sp.hcpOp = Date.now();
+  bewaarFlightsInConcept();
+}
+
+// ============================================================
+//  v6.1.0 — DE PLAYING HANDICAP IN DE FLIGHTINDELING (alleen bij een dag)
+// ------------------------------------------------------------
+//  Het vak toont wat er die dag geldt. Bevestigde de speler zelf, dan staat er
+//  ✓ achter; staat er nog niets, dan is het vak leeg met de exact handicap als
+//  grijze voorbeeldwaarde en een ? erachter (spelregel 2). Wat de indeler hier
+//  intikt wordt pas bij "Indeling opslaan" vastgelegd — zie
+//  slaFlightIndelingDagOp(). Leegmaken = zijn eigen invulling weghalen.
+// ============================================================
+// v6.1.0: bij een dag staat er een vak extra in de rij (playing). Op een
+// telefoon van 390 breed bleef er dan van de naam "An…" over. De keuzelijst
+// "verplaats naar" wordt daarom smaller; buiten een dag blijft hij zoals hij was.
+function flightKeuzeBreedte() {
+  return window._flightDagModus ? 'width:92px' : 'min-width:104px;max-width:150px';
+}
+
+function flightPlayingVak(s) {
+  const dag = actieveDag(toernooiData);
+  const p = spelerPlayingHcp(s, dag, _liveScores[s.uid]);
+  const invoer = window._flightPlayingInvoer || {};
+  const gewijzigd = Object.prototype.hasOwnProperty.call(invoer, s.uid);
+  const waarde = gewijzigd ? (invoer[s.uid] ?? '') : (p.door === 'exact' ? '' : p.waarde);
+  const teken = p.door === 'speler' ? '✓' : (p.door === 'exact' ? '?' : '');
+  const uitleg = p.door === 'speler' ? 'Bevestigd door de speler'
+    : (p.door === 'exact' ? 'Nog niet bevestigd — nu geldt de exact handicap' : 'Ingevuld door de wedstrijdleiding');
+  return `
+    <span style="display:flex;align-items:center;gap:2px;flex-shrink:0;width:68px" title="${escAttr(uitleg)}">
+      <input type="text" inputmode="numeric" value="${escAttr(String(waarde ?? ''))}"
+        placeholder="${escAttr(hcpTekst(p.door === 'exact' ? p.waarde : ''))}"
+        data-flight-playing="${escAttr(s.uid)}"
+        onchange="wijzigFlightPlaying('${escAttr(s.uid)}', this.value)"
+        style="width:54px;padding:3px 2px;text-align:center;font-family:'DM Mono',monospace;border:1.5px solid var(--border);border-radius:5px;font-size:13px">
+      <span style="font-size:12px;width:12px;color:${p.door === 'speler' ? 'var(--green)' : 'var(--gold)'}">${teken}</span>
+    </span>`;
+}
+
+function wijzigFlightPlaying(uid, val) {
+  if (!window._flightPlayingInvoer) window._flightPlayingInvoer = {};
+  const h = _hcpGetal(val);
+  if (String(val ?? '').trim() === '') { window._flightPlayingInvoer[uid] = null; return; }
+  if (h === null || !Number.isInteger(h) || h < -10 || h > 60) {
+    toast('De playing handicap is een heel getal, bijvoorbeeld 21');
+    renderFlightLijst();
+    return;
+  }
+  window._flightPlayingInvoer[uid] = h;
+}
+window.wijzigFlightPlaying = wijzigFlightPlaying;
 
 function verplaatsSpelerFlight(vanFi, si, naarFi) {
   // v5.19.0: "pool" is een geldige bestemming — iemand uit de indeling halen
@@ -3340,6 +3451,7 @@ function openFlightIndelingDag() {
   window._toernooiStarttijd = starttijd;
   window._toernooiInterval  = interval;
   window._flightDagModus = true; // signaal: sla op in dag ipv nieuw toernooi
+  window._flightPlayingInvoer = {};   // v6.1.0: nog niets ingetikt in de playing-vakken
 
   const startBtn = document.getElementById('flight-modal-start-btn');
   if (startBtn) { startBtn.textContent = 'Indeling opslaan →'; startBtn.onclick = slaFlightIndelingDagOp; }
@@ -3365,6 +3477,19 @@ async function slaFlightIndelingDagOp() {
       starttijd: f.starttijd || ''
     }));
 
+    // v6.1.0: wat de indeler in de playing-vakken intikte. Leeg = zijn eigen
+    // invulling weg; wat de speler zelf bevestigde blijft dan gewoon gelden.
+    const playingInvoer = window._flightPlayingInvoer || {};
+    if (Object.keys(playingInvoer).length > 0) {
+      if (!dag.playingHcp) dag.playingHcp = {};
+      const nu = Date.now();
+      Object.entries(playingInvoer).forEach(([uid, waarde]) => {
+        if (waarde === null) delete dag.playingHcp[uid];
+        else dag.playingHcp[uid] = { waarde, op: nu, door: 'indeler' };
+      });
+    }
+    window._flightPlayingInvoer = {};
+
     store._flights = [];
     store._flightPool = [];   // v5.19.0
     window._flightDagModus = false;
@@ -3378,36 +3503,65 @@ async function slaFlightIndelingDagOp() {
 // Sluit dag af — consolideer live-scores naar hoofddoc, zet afgerond=true
 async function sluitDagAf() {
   try {
-    const t   = toernooiData;
-    const dag = actieveDag(t);
-    if (!dag) return;
+    const dag0 = actieveDag(toernooiData);
+    if (!dag0) return;
+    const dagNr = dag0.dagNr;
 
-    if (!confirm(`Dag ${dag.dagNr} afsluiten? Scores zijn daarna niet meer aanpasbaar.`)) return;
+    if (!confirm(`Dag ${dagNr} afsluiten? Scores zijn daarna niet meer aanpasbaar.`)) return;
 
     // v3.0.0-11.106: consolideer live/-subcollectie → dag.scores voordat we afsluiten.
     // Haal verse data op uit Firestore (niet alleen de lokale _liveScores cache).
+    let verseLive = null;   // v6.1.0: ook voor de handicaps hieronder
     try {
       const liveSnap = await getDocs(collection(db, 'toernooien', actieveToernooiId, 'live'));
-      if (!dag.scores) dag.scores = {};
-      liveSnap.docs.forEach(liveDoc => {
-        const scores = _liveScoresVanDag(liveDoc.data(), dag.dagNr);
-        if (scores && scores.length > 0) dag.scores[liveDoc.id] = scores;
-      });
+      verseLive = {};
+      liveSnap.docs.forEach(liveDoc => { verseLive[liveDoc.id] = liveDoc.data(); });
     } catch(e) {
+      // Dan de lokale kopie — zie hieronder.
       console.warn('Live scores ophalen bij afsluiten mislukt, val terug op lokale data:', e);
-      // Gebruik _liveScores als fallback
-      if (!dag.scores) dag.scores = {};
-      Object.keys(_liveScores).forEach(uid => {
-        const scores = _liveScoresVanDag(_liveScores[uid], dag.dagNr);
-        if (scores && scores.length > 0) dag.scores[uid] = scores;
-      });
     }
+
+    // ⚠ v6.1.3 — PAK DE DAG OPNIEUW, NA DE VRAAG EN NA HET LEZEN.
+    // Tot hier werd alles op de `dag` van vóór de vraag gezet. Zolang de vraag
+    // openstaat en de live-scores worden opgehaald, kan de meeluisteraar
+    // `toernooiData` vervangen door een verse serverkopie. De oude `dag` wees dan
+    // in het WEGGEGOOIDE object: `afgerond = true` kwam daar terecht en
+    // slaToernooiOp() schreef de NIEUWE kopie weg — zonder afgerond, zonder de
+    // scores, zonder de vastgelegde handicaps. Geen melding: het scherm zei
+    // gewoon "afgesloten". Gemeten 14 oktober 2026: vlak na het starten afsluiten
+    // ging 1 van de 3 keer verloren. Zelfde fout als in startDag() (v5.15.0).
+    // Vanaf hier tot slaToernooiOp() staat GEEN `await` — zo kan er niets meer
+    // tussendoor komen. Bewaakt door tests/afsluiten.test.cjs: die vervangt
+    // `toernooiData` precies tijdens de vraag en tijdens het lezen. (Een
+    // browserproef kon dat toeval niet betrouwbaar opwekken.)
+    const t = toernooiData;
+    const dag = (t?.dagen || []).find(d => d.dagNr === dagNr);
+    if (!dag) { toast('De dag is ondertussen verdwenen — ververs het scherm'); return; }
+
+    const bron = verseLive || _liveScores;
+    if (!dag.scores) dag.scores = {};
+    Object.keys(bron).forEach(uid => {
+      const scores = _liveScoresVanDag(bron[uid], dagNr);
+      if (scores && scores.length > 0) dag.scores[uid] = scores;
+    });
+
+    // v6.1.0 — DE PLAYING HANDICAP VAN DEZE DAG VASTLEGGEN. Zo rekent de dag
+    // daarna altijd met de handicap waarmee hij gespeeld is, ook als iemand
+    // later zijn exact handicap aanpast. `door` onthoudt waar hij vandaan kwam
+    // (speler, indeler, of de exact handicap omdat niemand hem invulde).
+    // Moet vóór `afgerond = true`: daarna leest spelerPlayingHcp() alleen nog dit.
+    const vastgelegdOp = Date.now();
+    if (!dag.playingHcp) dag.playingHcp = {};
+    (t.spelers || []).forEach(sp => {
+      const p = spelerPlayingHcp(sp, dag, bron[sp.uid]);
+      if (p.waarde !== null) dag.playingHcp[sp.uid] = { waarde: p.waarde, op: vastgelegdOp, door: p.door };
+    });
 
     dag.afgerond = true;
     dag.uitslagZichtbaar = true;
 
     await slaToernooiOp();
-    toast(`Dag ${dag.dagNr} afgesloten`);
+    toast(`Dag ${dagNr} afgesloten`);
     renderToernooiActief();
   } catch(e) { toernooiFout('Dag afsluiten', e); }
 }
@@ -3591,9 +3745,36 @@ function spelerRijenHtml(t) {
         <option value="">— geen team —</option>
         ${teams.map(team => `<option value="${escAttr(String(team.id))}" ${s.teamId === team.id ? 'selected' : ''}>${esc(team.naam)}</option>`).join('')}
       </select>`;
+  // v6.1.0: de EXACT handicap staat hier, en geldt voor alle dagen. Heeft de
+  // speler hem zelf aangepast (bij het bevestigen op zijn scorekaart), dan staat
+  // zijn waarde hier met "door speler" eronder. Scheelt het meer dan 2 met wat de
+  // indeler had staan, dan een ⚠ met "akkoord" (spelregel 3). Zie "EXACT
+  // HANDICAP EN PLAYING HANDICAP PER DAG".
+  const hcpVak = (s) => {
+    const e = spelerExactHcp(s, _liveScores[s.uid]);
+    return `
+      <span style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;margin-right:8px">
+        <input type="text" inputmode="decimal" value="${escAttr(hcpTekst(e.waarde))}"
+          data-hcp-uid="${escAttr(s.uid)}" aria-label="Exact handicap van ${escAttr(s.naam)}"
+          onchange="zetExactHcp('${escAttr(s.uid)}', this.value)"
+          style="width:56px;padding:4px 6px;text-align:center;font-family:'DM Mono',monospace;font-size:13px">
+        <span style="font-size:10px;color:var(--light)">${e.door === 'speler' ? 'door speler' : 'exact hcp'}</span>
+      </span>`;
+  };
+  const hcpMelding = (s) => {
+    const w = hcpWaarschuwing(s, _liveScores[s.uid]);
+    if (!w) return '';
+    return `<br><span class="t-hcp-waarschuwing" data-hcp-uid="${escAttr(s.uid)}"
+        style="display:inline-block;margin-top:4px;padding:3px 6px;border-radius:6px;background:#fdecea;color:#c0392b;font-size:12px;font-weight:600">
+        ⚠ Speler gaf ${esc(hcpTekst(w.nieuw))} op — was ${esc(hcpTekst(w.oud))}
+        <button class="btn btn-sm" onclick="hcpAkkoord('${escAttr(s.uid)}')"
+          style="margin-left:6px;padding:2px 8px;font-size:11px">akkoord</button>
+      </span>`;
+  };
   return t.spelers.map(s => `
     <div style="display:flex;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
-      <span style="flex:1;font-size:14px">${esc(s.naam)}${s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}<br>${inlogRegel(s)}</span>
+      <span style="flex:1;font-size:14px">${esc(s.naam)}${s.gast ? ' <em style="font-size:11px;color:var(--light)">(gast)</em>' : ''}<br>${inlogRegel(s)}${hcpMelding(s)}</span>
+      ${hcpVak(s)}
       ${teamKeuze(s)}
       <button class="btn btn-sm" style="background:var(--alert-bg);color:var(--alert-text);border:none;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:12px"
         onclick="verwijderToernooiSpelerNieuw('${escAttr(s.uid)}')">✕</button>
@@ -4511,7 +4692,8 @@ function renderToernooiActief() {
   (t.dagen || []).forEach(d => {
     const actief = !toonToernooiTab && !toonSpelersTab && d.dagNr === dagNr;
     const kleur = d.afgerond ? 'var(--mid)' : 'var(--green)';
-    dagTabsHtml += `<button onclick="selecteerDag(${d.dagNr})"
+    // v6.1.2: data-dagtab/data-actief zodat de browserproef ziet op welke dag je uitkomt.
+    dagTabsHtml += `<button onclick="selecteerDag(${d.dagNr})" data-dagtab="${d.dagNr}"${actief ? ' data-actief="1"' : ''}
       style="flex-shrink:0;padding:6px 14px;border-radius:20px 20px 0 0;border:1.5px solid ${actief ? kleur : 'var(--border)'};border-bottom:none;background:${actief ? kleur : 'transparent'};color:${actief ? 'white' : 'var(--mid)'};font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500">
       Dag ${d.dagNr}${d.afgerond ? ' ✓' : ''}
     </button>`;
@@ -5219,6 +5401,29 @@ function renderTScorecard() {
   });
   html += `<div id="t-kaart-waarschuwing" style="${dagAfgerond ? 'display:none' : waarschuwingStijl(kaartOordeel(kleuren))}">${esc(kaartOordeel(kleuren).tekst)}</div>`;
 
+  // v6.1.0 — DE HANDICAP VAN VANDAAG. De speler bevestigt hier zijn exact en
+  // playing handicap; de wedstrijdleiding ziet wie dat nog niet deed
+  // (spelregel 2). Zie "EXACT HANDICAP EN PLAYING HANDICAP PER DAG".
+  if (!dagAfgerond) {
+    const mijnSpeler = (!isBeheerder && mijnUid2) ? spelers.find(s => s.uid === mijnUid2) : null;
+    if (mijnSpeler) html += mijnHcpBlokHtml(mijnSpeler, dag);
+    if (isBeheerder) {
+      const open = spelers.filter(s => !spelerPlayingHcp(s, dag, _liveScores[s.uid]).bevestigd);
+      if (open.length > 0) {
+        html += `<div id="t-hcp-open" style="margin:6px 12px;padding:8px 10px;border-radius:8px;font-size:12px;background:var(--gold-pale);color:var(--gold)">
+          ⛳ Playing handicap nog niet bevestigd: ${open.map(s => esc(kortVan(s))).join(', ')} — speelt nu met de exact handicap.
+        </div>`;
+      }
+    }
+  }
+  // De playing handicap van vandaag, voor in de kolomkop.
+  const dagSpelersKop = spelersVoorDag(t, dag);
+  const playingVoorKop = (s) => {
+    const d = dagSpelersKop.find(x => x.uid === s.uid);
+    const h = Number(d?.hcp ?? s.hcp);
+    return Number.isFinite(h) ? Math.round(h) : 0;
+  };
+
   html += `<div style="overflow-x:auto"><table class="scorecard" style="width:100%"><thead><tr><th class="player-col">Hole</th>`;
   spelers.forEach(s => {
     // v5.43.0: hier stond een groen vinkje boven de kolom van de speler die jij
@@ -5231,10 +5436,12 @@ function renderTScorecard() {
     // de gastspelers." Nu staat daar altijd de handicap — die stond er bij een
     // gast toch al, en het is de enige plek waar de coordinator hem kan
     // wijzigen (aantikken). Boven staat de korte unieke naam: Arjan V, Arjan R.
+    // v6.1.0: dat is nu de PLAYING handicap van deze dag (aantikken zet hem
+    // voor deze dag), niet meer de ene handicap van het hele toernooi.
     html += `<th class="player-col" style="max-width:70px">
       <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px" title="${esc(s.naam)}">${esc(korteNamen[s.uid] || s.naam.split(' ')[0])}</span>
-      <span class="hole-par" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px;${isBeheerder&&!dagAfgerond?'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)':''}" ${isBeheerder&&!dagAfgerond?`onclick="editToernooiHcp('${escAttr(s.uid)}')"`:''}>
-        hcp ${Math.round(Number(s.hcp) || 0)}
+      <span class="hole-par" data-kop-hcp="${escAttr(s.uid)}" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65px;${isBeheerder&&!dagAfgerond?'cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.4)':''}" ${isBeheerder&&!dagAfgerond?`onclick="editToernooiHcp('${escAttr(s.uid)}')"`:''}>
+        hcp ${playingVoorKop(s)}
       </span>
     </th>`;
   });
@@ -5366,6 +5573,7 @@ function updateTScore(spelerId, holeIdx, val) {
 
   updateTTotaalRijInline();
   verversScoreKleuren();
+  verversMijnHcpBlok();   // v6.1.0: wie zijn eerste score intikt, zet zijn handicap op slot
 
   const isBeheerder = magToernooiLeidenRol();
   if (isBeheerder) {
@@ -5451,18 +5659,29 @@ function editToernooiHcp(spelerId) {
   if (!t) return;
   const speler = t.spelers.find(s => s.uid === spelerId);
   if (!speler) return;
-  const nieuw = prompt(`Playing handicap voor ${speler.naam.split(' ')[0]}:`, Math.round(speler.hcp));
+  // ⚠ v6.1.0 — DIT IS NU DE PLAYING HANDICAP VAN DEZE DAG. Tot v6.0.2 zette dit
+  // de ene handicap van het hele toernooi. Die heet nu de exact handicap en
+  // staat op het tabblad Spelers; de playing handicap verschilt per baan en dus
+  // per dag. Zie "EXACT HANDICAP EN PLAYING HANDICAP PER DAG".
+  const dag = actieveDag(t);
+  if (!dag) return;
+  const huidig = spelerPlayingHcp(speler, dag, _liveScores[spelerId]);
+  const nieuw = prompt(
+    `Playing handicap dag ${dag.dagNr} voor ${speler.naam.split(' ')[0]} (exact ${hcpTekst(exactHcpVan(speler))}):`,
+    huidig.waarde === null ? '' : String(huidig.waarde));
   if (nieuw === null) return;
-  const val = parseFloat(nieuw);
-  if (isNaN(val)) { toast('Ongeldige handicap'); return; }
-  speler.hcp = val;
-  if (actieveToernooiId) setDoc(doc(db, 'toernooien', actieveToernooiId), toernooiData);
+  const val = _hcpGetal(nieuw);
+  if (val === null || !Number.isInteger(val)) { toast('De playing handicap is een heel getal, bijvoorbeeld 21'); return; }
+  if (!dag.playingHcp) dag.playingHcp = {};
+  dag.playingHcp[spelerId] = { waarde: val, op: Date.now(), door: 'indeler' };
+  if (actieveToernooiId) setDoc(doc(db, 'toernooien', actieveToernooiId), JSON.parse(JSON.stringify(toernooiData)));
   renderTScorecard();
   renderTRanglijst();
   renderTMatrix();
-  const dag = actieveDag(t);
   const flights = dag?.flights || [];
-  let hcpSpelers = t.spelers;
+  // v6.1.0: het overzicht van de slagen rekent met de playing handicap van vandaag.
+  const dagSpelers = spelersVoorDag(t, dag);
+  let hcpSpelers = dagSpelers;
   if (!magToernooiLeidenRol() && flights.length > 0) {
     const voornaam = (huidigeBruiker?.gebruikersnaam || '').toLowerCase().split(' ')[0];
     const mijnFlight = flights.find(f => (f.spelerIds || []).some(sid => {
@@ -5470,7 +5689,7 @@ function editToernooiHcp(spelerId) {
       return sp && sp.naam.toLowerCase().includes(voornaam);
     }));
     if (mijnFlight) hcpSpelers = (mijnFlight.spelerIds || []).map(sid =>
-      t.spelers.find(s => s.uid === sid)).filter(Boolean);
+      dagSpelers.find(s => s.uid === sid)).filter(Boolean);
   }
   // v5.8.0: renderHcpBlok krijgt nu de instellingen als object mee in plaats
   // van alleen een percentage. Toernooien spelen altijd matchplay met de
@@ -5478,13 +5697,289 @@ function editToernooiHcp(spelerId) {
   renderHcpBlok(hcpSpelers, dag?.holes || [],
     { hcpPct: t.hcpPct ?? 0.75, hcpVerdeling: 'volledig', hcpPlaatsing: 'laag' },
     'toernooi-hcp-blok', 'matchplay');
-  toast(`Handicap ${speler.naam.split(' ')[0]} bijgewerkt ✓`);
+  toast(`Playing handicap dag ${dag.dagNr} ${speler.naam.split(' ')[0]}: ${val} ✓`);
 }
 
 function updateTTotalen() { updateTTotaalRijInline(); }
 function toggleTScorecard() {
   const w = document.getElementById('t-scorecard-wrap');
   w.style.display = w.style.display === 'none' ? '' : 'none';
+}
+
+// ============================================================
+//  v6.1.0 — EXACT HANDICAP EN PLAYING HANDICAP PER DAG
+// ------------------------------------------------------------
+//  Sierk, 14 oktober 2026: "Voor een toernooi moet in de spelers tab de exact
+//  handicap worden ingevuld … per dag moet er ook een veld naast komen met de
+//  playing handicap. Die is namelijk per baan en per dag verschillend. … Dit is
+//  flink wat werk voor de indeler. … Ik denk erover om dit aan de speler over te
+//  laten." Daarna JA BOUWEN, met drie spelregels:
+//    1. de speler kan zijn handicap van een dag wijzigen tot de eerste score van
+//       die dag op zijn kaart staat; daarna alleen nog de wedstrijdleiding;
+//    2. de wedstrijdleiding ziet per dag wie nog niet bevestigd heeft;
+//    3. een exact handicap die de speler meer dan 2 punten anders opgeeft dan de
+//       indeler heeft staan, geeft een ⚠ in de spelers-tab tot de indeler op
+//       "akkoord" tikt.
+//
+//  WAAR HET STAAT
+//    t.spelers[].hcp        exact handicap volgens de indeler (spelers-tab)
+//    t.spelers[].hcpOp      wanneer de indeler hem het laatst zette (ms)
+//    dag.playingHcp[uid]    { waarde, op, door } — door de indeler ingevuld in
+//                           de flightindeling of in de kolomkop, OF bevroren bij
+//                           "dag afsluiten" (dan zegt `door` waar hij vandaan kwam)
+//    live/{uid}.hcpDagen    { "<dagNr>": { exact, playing, op } } — wat de speler
+//                           zelf bevestigde. Alleen hij of de wedstrijdleiding
+//                           mag dat schrijven (firestore.rules).
+//
+//  WELKE GELDT — het nieuwste wint. Een speler die zijn exact handicap
+//  bevestigt ná de laatste wijziging van de indeler, bepaalt de exact handicap
+//  voor alle dagen; een latere wijziging door de indeler gaat daar weer voor.
+//  Voor de playing handicap van één dag geldt hetzelfde tussen de speler en de
+//  indeler. Heeft niemand iets ingevuld, dan is de playing handicap gelijk aan
+//  de exact handicap (Sierks keuze).
+//
+//  ⚠ "Het nieuwste" gaat op de klok van het toestel. Een telefoon die een paar
+//  minuten verkeerd staat kan dus net verkeerd uitvallen. Niet gemeten op de
+//  baan; voor deze vergelijking (indeler tegen speler, vaak uren verschil)
+//  niet van belang geacht.
+// ============================================================
+
+// Een handicap als getal, of null. Een komma mag (18,4 — zo tikt een Nederlandse
+// telefoon hem).
+function _hcpGetal(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(String(v).trim().replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+}
+
+// Voor op het scherm: 18,4 — en 18 zonder ",0".
+function hcpTekst(v) {
+  const n = _hcpGetal(v);
+  if (n === null) return '';
+  return String(Math.round(n * 10) / 10).replace('.', ',');
+}
+
+// De laatste bevestiging van de speler zelf, over alle dagen heen.
+function _laatsteHcpBevestiging(live) {
+  let laatste = null;
+  Object.values(live?.hcpDagen || {}).forEach(b => {
+    if (!b || _hcpGetal(b.exact) === null) return;
+    if (!laatste || (Number(b.op) || 0) > (Number(laatste.op) || 0)) laatste = b;
+  });
+  return laatste;
+}
+
+// De exact handicap die nu geldt.
+//   { waarde, door: 'indeler' | 'speler', indeler: wat de indeler heeft staan }
+function spelerExactHcp(sp, live) {
+  const indeler = _hcpGetal(sp?.hcp);
+  const b = _laatsteHcpBevestiging(live);
+  if (b && (Number(b.op) || 0) > (Number(sp?.hcpOp) || 0)) {
+    return { waarde: _hcpGetal(b.exact), door: 'speler', indeler };
+  }
+  return { waarde: indeler, door: 'indeler', indeler };
+}
+
+// Spelregel 3: een ⚠ voor de indeler als de speler zijn exact handicap meer dan
+// 2 punten anders opgaf dan wat de indeler heeft staan. Weg na "akkoord"
+// (hcpAkkoord neemt de waarde over) of als de indeler zelf iets anders invult.
+// Afgerond op tienden: 18,4 − 16,4 is in een computer 2,0000000000000018.
+function hcpWaarschuwing(sp, live) {
+  const e = spelerExactHcp(sp, live);
+  if (e.door !== 'speler' || e.indeler === null || e.waarde === null) return null;
+  const verschil = Math.round(Math.abs(e.waarde - e.indeler) * 10) / 10;
+  return verschil > 2 ? { oud: e.indeler, nieuw: e.waarde, verschil } : null;
+}
+
+// De playing handicap van een speler op een dag.
+//   { waarde, door: 'speler' | 'indeler' | 'exact', bevestigd }
+// `bevestigd` is false als niemand hem invulde en de exact handicap geldt —
+// spelregel 2 laat de wedstrijdleiding precies die spelers zien.
+function spelerPlayingHcp(sp, dag, live) {
+  const uid = sp?.uid;
+  const vanIndeler = dag?.playingHcp?.[uid] || null;
+  const indelerWaarde = _hcpGetal(vanIndeler?.waarde);
+  // Een afgesloten dag is bevroren (sluitDagAf). Wat de speler daarna nog in
+  // zijn live-document heeft staan doet niet meer mee.
+  if (dag?.afgerond) {
+    if (indelerWaarde !== null) {
+      const door = vanIndeler.door || 'indeler';
+      return { waarde: indelerWaarde, door, bevestigd: door !== 'exact' };
+    }
+    // Afgesloten vóór v6.1.0: precies zoals het toen rekende.
+    return { waarde: _hcpGetal(sp?.hcp), door: 'exact', bevestigd: false };
+  }
+  // Een bevroren "exact" (dag afgesloten en weer heropend) is geen keuze van de
+  // indeler: dan geldt gewoon weer de exact handicap van nu.
+  const indelerTelt = indelerWaarde !== null && vanIndeler.door !== 'exact';
+  const vanSpeler = live?.hcpDagen?.[String(dag?.dagNr)] || null;
+  const spelerWaarde = _hcpGetal(vanSpeler?.playing);
+  const opIndeler = Number(vanIndeler?.op) || 0;
+  const opSpeler  = Number(vanSpeler?.op) || 0;
+  if (spelerWaarde !== null && (!indelerTelt || opSpeler > opIndeler)) {
+    return { waarde: spelerWaarde, door: 'speler', bevestigd: true };
+  }
+  if (indelerTelt) return { waarde: indelerWaarde, door: 'indeler', bevestigd: true };
+  return { waarde: spelerExactHcp(sp, live).waarde, door: 'exact', bevestigd: false };
+}
+
+// Spelregel 1: mag de speler zijn handicap voor deze dag nog wijzigen? Tot de
+// eerste score van die dag op zijn kaart staat — in welke laag ook, dus ook als
+// een flightgenoot of de wedstrijdleiding hem intikte — en zolang de dag niet is
+// afgesloten.
+function hcpWijzigbaar(dag, uid, live) {
+  if (!dag || dag.afgerond || !uid) return false;
+  const vol = (v) => v !== null && v !== undefined && v !== '';
+  const uitLive = _liveScoresVanDag(live, dag.dagNr) || [];
+  const uitDoc  = dag.scores?.[uid] || [];
+  return !uitLive.some(vol) && !uitDoc.some(vol);
+}
+
+// De exact handicap die nu geldt, met de live-gegevens van dit toernooi.
+function exactHcpVan(sp) {
+  return spelerExactHcp(sp, _liveScores[sp?.uid]).waarde;
+}
+
+// De spelers van het toernooi, met als `hcp` de PLAYING handicap van deze dag.
+// Zelfde volgorde als t.spelers: de berekeningen rekenen op die plek in de rij.
+// Heeft iemand helemaal geen handicap, dan blijft hij zoals hij was.
+function spelersVoorDag(t, dag) {
+  return (t?.spelers || []).map(sp => {
+    const p = spelerPlayingHcp(sp, dag, _liveScores[sp?.uid]).waarde;
+    return p === null ? sp : { ...sp, hcp: p };
+  });
+}
+
+// ── Het blok boven de scorekaart van de speler zelf ──
+// Kan hij nog wijzigen (spelregel 1), dan twee vakjes en een knop. Het vak voor
+// de playing handicap blijft LEEG zolang hij niets bevestigde: hij moet hem
+// zelf invullen, niet een voorgevuld getal wegtikken. Staat zijn eerste score er
+// al, dan alleen de getallen en waar hij terechtkan.
+function mijnHcpBlokHtml(sp, dag) {
+  const live = _liveScores[sp.uid];
+  const e = spelerExactHcp(sp, live);
+  const p = spelerPlayingHcp(sp, dag, live);
+  const kop = `Jouw handicap — dag ${dag.dagNr}${dag.baan ? ' · ' + esc(dag.baan) : ''}`;
+  const stijl = 'margin:6px 12px;padding:8px 10px;border-radius:8px;font-size:13px;background:var(--soft-bg);border:1px solid var(--border)';
+  if (!hcpWijzigbaar(dag, sp.uid, live)) {
+    return `<div id="t-mijn-hcp" style="${stijl}">
+      <strong>${kop}</strong><br>
+      Exact ${esc(hcpTekst(e.waarde))} · playing ${esc(p.waarde === null ? '–' : String(p.waarde))}
+      <span style="display:block;font-size:11px;color:var(--light);margin-top:2px">🔒 Je eerste score staat er al. Klopt dit niet? Meld het bij de wedstrijdleiding.</span>
+    </div>`;
+  }
+  const status = p.door === 'speler'
+    ? '✓ Bevestigd. Je kunt hem nog wijzigen tot je eerste score er staat.'
+    : (p.door === 'indeler'
+      ? 'Ingevuld door de wedstrijdleiding — klopt het? Tik op Bevestigen.'
+      : 'Nog niet bevestigd — vul je playing handicap voor deze baan in en tik op Bevestigen.');
+  const veld = 'width:64px;padding:4px 6px;text-align:center;font-family:\'DM Mono\',monospace;font-size:14px';
+  return `<div id="t-mijn-hcp" style="${stijl}">
+    <strong>${kop}</strong>
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:6px">
+      <label style="font-size:11px;color:var(--mid)">Exact<br>
+        <input id="t-hcp-exact" type="text" inputmode="decimal" value="${escAttr(hcpTekst(e.waarde))}" style="${veld}"></label>
+      <label style="font-size:11px;color:var(--mid)">Playing<br>
+        <input id="t-hcp-playing" type="text" inputmode="numeric" value="${escAttr(p.door === 'exact' || p.waarde === null ? '' : String(p.waarde))}" style="${veld}"></label>
+      <button class="btn btn-sm btn-primary" id="t-hcp-bevestig" onclick="bevestigMijnHcp()">Bevestigen</button>
+    </div>
+    <span id="t-mijn-hcp-status" style="display:block;margin-top:4px;font-size:11px;color:${p.door === 'speler' ? 'var(--green)' : 'var(--gold)'}">${status}</span>
+  </div>`;
+}
+
+// Alleen het handicapblok opnieuw, niet de hele kaart: zo gaat het op slot zodra
+// de eerste score binnenkomt (spelregel 1), zonder de cursor weg te halen bij
+// wie op dat moment een score intikt. Staat de cursor IN het blok, dan niet.
+function verversMijnHcpBlok() {
+  const blok = document.getElementById('t-mijn-hcp');
+  const typtErIn = blok && blok.contains(document.activeElement) && document.activeElement.tagName === 'INPUT';
+  if (!blok || typtErIn) return;
+  const t = toernooiData;
+  const dag = actieveDag(t);
+  const mij = huidigeBruiker?.uid || null;
+  const sp = (t?.spelers || []).find(s => s.uid === mij);
+  if (!dag || !sp || dag.afgerond) return;
+  blok.outerHTML = mijnHcpBlokHtml(sp, dag);
+}
+
+// ── De speler bevestigt zijn handicap van vandaag (scorekaart) ──
+async function bevestigMijnHcp() {
+  const t   = toernooiData;
+  const dag = actieveDag(t);
+  const mij = huidigeBruiker?.uid || null;
+  if (!t || !dag || !mij || !actieveToernooiId) return;
+  if (!hcpWijzigbaar(dag, mij, _liveScores[mij])) {
+    toast('Je eerste score staat er al — je handicap wijzigen kan nu alleen nog via de wedstrijdleiding.', 6000);
+    renderTScorecard();
+    return;
+  }
+  const exact   = _hcpGetal(document.getElementById('t-hcp-exact')?.value);
+  const playing = _hcpGetal(document.getElementById('t-hcp-playing')?.value);
+  if (exact === null || exact < -10 || exact > 54) { toast('Vul een exact handicap in tussen -10 en 54'); return; }
+  if (playing === null || playing < -10 || playing > 60 || !Number.isInteger(playing)) {
+    toast('De playing handicap is een heel getal, bijvoorbeeld 21'); return;
+  }
+  const invoer = { exact: Math.round(exact * 10) / 10, playing, op: Date.now() };
+  const dagSleutel = String(dag.dagNr);
+  // Meteen lokaal, zodat de kaart en de berekening het direct gebruiken.
+  const live = _liveScores[mij] || {};
+  store._liveScores[mij] = { ...live, hcpDagen: { ...(live.hcpDagen || {}), [dagSleutel]: invoer } };
+  try {
+    await setDoc(doc(db, 'toernooien', actieveToernooiId, 'live', mij),
+      { hcpDagen: { [dagSleutel]: invoer } }, { merge: true });
+    toast(`Handicap bevestigd: exact ${hcpTekst(invoer.exact)} · playing ${invoer.playing} ✓`);
+  } catch(e) {
+    console.error('Handicap bevestigen mislukt:', e);
+    toast(`⚠ Je handicap is niet opgeslagen (${e?.code || 'onbekende fout'}). Meld het bij de wedstrijdleiding.`, 9000);
+  }
+  renderTScorecard();
+  renderTMatrix();
+  if (dag.uitslagZichtbaar || dagModus(t, dag) === 'strokeplay') renderTRanglijst();
+}
+window.bevestigMijnHcp = bevestigMijnHcp;
+
+// ── De indeler zet een exact handicap (spelers-tab) ──
+async function zetExactHcp(uid, waarde) {
+  const t = toernooiData;
+  const sp = (t?.spelers || []).find(s => s.uid === uid);
+  if (!sp) return;
+  const h = _hcpGetal(waarde);
+  if (h === null || h < -10 || h > 54) { toast('Vul een handicap in tussen -10 en 54'); verversSpelersLijst(); return; }
+  sp.hcp = Math.round(h * 10) / 10;
+  sp.hcpOp = Date.now();
+  try {
+    await slaToernooiOp();
+    toast(`Exact handicap ${sp.naam.split(' ')[0]}: ${hcpTekst(sp.hcp)} ✓`);
+  } catch(e) { toernooiFout('Handicap opslaan', e); }
+  verversSpelersLijst();
+}
+window.zetExactHcp = zetExactHcp;
+
+// ── Spelregel 3: de indeler gaat akkoord met de handicap die de speler opgaf ──
+async function hcpAkkoord(uid) {
+  const t = toernooiData;
+  const sp = (t?.spelers || []).find(s => s.uid === uid);
+  if (!sp) return;
+  const e = spelerExactHcp(sp, _liveScores[uid]);
+  if (e.waarde === null) return;
+  sp.hcp = e.waarde;
+  sp.hcpOp = Date.now();
+  try {
+    await slaToernooiOp();
+    toast(`Exact handicap ${sp.naam.split(' ')[0]}: ${hcpTekst(sp.hcp)} overgenomen ✓`);
+  } catch(e2) { toernooiFout('Handicap overnemen', e2); }
+  verversSpelersLijst();
+}
+window.hcpAkkoord = hcpAkkoord;
+
+// De spelerslijst opnieuw tekenen, op het tabblad én in het venster — maar niet
+// onder iemand die er net in typt.
+function verversSpelersLijst() {
+  const t = toernooiData;
+  ['t-spelers-lijst', 'toernooi-speler-verwijder-lijst'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el.contains(document.activeElement)) el.innerHTML = spelerRijenHtml(t);
+  });
 }
 
 // ============================================================
@@ -5534,6 +6029,9 @@ function berekenTPuntenVoorDag(t, dag) {
   const dagPtTie  = dagInstelling(dag, t, 'ptTie',  0);
   const dagPtLoss = dagInstelling(dag, t, 'ptLoss', -2);
   const dagHcpPct = dagInstelling(dag, t, 'hcpPct', 0.75);
+  // v6.1.0: met de PLAYING handicap van deze dag, niet de exact handicap van het
+  // toernooi. Zelfde volgorde als t.spelers. Zie spelersVoorDag().
+  const dagSpelers = spelersVoorDag(t, dag);
   const n = t.spelers.length;
   const punten = new Array(n).fill(0);
   const won    = new Array(n).fill(0);
@@ -5545,8 +6043,8 @@ function berekenTPuntenVoorDag(t, dag) {
 
   for (let i = 0; i < n; i++) {
     for (let j = i+1; j < n; j++) {
-      const sA = t.spelers[i];
-      const sB = t.spelers[j];
+      const sA = dagSpelers[i];
+      const sB = dagSpelers[j];
       let standA = 0;
       let gespeeld = false;
 
@@ -5849,7 +6347,7 @@ function dagPuntenTotaal(t) {
 
 function berekenTPunten(dagNrOverride) {
   const t = toernooiData;
-  const rlDag = dagNrOverride !== undefined ? dagNrOverride : (window._ranglijstDagNr ?? (t.actiefDagNr || 1));
+  const rlDag = dagNrOverride !== undefined ? dagNrOverride : (window._ranglijstDagNr ?? standaardDagNr(t));   // v6.1.2
 
   if (rlDag === 0) {
     // Totaal: optel over alle dagen
@@ -5894,7 +6392,8 @@ function berekenTPunten(dagNrOverride) {
 // Strokeplay ranglijst voor één dag
 function berekenStrokeplayRanglijstVoorDag(t, dag) {
   if (!dag) return [];
-  return t.spelers.map(s => {
+  // v6.1.0: met de PLAYING handicap van deze dag. Zie spelersVoorDag().
+  return spelersVoorDag(t, dag).map(s => {
     const scores = dag.scores?.[s.uid] || [];
     const hcp = Math.round(s.hcp);
     const aantalHoles = dag.holes.length;
@@ -6088,7 +6587,7 @@ function renderTTeamstand() {
   const teams = teamsVan(t);
   if (!t || teams.length === 0) { el.innerHTML = ''; return; }
 
-  const rlDag = window._ranglijstDagNr ?? (t.actiefDagNr || 1);
+  const rlDag = window._ranglijstDagNr ?? standaardDagNr(t);   // v6.1.2: de dag die loopt
   const telling = teamTellingVan(t);
   const hoogWint = teamHoogWint(telling);
   const stand = teamStand(teams, t.spelers || [], teamScoresPerDag(t, rlDag), {
@@ -6135,7 +6634,7 @@ function renderTRanglijst() {
   const t = toernooiData;
   if (!t) return;
 
-  const rlDag = window._ranglijstDagNr ?? (t.actiefDagNr || 1);
+  const rlDag = window._ranglijstDagNr ?? standaardDagNr(t);   // v6.1.2: de dag die loopt
 
   // v5.12.0: de ranglijst volgt de speelwijze van de DAG die je bekijkt. Bij
   // "Totaal" met verschillende speelwijzen is geen van beide tellingen bruikbaar
@@ -6262,7 +6761,7 @@ function renderTMatrix() {
   const t = toernooiData;
   if (!t) return;
   const n = t.spelers.length;
-  const rlDag = window._ranglijstDagNr ?? (t.actiefDagNr || 1);
+  const rlDag = window._ranglijstDagNr ?? standaardDagNr(t);   // v6.1.2: de dag die loopt
   const { matrix, standen } = berekenTPunten(rlDag);
 
   const kleur = { W: '#d4edda', L: '#f8d7da', T: '#fff3cd' };

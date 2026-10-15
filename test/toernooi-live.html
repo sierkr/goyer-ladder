@@ -134,8 +134,24 @@ let _docUnsub = null;    // main-doc onSnapshot unsubscribe
 // v5.26.0: 0 betekent Totaal — de stand over alle dagen samen.
 let gekozenDagNr = null;
 
+// v6.1.2: KOPIE van standaardDagNr() uit js/toernooi.js — de dag die gestart en
+// nog niet afgesloten is (bij twee: de laatste), anders actiefDagNr. Zonder deze
+// regel opende deze pagina op dag 1 terwijl dag 2 liep, omdat het starten van
+// een dag `actiefDagNr` niet verzet. De rekentest legt beide kanten naast elkaar.
+function lopendeDagNrLive(t) {
+  const dagen = t?.dagen || [];
+  let lopend = null;
+  dagen.forEach((d, i) => {
+    if (d && (d.gestart === true) && d.afgerond !== true) lopend = i + 1;
+  });
+  return lopend ?? t?.actiefDagNr ?? 1;
+}
+
 function pasGekozenDagToe() {
-  if (!toernooiData || !gekozenDagNr) return;   // null en 0 doen hier niets
+  if (!toernooiData) return;
+  // v6.1.2: geen eigen keuze → de dag die loopt.
+  if (gekozenDagNr === null) { toernooiData.actiefDagNr = lopendeDagNrLive(toernooiData); return; }
+  if (!gekozenDagNr) return;   // 0 (Totaal) doet hier niets
   const aantal = (toernooiData.dagen || []).length;
   if (gekozenDagNr >= 1 && gekozenDagNr <= aantal) {
     toernooiData.actiefDagNr = gekozenDagNr;
@@ -293,6 +309,43 @@ function tellendGetal(spelerWaarde, markerWaarde, beheerWaarde) {
   if (sp !== null) return sp;          // anders de speler zelf
   const flight = (Array.isArray(markerWaarde) ? markerWaarde : [markerWaarde]).filter(v => !leeg(v));
   return flight.length > 0 ? Number(flight[0]) : null;   // is die er niet, zijn flight
+}
+
+// ============================================================
+//  v6.1.0 — DE PLAYING HANDICAP VAN EEN DAG
+// ------------------------------------------------------------
+//  ⚠ KOPIE van _hcpGetal(), spelerExactHcp() en spelerPlayingHcp() uit
+//  js/toernooi.js, maar alleen het getal. Zie daar "EXACT HANDICAP EN PLAYING
+//  HANDICAP PER DAG". De rekentest legt beide kanten naast elkaar.
+//  Wijzig je hier iets, wijzig het dan ook in js/toernooi.js.
+// ============================================================
+function hcpGetalLive(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(String(v).trim().replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+}
+
+function exactHcpLive(s, live) {
+  const indeler = hcpGetalLive(s?.hcp);
+  let laatste = null;
+  Object.values(live?.hcpDagen || {}).forEach(b => {
+    if (!b || hcpGetalLive(b.exact) === null) return;
+    if (!laatste || (Number(b.op) || 0) > (Number(laatste.op) || 0)) laatste = b;
+  });
+  if (laatste && (Number(laatste.op) || 0) > (Number(s?.hcpOp) || 0)) return hcpGetalLive(laatste.exact);
+  return indeler;
+}
+
+function playingHcpLive(s, dag, live) {
+  const vanIndeler = dag?.playingHcp?.[s?.uid] || null;
+  const indelerWaarde = hcpGetalLive(vanIndeler?.waarde);
+  if (dag?.afgerond) return indelerWaarde !== null ? indelerWaarde : hcpGetalLive(s?.hcp);
+  const indelerTelt = indelerWaarde !== null && vanIndeler.door !== 'exact';
+  const vanSpeler = live?.hcpDagen?.[String(dag?.dagNr)] || null;
+  const spelerWaarde = hcpGetalLive(vanSpeler?.playing);
+  if (spelerWaarde !== null && (!indelerTelt || (Number(vanSpeler?.op) || 0) > (Number(vanIndeler?.op) || 0))) return spelerWaarde;
+  if (indelerTelt) return indelerWaarde;
+  return exactHcpLive(s, live);
 }
 
 // v6.0.2: de kaarten van de medespelers voor één dag, gesorteerd op invuller.
@@ -752,7 +805,9 @@ function berekenStrokeplayRanglijst(t, dagNrOverride) {
   const aantalHoles = holes.length;
   return t.spelers.map(s => {
     const sScores = scores?.[s.uid] || scores?.[String(s.uid)] || [];
-    const hcp = Math.round(s.hcp);
+    // v6.1.0: de playing handicap van DEZE dag — zie playingHcpLive().
+    const ph = playingHcpLive(s, dag, _liveScoresMap[s.uid]);
+    const hcp = Math.round(ph === null ? Number(s.hcp) : ph);
     let bruttoTotaal = 0, nettoSlagen = 0, stableford = 0, holesGespeeld = 0;
     holes.forEach((hole, i) => {
       const val = sScores[i];

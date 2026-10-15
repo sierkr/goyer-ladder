@@ -363,15 +363,24 @@ service cloud.firestore {
       // toernooiscores laten schrijven van een toernooi waar hij niets mee te
       // maken heeft. De toernooi-pincode mag hier juist wél schrijven — dat is
       // precies waarvoor die sessie bestaat.
+      //
+      // v6.1.0: `hcpDagen` is de handicap die een speler per dag zelf bevestigt
+      // (exact en playing). Die mag ALLEEN de speler zelf zetten, of de
+      // wedstrijdleiding — een flightgenoot mag wel zijn scores bijhouden, maar
+      // niet zijn handicap. Zelfde vorm als bij `beheerDagen`.
       match /live/{uid} {
         allow read:   if true;
         // v6.0.0: een pincode-sessie schrijft alleen in ZIJN EIGEN toernooi
         // (meerdere toernooien tegelijk). pinInDitToernooi() staat bovenaan.
         allow create: if isIngelogd() && !viaRondeSessie() && pinInDitToernooi(doc) &&
-                        (!request.resource.data.keys().hasAny(['beheerDagen']) || magToernooi());
+                        (!request.resource.data.keys().hasAny(['beheerDagen']) || magToernooi()) &&
+                        (!request.resource.data.keys().hasAny(['hcpDagen'])
+                         || request.auth.uid == uid || magToernooi());
         allow update: if isIngelogd() && !viaRondeSessie() && pinInDitToernooi(doc) &&
                         (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['beheerDagen'])
-                         || magToernooi());
+                         || magToernooi()) &&
+                        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['hcpDagen'])
+                         || request.auth.uid == uid || magToernooi());
         allow delete: if magToernooi();
       }
     }

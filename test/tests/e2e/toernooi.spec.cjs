@@ -575,6 +575,161 @@ test.describe('Toernooi — de hele route', () => {
   });
 
   // ============================================================
+  //  v6.1.0 — EXACT EN PLAYING HANDICAP
+  // ============================================================
+  //  Sierk, 14 oktober 2026: de exact handicap staat op het tabblad Spelers, de
+  //  playing handicap verschilt per dag en de speler bevestigt hem zelf op zijn
+  //  scorekaart. Spelregels: (1) wijzigen tot de eerste score van die dag,
+  //  (2) de wedstrijdleiding ziet wie nog niet bevestigde, (3) meer dan 2
+  //  punten verschil in de exact handicap geeft een ⚠ tot "akkoord".
+  //  Drie vensters, drie echte inlogs; met en zonder databaseregels.
+  // ============================================================
+  test('HANDICAP: speler bevestigt exact en playing, ⚠ en akkoord, slot na de eerste score', async ({ browser }) => {
+    test.setTimeout(240000);
+    const ctxCoord = await browser.newContext();
+    const ctxAnna  = await browser.newContext();
+    const ctxBram  = await browser.newContext();
+    try {
+      const coord = await ctxCoord.newPage();
+      jaOpAlles(coord);
+      await inloggen(coord, 'coord@MPladder.stb');
+      await naarToernooi(coord);
+      await vulAanmaakformulier(coord, 'Handicapproef', 1);
+      for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(coord, n);
+      await naarFlightIndeling(coord);
+      await slaOpEnStart(coord);
+      await expect(coord.locator('#toernooi-detail')).toContainText('Handicapproef', { timeout: 15000 });
+
+      const t = await haalToernooi('Handicapproef');
+      const uidVan = (voornaam) => t.spelers.find(s => s.naam.startsWith(voornaam)).uid;
+      const anna = uidVan('Anna'), bram = uidVan('Bram'), cees = uidVan('Cees');
+
+      // ── 1. Spelregel 2: de wedstrijdleiding ziet wie nog niet bevestigde ──
+      await expect(coord.locator('#t-hcp-open')).toContainText('Anna', { timeout: 20000 });
+
+      // ── 2. Anna bevestigt: exact 15,1 (was 12 — meer dan 2), playing 17 ──
+      const pa = await ctxAnna.newPage();
+      jaOpAlles(pa);
+      await inloggen(pa, 'anna@MPladder.stb');
+      await naarToernooi(pa);
+      await expect(pa.locator('#t-mijn-hcp')).toBeVisible({ timeout: 20000 });
+      expect(await pa.inputValue('#t-hcp-exact'), 'de exact handicap van de spelers-tab staat er al').toBe('12');
+      expect(await pa.inputValue('#t-hcp-playing'), 'de playing handicap is leeg: die vult zij zelf in').toBe('');
+      await pa.fill('#t-hcp-exact', '15,1');
+      await pa.fill('#t-hcp-playing', '17');
+      await pa.click('#t-hcp-bevestig');
+      await expect(pa.locator('#t-mijn-hcp-status')).toContainText('Bevestigd', { timeout: 15000 });
+      await expect.poll(async () =>
+        (await beheerDb.doc(`toernooien/${t._id}/live/${anna}`).get()).data()?.hcpDagen?.['1']?.playing,
+        { timeout: 15000, message: 'de bevestiging staat in haar eigen live-document' }).toBe(17);
+
+      // ── 3. Bij de wedstrijdleiding: kolomkop 17, Anna van de lijst af ──
+      await expect.poll(async () => (await coord.locator(`[data-kop-hcp="${anna}"]`).textContent() || '').trim(),
+        { timeout: 20000, message: 'de kolomkop toont de playing handicap van vandaag' }).toBe('hcp 17');
+      await expect(coord.locator('#t-hcp-open')).not.toContainText('Anna', { timeout: 20000 });
+      await expect(coord.locator('#t-hcp-open')).toContainText('Bram');
+
+      // ── 4. Spelregel 3: op de spelers-tab 15,1 met een ⚠, tot "akkoord" ──
+      await naarSpelersTab(coord);
+      await expect(coord.locator(`#t-spelers-lijst input[data-hcp-uid="${anna}"]`)).toHaveValue('15,1', { timeout: 20000 });
+      const waarschuwing = coord.locator(`#t-spelers-lijst .t-hcp-waarschuwing[data-hcp-uid="${anna}"]`);
+      await expect(waarschuwing).toContainText('15,1');
+      await expect(waarschuwing).toContainText('was 12');
+      await waarschuwing.locator('button').click();
+      await expect(waarschuwing).toHaveCount(0, { timeout: 15000 });
+      const naAkkoord = await haalToernooi('Handicapproef', 20, x => x.spelers.find(s => s.uid === anna)?.hcp === 15.1);
+      expect(naAkkoord.spelers.find(s => s.uid === anna).hcpOp, 'het akkoord staat met tijdstip vast').toBeGreaterThan(0);
+
+      // ── 5. De indeler zet een exact handicap met decimaal ──
+      const bramVak = coord.locator(`#t-spelers-lijst input[data-hcp-uid="${bram}"]`);
+      await bramVak.fill('13,7');
+      await bramVak.press('Tab');
+      await haalToernooi('Handicapproef', 20, x => x.spelers.find(s => s.uid === bram)?.hcp === 13.7);
+
+      // ── 6. Spelregel 1: Bram tikt Anna's eerste score in → haar handicap op slot ──
+      const pb = await ctxBram.newPage();
+      jaOpAlles(pb);
+      await inloggen(pb, 'bram@MPladder.stb');
+      await naarToernooi(pb);
+      await pb.evaluate(({ uid }) => window.updateTScore(uid, 0, 5), { uid: anna });
+      await expect(pa.locator('#t-hcp-exact'), 'geen invulvakjes meer').toHaveCount(0, { timeout: 20000 });
+      await expect(pa.locator('#t-mijn-hcp')).toContainText('🔒');
+      await expect(pa.locator('#t-mijn-hcp')).toContainText('playing 17');
+
+      // ── 7. Dag afsluiten legt de playing handicap vast ──
+      await naarDagTab(coord, 1);
+      await coord.evaluate(() => window.sluitDagAf());
+      const afgesloten = await haalToernooi('Handicapproef', 30, x => x.dagen?.[0]?.afgerond === true);
+      const vast = afgesloten.dagen[0].playingHcp || {};
+      expect(vast[anna], 'Anna: door haarzelf bevestigd').toMatchObject({ waarde: 17, door: 'speler' });
+      expect(vast[cees], 'Cees: niemand vulde iets in, dus zijn exact handicap').toMatchObject({ waarde: 16, door: 'exact' });
+      expect(vast[bram], 'Bram: zijn nieuwe exact handicap').toMatchObject({ waarde: 13.7, door: 'exact' });
+    } finally {
+      await ctxCoord.close(); await ctxAnna.close(); await ctxBram.close();
+    }
+  });
+
+  // ============================================================
+  //  v6.1.2 — NA HET INLOGGEN OP DE GESTARTE DAG
+  // ============================================================
+  //  Sierk, 14 oktober 2026: "een toernooi met meerdere dagen dan zou de focus
+  //  na inloggen op de gestarte dag moeten komen." Het starten van een dag
+  //  verzet het opgeslagen dagnummer niet; daarom opende een toernooi van twee
+  //  dagen op dag 1 terwijl dag 2 liep. Dit bootst precies dat na.
+  // ============================================================
+  test('DAGFOCUS: na het inloggen kom je op de gestarte dag uit', async ({ browser }) => {
+    test.setTimeout(240000);
+    const ctxCoord  = await browser.newContext();
+    const ctxAnna   = await browser.newContext();
+    const ctxCoord2 = await browser.newContext();
+    try {
+      const coord = await ctxCoord.newPage();
+      jaOpAlles(coord);
+      await inloggen(coord, 'coord@MPladder.stb');
+      await naarToernooi(coord);
+      await vulAanmaakformulier(coord, 'Dagfocus', 2);
+      for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(coord, n);
+      await naarFlightIndeling(coord);
+      await slaOpEnStart(coord);   // dag 1 gestart
+      await expect(coord.locator('#toernooi-detail')).toContainText('Dagfocus', { timeout: 15000 });
+
+      // Dag 1 afgesloten, dag 2 gestart — rechtstreeks in de database, net zoals
+      // de knoppen het wegschrijven. ⚠ Niet via sluitDagAf(): vlak na het starten
+      // gaat het afsluiten soms verloren (gemeten 14 okt 2026: 1 van 3 keer; zie
+      // OPENSTAAND). Dat is een andere fout, en deze proef gaat over iets anders.
+      const t0 = await haalToernooi('Dagfocus', 30, x => x.dagen?.[0]?.gestart === true);
+      const dagen = t0.dagen.map((d, i) => i === 0 ? { ...d, afgerond: true } : { ...d, gestart: true });
+      await beheerDb.doc(`toernooien/${t0._id}`).update({ dagen });
+      const t = await haalToernooi('Dagfocus', 30, x => x.dagen?.[1]?.gestart === true && x.dagen?.[0]?.afgerond === true);
+      expect(t.actiefDagNr ?? 1, 'het opgeslagen dagnummer staat nog op 1 — juist daar ging het mis').toBe(1);
+
+      // ── Een speler logt in: hij komt op dag 2 uit ──
+      const pa = await ctxAnna.newPage();
+      jaOpAlles(pa);
+      await inloggen(pa, 'anna@MPladder.stb');
+      await naarToernooi(pa);
+      await expect(pa.locator('#toernooi-detail [data-dagtab][data-actief]'),
+        'de speler staat op de gestarte dag').toHaveText(/Dag 2/, { timeout: 20000 });
+
+      // ── De wedstrijdleiding op een tweede toestel ook ──
+      const c2 = await ctxCoord2.newPage();
+      jaOpAlles(c2);
+      await inloggen(c2, 'coord@MPladder.stb');
+      await naarToernooi(c2);
+      await openLopendToernooi(c2);
+      await expect(c2.locator('#toernooi-detail [data-dagtab][data-actief]'),
+        'de wedstrijdleiding staat op de gestarte dag').toHaveText(/Dag 2/, { timeout: 20000 });
+      await expect(c2.locator('#toernooi-detail')).toContainText('Scores dag 2');
+
+      // ── Zelf een andere dag kiezen werkt nog gewoon ──
+      await pa.click('#toernooi-detail [data-dagtab="1"]');
+      await expect(pa.locator('#toernooi-detail [data-dagtab][data-actief]')).toHaveText(/Dag 1/);
+    } finally {
+      await ctxCoord.close(); await ctxAnna.close(); await ctxCoord2.close();
+    }
+  });
+
+  // ============================================================
   //  v5.11.1 — DE ONDERLINGE STAND AAN OF UIT VOOR DEELNEMERS
   // ============================================================
   //  Er bestond al een schakelaar, maar verstopt als het inklap-pijltje op de
@@ -2360,11 +2515,10 @@ test.describe('Toernooi — de hele route', () => {
       await p.waitForSelector('#login-scherm', { state: 'hidden', timeout: 20000 });
       await expect(p.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
 
-      // …de ladder-app verwijst naar het toernooi in plaats van het te tonen…
-      const tab = p.locator('#nav-toernooi-btn');
-      await expect(tab, 'Toernooi staat er, voor iedereen').toBeVisible();
-      await tab.click();
-      await p.waitForURL(/\/toernooi\/$/, { timeout: 15000 });
+      // …v6.1.4: een gewone speler ziet in de ladder-app geen toernooi. Ze komt
+      // er via de link van de organisatie — hier nagebootst met het adres.
+      await expect(p.locator('#nav-toernooi-btn'), 'geen tabblad Toernooi voor een gewone speler').toBeHidden();
+      await p.goto(TOERNOOI_PAGINA);
 
       // …en daar is ze NIET ingelogd: een eigen inlog.
       await expect(p.locator('#login-scherm'), 'de toernooipagina vraagt om in te loggen')
@@ -2389,13 +2543,41 @@ test.describe('Toernooi — de hele route', () => {
     }
   });
 
-  test('APART: het inlogscherm van de ladder-app verwijst naar de toernooipagina', async ({ page }) => {
+  // v6.1.4 (Sierk, 15 oktober 2026): "een ladder speler die inlogt moet een
+  // ladder spelen en niet geconfronteerd worden met een toernooi". Tot v6.1.3
+  // stond hier dat het inlogscherm naar de toernooipagina verwees.
+  test('APART: het inlogscherm van de ladder-app noemt geen toernooi', async ({ page }) => {
     await page.goto('/index.html');
     await page.waitForSelector('#login-scherm', { state: 'visible' });
-    await expect(page.locator('#toernooi-inlog'), 'geen pincode-blok meer in de ladder-app').toBeHidden();
-    const link = page.locator('#toernooi-inlog-link a');
-    await expect(link).toBeVisible({ timeout: 15000 });
-    await expect(link).toHaveAttribute('href', /\/toernooi\/$/);
+    await expect(page.locator('#toernooi-inlog'), 'geen pincode-blok in de ladder-app').toBeHidden();
+    await expect(page.locator('#login-scherm a[href*="toernooi"]'), 'geen link naar de toernooipagina').toHaveCount(0);
+    // innerText: alleen wat er werkelijk te zien is (het verborgen pincode-blok
+    // bevat het woord wél).
+    expect(await page.locator('#login-scherm').innerText(), 'en nergens het woord toernooi').not.toMatch(/toernooi/i);
+  });
+
+  test('APART: de toernooipagina houdt de uitleg voor gasten', async ({ page }) => {
+    await page.goto(TOERNOOI_PAGINA);
+    await page.waitForSelector('#login-scherm', { state: 'visible' });
+    await expect(page.locator('#login-gast-uitleg')).toBeVisible({ timeout: 15000 });
+  });
+
+  test('TOERNOOILEIDER: ziet in de ladder-app het tabblad en de handleiding', async ({ page }) => {
+    const email = 'leider@mpladder.stb';
+    let uid;
+    try { uid = (await admin.auth().getUserByEmail(email)).uid; }
+    catch { uid = (await admin.auth().createUser({ email, password: WACHTWOORD })).uid; }
+    await beheerDb.doc(`spelers/${uid}`).set({ uid, naam: 'Toos Leider', email, rol: 'toernooileider', hcp: 0, eersteLogin: false });
+
+    await page.goto('/index.html');
+    await page.waitForSelector('#login-scherm', { state: 'visible' });
+    await page.fill('#login-email', email);
+    await page.fill('#login-pass', WACHTWOORD);
+    await page.click('#login-knop');
+    await page.waitForSelector('#login-scherm', { state: 'hidden', timeout: 20000 });
+    await expect(page.locator('#nav-toernooi-btn'), 'het tabblad Toernooi').toBeVisible({ timeout: 20000 });
+    await expect(page.locator('#help-knop-toernooi'), 'de toernooihandleiding').toBeAttached();
+    await expect(page.locator('#help-knop-toernooi')).not.toHaveCSS('display', 'none');
   });
 
   test('TOERNOOILEIDER: maakt een toernooi met een gast, zonder ladder', async ({ page }) => {

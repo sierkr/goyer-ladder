@@ -57,6 +57,8 @@ function laadToernooiKern() {
     'verdeelNieuweTegenstanders',
     'getTHcpSlagen', 'berekenTPuntenVoorDag', 'berekenStrokeplayRanglijstVoorDag',
     'berekenStrokeplayTotaal', 'countback', 'getDag', 'actieveDag',
+    // v6.1.2: actieveDag() valt zonder eigen keuze terug op de dag die loopt.
+    'standaardDagNr',
     'heeftGeenScores', 'alleScoresIngevuld', 'berekenFlightTijd',
     'berekenTPunten', '_liveScoresVanDag',
     // v5.11.0: _liveScoresVanDag lost nu de drie scorelagen op en heeft deze
@@ -67,6 +69,11 @@ function laadToernooiKern() {
     // holeOordeel; heeftGeenScores kijkt via _liveHeeftScores in álle lagen.
     '_laagPad', '_rijVanLaag', 'medespelerWaarden', 'holeOordeel', 'lagenLengte',
     '_liveHeeftScores',
+    // v6.1.0: exact en playing handicap. De berekeningen per dag rekenen via
+    // spelersVoorDag() met de playing handicap; de indeling op handicap via
+    // exactHcpVan() met de exact handicap die nu geldt.
+    '_hcpGetal', 'hcpTekst', '_laatsteHcpBevestiging', 'spelerExactHcp', 'hcpWaarschuwing',
+    'spelerPlayingHcp', 'hcpWijzigbaar', 'exactHcpVan', 'spelersVoorDag',
     // v5.36.0: celWaarde bepaalt WELK getal ieder in zijn vakje ziet. De
     // wedstrijdleiding hoort het getal te zien dat meetelt, ook als alleen de
     // marker heeft ingevuld — anders tikt zij een leeg vakje over.
@@ -118,6 +125,8 @@ function laadToernooiKern() {
       setupVolgendeStap,
       prijsRegels, prijsRegelToe, prijsRegelWeg, prijsRegelWijzig, prijsSpelers,
       rondesNaarObj, objNaarRondes, verwerkKnockoutVoortgang,
+      _hcpGetal, hcpTekst, spelerExactHcp, hcpWaarschuwing, spelerPlayingHcp,
+      hcpWijzigbaar, exactHcpVan, spelersVoorDag, standaardDagNr,
       _zetToernooi: (v) => { toernooiData = v; },
       _zetLive:     (v) => { _liveScores = v || {}; },
       _zetWindow:   (k, v) => { window[k] = v; },
@@ -298,6 +307,7 @@ function laadMarkerKern() {
     const renderTMatrix = () => {};
     const renderTRanglijst = () => {};
     const verversUitslagKnop = () => {};
+    const verversMijnHcpBlok = () => {};   // v6.1.0
     ${knip('js/toernooi.js', ['zelfdeFlight', 'scoreOordeel', 'kaartOordeel',
       '_eigenInvoerSleutel', '_onthoudEigenInvoer', '_vergeetVerstuurdeInvoer',
       '_metEigenInvoer', '_rijVoorOpslag',
@@ -333,10 +343,12 @@ function laadMarkerKern() {
   //  Dit is wat er wél te meten valt: de twee kanten uit de bron knippen en
   //  naast elkaar leggen. Lopen ze uit de pas, dan valt de test om.
   const meekijk = new Function(`
-    ${knip('toernooi-live.html', ['tellendGetal', 'laagVanDagLive', 'kaartenVanDagLive', 'getLiveScoresVoorDag'])}
+    ${knip('toernooi-live.html', ['tellendGetal', 'laagVanDagLive', 'kaartenVanDagLive', 'getLiveScoresVoorDag',
+      'hcpGetalLive', 'exactHcpLive', 'playingHcpLive', 'lopendeDagNrLive'])}
     let _liveScoresMap = {};
     return {
       tellendGetal, laagVanDagLive, kaartenVanDagLive, getLiveScoresVoorDag,
+      hcpGetalLive, exactHcpLive, playingHcpLive, lopendeDagNrLive,
       _zetLiveMap: (v) => { _liveScoresMap = v || {}; },
     };
   `)();
@@ -428,6 +440,72 @@ function laadStijlKern() {
   return new Function(bron)();
 }
 
+// ============================================================
+//  v6.1.3 — DAG AFSLUITEN, MET EEN DATABASE DIE DE TEST BESTUURT
+// ------------------------------------------------------------
+//  sluitDagAf() wacht twee keer: op de vraag "Dag x afsluiten?" en op het
+//  ophalen van de live-scores. In die tussentijd kan de meeluisteraar
+//  `toernooiData` vervangen door een verse serverkopie. Tot v6.1.3 schreef de
+//  functie dan `afgerond` in het weggegooide object en sloeg de nieuwe kopie op
+//  zonder afgerond — de afsluiting verdween stil.
+//  Een browserproef kon dat toeval niet betrouwbaar opwekken. Hier bestuurt de
+//  test het precies: `_tijdensVraag` en `_tijdensLezen` draaien op die twee
+//  momenten en kunnen `toernooiData` vervangen, net als de meeluisteraar.
+//  De ECHTE sluitDagAf() en slaToernooiOp() worden uit de app geknipt.
+// ============================================================
+function laadAfsluitKern() {
+  const bron = `
+    let toernooiData = null;
+    let _liveScores = {};
+    const window = { _bekijkDagNr: undefined, _tSaveTimer: null };
+    const actieveToernooiId = 't1';
+    const db = {};
+    const collection = (...pad) => ({ pad });
+    const doc = (...pad) => ({ pad });
+    // Wat de app naar de server stuurt.
+    const _opgeslagen = [];
+    const setDoc = async (_ref, obj) => { _opgeslagen.push(JSON.parse(JSON.stringify(obj))); };
+    // De live-documenten op de server, en de twee momenten waarop de test
+    // de meeluisteraar laat toeslaan.
+    let _serverLive = {};
+    let _leesFout = false;
+    let _tijdensVraag = () => {};
+    let _tijdensLezen = () => {};
+    let _antwoord = true;
+    const confirm = () => { _tijdensVraag(); return _antwoord; };
+    const getDocs = async () => {
+      await Promise.resolve();
+      _tijdensLezen();
+      if (_leesFout) throw new Error('offline');
+      return { docs: Object.keys(_serverLive).map(id => ({ id, data: () => _serverLive[id] })) };
+    };
+    const _meldingen = [];
+    const _fouten = [];
+    const toast = (tekst) => { _meldingen.push(tekst); };
+    const toernooiFout = (wat, e) => { _fouten.push(wat + ': ' + (e && e.message)); };
+    const renderToernooiActief = () => {};
+    const console = { warn: () => {}, error: () => {}, log: () => {} };
+    ${knip('js/toernooi.js', ['actieveDag', 'standaardDagNr',
+      '_laagPad', '_rijVanLaag', '_laagVanDag', 'lagenVanDag', 'scoreOordeel',
+      'medespelerWaarden', 'holeOordeel', 'lagenLengte', '_liveScoresVanDag',
+      '_hcpGetal', '_laatsteHcpBevestiging', 'spelerExactHcp', 'spelerPlayingHcp'])}
+    ${knip('js/toernooi.js', ['slaToernooiOp', 'sluitDagAf'], 'async ')}
+    return {
+      sluitDagAf,
+      _zetToernooi:  (v) => { toernooiData = v; },
+      _leesToernooi: ()  => toernooiData,
+      _zetLive:      (v) => { _liveScores = v || {}; },
+      _zetServer:    (v) => { _serverLive = v || {}; },
+      _zetLeesFout:  (v) => { _leesFout = v; },
+      _zetAntwoord:  (v) => { _antwoord = v; },
+      _zetTijdensVraag: (f) => { _tijdensVraag = f || (() => {}); },
+      _zetTijdensLezen: (f) => { _tijdensLezen = f || (() => {}); },
+      _opgeslagen, _meldingen, _fouten,
+    };
+  `;
+  return new Function(bron)();
+}
+
 // Knipt een eenregelige `const NAAM = ...;` uit een module.
 function knipConstanteRegel(bestand, naam) {
   const src = fs.readFileSync(path.join(wortel, bestand), 'utf8');
@@ -439,4 +517,5 @@ function knipConstanteRegel(bestand, naam) {
 
 module.exports = { laadStijlKern, laadToernooiKern, laadLadderKern, laadHcpKern, laadScoreKern,
                    laadKnockoutScoreKern,
-                   laadNaamKern, laadMarkerKern, laadGastloginKern, laadQrKern, maakChecker };
+                   laadNaamKern, laadMarkerKern, laadGastloginKern, laadQrKern, laadAfsluitKern,
+                   maakChecker };

@@ -18,6 +18,8 @@ const suites = [
   ['Trage start',                './trage-start.test.cjs'],     // v5.48.0
   ['Spelvormen',                 './spelvormen.test.cjs'],      // v5.51.0
   ['Toernooipagina',             './toernooipagina.test.cjs'],  // v6.0.0
+  ['Exact & playing handicap',   './toernooihcp.test.cjs'],     // v6.1.0
+  ['Dag afsluiten',              './afsluiten.test.cjs'],       // v6.1.3
 ];
 
 let totOk = 0, totFout = 0;

@@ -625,11 +625,15 @@ test.describe('Beheer', () => {
       await inloggen(speler, 'anna');
       await expect(speler.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
       await expect(speler.locator('#nav-admin-btn')).toBeHidden();
+      // v6.1.4: een gewone speler ziet in de ladder-app niets van het toernooi.
+      await expect(speler.locator('#nav-toernooi-btn'), 'geen tabblad Toernooi').toBeHidden();
+      await expect(speler.locator('#help-knop-toernooi'), 'geen toernooihandleiding').toHaveCSS('display', 'none');
 
       const coord = await ctxCoord.newPage();
       await inloggen(coord, 'coord');
       await expect(coord.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
       await expect(coord.locator('#nav-toernooi-btn')).toBeVisible({ timeout: 20000 });
+      await expect(coord.locator('#help-knop-toernooi')).not.toHaveCSS('display', 'none');
     } finally {
       await ctxSpeler.close();
       await ctxCoord.close();

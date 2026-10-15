@@ -337,6 +337,13 @@ async function slaEersteLoginOp() {
 function zetToernooiTabAlsLink() {
   const knop = document.getElementById('nav-toernooi-btn');
   if (!knop) return;
+  // v6.1.4: een gewone speler ziet in de ladder-app niets van het toernooi —
+  // geen tabblad en geen handleiding. "Bekijk als gewone speler" geeft ook rol
+  // 'speler', dus de beheerder ziet dan hetzelfde.
+  const leiding = magToernooiLeidenRol();
+  const helpKnop = document.getElementById('help-knop-toernooi');
+  if (helpKnop) helpKnop.style.display = leiding ? '' : 'none';
+  if (!leiding) { knop.style.display = 'none'; return; }
   knop.style.display = '';
   knop.onclick = (e) => { e?.preventDefault?.(); location.href = toernooiAdres(); };
 }
@@ -447,8 +454,11 @@ async function vervolgIngelogd() {
     document.getElementById('nav-toernooi-btn').style.display = '';
   }
   // v6.0.0: in de LADDER-app is "Toernooi" een link naar de toernooipagina
-  // (Sierk: "De tab kan een link worden voor de toernooi locatie"), voor
-  // iedereen. In de toernooipagina zelf regelt pasToernooiModusNavToe() de tabs.
+  // (Sierk: "De tab kan een link worden voor de toernooi locatie").
+  // v6.1.4: alleen nog voor de wedstrijdleiding (Sierk, 15 oktober 2026: "een
+  // ladder speler die inlogt moet een ladder spelen en niet geconfronteerd
+  // worden met een toernooi"). Een deelnemer komt via de link of QR-code.
+  // In de toernooipagina zelf regelt pasToernooiModusNavToe() de tabs.
   if (!IS_TOERNOOI_APP) zetToernooiTabAlsLink();
   profielBtn.style.display = '';
   logoutBtn.style.display  = '';
@@ -575,16 +585,13 @@ async function vulToernooiInlog() {
   _toernooiInlog = null;
   _lopendBijInlog = [];
 
-  // v6.0.0: in de LADDER-app alleen een verwijzing naar de toernooipagina.
-  // Meedoen gaat daar, met een eigen inlog (zie IS_TOERNOOI_APP in config.js).
-  const link = document.getElementById('toernooi-inlog-link');
-  if (!IS_TOERNOOI_APP) {
-    const a = document.getElementById('toernooi-inlog-link-a');
-    if (a) a.href = toernooiAdres();
-    if (link) link.style.display = '';
-    return;
-  }
-  if (link) link.style.display = 'none';
+  // v6.1.4: in de LADDER-app niets over toernooien op het inlogscherm — ook
+  // niet de link die er sinds v6.0.0 stond (Sierk, 15 oktober 2026). Meedoen
+  // gaat via de link of QR-code van de organisatie naar de toernooipagina.
+  // De zin voor gasten onder "Login" hoort alleen bij de toernooipagina.
+  const gastUitleg = document.getElementById('login-gast-uitleg');
+  if (gastUitleg) gastUitleg.style.display = IS_TOERNOOI_APP ? '' : 'none';
+  if (!IS_TOERNOOI_APP) return;
 
   try {
     const snap = await getDocs(query(TOERNOOIEN_COL, where('status', '==', 'actief')));
@@ -1392,8 +1399,10 @@ async function initFirestore() {
         // ook voor deelnemers die al ingelogd waren voordat het toernooi bestond.
         // Voorheen werd de tab alleen bij inloggen bepaald (race met deze listener),
         // waardoor de tab verborgen bleef en niets hem daarna alsnog toonde.
+        // v6.1.4: alleen in de toernooipagina. In de ladder-app ziet een
+        // deelnemer het tabblad niet meer (zie zetToernooiTabAlsLink).
         const tBtn = document.getElementById('nav-toernooi-btn');
-        if (tBtn && !isBeheerderRol() && !isCoordinatorRol()) {
+        if (IS_TOERNOOI_APP && tBtn && !isBeheerderRol() && !isCoordinatorRol()) {
           const uid = huidigeBruiker.uid;
           const isDeelnemer = (alleToernooien || []).some(t =>
             (t.spelers || []).some(s => uid && s.uid === uid)
