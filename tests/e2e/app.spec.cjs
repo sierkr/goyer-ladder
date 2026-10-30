@@ -1084,6 +1084,27 @@ test.describe.serial('Spelvormen', () => {
     await expect(page.locator('#speltype-matchplay-label'), 'matchplay altijd').toBeVisible();
   });
 
+  // v6.2.0: Sierk, 30 okt 2026 — "iedereen met 0 partijen onder de groep die
+  // wel gespeeld heeft". Alleen de schakelaar; de server-kant zit in laag 3.
+  // Zet hem aan het eind weer uit, zodat de proeven hierna dezelfde ladder zien.
+  test('ZONDER-PARTIJEN-ONDERAAN: schakelaar in Beheer wordt bewaard', async ({ page }) => {
+    await inloggen(page, 'coord@MPladder.stb');
+    await expect(page.locator('#ladder-list-mp')).toBeVisible({ timeout: 25000 });
+    await page.evaluate(() => window.openLadderInstellingen('mp'));
+    const vink = page.locator('#cfg-zonder-partijen-onderaan');
+    await expect(vink, 'staat eerst uit').not.toBeChecked();
+    await vink.check();
+    await page.evaluate(() => window.slaLadderInstellingenOp());
+    await expect.poll(async () => (await beheerDb.doc('ladders/mp').get()).data()?.config?.zonderPartijenOnderaan,
+      { timeout: 15000, message: 'aan staat in de database' }).toBe(true);
+    await page.evaluate(() => window.openLadderInstellingen('mp'));
+    await expect(vink, 'opnieuw geopend: aan').toBeChecked();
+    await vink.uncheck();
+    await page.evaluate(() => window.slaLadderInstellingenOp());
+    await expect.poll(async () => (await beheerDb.doc('ladders/mp').get()).data()?.config?.zonderPartijenOnderaan,
+      { timeout: 15000, message: 'weer uit in de database' }).toBe(false);
+  });
+
   test('SPELVORM-SKINS: bonussen aanvinken, aantikken, en "aanpassen" onthoudt ze', async ({ browser }) => {
     test.setTimeout(240000);
     await beheerDb.doc('ladders/mp').set({ config: { spelvormenZichtbaar: { skins: true }, spelvormenMee: { skins: true } } }, { merge: true });

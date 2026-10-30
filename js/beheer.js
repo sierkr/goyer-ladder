@@ -88,6 +88,8 @@ function openLadderInstellingen(ladderId) {
   };
 
   document.getElementById('cfg-icoon-aan').checked = cfg.icoonAan ?? true;
+  // v6.2.0
+  document.getElementById('cfg-zonder-partijen-onderaan').checked = cfg.zonderPartijenOnderaan === true;
 
   // v5.41.0: welke spelvormen meetellen voor de stand. Ontbreekt het veld
   // (ladder van vóór v5.41.0), dan tellen ze alle drie mee — precies zoals het
@@ -194,6 +196,7 @@ async function slaLadderInstellingenOp() {
     diversiteitsBonusDrempel: parseInt(document.getElementById('cfg-diversiteit-drempel').value) || 6,
     diversiteitsBonusPlekken: parseInt(document.getElementById('cfg-diversiteit-plekken').value) || 2,
     icoonAan: document.getElementById('cfg-icoon-aan').checked,
+    zonderPartijenOnderaan: document.getElementById('cfg-zonder-partijen-onderaan').checked,   // v6.2.0
     spelvormenMee,
     spelvormenZichtbaar,   // v5.51.0
     // v5.1.0: 'maand' = eerste maandag van de maand · 'week' = elke maandag

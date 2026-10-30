@@ -663,6 +663,66 @@ async function main() {
   const cees = (await db.doc(`ladders/mp/standen/${SPELER_C}`).get()).data() || {};
   R.check('en heeft een gewonnen partij', cees.gewonnen, 1);
 
+  // ══ v6.2.0: spelers zonder partijen onderaan ═══════════════
+  // Sierk, 30 okt 2026: "iedereen met 0 partijen onder de groep die wel
+  // gespeeld heeft". Cees (0 partijen) staat bovenaan; na de regel onderaan.
+  const zetCeesBovenaan = async (aan, partijenAB) => {
+    await db.doc('ladders/mp').update({ 'config.zonderPartijenOnderaan': aan });
+    await db.doc(`ladders/mp/standen/${SPELER_C}`).set({ rank: 1, partijen: 0 }, { merge: true });
+    await db.doc(`ladders/mp/standen/${SPELER_A}`).set({ rank: 2, partijen: partijenAB }, { merge: true });
+    await db.doc(`ladders/mp/standen/${SPELER_B}`).set({ rank: 3, partijen: partijenAB }, { merge: true });
+  };
+  const volgorde = async () => {
+    const r = { A: await rang(SPELER_A), B: await rang(SPELER_B), C: await rang(SPELER_C) };
+    return Object.keys(r).sort((x, y) => r[x] - r[y]).join('');
+  };
+
+  // 1. Partij verwerken
+  await zetLadderKlaar();
+  await zetCeesBovenaan(true, 0);
+  const pOnder = await roepAan('verwerkPartijUitslag', { ladderId: 'mp', partijId: 'p1', matchups: matchup }, tokenA);
+  R.check('onderaan: na de partij staat Cees (0 partijen) onderaan', await volgorde(), 'BAC');
+  R.check('onderaan: plekken blijven 1..3 zonder dubbelen',
+    [await rang(SPELER_A), await rang(SPELER_B), await rang(SPELER_C)].sort().join(','), '1,2,3');
+  R.check('onderaan: het uitslagbericht noemt dezelfde nieuwe plek',
+    (pOnder?.changes || []).every(c => typeof c.wNieuw === 'number' && c.wNieuw <= 2 && c.vNieuw <= 2), true);
+  await zetLadderKlaar();
+  await zetCeesBovenaan(false, 0);
+  await roepAan('verwerkPartijUitslag', { ladderId: 'mp', partijId: 'p1', matchups: matchup }, tokenA);
+  // Bram (3) wint van Anna (2) en stijgt naar 1; Cees schuift naar 2, Anna zakt.
+  R.check('onderaan UIT: gewone verschuiving, Cees niet onderaan', await volgorde(), 'BCA');
+
+  // 2. Activiteit nu verwerken
+  await zetLadderKlaar();
+  await zetCeesBovenaan(false, 2);
+  await roepAan('verwerkActiviteitNu', { ladderId: 'mp' }, tokenBeh);
+  R.check('onderaan UIT: activiteitsrun laat de volgorde staan', await volgorde(), 'CAB');
+  await zetCeesBovenaan(true, 2);
+  await roepAan('verwerkActiviteitNu', { ladderId: 'mp' }, tokenBeh);
+  R.check('onderaan: activiteitsrun zet Cees onderaan, rest in volgorde', await volgorde(), 'ABC');
+  await roepAan('verwerkActiviteitNu', { ladderId: 'mp' }, tokenBeh);
+  R.check('onderaan: tweede activiteitsrun verandert niets', await volgorde(), 'ABC');
+
+  // 3. Toernooistanden
+  await zetLadderKlaar();
+  await zetCeesBovenaan(true, 0);
+  await roepAan('verwerkToernooiStanden', { ladderId: 'mp', standen: [
+    { uid: SPELER_C, rank: 1, partijen: 0, gewonnen: 0 },
+    { uid: SPELER_B, rank: 2, partijen: 1, gewonnen: 1 },
+    { uid: SPELER_A, rank: 3, partijen: 1, gewonnen: 0 },
+  ] }, tokenBeh);
+  R.check('onderaan: toernooistanden zetten Cees onderaan', await volgorde(), 'BAC');
+  R.check('onderaan: score hoort bij de nieuwe plek',
+    (await punt(SPELER_B)).score > (await punt(SPELER_C)).score, true);
+
+  // 4. Punten met de hand aanpassen
+  await zetLadderKlaar();
+  await db.doc(`spelers/${BEHEERDER}`).set({ puntenBeheerder: true }, { merge: true });
+  await zetCeesBovenaan(true, 1);
+  const pa = await roepAan('pasPuntenAan', { ladderId: 'mp', uid: SPELER_C, score: 999999999 }, tokenBeh);
+  R.check('onderaan: ook met de hand bovenaan gezet blijft Cees onder de spelers', await rang(SPELER_C), 3);
+  R.check('onderaan: pasPuntenAan meldt de echte plek', pa?.nieuwePositie, 3);
+
   return toonRapport(R);
 }
 

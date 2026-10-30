@@ -146,6 +146,7 @@ function laadLadderKern() {
     '_slagenPerHole', '_hcpPlaatsingVan',
     '_hcpSlagenOpHole', '_berekenStand', 'berekenActiviteitsStats', 'bouwNaamNaarUid',
     'doelVerschuivingVoorSpeler', '_straf', 'scoreVoorPositie', '_uitslagTs', 'hashPin',
+    'zonderPartijenOnderaan',   // v6.2.0
   ]);
   const bron = `
     const crypto = require('crypto');
@@ -154,7 +155,8 @@ function laadLadderKern() {
     ${f}
     return { _slagenPerHole, _hcpPlaatsingVan,
              _hcpSlagenOpHole, _berekenStand, berekenActiviteitsStats, bouwNaamNaarUid,
-             doelVerschuivingVoorSpeler, _straf, scoreVoorPositie, _uitslagTs, hashPin };
+             doelVerschuivingVoorSpeler, _straf, scoreVoorPositie, _uitslagTs, hashPin,
+             zonderPartijenOnderaan };
   `;
   return new Function('require', bron)(require);
 }

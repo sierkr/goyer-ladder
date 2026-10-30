@@ -67,4 +67,34 @@ const statMee = F.berekenActiviteitsStats(
 check('teltMee:false geeft geen tegenstanders', statMee['u1'].opp.size, 3);
 check('teltMee:false telt niet als partij',     statMee['u1'].maand, 1);
 
+// ── v6.2.0: spelers zonder partijen onderaan ─────────────────
+// Sierk, 30 okt 2026: "iedereen met 0 partijen onder de groep die wel gespeeld heeft".
+{
+  const Z = F.zonderPartijenOnderaan;
+  const L = [{uid:'a',partijen:0},{uid:'b',partijen:3},{uid:'c',partijen:0},{uid:'d',partijen:1},{uid:'e'}];
+  const ids = l => l.map(x => x.uid).join('');
+  check('onderaan: uit -> volgorde ongewijzigd', ids(Z(L,false)), 'abcde');
+  check('onderaan: aan -> spelers met partijen boven', ids(Z(L,true)), 'bdace');
+  check('onderaan: niemand verdwijnt of staat dubbel', Z(L,true).length === 5 && new Set(Z(L,true)).size === 5, true);
+  check('onderaan: invoer niet aangepast', ids(L), 'abcde');
+  check('onderaan: iedereen 0 (begin seizoen) -> niets verandert', ids(Z([{uid:'x',partijen:0},{uid:'y',partijen:0}],true)), 'xy');
+  check('onderaan: iedereen gespeeld -> niets verandert', ids(Z([{uid:'x',partijen:2},{uid:'y',partijen:1}],true)), 'xy');
+  check('onderaan: verliezer met 1e partij komt boven alle nullen', ids(Z([{uid:'p',partijen:0},{uid:'q',partijen:0},{uid:'v',partijen:1}],true)), 'vpq');
+  check('onderaan: twee keer toepassen = één keer', ids(Z(Z(L,true),true)), 'bdace');
+
+  // Bedrading: de regel moet op alle vier de plekken staan die posities
+  // wegschrijven, en de schakelaar in Beheer moet worden gelezen én bewaard.
+  const fsx = require('fs'), px = require('path');
+  const lees = f => fsx.readFileSync(px.join(__dirname, '..', f), 'utf8');
+  const srv = lees('functions/index.js');
+  check('onderaan: server past de regel op 4 plekken toe',
+    (srv.match(/cfg\.zonderPartijenOnderaan === true/g) || []).length, 4);
+  check('onderaan: server-standaard staat uit', /zonderPartijenOnderaan: false,/.test(srv), true);
+  check('onderaan: app-standaard staat uit', /zonderPartijenOnderaan: false,/.test(lees('js/store.js')), true);
+  check('onderaan: schakelaar staat in het scherm', /id="cfg-zonder-partijen-onderaan"/.test(lees('index.html')), true);
+  const bh = lees('js/beheer.js');
+  check('onderaan: Beheer leest én bewaart de schakelaar',
+    (bh.match(/cfg-zonder-partijen-onderaan/g) || []).length, 2);
+}
+
 module.exports = staat;
