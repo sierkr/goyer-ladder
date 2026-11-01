@@ -111,6 +111,8 @@ export const DEFAULT_LADDER_CONFIG = {
   diversiteitsBonusDrempel: 6,      // v5.1.0: > dit aantal unieke tegenstanders DEZE MAAND geeft de bonus
   diversiteitsBonusPlekken: 2,      // aantal plekken bonus bij diversiteit
   icoonAan: true,
+  // v6.2.0: spelers zonder partijen altijd onder wie wel gespeeld heeft (server).
+  zonderPartijenOnderaan: false,
   // v5.41.0: welke spelvormen meetellen voor de ladderstand. Kiezen mag altijd —
   // dit gaat alleen over de TELLING. Staat een spelvorm hier uit, dan wordt de
   // partij gewoon gespeeld en bewaard, maar verschuift er niemand op de ladder

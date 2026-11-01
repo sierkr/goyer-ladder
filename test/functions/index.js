@@ -311,6 +311,8 @@ const DEFAULT_LADDER_CONFIG = {
   // v5.1.0: hoe vaak de activiteitscorrectie wordt verwerkt (maandag 04:00).
   // 'maand' = eerste maandag van de maand · 'week' = elke maandag.
   activiteitPeriode: 'maand',
+  // v6.2.0: spelers zonder partijen altijd onder wie wel gespeeld heeft.
+  zonderPartijenOnderaan: false,
 };
 
 // Kiest de juiste Firestore-database — (default) voor productie, named
@@ -1121,6 +1123,28 @@ function doelVerschuivingVoorSpeler(sleutel, stat, cfg, terugvalNaam = null, pos
   return fb + db - strafPlekken;
 }
 
+// ============================================================
+//  ZONDER PARTIJEN ONDERAAN — v6.2.0
+// ------------------------------------------------------------
+//  Sierk, 30 oktober 2026: "iedereen met 0 partijen onder de groep die wel
+//  gespeeld heeft". Per ladder aan te zetten (config.zonderPartijenOnderaan).
+//
+//  `lijst` staat al in de gewenste volgorde (plek 1 eerst). Wie 1 of meer
+//  partijen heeft (ladderpartijen + toernooi, de teller in standen) komt
+//  bovenaan, wie 0 heeft eronder; binnen beide groepen blijft de volgorde
+//  precies zoals hij was. Staat de schakelaar uit, dan verandert er niets.
+//  Draait als LAATSTE stap op alle vier de plekken die posities wegschrijven:
+//  verwerkPartijUitslag, _verwerkActiviteitEenLadder, verwerkToernooiStanden
+//  en pasPuntenAan. draaiPartijTerug en herstelLadderSnapshot zetten bewust
+//  de oude stand ongewijzigd terug.
+// ============================================================
+function zonderPartijenOnderaan(lijst, aan) {
+  if (!aan) return lijst.slice();
+  const wel = [], niet = [];
+  for (const s of lijst) ((Number(s && s.partijen) || 0) > 0 ? wel : niet).push(s);
+  return wel.concat(niet);
+}
+
 // v3.0.0-11.63: wachtwoord wordt geladen uit Firestore (ladder/config).
 // Geen fallback — gooit een HttpsError als het document of veld ontbreekt.
 // v5.5.0: leest uit de database die bij de omgeving hoort. Stond op
@@ -1709,6 +1733,9 @@ exports.verwerkPartijUitslag = onCall(
 
     // De positie na de matchups IS de nieuwe positie. Geen hersortering op
     // score meer nodig, want er komt niets meer bovenop.
+    // v6.2.0: behalve "zonder partijen onderaan", als die voor deze ladder aan staat.
+    zonderPartijenOnderaan([...werklijst].sort((a, b) => a.rank - b.rank), cfg.zonderPartijenOnderaan === true)
+      .forEach((s, i) => { s.rank = i + 1; });
     const scores = werklijst.map(s => ({
       uid: s.uid,
       score: scoreVoorPositie(s.rank),
@@ -1961,6 +1988,8 @@ exports.pasPuntenAan = onCall(
     const puntenCol  = ladderRef.collection('punten');
     const [standenSnap, puntenSnap] = await Promise.all([standenCol.get(), puntenCol.get()]);
     const rankMap  = {}; standenSnap.forEach(d => { rankMap[d.id]  = d.data().rank || 0; });
+    const partijenMap = {}; standenSnap.forEach(d => { partijenMap[d.id] = d.data().partijen || 0; });
+    const cfg = { ...DEFAULT_LADDER_CONFIG, ...(ladderSnap.data().config || {}) };
     const scoreMap = {}; puntenSnap.forEach(d => { scoreMap[d.id] = d.data().score; });
 
     // Leden zonder punten-document bootstrappen uit hun huidige rang, zodat
@@ -1970,8 +1999,12 @@ exports.pasPuntenAan = onCall(
     });
     scoreMap[targetUid] = nieuweScore;
 
-    const volgorde = spelerIds.slice()
-      .sort((a, b) => (scoreMap[b] ?? -Infinity) - (scoreMap[a] ?? -Infinity));
+    // v6.2.0: daarna eventueel "zonder partijen onderaan".
+    const volgorde = zonderPartijenOnderaan(
+      spelerIds.slice()
+        .sort((a, b) => (scoreMap[b] ?? -Infinity) - (scoreMap[a] ?? -Infinity))
+        .map(uid => ({ uid, partijen: partijenMap[uid] || 0 })),
+      cfg.zonderPartijenOnderaan === true).map(r => r.uid);
 
     const batch = fs.batch();
     volgorde.forEach((uid, i) => {
@@ -2105,6 +2138,7 @@ async function _verwerkActiviteitEenLadder(fs, ladderDoc, nu) {
     uid,
     positie: standenMap[uid]?.rank || 0,
     verschuiving: puntenMap[uid]?.activiteitVerschuiving ?? 0,
+    partijen: standenMap[uid]?.partijen || 0,
   }));
   rijen.sort((a, b) => {
     const ra = a.positie > 0 ? a.positie : Infinity;
@@ -2125,7 +2159,10 @@ async function _verwerkActiviteitEenLadder(fs, ladderDoc, nu) {
 
   // Hernummeren: gewenste plek bepaalt de volgorde, bij gelijkspel wint wie
   // er al hoger stond. Zo blijft de onderlinge volgorde stabiel.
-  const nieuweVolgorde = [...rijen].sort((a, b) => (a.sorteer - b.sorteer) || (a.positie - b.positie));
+  // v6.2.0: daarna eventueel "zonder partijen onderaan".
+  const nieuweVolgorde = zonderPartijenOnderaan(
+    [...rijen].sort((a, b) => (a.sorteer - b.sorteer) || (a.positie - b.positie)),
+    cfg.zonderPartijenOnderaan === true);
 
   const batch = fs.batch();
   const verschoven = [];
@@ -2528,12 +2565,15 @@ exports.verwerkToernooiStanden = onCall(
     const ladderRef  = fs.collection('ladders').doc(ladderId);
     const standenCol = ladderRef.collection('standen');
     const puntenCol  = ladderRef.collection('punten');
-    const puntenSnap = await puntenCol.get();
+    const [puntenSnap, ladderSnap] = await Promise.all([puntenCol.get(), ladderRef.get()]);
     const bestaand = {}; puntenSnap.forEach(d => { bestaand[d.id] = d.data() || {}; });
+    const cfg = { ...DEFAULT_LADDER_CONFIG, ...((ladderSnap.exists && ladderSnap.data().config) || {}) };
 
     // Hernummer op de doorgegeven rangorde, zodat rank en score per definitie
-    // bij elkaar horen.
-    const volgorde = rijen.filter(r => r && r.uid).sort((a, b) => (a.rank || 9999) - (b.rank || 9999));
+    // bij elkaar horen. v6.2.0: daarna eventueel "zonder partijen onderaan".
+    const volgorde = zonderPartijenOnderaan(
+      rijen.filter(r => r && r.uid).sort((a, b) => (a.rank || 9999) - (b.rank || 9999)),
+      cfg.zonderPartijenOnderaan === true);
     const batch = fs.batch();
     volgorde.forEach((r, i) => {
       const rank = i + 1;
