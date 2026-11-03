@@ -144,14 +144,30 @@ function leesSpelvormenTabel() {
 //  Draait de periodieke activiteitscorrectie meteen voor deze ladder, in
 //  plaats van te wachten tot maandagochtend. Alleen coordinator/beheerder;
 //  de Cloud Function controleert dat ook zelf.
+//
+//  v6.2.1 — EERST EEN SNAPSHOT. Sierk, 1 november 2026: "bij klikken
+//  activiteit nu verwerken moet automatisch een snapshot gemaakt worden".
+//  Aanleiding: met "Spelers zonder partijen onderaan" (v6.2.0) schuift deze
+//  knop soms de halve ladder om, en dat is niet terug te draaien door de
+//  schakelaar weer uit te zetten — de app onthoudt niet waar iedereen stond.
+//  Alleen een snapshot zet het terug (Beheer → Snapshots).
+//  ⚠ Lukt de snapshot niet, dan wordt er NIETS verwerkt (BOUWNORMEN F5:
+//  mislukte backup = stoppen). De automatische ronde op maandag
+//  (verwerkActiviteitPeriodiek, server) maakt bewust nog géén snapshot —
+//  Sierk vroeg het voor deze knop.
 // ============================================================
 const _verwerkActiviteitNuFn = httpsCallable(functions, 'verwerkActiviteitNu');
 
 async function draaiActiviteitNu() {
   const ladderId = _instellingenLadderId;
   if (!ladderId) return;
-  if (!confirm('Activiteitscorrectie nu verwerken? Spelers kunnen hierdoor van plek veranderen.')) return;
+  if (!confirm('Activiteitscorrectie nu verwerken? Spelers kunnen hierdoor van plek veranderen.\n\nEr wordt eerst een snapshot gemaakt, zodat je het kunt terugzetten.')) return;
   try {
+    const snapshotGelukt = await slaSnapshotOp('Vóór activiteitscorrectie', ladderId);
+    if (!snapshotGelukt) {
+      toast('Snapshot maken mislukt — er is niets verwerkt');
+      return;
+    }
     const res = await _verwerkActiviteitNuFn({ ladderId, isTest: IS_TEST });
     const verschoven = res?.data?.verschoven || [];
     if (verschoven.length === 0) {
@@ -504,17 +520,21 @@ function openSnapshotsModal() {
 //  niet gedeployed), dan valt hij terug op de oude client-versie — een
 //  onvolledige snapshot is nog altijd beter dan géén snapshot, en die wordt
 //  bij herstel herkend aan het ontbreken van `bevatPunten`.
+//
+//  v6.2.1: geeft true terug als er een snapshot staat (server of terugval),
+//  anders false. draaiActiviteitNu() stopt op false; de andere aanroepers
+//  kijken er niet naar en werken zoals voorheen.
 // ============================================================
 async function slaSnapshotOp(label, ladderId) {
   if (!ladderId) ladderId = activeLadderId;
-  if (!ladderId) return;
+  if (!ladderId) return false;
   try {
     await _maakSnapshotFn({ ladderId, isTest: IS_TEST, label });
-    return;
+    return true;
   } catch (e) {
     console.warn('Snapshot via server mislukt, val terug op client-versie:', e?.message || e);
   }
-  await _slaSnapshotClientOp(label, ladderId);
+  return await _slaSnapshotClientOp(label, ladderId);
 }
 
 // Terugval: legt alleen standen vast (geen punten). Zie hierboven.
@@ -551,7 +571,8 @@ async function _slaSnapshotClientOp(label, ladderId) {
       spelers: spelersSnapshot,
       bevatPunten: false,
     });
-  } catch(e) { console.error('Snapshot mislukt:', e); }
+    return true;
+  } catch(e) { console.error('Snapshot mislukt:', e); return false; }
 }
 
 // ============================================================

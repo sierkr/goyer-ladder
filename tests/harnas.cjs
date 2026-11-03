@@ -508,6 +508,63 @@ function laadAfsluitKern() {
   return new Function(bron)();
 }
 
+// ============================================================
+//  v6.2.1 — SNAPSHOT VÓÓR "ACTIVITEIT NU VERWERKEN"
+// ------------------------------------------------------------
+//  draaiActiviteitNu(), slaSnapshotOp() en _slaSnapshotClientOp() ECHT uit
+//  js/beheer.js geknipt. De server en de database zijn nagebootst; `_log`
+//  houdt bij in welke volgorde er iets gebeurde, zodat de test kan zien dat
+//  de snapshot vóór de activiteitscorrectie kwam.
+function laadSnapshotKern() {
+  const bron = `
+    const _log = [];
+    const _meldingen = [];
+    let _antwoord = true;
+    let _serverSnapshotFout = false;
+    let _clientSnapshotFout = false;
+    let _instellingenLadderId = 'mp';
+    let activeLadderId = 'mp';
+    const IS_TEST = true;
+    const db = {};
+    const store = { _usersCache: [] };
+    const alleLadders = [{ id: 'mp', naam: 'MP Ladder' }];
+    const SNAPSHOTS_COL = { pad: ['snapshots'] };
+    const confirm = () => { _log.push('vraag'); return _antwoord; };
+    const toast = (t) => { _meldingen.push(t); };
+    const renderLadder = () => { _log.push('tekenen'); };
+    const console = { warn: () => {}, error: () => {}, log: () => {}, table: () => {} };
+    const _maakSnapshotFn = async (data) => {
+      if (_serverSnapshotFout) throw new Error('server niet bereikbaar');
+      _log.push('snapshot-server:' + data.label + ':' + data.ladderId);
+      return { data: { aantal: 3 } };
+    };
+    const _verwerkActiviteitNuFn = async (data) => {
+      _log.push('activiteit:' + data.ladderId);
+      return { data: { verschoven: [] } };
+    };
+    const collection = (...pad) => ({ pad });
+    const query = (...delen) => ({ delen });
+    const where = () => ({});
+    const deleteDoc = async () => {};
+    const getDocs = async () => ({ docs: [] });
+    const addDoc = async (_ref, obj) => {
+      if (_clientSnapshotFout) throw new Error('database weigert');
+      _log.push('snapshot-client:' + obj.label + ':' + obj.ladderId);
+      return { id: 'x' };
+    };
+    ${knip('js/beheer.js', ['slaSnapshotOp', '_slaSnapshotClientOp', 'draaiActiviteitNu'], 'async ')}
+    return {
+      draaiActiviteitNu, slaSnapshotOp,
+      _log, _meldingen,
+      _zetAntwoord:            (v) => { _antwoord = v; },
+      _zetServerSnapshotFout:  (v) => { _serverSnapshotFout = v; },
+      _zetClientSnapshotFout:  (v) => { _clientSnapshotFout = v; },
+      _zetLadders:             (instellingen, actief) => { _instellingenLadderId = instellingen; activeLadderId = actief; },
+    };
+  `;
+  return new Function(bron)();
+}
+
 // Knipt een eenregelige `const NAAM = ...;` uit een module.
 function knipConstanteRegel(bestand, naam) {
   const src = fs.readFileSync(path.join(wortel, bestand), 'utf8');
@@ -520,4 +577,5 @@ function knipConstanteRegel(bestand, naam) {
 module.exports = { laadStijlKern, laadToernooiKern, laadLadderKern, laadHcpKern, laadScoreKern,
                    laadKnockoutScoreKern,
                    laadNaamKern, laadMarkerKern, laadGastloginKern, laadQrKern, laadAfsluitKern,
+                   laadSnapshotKern,
                    maakChecker };
