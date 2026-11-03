@@ -20,6 +20,7 @@ const suites = [
   ['Toernooipagina',             './toernooipagina.test.cjs'],  // v6.0.0
   ['Exact & playing handicap',   './toernooihcp.test.cjs'],     // v6.1.0
   ['Dag afsluiten',              './afsluiten.test.cjs'],       // v6.1.3
+  ['Snapshot vóór activiteit',   './snapshot.test.cjs'],        // v6.2.1
 ];
 
 let totOk = 0, totFout = 0;
