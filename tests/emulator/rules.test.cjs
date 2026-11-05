@@ -150,6 +150,22 @@ async function main() {
   await R.magNiet('speler kan geen stand verwijderen',
     () => speler.doc(`ladders/mp/standen/${SPELER2}`).delete());
 
+  // ══ v6.3.0: betaald-vinkje (het tikkie) op het ladderblad ═══
+  // Alleen coördinator/beheerder; een gewoon ladderlid mag het blad wel
+  // beschrijven (partij starten), maar niet aan `betaald` komen.
+  await R.magWel('coordinator mag een speler op betaald zetten',
+    () => coord.doc('ladders/mp').update({ [`betaald.${SPELER2}`]: true }));
+  await R.magNiet('speler kan zichzelf NIET op betaald zetten',
+    () => speler.doc('ladders/mp').update({ [`betaald.${SPELER}`]: true }));
+  await R.magNiet('speler kan het vinkje van een ander NIET weghalen',
+    () => speler.doc('ladders/mp').update({ betaald: {} }));
+  await R.magNiet('speler kan betaald NIET via set+merge zetten',
+    () => speler.doc('ladders/mp').set({ betaald: { [SPELER]: true } }, { merge: true }));
+  await R.magWel('speler mag het ladderblad nog wel beschrijven (partij starten)',
+    () => speler.doc('ladders/mp').update({ actievePartijen: [] }));
+  await R.magWel('coordinator mag alle vinkjes wissen (nieuw seizoen)',
+    () => coord.doc('ladders/mp').update({ betaald: {} }));
+
   // ══ punten — afgeschermd ═══════════════════════════════════
   await R.magNiet('speler kan punten NIET lezen',
     () => speler.doc(`ladders/mp/punten/${SPELER}`).get());

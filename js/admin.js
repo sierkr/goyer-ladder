@@ -25,7 +25,7 @@ import { db, auth, firebaseConfig, IS_TEST, LADDERS_COL, TOERNOOIEN_COL, UITSLAG
 // Hij verwijdert uitsluitend accounts ZONDER profiel; die veiligheidsklep is
 // precies waarom het profiel er eerst af moet.
 import { store, alleLadders, activeLadderId,
-  huidigeBruiker, uitdagingenData, isGastProfiel } from './store.js';
+  huidigeBruiker, isGastProfiel } from './store.js';
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers,
   isBeheerderRol, isCoordinatorRol, toast, meldFout, laadUitdagingen,
   normaliseerLadderRangen, ladderIntegriteitsRapport, herstelLadderIntegriteit,
@@ -182,9 +182,16 @@ async function renderAdminSpelersEnAccounts() {
     const mijnLadders = alleLadders.filter(l =>
       (l.spelerIds || []).includes(uid)
     );
-    const ladderBadges = mijnLadders.map(l =>
-      `<span class="badge badge-grey" style="font-size:10px">${esc(l.naam)}</span>`
-    ).join(' ');
+    // v6.3.0: groen = tikkie betaald voor die ladder, rood = niet betaald
+    // (Sierk, 5 november 2026). Alleen coördinator/beheerder zien Beheer.
+    // Een knockout-ladder heeft geen vinkje en blijft grijs.
+    const ladderBadges = mijnLadders.map(l => {
+      const isKo = (l.type || l.data?.type) === 'knockout';
+      const betaald = !!(l.data?.betaald && l.data.betaald[uid] === true);
+      const klasse = isKo ? 'badge-grey' : betaald ? 'badge-green' : 'badge-red';
+      const titel  = isKo ? '' : betaald ? ' title="Tikkie betaald"' : ' title="Tikkie niet betaald"';
+      return `<span class="badge ${klasse}" style="font-size:10px"${titel}>${esc(l.naam)}</span>`;
+    }).join(' ');
 
     const rolBadge = u.rol && u.rol !== 'speler'
       ? `<span class="badge" style="font-size:10px;background:var(--green-pale);color:var(--green)">${esc(u.rol)}</span>`
@@ -815,40 +822,8 @@ function renderProfiel() {
 
   document.getElementById('profiel-stats').innerHTML = html;
 
-  const mijnUitdagingen = uitdagingenData.filter(u =>
-    u.vanEmail === huidigeBruiker.email || u.naarEmail === huidigeBruiker.email
-  );
-  const openOntvangen = mijnUitdagingen.filter(u => u.naarEmail === huidigeBruiker.email && u.status === 'open');
-  const openVerstuurd = mijnUitdagingen.filter(u => u.vanEmail  === huidigeBruiker.email && u.status === 'open');
-
-  if (mijnUitdagingen.length > 0) {
-    let uitdHtml = '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #f0ede4">';
-    uitdHtml += '<div style="font-size:12px;font-weight:600;color:var(--mid);text-transform:uppercase;margin-bottom:10px">Uitdagingen</div>';
-    openOntvangen.forEach(u => {
-      uitdHtml += `<div style="background:#fef3cd;border-radius:10px;padding:12px;margin-bottom:8px">
-        <div style="font-weight:600;margin-bottom:6px">⚔️ ${esc(u.vanNaam)} daagt je uit!</div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-sm btn-primary" onclick="reageerUitdaging('${escAttr(u.id)}',true)">✓ Accepteer</button>
-          <button class="btn btn-sm btn-ghost" onclick="reageerUitdaging('${escAttr(u.id)}',false)" style="color:var(--red)">✗ Weiger</button>
-        </div>
-      </div>`;
-    });
-    openVerstuurd.forEach(u => {
-      uitdHtml += `<div style="background:#f0ede4;border-radius:10px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
-        <div style="font-size:13px">⏳ Wacht op <strong>${esc(u.naarNaam)}</strong></div>
-        <button onclick="verwijderUitdaging('${escAttr(u.id)}')" style="background:none;border:none;color:var(--light);cursor:pointer;font-size:18px">✕</button>
-      </div>`;
-    });
-    const afgerond = mijnUitdagingen.filter(u => u.status !== 'open');
-    afgerond.slice(0, 3).forEach(u => {
-      const isVan  = u.vanEmail === huidigeBruiker.email;
-      const ander  = isVan ? u.naarNaam : u.vanNaam;
-      const icoon  = u.status === 'geaccepteerd' ? '✅' : '❌';
-      uitdHtml += `<div style="font-size:12px;color:var(--light);padding:4px 0">${icoon} ${isVan ? 'Uitdaging aan' : 'Uitdaging van'} ${esc(ander)} — ${esc(u.status)}</div>`;
-    });
-    uitdHtml += '</div>';
-    document.getElementById('profiel-stats').innerHTML += uitdHtml;
-  }
+  // v6.3.0: het blok "Uitdagingen" (accepteren/weigeren) is weg, net als het
+  // zwaardje in de ladderstand — Sierk, 5 november 2026: nooit gebruikt.
 
   const hcpInput = document.getElementById('profiel-hcp-input');
   if (hcpInput && speler) hcpInput.value = Math.round(speler.hcp);

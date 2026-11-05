@@ -8,7 +8,7 @@ import { store, huidigeBruiker, archiefData, uitdagingenData, alleLadders, activ
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { renderAdmin, renderProfiel } from './admin.js';
 import { renderLadder } from './ladder.js';
-import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, deleteField, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { closeModal } from './admin.js';
 
 
@@ -121,9 +121,13 @@ async function bevestigNieuwSeizoen() {
           : standenData;
 
         // 4) Reset ladder-doc: wis uitslagen[] + actievePartijen[] via merge
+        // v6.3.0: ook de betaald-vinkjes (het tikkie) gaan uit — keuze Sierk,
+        // 5 november 2026: "nieuw seizoen, vinkjes uit". deleteField() is
+        // nodig: een lege kaart {} met merge laat de oude vinkjes staan.
         await setDoc(doc(db, 'ladders', ladderId), {
           uitslagen: [],
           actievePartijen: [],
+          betaald: deleteField(),
         }, { merge: true });
 
         // 5) v5.2.1: standen resetten EN het vorige seizoen opruimen, via de
@@ -465,16 +469,13 @@ async function stuurNotificatie(naarUid, titel, bericht) {
 //  UITDAGINGEN
 // ============================================================
 
+// v6.3.0: uitdagen staat niet meer in het scherm (Sierk, 5 november 2026).
+// De knop heet dus altijd gewoon "Profiel", zonder teller van open
+// uitdagingen. De functies hieronder blijven bestaan, maar niets roept ze nog
+// aan vanuit het scherm; de oude lijst in ladder/uitdagingen blijft staan.
 function toonUitdagingBadge() {
-  const open = uitdagingenData.filter(u =>
-    u.naarEmail === huidigeBruiker?.email && u.status === 'open'
-  );
   const profielBtn = document.getElementById('nav-profiel-btn');
-  if (open.length > 0) {
-    profielBtn.textContent = `👤 Profiel (${open.length})`;
-  } else {
-    profielBtn.textContent = '👤 Profiel';
-  }
+  if (profielBtn) profielBtn.textContent = '👤 Profiel';
 }
 
 async function stuurUitdaging(naarUid) {
