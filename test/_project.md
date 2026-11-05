@@ -1233,8 +1233,8 @@ plus, bij wijzigingen in `js/`:
     (`openLadderverloop` in `js/ladder.js`) reconstrueert het verleden nog
     met het oude plek-algoritme, puur voor de weergave — dit heeft geen
     invloed op de actuele stand.
-  - Zie `puntensysteem-plan.md` (los aangeleverd) voor de volledige
-    ontwerpgeschiedenis van dit besluit.
+  - De volledige ontwerpgeschiedenis stond in `puntensysteem-plan.md` (los
+    aangeleverd); dat bestand is niet meer aanwezig (gemeten 22 okt 2026).
 - **v4.0.2** — Twee UX-verbeteringen toernooimodus (`js/toernooi.js`):
   - **Matrix toont marge**: de onderlinge stand toont nu het aantal holes
     voorsprong/achterstand als getal (kleur = richting: groen voor, rood
@@ -1350,6 +1350,9 @@ ladders/{ladderId}
     .startHole                # 1-gebaseerd (bijv. 1 of 10)
   .uitslagen[]
   .spelerIds[]                # UIDs van leden
+  .betaald                    # v6.3.0 — { uid: true }: tikkie betaald. Alleen
+                              # coördinator/beheerder (firestore.rules,
+                              # betaaldOngewijzigd). Nieuw seizoen wist het.
   .standen/{uid}              # Stand per speler: rank (publiek, 1..N), partijen, gewonnen, prevRank
   .partijen/{partijId}        # v5.0.0 — metadata van een lopende partij (baan, holes,
                               # spelers, matchups, speltype). Vervangt actievePartijen[]
@@ -1382,7 +1385,7 @@ ladder/watchPins              # v5.0.0 — { [sha256(PIN)]: { uid, expires, gebr
 ladder/watchPinPogingen       # v5.0.0 — { fouten, venster } foutteller tegen brute force
 ladder/config                 # { initieelWachtwoord }
 ladder/banen                  # Alle beschikbare banen
-ladder/uitdagingen            # Lopende uitdagingen
+ladder/uitdagingen            # Oude uitdagingen — sinds v6.3.0 niet meer in het scherm
 ladder/archief                # Seizoenshistorie
 ```
 

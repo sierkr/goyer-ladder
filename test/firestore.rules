@@ -168,6 +168,13 @@ service cloud.firestore {
          get(/databases/$(database)/documents/ladder/$('invite_' + ladderId)).data.maxGebruik);
     }
     // Check: ingelogde gebruiker is lid van ladder (via spelerIds[])
+    // v6.3.0: blijft het veld `betaald` op het ladderblad gelijk? Bij aanmaken
+    // (geen oud blad) mag het er niet in staan.
+    function betaaldOngewijzigd() {
+      return resource == null
+        ? !request.resource.data.keys().hasAny(['betaald'])
+        : request.resource.data.get('betaald', {}) == resource.data.get('betaald', {});
+    }
     function isInLadder(ladderId) {
       return isIngelogd() &&
         exists(/databases/$(database)/documents/ladders/$(ladderId)) &&
@@ -212,7 +219,16 @@ service cloud.firestore {
       // (nodig voor startPartij / bevestigUitslag). Eerder alleen coordinator,
       // waardoor schrijfpogingen van gewone spelers door Firestore werden
       // afgewezen en de partij nooit in de ronde verscheen.
-      allow write: if !viaBeperkteSessie() && (isCoordinator()
+      //
+      // v6.3.0: het veld `betaald` (het tikkie, { uid: true }) mag alleen de
+      // coördinator/beheerder wijzigen. Gewone ladderleden moeten het blad wel
+      // kunnen beschrijven (partij starten), maar dat veld moet dan gelijk
+      // blijven — anders vinkt een speler zichzelf via de console aan.
+      // Verwijderen blijft precies zoals het was.
+      allow create, update: if !viaBeperkteSessie() && (isCoordinator()
+                   || (isIngelogd() && isInLadder(ladderId) && betaaldOngewijzigd())
+                   || (isIngelogd() && heeftGeldigeInvite(ladderId) && betaaldOngewijzigd()));
+      allow delete: if !viaBeperkteSessie() && (isCoordinator()
                    || (isIngelogd() && isInLadder(ladderId))
                    || (isIngelogd() && heeftGeldigeInvite(ladderId)));
 

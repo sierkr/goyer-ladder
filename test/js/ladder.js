@@ -2,11 +2,10 @@
 //  ladder.js — Ladder rendering, ranking weergave
 // ============================================================
 import { db, LADDERS_COL, SNAPSHOTS_COL, ARCHIEF_DOC, esc, escAttr } from './config.js';
-import { store, alleLadders, activeLadderId, huidigeBruiker, uitdagingenData, alleToernooien, archiefData, DEFAULT_LADDER_CONFIG } from './store.js';
-import { getLadderConfig, getLadderData, isBeheerderRol, isCoordinatorRol, toast,
+import { store, alleLadders, activeLadderId, huidigeBruiker, alleToernooien, archiefData, DEFAULT_LADDER_CONFIG } from './store.js';
+import { getLadderConfig, getLadderData, isBeheerderRol, isCoordinatorRol, toast, meldFout,
          markeerOpstartLadder } from './auth.js';
-import { stuurUitdaging } from './archief.js';
-import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, deleteField, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { renderKnockoutLadderKaart } from './knockout.js';
 import { getLadderSpelers, isInLadder, ladderStandenGeladen,
          herstartStandenListeners, ladderNamenCompleet } from './ladder-view.js';
@@ -691,7 +690,7 @@ async function renderLadder() {
          </div>`
       : spelers.length === 0
         ? '<div class="empty"><p>Nog geen spelers.</p></div>'
-        : spelers.map(s => renderLadderRij(s, l.id)).join('');
+        : betaaldTellingHtml(l.id, spelers) + spelers.map(s => renderLadderRij(s, l.id)).join('');
 
     return `<div class="card" style="margin-bottom:16px">
       <div class="card-header inklapbaar" onclick="toggleLadderKaart(this,'${escAttr(l.id)}')">
@@ -751,14 +750,16 @@ function renderLadderRij(s, ladderId) {
   const uid = huidigeBruiker?.uid;
   // v3.0.0-9c: isZelf alleen via uid. Entries uit view-laag hebben s.uid.
   const isZelf = huidigeBruiker && uid && s.uid === uid;
-  const openUitdaging = uitdagingenData?.find(u =>
-    u.status === 'open' && (
-      (u.vanEmail === huidigeBruiker?.email && u.naarNaam?.toLowerCase() === s.naam.toLowerCase()) ||
-      (u.naarEmail === huidigeBruiker?.email && u.vanNaam?.toLowerCase() === s.naam.toLowerCase())
-    )
-  );
-  const uitdagingBtnHtml = huidigeBruiker && !isZelf
-    ? `<button onclick="stuurUitdaging('${escAttr(s.uid)}')" style="background:none;border:1px solid #e0ddd4;border-radius:6px;padding:4px 8px;font-size:11px;cursor:pointer;color:${openUitdaging ? 'var(--gold)' : 'var(--light)'}" title="${openUitdaging ? 'Uitdaging loopt' : 'Uitdagen'}">⚔️</button>`
+  // v6.3.0: het zwaardje (Uitdagen) is weg — Sierk, 5 november 2026: "De
+  // uitdagen knop wordt nooit gebruikt." Op die plek staat nu het vinkje
+  // "betaald" (het tikkie), alleen voor coördinator en beheerder. Gewone
+  // spelers zien hier niets. Het vinkje staat per ladder in het ladderblad:
+  // ladders/{id}.betaald = { uid: true }. Zie zetBetaald() hieronder.
+  const betaaldVinkHtml = isCoordinatorRol() && s.uid
+    ? `<input type="checkbox" class="betaald-vink" ${isBetaald(ladderId, s.uid) ? 'checked' : ''}
+         onclick="event.stopPropagation()" onchange="zetBetaald('${escAttr(ladderId)}','${escAttr(s.uid)}',this)"
+         title="Tikkie betaald" aria-label="Tikkie betaald: ${escAttr(s.naam)}"
+         style="width:22px;height:22px;cursor:pointer;accent-color:var(--green);margin:0">`
     : '';
 
   const rang = s._weergaveRang ?? s.rank;
@@ -767,11 +768,66 @@ function renderLadderRij(s, ladderId) {
     <div class="player-name" style="${isZelf ? 'font-weight:700;color:var(--green);' : ''}">${esc(s.naam)}${icoonHtml ? '&nbsp;' + icoonHtml : ''}</div>
     <div style="min-width:30px;text-align:center">${deltaHtml}</div>
     <div class="player-stats" style="text-align:right;min-width:52px">${s.partijen}P · ${s.gewonnen}W · ${winpct}%</div>
-    <div style="width:42px;text-align:center;flex-shrink:0">${uitdagingBtnHtml}</div>
+    <div style="width:42px;text-align:center;flex-shrink:0">${betaaldVinkHtml}</div>
   </div>`;
 }
 
 // ============================================================
+
+// ============================================================
+//  v6.3.0 — BETAALD (het tikkie)
+//  Sierk, 5 november 2026: een vinkbox "die door de coordinator en beheerder
+//  aangevinkt kan worden ... wie het tikkie betaald heeft. Uiteindelijk
+//  moeten de niet aangevinkte spelers uit de ladder gehaald worden."
+//  Dat laatste doet hij voorlopig zelf (Beheer › Spelers van de ladder); in
+//  Beheer › Spelers kleurt de laddernaam bij elke speler groen (betaald) of
+//  rood (niet betaald) — zie admin.js.
+//
+//  Bewaard in het LADDERBLAD (ladders/{id}.betaald = { uid: true }), niet in
+//  standen/{uid}: het terugzetten van een snapshot overschrijft de standen
+//  zonder merge en zou de vinkjes dan wissen. Nieuw seizoen wist ze wél, met
+//  opzet (keuze Sierk) — zie archief.js.
+//  Alleen coördinator/beheerder mag het veld wijzigen: firestore.rules
+//  (betaaldOngewijzigd) — het verbergen van het vinkje is geen beveiliging.
+// ============================================================
+function isBetaald(ladderId, uid) {
+  const l = alleLadders.find(x => x.id === ladderId);
+  return !!(l?.data?.betaald && l.data.betaald[uid] === true);
+}
+
+function betaaldTellingHtml(ladderId, spelers) {
+  if (!isCoordinatorRol()) return '';
+  const metUid = spelers.filter(s => s.uid);
+  const betaald = metUid.filter(s => isBetaald(ladderId, s.uid)).length;
+  return `<div class="betaald-telling" style="font-size:12px;color:var(--mid);text-align:right;padding:6px 12px 2px">
+    Betaald: ${betaald} van ${metUid.length}</div>`;
+}
+
+async function zetBetaald(ladderId, uid, vak) {
+  const aan = !!vak?.checked;
+  const l = alleLadders.find(x => x.id === ladderId);
+  const naam = (getLadderSpelers(ladderId) || []).find(s => s.uid === uid)?.naam || 'Speler';
+  if (vak) vak.disabled = true;
+  try {
+    await updateDoc(doc(db, 'ladders', ladderId), { ['betaald.' + uid]: aan ? true : deleteField() });
+    // Meteen lokaal bijwerken: de vaste luisteraar slaat een snapshot soms
+    // over (zie de bewaker in auth.js rond actievePartijen).
+    if (l) {
+      if (!l.data) l.data = {};
+      const kaart = { ...(l.data.betaald || {}) };
+      if (aan) kaart[uid] = true; else delete kaart[uid];
+      l.data.betaald = kaart;
+    }
+    toast(aan ? `${naam}: betaald ✓` : `${naam}: niet betaald`);
+  } catch (e) {
+    if (vak && vak.isConnected) vak.checked = !aan;
+    meldFout('Betaald opslaan', e);
+  } finally {
+    if (vak && vak.isConnected) vak.disabled = false;
+    renderLadder();
+  }
+}
+window.zetBetaald = zetBetaald;
 
 // ============================================================
 //  Ladderstand opnieuw ophalen — v5.4.1
@@ -795,7 +851,7 @@ async function herstelLadderstand(knop) {
 }
 window.herstelLadderstand = herstelLadderstand;
 
-export { renderLadder, toggleLadderKaart, renderLadderRij, getLadderSpelersWeergave, berekenWeergaveRangen, herstelLadderstand };
+export { renderLadder, toggleLadderKaart, renderLadderRij, getLadderSpelersWeergave, berekenWeergaveRangen, herstelLadderstand, isBetaald, zetBetaald };
 
 // ============================================================
 //  DEEL ALS AFBEELDING — WhatsApp stijl

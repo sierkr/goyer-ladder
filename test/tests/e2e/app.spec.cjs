@@ -726,6 +726,81 @@ test.describe('Beheer', () => {
   });
 
   // ============================================================
+  //  v6.3.0 — BETAALD-VINKJE (het tikkie) in plaats van het zwaardje
+  // ------------------------------------------------------------
+  //  Sierk, 5 november 2026: "De uitdagen knop wordt nooit gebruikt ... In
+  //  plaats daarvan wil ik een vink box die door de coordinator en beheerder
+  //  aangevinkt kan worden." Alleen coördinator en beheerder zien het; in
+  //  Beheer › Spelers kleurt de laddernaam groen (betaald) of rood (niet).
+  //  Toetst beide kanten: de speler ziet géén vinkje en géén zwaardje.
+  // ============================================================
+  test('BETAALD: vinkje voor de coordinator, niets voor de speler, kleur in Beheer', async ({ browser }) => {
+    test.setTimeout(180000);
+    const uidVan = async (naam) =>
+      (await beheerDb.collection('spelers').where('naam', '==', naam).get()).docs[0]?.id;
+    const coordId = await uidVan('Coen Coordinator');
+    const annaId  = await uidVan('Anna Speler');
+    expect(coordId && annaId, 'Coen en Anna staan in de proefdatabase').toBeTruthy();
+    const admin_ = require('firebase-admin');
+    await beheerDb.doc('ladders/mp').update({ betaald: admin_.firestore.FieldValue.delete() });
+    // De kaart Spelers in Beheer is alleen voor een beheerder (zie hierboven).
+    await beheerDb.doc(`spelers/${coordId}`).update({ rol: 'beheerder' });
+
+    const ctxSpeler = await browser.newContext();
+    const ctxCoord  = await browser.newContext();
+    try {
+      // ── De speler: geen vinkje, geen zwaardje ────────────────
+      const speler = await ctxSpeler.newPage();
+      await inloggen(speler, 'anna');
+      const lijstS = speler.locator('#ladder-list-mp');
+      await expect(lijstS).toContainText('Coen Coordinator', { timeout: 25000 });
+      await expect(lijstS.locator('.betaald-vink'), 'speler ziet geen vinkje').toHaveCount(0);
+      await expect(lijstS.locator('.betaald-telling'), 'speler ziet geen telling').toHaveCount(0);
+      await expect(lijstS, 'het zwaardje is weg').not.toContainText('⚔');
+
+      // ── De coördinator/beheerder: vinkje per speler ─────────
+      const coord = await ctxCoord.newPage();
+      await inloggen(coord, 'coord');
+      const lijst = coord.locator('#ladder-list-mp');
+      await expect(lijst).toContainText('Anna Speler', { timeout: 25000 });
+      await expect(lijst, 'ook hier geen zwaardje').not.toContainText('⚔');
+      const aantal = await lijst.locator('.ladder-item').count();
+      await expect(lijst.locator('.betaald-vink'), 'een vinkje bij elke speler').toHaveCount(aantal);
+      await expect(lijst.locator('.betaald-telling')).toContainText(`Betaald: 0 van ${aantal}`);
+
+      const annaVink = lijst.locator('.ladder-item', { hasText: 'Anna Speler' }).locator('.betaald-vink');
+      await annaVink.check();
+      await expect.poll(async () =>
+        ((await beheerDb.doc('ladders/mp').get()).data().betaald || {})[annaId],
+        { timeout: 15000, message: 'het vinkje staat in de database' }).toBe(true);
+      await expect(lijst.locator('.betaald-telling')).toContainText(`Betaald: 1 van ${aantal}`, { timeout: 10000 });
+      await expect(lijst.locator('.ladder-item', { hasText: 'Anna Speler' }).locator('.betaald-vink')).toBeChecked();
+
+      // ── Beheer › Spelers: groen voor Anna, rood voor Bram ───
+      await coord.click('#nav-admin-btn');
+      await coord.locator('#admin-sectie-spelers .card-header').first().click();
+      const leden = coord.locator('#admin-player-list > .admin-row');
+      await expect(leden.filter({ hasText: 'Anna Speler' }).locator('.badge-green', { hasText: 'MP' }),
+        'Anna: laddernaam groen').toHaveCount(1, { timeout: 25000 });
+      await expect(leden.filter({ hasText: 'Bram Speler' }).locator('.badge-red', { hasText: 'MP' }),
+        'Bram: laddernaam rood').toHaveCount(1);
+
+      // ── Uitvinken haalt het weer weg ─────────────────────────
+      await coord.click('#nav-ladder-btn');
+      const annaVink2 = coord.locator('#ladder-list-mp .ladder-item', { hasText: 'Anna Speler' }).locator('.betaald-vink');
+      await annaVink2.uncheck();
+      await expect.poll(async () =>
+        ((await beheerDb.doc('ladders/mp').get()).data().betaald || {})[annaId],
+        { timeout: 15000, message: 'het vinkje is weer weg' }).toBeUndefined();
+    } finally {
+      await beheerDb.doc('ladders/mp').update({ betaald: require('firebase-admin').firestore.FieldValue.delete() }).catch(() => {});
+      await beheerDb.doc(`spelers/${coordId}`).update({ rol: 'coordinator' });
+      await ctxSpeler.close();
+      await ctxCoord.close();
+    }
+  });
+
+  // ============================================================
   //  v5.47.0 — BEKIJK ALS GEWONE SPELER
   // ------------------------------------------------------------
   //  Sierk: "ik wil als beheerder een knop zoals bij matchcheck zodat ik kan
