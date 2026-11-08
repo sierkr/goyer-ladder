@@ -1,6 +1,6 @@
 {
   "name": "goyer-ladder-tests",
-  "version": "6.3.0",
+  "version": "6.4.0",
   "private": true,
   "description": "Testgereedschap voor de Goyer Golf MP Ladder. Alleen nodig voor de emulator- en browsertests; de rekentests draaien zonder dit alles.",
   "scripts": {
@@ -13,9 +13,9 @@
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",
     "@playwright/test": "^1.49.0",
-    "firebase-admin": "^12.0.0",
-    "firebase-tools": "^13.0.0",
     "eslint": "^10.0.0",
+    "firebase-admin": "^14.5.0",
+    "firebase-tools": "^15.35.0",
     "globals": "^16.0.0"
   }
 }

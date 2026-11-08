@@ -11,9 +11,11 @@ const { test, expect } = require('./hulp-browser.cjs');
 // v5.40.3: een directe ingang naast de app, om gastprofielen klaar te zetten
 // zonder er eerst een heel toernooi of een hele ronde voor te spelen.
 process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
-const admin = require('firebase-admin');
-if (!admin.apps.length) admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT || 'demo-goyer' });
-const beheerDb = admin.firestore();
+// v6.4.0: losse ingangen; firebase-admin 14 kent admin.firestore() e.d. niet meer.
+const { initializeApp, getApps } = require('firebase-admin/app');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+if (!getApps().length) initializeApp({ projectId: process.env.GCLOUD_PROJECT || 'demo-goyer' });
+const beheerDb = getFirestore();
 
 const WACHTWOORD = 'test1234';
 // v5.4.3: de inlogknop op EEN plek. Niet op tekst zoeken: in #login-scherm
@@ -741,8 +743,7 @@ test.describe('Beheer', () => {
     const coordId = await uidVan('Coen Coordinator');
     const annaId  = await uidVan('Anna Speler');
     expect(coordId && annaId, 'Coen en Anna staan in de proefdatabase').toBeTruthy();
-    const admin_ = require('firebase-admin');
-    await beheerDb.doc('ladders/mp').update({ betaald: admin_.firestore.FieldValue.delete() });
+    await beheerDb.doc('ladders/mp').update({ betaald: FieldValue.delete() });
     // De kaart Spelers in Beheer is alleen voor een beheerder (zie hierboven).
     await beheerDb.doc(`spelers/${coordId}`).update({ rol: 'beheerder' });
 
@@ -793,7 +794,7 @@ test.describe('Beheer', () => {
         ((await beheerDb.doc('ladders/mp').get()).data().betaald || {})[annaId],
         { timeout: 15000, message: 'het vinkje is weer weg' }).toBeUndefined();
     } finally {
-      await beheerDb.doc('ladders/mp').update({ betaald: require('firebase-admin').firestore.FieldValue.delete() }).catch(() => {});
+      await beheerDb.doc('ladders/mp').update({ betaald: FieldValue.delete() }).catch(() => {});
       await beheerDb.doc(`spelers/${coordId}`).update({ rol: 'coordinator' });
       await ctxSpeler.close();
       await ctxCoord.close();
@@ -908,9 +909,8 @@ test.describe('Opstarten blijft overeind', () => {
   test('ontbrekende ladder/config sloopt ladder en banen niet', async ({ page }) => {
     process.env.FIRESTORE_EMULATOR_HOST =
       process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
-    const admin = require('firebase-admin');
-    if (!admin.apps.length) admin.initializeApp({ projectId: 'demo-goyer' });
-    const ref = admin.firestore().doc('ladder/config');
+    if (!getApps().length) initializeApp({ projectId: 'demo-goyer' });
+    const ref = getFirestore().doc('ladder/config');
     const origineel = (await ref.get()).data();
 
     await ref.delete();
@@ -948,9 +948,8 @@ test.describe('Zelfherstel', () => {
   test('lege standen geven een knop, en de ladder vult zichzelf weer', async ({ page }) => {
     process.env.FIRESTORE_EMULATOR_HOST =
       process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
-    const admin = require('firebase-admin');
-    if (!admin.apps.length) admin.initializeApp({ projectId: 'demo-goyer' });
-    const db = admin.firestore();
+    if (!getApps().length) initializeApp({ projectId: 'demo-goyer' });
+    const db = getFirestore();
     const col = db.collection('ladders/mp/standen');
 
     const bewaard = (await col.get()).docs.map(d => ({ id: d.id, data: d.data() }));

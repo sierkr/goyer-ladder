@@ -13,7 +13,13 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
-const admin = require('firebase-admin');
+// v6.4.0: firebase-admin 14 kent de oude schrijfwijze (admin.auth(),
+// admin.app()) niet meer; alles gaat via de losse ingangen. En een fout
+// heeft geen e.errorInfo meer: de foutcode staat in e.code (dat werkte ook
+// al in 12 en 13). Met e.errorInfo.code gaf "account al weg" in
+// verwijderWeesAccount een interne fout (gemeten in de emulator).
+const { initializeApp, getApp } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
 const { getFirestore } = require('firebase-admin/firestore');
 const crypto = require('crypto');
 // v5.40.0: de QR-code van een ronde wordt HIER getekend, niet in de app. Zo
@@ -21,7 +27,7 @@ const crypto = require('crypto');
 // kunnen wat ze nu niet al kan.
 const QRCode = require('qrcode');
 
-admin.initializeApp();
+initializeApp();
 
 const anthropicKey = defineSecret('ANTHROPIC_API_KEY');
 
@@ -218,10 +224,10 @@ exports.wisselWatchPin = onCall(
     try {
       // De claim `watch:true` maakt in de toekomst een beperkter rechtenmodel
       // mogelijk zonder dat de watch-login opnieuw op de schop hoeft.
-      customToken = await admin.auth().createCustomToken(uid, { watch: true });
+      customToken = await getAuth().createCustomToken(uid, { watch: true });
     } catch (e) {
       console.error('createCustomToken mislukt:', e);
-      if (String(e?.errorInfo?.code || '').includes('insufficient-permission')
+      if (String(e?.code || '').includes('insufficient-permission')
           || String(e?.message || '').includes('signBlob')) {
         throw new HttpsError('failed-precondition',
           'De server mag nog geen inlogtokens maken. Geef het serviceaccount de rol ' +
@@ -463,10 +469,10 @@ exports.wisselToernooiPin = onCall(
     // zonder dat de inlog opnieuw op de schop hoeft.
     let customToken;
     try {
-      customToken = await admin.auth().createCustomToken(spelerUid, { viaPin: true, toernooiId });
+      customToken = await getAuth().createCustomToken(spelerUid, { viaPin: true, toernooiId });
     } catch (e) {
       console.error('createCustomToken mislukt:', e);
-      if (String(e?.errorInfo?.code || '').includes('insufficient-permission')
+      if (String(e?.code || '').includes('insufficient-permission')
           || String(e?.message || '').includes('signBlob')) {
         throw new HttpsError('failed-precondition',
           'De server mag nog geen inlogtokens maken. Geef het serviceaccount de rol ' +
@@ -719,7 +725,7 @@ exports.wisselRondeSleutel = onCall(
       }, { merge: true });
       let customToken;
       try {
-        customToken = await admin.auth().createCustomToken(uid, { viaRonde: partijId, ladderId });
+        customToken = await getAuth().createCustomToken(uid, { viaRonde: partijId, ladderId });
       } catch (e) {
         console.error('createCustomToken mislukt:', e);
         throw new HttpsError('internal', 'Inloggen mislukt, probeer het opnieuw.');
@@ -747,7 +753,7 @@ exports.wisselRondeSleutel = onCall(
 
     let customToken;
     try {
-      customToken = await admin.auth().createCustomToken(uid, { viaRonde: partijId, ladderId });
+      customToken = await getAuth().createCustomToken(uid, { viaRonde: partijId, ladderId });
     } catch (e) {
       console.error('createCustomToken mislukt:', e);
       throw new HttpsError('internal', 'Inloggen mislukt, probeer het opnieuw.');
@@ -757,7 +763,7 @@ exports.wisselRondeSleutel = onCall(
 );
 
 function fsVoor(isTest) {
-  return getFirestore(admin.app(), isTest ? 'test' : '(default)');
+  return getFirestore(getApp(), isTest ? 'test' : '(default)');
 }
 
 // ============================================================
@@ -1215,7 +1221,7 @@ exports.resetSpelerWachtwoord = onCall(
 
     try {
       // Stap 6: Auth wachtwoord overschrijven
-      await admin.auth().updateUser(targetUid, { password: initieelWachtwoord });
+      await getAuth().updateUser(targetUid, { password: initieelWachtwoord });
 
       // Stap 7: eersteLogin:true zodat speler verplicht profielflow krijgt
       await fs.doc(`spelers/${targetUid}`).update({
@@ -1287,7 +1293,7 @@ exports.voltooiEersteLogin = onCall(
 
     try {
       // Stap 4: Auth-wachtwoord zetten (Admin SDK — geen recentheidseis)
-      await admin.auth().updateUser(auth.uid, { password: nieuwWachtwoord });
+      await getAuth().updateUser(auth.uid, { password: nieuwWachtwoord });
 
       // Stap 5: profiel bijwerken — hcp + eersteLogin:false
       await spelerRef.update({ hcp, eersteLogin: false });
@@ -2731,10 +2737,10 @@ exports.verwijderWeesAccount = onCall(
 
     if (!targetUid) {
       try {
-        const viaMail = await admin.auth().getUserByEmail(targetEmail);
+        const viaMail = await getAuth().getUserByEmail(targetEmail);
         targetUid = viaMail.uid;
       } catch (e) {
-        if (e?.errorInfo?.code === 'auth/user-not-found') return { success: true, alWeg: true };
+        if (e?.code === 'auth/user-not-found') return { success: true, alWeg: true };
         throw new HttpsError('internal', 'Opzoeken mislukt: ' + e.message);
       }
     }
@@ -2746,9 +2752,9 @@ exports.verwijderWeesAccount = onCall(
         'Dit account heeft een profiel — verwijder de speler via het spelersbeheer.');
     }
 
-    try { await admin.auth().deleteUser(targetUid); }
+    try { await getAuth().deleteUser(targetUid); }
     catch (e) {
-      if (e?.errorInfo?.code === 'auth/user-not-found') return { success: true, alWeg: true };
+      if (e?.code === 'auth/user-not-found') return { success: true, alWeg: true };
       throw new HttpsError('internal', 'Verwijderen mislukt: ' + e.message);
     }
     return { success: true, uid: targetUid };
