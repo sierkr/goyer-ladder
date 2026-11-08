@@ -14,7 +14,10 @@
 process.env.FIRESTORE_EMULATOR_HOST      = process.env.FIRESTORE_EMULATOR_HOST      || '127.0.0.1:8080';
 process.env.FIREBASE_AUTH_EMULATOR_HOST  = process.env.FIREBASE_AUTH_EMULATOR_HOST  || '127.0.0.1:9099';
 
-const admin = require('firebase-admin');
+// v6.4.0: losse ingangen; firebase-admin 14 kent admin.auth() e.d. niet meer.
+const { initializeApp } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
+const { getFirestore } = require('firebase-admin/firestore');
 const { maakRapport, toonRapport, wachtOpPoort } = require('./helpers.cjs');
 
 const PROJECT  = process.env.GCLOUD_PROJECT || 'demo-goyer';
@@ -22,8 +25,8 @@ const REGIO    = 'europe-west1';
 const FN_POORT = 5001;
 const R = maakRapport('Cloud Functions');
 
-admin.initializeApp({ projectId: PROJECT });
-const db = admin.firestore();
+initializeApp({ projectId: PROJECT });
+const db = getFirestore();
 
 // ─── Aanroepen van een callable function ─────────────────────
 async function roepAan(naam, data, idToken) {
@@ -47,7 +50,7 @@ async function roepAan(naam, data, idToken) {
 
 // ─── Inlogtoken voor een uid (via de auth-emulator) ──────────
 async function tokenVoor(uid) {
-  const custom = await admin.auth().createCustomToken(uid);
+  const custom = await getAuth().createCustomToken(uid);
   const url = `http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=fake-api-key`;
   const resp = await fetch(url, {
     method: 'POST',
@@ -426,7 +429,7 @@ async function main() {
   R.check('en weet bij welk toernooi het hoort', ontcijferd?.claims?.toernooiId, 't_pin');
 
   // Een pincode-sessie mag geen enkele serverfunctie aanroepen.
-  const pinCustom = await admin.auth().createCustomToken(SPELER_A, { viaPin: true, toernooiId: 't_pin' });
+  const pinCustom = await getAuth().createCustomToken(SPELER_A, { viaPin: true, toernooiId: 't_pin' });
   const pinAanmeld = await fetch(
     'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=fake-api-key',
     { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -722,6 +725,22 @@ async function main() {
   const pa = await roepAan('pasPuntenAan', { ladderId: 'mp', uid: SPELER_C, score: 999999999 }, tokenBeh);
   R.check('onderaan: ook met de hand bovenaan gezet blijft Cees onder de spelers', await rang(SPELER_C), 3);
   R.check('onderaan: pasPuntenAan meldt de echte plek', pa?.nieuwePositie, 3);
+
+  // ══ v6.4.0: verwijderWeesAccount — een account dat al weg is ═══
+  // firebase-admin 14 heeft geen e.errorInfo meer; de foutcode staat in
+  // e.code. Met e.errorInfo.code gaf "al weg" hier een interne fout in
+  // plaats van { alWeg: true }. Rood op de 6.3.0-code met admin 14.
+  const probeer = async fn => { try { return await fn(); } catch (e) { return { fout: e.status || e.message }; } };
+  await zetLadderKlaar();
+  const wees = await getAuth().createUser({ email: 'wees@demo.nl', password: 'wees-wachtwoord-1' });
+  const weg1 = await probeer(() => roepAan('verwijderWeesAccount', { targetUid: wees.uid }, tokenBeh));
+  R.check('weesaccount wordt verwijderd', weg1?.uid, wees.uid);
+  const weg2 = await probeer(() => roepAan('verwijderWeesAccount', { targetUid: wees.uid }, tokenBeh));
+  R.check('nog een keer (op uid): "al weg", geen fout', weg2?.alWeg ?? weg2?.fout, true);
+  const weg3 = await probeer(() => roepAan('verwijderWeesAccount', { targetEmail: 'bestaat-niet@demo.nl' }, tokenBeh));
+  R.check('onbekend e-mailadres: "al weg", geen fout', weg3?.alWeg ?? weg3?.fout, true);
+  await R.magNiet('een account mét profiel mag niet weg',
+    () => roepAan('verwijderWeesAccount', { targetUid: SPELER_A }, tokenBeh));
 
   return toonRapport(R);
 }

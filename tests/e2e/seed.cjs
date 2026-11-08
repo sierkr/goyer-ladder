@@ -7,10 +7,13 @@
 process.env.FIRESTORE_EMULATOR_HOST     = process.env.FIRESTORE_EMULATOR_HOST     || '127.0.0.1:8080';
 process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || '127.0.0.1:9099';
 
-const admin = require('firebase-admin');
+// v6.4.0: losse ingangen; firebase-admin 14 kent admin.auth() e.d. niet meer.
+const { initializeApp } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
+const { getFirestore } = require('firebase-admin/firestore');
 const PROJECT = process.env.GCLOUD_PROJECT || 'demo-goyer';
-admin.initializeApp({ projectId: PROJECT });
-const db = admin.firestore();
+initializeApp({ projectId: PROJECT });
+const db = getFirestore();
 
 const WACHTWOORD = 'test1234';
 const HOLES = Array.from({ length: 18 }, (_, i) => ({ par: 4, si: i + 1 }));
@@ -31,8 +34,8 @@ async function main() {
   for (const s of SPELERS) {
     const email = `${s.sleutel}@MPladder.stb`;
     let user;
-    try { user = await admin.auth().getUserByEmail(email); }
-    catch { user = await admin.auth().createUser({ email, password: WACHTWOORD, displayName: s.naam }); }
+    try { user = await getAuth().getUserByEmail(email); }
+    catch { user = await getAuth().createUser({ email, password: WACHTWOORD, displayName: s.naam }); }
     uids[s.sleutel] = user.uid;
     await db.doc(`spelers/${user.uid}`).set({
       uid: user.uid, naam: s.naam, email, rol: s.rol, hcp: s.hcp, eersteLogin: s.eersteLogin,

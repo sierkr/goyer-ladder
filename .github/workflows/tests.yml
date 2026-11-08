@@ -63,10 +63,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      # v6.4.0: Java 21 — firebase-tools 15 (nodig voor firebase-functions 7)
+      # start de emulators niet meer met een oudere Java.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - name: Testgereedschap installeren
         run: npm install --prefix tests
@@ -78,7 +80,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/firebase/emulators
-          key: emulators-${{ runner.os }}
+          # v6.4.0: sleutel volgt het testgereedschap, anders blijft de oude
+          # emulator in de cache en wordt de nieuwe elke keer opnieuw gehaald.
+          key: emulators-${{ runner.os }}-${{ hashFiles('tests/package-lock.json') }}
 
       # Het programma heet 'firebase', niet 'firebase-tools'. Rechtstreeks via
       # het pad aanroepen is betrouwbaarder dan npx.
@@ -105,10 +109,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      # v6.4.0: Java 21 — firebase-tools 15 (nodig voor firebase-functions 7)
+      # start de emulators niet meer met een oudere Java.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - name: Testgereedschap installeren
         run: npm install --prefix tests
@@ -123,7 +129,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/firebase/emulators
-          key: emulators-${{ runner.os }}
+          # v6.4.0: sleutel volgt het testgereedschap, anders blijft de oude
+          # emulator in de cache en wordt de nieuwe elke keer opnieuw gehaald.
+          key: emulators-${{ runner.os }}-${{ hashFiles('tests/package-lock.json') }}
 
       - name: Browsertests draaien
         env:

@@ -23,9 +23,12 @@ const { test, expect } = require('./hulp-browser.cjs');
 // van de vorige test het volgende blokkeren — sinds v5.9.0 mag er maar één
 // actief toernooi zijn. Opruimen gebeurt met de admin-ingang, buiten de app om.
 process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
-const admin = require('firebase-admin');
-if (!admin.apps.length) admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT || 'demo-goyer' });
-const beheerDb = admin.firestore();
+// v6.4.0: losse ingangen; firebase-admin 14 kent admin.firestore() e.d. niet meer.
+const { initializeApp, getApps } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
+const { getFirestore } = require('firebase-admin/firestore');
+if (!getApps().length) initializeApp({ projectId: process.env.GCLOUD_PROJECT || 'demo-goyer' });
+const beheerDb = getFirestore();
 
 // Haalt het toernooi met deze naam op uit de nagemaakte database. Wacht even:
 // de browser schrijft, de admin-ingang leest, en dat is niet op dezelfde tel.
@@ -2565,8 +2568,8 @@ test.describe('Toernooi — de hele route', () => {
   test('TOERNOOILEIDER: ziet in de ladder-app het tabblad en de handleiding', async ({ page }) => {
     const email = 'leider@mpladder.stb';
     let uid;
-    try { uid = (await admin.auth().getUserByEmail(email)).uid; }
-    catch { uid = (await admin.auth().createUser({ email, password: WACHTWOORD })).uid; }
+    try { uid = (await getAuth().getUserByEmail(email)).uid; }
+    catch { uid = (await getAuth().createUser({ email, password: WACHTWOORD })).uid; }
     await beheerDb.doc(`spelers/${uid}`).set({ uid, naam: 'Toos Leider', email, rol: 'toernooileider', hcp: 0, eersteLogin: false });
 
     await page.goto('/index.html');
@@ -2585,8 +2588,8 @@ test.describe('Toernooi — de hele route', () => {
     // De toernooileider: een account met een profiel, in geen enkele ladder.
     const email = 'leider@mpladder.stb';
     let uid;
-    try { uid = (await admin.auth().getUserByEmail(email)).uid; }
-    catch { uid = (await admin.auth().createUser({ email, password: WACHTWOORD })).uid; }
+    try { uid = (await getAuth().getUserByEmail(email)).uid; }
+    catch { uid = (await getAuth().createUser({ email, password: WACHTWOORD })).uid; }
     await beheerDb.doc(`spelers/${uid}`).set({ uid, naam: 'Toos Leider', email, rol: 'toernooileider', hcp: 0, eersteLogin: false });
 
     const antwoorden = ['Karel Gast', '15'];
