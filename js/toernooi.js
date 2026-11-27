@@ -233,6 +233,7 @@ function renderToernooiStart(lijst) {
 
   const loopt   = (lijst || []).filter(toernooiLoopt);
   const concept = (lijst || []).filter(toernooiIsConcept);
+  const nietOpgeslagen = nietOpgeslagenToernooi();   // v6.4.2
 
   const regel = (t, knoppen) => {
     const datum = (t.dagen || [])[0]?.datum || '';
@@ -252,6 +253,11 @@ function renderToernooiStart(lijst) {
   el.innerHTML = `
     <div style="padding:0 0 12px">
       <button class="btn btn-primary btn-block" onclick="openNieuwToernooi()">➕ Nieuw toernooi</button>
+      ${nietOpgeslagen ? `
+      <button class="btn btn-ghost btn-block" id="t-verder-concept-knop" onclick="verderMetToernooiConcept()" style="margin-top:8px">
+        Verder met niet-opgeslagen toernooi
+        <span style="display:block;font-size:12px;font-weight:400;color:var(--mid)">${esc(nietOpgeslagen.naam || 'Zonder naam')} · ${nietOpgeslagen.aantal} ${nietOpgeslagen.aantal === 1 ? 'speler' : 'spelers'}</span>
+      </button>` : ''}
     </div>
 
     <div class="card">
@@ -295,12 +301,54 @@ function toonToernooiStart() {
 }
 window.toonToernooiStart = toonToernooiStart;
 
+// ============================================================
+//  v6.4.2 — "NIEUW TOERNOOI" BEGINT LEEG
+// ------------------------------------------------------------
+//  Sierk, 27 november 2026: "Ik maak een nieuw toernooi aan, selecteer de
+//  onderste 7 namen en ineens staan daar ook de bovenste 3 namen bij???"
+//  WAT ER MIS WAS. Het aanmaakformulier wordt onthouden (concept, v4.0.0), en
+//  de eerste keer dat het aanmaakscherm openging werd dat onthouden formulier
+//  stil teruggezet — ook als het weken oud was. De spelers ervan gingen
+//  ongemerkt mee de flight in. Nagespeeld in de browser: Anna en Bram van een
+//  niet-opgeslagen formulier stonden naast Cees en Nina.
+//  NU. "Nieuw toernooi" begint altijd leeg. Een niet-opgeslagen formulier gaat
+//  niet stil verloren: het startscherm toont dan "Verder met niet-opgeslagen
+//  toernooi" (verderMetToernooiConcept). Wie toch nieuw begint, overschrijft
+//  het onthouden formulier bij het eerste dat hij invult (de autosave).
+// ============================================================
+function leegToernooiFormulier() {
+  store._flights = [];
+  store._flightPool = [];
+  store._tGeselecteerdeSpelers = [];
+  store._tRankingLadderIds = new Set();
+  window._tConceptDagen = null;
+  window._tSetupDagNr = 1;
+  const naam = document.getElementById('t-naam');
+  if (naam) naam.value = '';
+  const aantal = document.getElementById('t-aantal-dagen');
+  if (aantal) aantal.value = '1';
+  // Leeg, zodat renderDagBlokken() geen datum of baan van eerder overneemt.
+  const blokken = document.getElementById('t-dag-blokken');
+  if (blokken) blokken.innerHTML = '';
+}
+
 function openNieuwToernooi() {
+  leegToernooiFormulier();   // v6.4.2
+  window._tHerstelConcept = false;
   window._toernooiScherm = 'nieuw';
   window._tSetupTab = 'toernooi';
   renderToernooi();
 }
 window.openNieuwToernooi = openNieuwToernooi;
+
+function verderMetToernooiConcept() {
+  leegToernooiFormulier();
+  window._tHerstelConcept = true;   // initToernooiSetup() zet het formulier terug
+  window._toernooiScherm = 'nieuw';
+  window._tSetupTab = 'toernooi';
+  renderToernooi();
+}
+window.verderMetToernooiConcept = verderMetToernooiConcept;
 
 function openToernooiUitStart(id) {
   window._toernooiScherm = 'detail';
@@ -1073,7 +1121,22 @@ function selecteerToernooi(id) {
 // ============================================================
 // Alles wat in het setup-formulier wordt ingesteld gaat als concept naar
 // localStorage, zodat een refresh/crash tijdens het instellen niets kost.
-const TOERNOOI_CONCEPT_KEY = 'toernooiConcept_v1';
+// v6.4.2: test en live staan op hetzelfde adres en delen dus het geheugen van
+// de browser. Met één sleutel kwam een formulier dat je op test probeerde in
+// live terug. Live houdt de oude naam, zodat wat daar al onthouden is blijft.
+const TOERNOOI_CONCEPT_KEY = IS_TEST ? 'toernooiConcept_test_v1' : 'toernooiConcept_v1';
+
+// v6.4.2: is er een niet-opgeslagen formulier met iets erin? Voor de knop
+// "Verder met niet-opgeslagen toernooi" op het startscherm.
+function nietOpgeslagenToernooi() {
+  try {
+    const c = JSON.parse(localStorage.getItem(TOERNOOI_CONCEPT_KEY) || 'null');
+    if (!c) return null;
+    const naam = String(c.naam || '').trim();
+    const aantal = Array.isArray(c.spelers) ? c.spelers.length : 0;
+    return (naam || aantal > 0) ? { naam, aantal } : null;
+  } catch(e) { return null; }
+}
 
 // v5.13.0: de toernooibrede velden voor tijd, punten en handicap zijn van het
 // aanmaakscherm verdwenen — ze staan nu per dag. Waar de code nog één waarde
@@ -1220,9 +1283,13 @@ function koppelConceptAutosave() {
 //  SETUP FORMULIER
 // ============================================================
 function initToernooiSetup() {
-  // v4.0.0 (fix 7.1): concept eenmalig herstellen vóór het renderen
-  if (!window._tConceptHersteld) {
-    window._tConceptHersteld = true;
+  // v4.0.0 (fix 7.1): concept herstellen vóór het renderen.
+  // v6.4.2: alleen nog als daarom gevraagd is (verderMetToernooiConcept). Tot
+  // nu gebeurde het vanzelf, de eerste keer dat het aanmaakscherm openging —
+  // ook via "Nieuw toernooi", en ook vlak nadat _herstelSetupVanuitToernooi()
+  // de spelers van een toernooi in het formulier had gezet.
+  if (window._tHerstelConcept) {
+    window._tHerstelConcept = false;
     herstelToernooiConcept();
   }
   // v3.0.0-11.39: dag-blokken initialiseren
@@ -6770,18 +6837,35 @@ function renderTMatrix() {
   // stonden drie kolommen én drie rijen met alleen "Arjan" — niet te lezen.
   const korteNamen = kortNaamMap(t.spelers);
 
-  let html = `<table style="border-collapse:collapse;font-size:11px;width:100%">`;
+  // ⚠ v6.4.2 — GELIJKE VAKJES. Sierk, 27 november 2026: "Dit ziet er ook
+  // slordig uit." Tot nu bepaalde elke naam de breedte van zijn kolom: korte
+  // namen smalle kolommen, "Ferdinand" een brede, en "Erik P" brak over twee
+  // regels. Nu (voorbeeld 2, door Sierk gekozen): links een namenkolom met een
+  // vaste breedte, alle andere kolommen even breed (table-layout:fixed, de
+  // kolommen zonder eigen breedte delen de rest), de namen in de kop staand,
+  // dunne lijnen tussen de vakjes. Het streepje op de diagonaal is weg — het
+  // grijze vak zegt het al (Sierk: zo weinig mogelijk symbolen).
+  // Doen er veel spelers mee, dan wordt een vakje niet smaller dan MATRIX_MIN_VAK:
+  // de tabel wordt dan breder en #t-matrix schuift opzij (overflow-x:auto).
+  const MATRIX_MIN_VAK = 30;
+  const langsteNaam = Math.max(3, ...t.spelers.map(s => String(korteNamen[s.uid] || '').length));
+  const naamBreedte = Math.min(140, Math.max(64, langsteNaam * 9 + 14));
+  const lijn = '1px solid var(--border)';
+
+  let html = `<table style="border-collapse:collapse;font-size:11px;width:100%;table-layout:fixed;min-width:${naamBreedte + n * MATRIX_MIN_VAK}px">`;
+  html += `<colgroup><col style="width:${naamBreedte}px">${'<col>'.repeat(n)}</colgroup>`;
   html += `<tr><th style="padding:4px;background:var(--green);color:white"></th>`;
   t.spelers.forEach(s => {
-    html += `<th style="padding:4px 6px;background:var(--green);color:white;text-align:center" title="${escAttr(s.naam)}">${esc(korteNamen[s.uid])}</th>`;
+    html += `<th style="padding:6px 0;background:var(--green);color:white;vertical-align:bottom" title="${escAttr(s.naam)}">`
+          + `<div class="t-matrix-kopnaam" style="writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;margin:0 auto;line-height:1.1">${esc(korteNamen[s.uid])}</div></th>`;
   });
   html += '</tr>';
 
   t.spelers.forEach((sA, i) => {
-    html += `<tr><td style="padding:4px 8px;font-weight:600;font-size:12px;white-space:nowrap" title="${escAttr(sA.naam)}">${esc(korteNamen[sA.uid])}</td>`;
+    html += `<tr><td style="padding:6px;font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escAttr(sA.naam)}">${esc(korteNamen[sA.uid])}</td>`;
     t.spelers.forEach((sB, j) => {
       if (i === j) {
-        html += `<td style="background:var(--border);text-align:center;padding:4px">—</td>`;
+        html += `<td style="background:var(--border);border:${lijn};height:30px;padding:0"></td>`;
       } else {
         const res = matrix[i][j];
         // v4.0.2: toon de marge (met hoeveel holes voor/achter) i.p.v. UP/DOWN.
@@ -6796,7 +6880,8 @@ function renderTMatrix() {
           bg = kleur[res] || 'var(--subtle-bg)';
           tx = res;
         }
-        html += `<td style="background:${bg};text-align:center;padding:4px;font-weight:700">${tx}</td>`;
+        // v6.4.2: "TIED" iets kleiner, zodat het in een smal vakje past.
+        html += `<td style="background:${bg};text-align:center;padding:0;height:30px;border:${lijn};font-weight:700${tx === 'TIED' ? ';font-size:9px' : ''}">${tx}</td>`;
       }
     });
     html += '</tr>';
