@@ -1374,7 +1374,10 @@ test.describe('Nieuw seizoen', () => {
       await page.click('#admin-sectie-ladders .card-header');
       const rij = page.locator('#admin-ladders-list .admin-row', { hasText: 'Proefseizoen' });
       await expect(rij).toBeVisible({ timeout: 20000 });
-      await rij.locator('button:has-text("Nieuw seizoen")').click();
+      // v6.5.1: via "Beheren" (één knop per ladder, de keuzes in een venster).
+      await rij.locator('button:has-text("Beheren")').click();
+      await page.click('#ladder-beheren-knoppen button:has-text("Nieuw seizoen")');
+      await expect(page.locator('#modal-ladder-beheren'), 'het Beheren-venster gaat dicht').not.toHaveClass(/open/);
 
       const venster = page.locator('#modal-nieuw-seizoen');
       await expect(venster).toHaveClass(/open/);
@@ -1437,5 +1440,95 @@ test.describe('Nieuw seizoen', () => {
       const seiz = ((await ar.get()).data()?.seizoenen || []).filter(s => s.ladderId !== LADDER);
       await ar.set({ seizoenen: seiz }, { merge: true });
     }
+  });
+});
+
+// ============================================================
+//  v6.5.1 — LADDERS: ÉÉN KNOP "BEHEREN" PER LADDER
+// ------------------------------------------------------------
+//  Sierk, 27 november 2026: keuze 3 ("Eén knop Beheren per ladder") en de
+//  kaart heet "Ladders". Elke knop in het venster moet precies openen wat de
+//  losse knop in de rij tot v6.5.0 opende; wie wat ziet is gelijk gebleven.
+// ============================================================
+test.describe('Ladders beheren', () => {
+  test('LADDERS: Beheren opent een venster met de juiste knoppen', async ({ page }) => {
+    test.setTimeout(150000);
+    const coordId = (await beheerDb.collection('spelers').where('naam', '==', 'Coen Coordinator').get()).docs[0]?.id;
+    expect(coordId, 'Coen staat in de proefdatabase').toBeTruthy();
+    const LADDER = 'proefbeheren';
+    await beheerDb.doc(`ladders/${LADDER}`).set({ naam: 'Heren zaterdag met een lange naam', spelerIds: [], uitslagen: [], actievePartijen: [], config: {} });
+    await beheerDb.doc(`spelers/${coordId}`).update({ rol: 'beheerder' });
+    let vragen = [];
+    page.on('dialog', d => { vragen.push(d.message()); d.dismiss(); });   // verwijderen: Annuleren
+    try {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await inloggen(page, 'coord@MPladder.stb');
+      await expect(page.locator('#ladder-list-mp')).toBeVisible({ timeout: 25000 });
+      await page.click('#nav-admin-btn');
+      await expect(page.locator('#admin-sectie-ladders h2'), 'de kaart heet Ladders').toHaveText('Ladders');
+      await page.click('#admin-sectie-ladders .card-header');
+      const rij = (naam) => page.locator('#admin-ladders-list .admin-row', { hasText: naam });
+      await expect(rij('lange naam')).toBeVisible({ timeout: 20000 });
+      // In de rij alleen nog Beheren (en de pijltjes), geen losse knoppen.
+      for (const tekst of ['Spelers', 'Nieuw seizoen', '⚙️', '✕']) {
+        await expect(rij('lange naam').locator(`button:has-text("${tekst}")`), `geen losse knop ${tekst}`).toHaveCount(0);
+      }
+      const knopBeheren = rij('lange naam').locator('button:has-text("Beheren")');
+      await expect(knopBeheren).toBeVisible();
+      const vak = await knopBeheren.boundingBox();
+      expect(vak.x + vak.width, 'Beheren past binnen het scherm').toBeLessThanOrEqual(390);
+
+      const venster = page.locator('#modal-ladder-beheren');
+      const knop = (tekst) => page.locator('#ladder-beheren-knoppen button', { hasText: tekst });
+      const open = async (id) => { await page.click(`#admin-ladders-list button[onclick="openLadderBeheren('${id}')"]`); await expect(venster).toHaveClass(/open/); };
+
+      // MP: geen Verwijderen (zoals voorheen: MP kan niet weg).
+      await open('mp');
+      await expect(page.locator('#ladder-beheren-titel')).toHaveText('MP');
+      expect(await page.locator('#ladder-beheren-knoppen button').allTextContents(), 'MP: geen verwijderen')
+        .toEqual(['Spelers', 'Instellingen', 'Nieuw seizoen']);
+      await page.click('#modal-ladder-beheren button:has-text("Sluiten")');
+      await expect(venster).not.toHaveClass(/open/);
+
+      // Een andere ladder: alle vier, en elke knop opent het juiste venster.
+      await open(LADDER);
+      expect(await page.locator('#ladder-beheren-knoppen button').allTextContents())
+        .toEqual(['Spelers', 'Instellingen', 'Nieuw seizoen', 'Ladder verwijderen']);
+      await knop('Spelers').click();
+      await expect(venster).not.toHaveClass(/open/);
+      await expect(page.locator('#modal-ladder-spelers'), 'Spelers opent de spelerslijst').toHaveClass(/open/);
+      await page.evaluate(() => window.closeModal('modal-ladder-spelers'));
+
+      await open(LADDER);
+      await knop('Instellingen').click();
+      await expect(page.locator('#modal-ladder-instellingen'), 'Instellingen opent de instellingen').toHaveClass(/open/);
+      await page.evaluate(() => window.closeModal('modal-ladder-instellingen'));
+
+      await open(LADDER);
+      await knop('Nieuw seizoen').click();
+      await expect(page.locator('#modal-nieuw-seizoen'), 'Nieuw seizoen opent het seizoensvenster').toHaveClass(/open/);
+      await expect(page.locator('#seizoen-titel')).toContainText('lange naam');
+      await page.evaluate(() => window.closeModal('modal-nieuw-seizoen'));
+
+      await open(LADDER);
+      await knop('Ladder verwijderen').click();
+      await expect.poll(() => vragen.length, { message: 'verwijderen vraagt het eerst' }).toBe(1);
+      expect(vragen[0]).toContain('verwijderen');
+      expect((await beheerDb.doc(`ladders/${LADDER}`).get()).exists, 'na Annuleren staat de ladder er nog').toBe(true);
+    } finally {
+      await beheerDb.doc(`spelers/${coordId}`).update({ rol: 'coordinator' });
+      await beheerDb.doc(`ladders/${LADDER}`).delete();
+    }
+  });
+
+  test('LADDERS: een coördinator ziet in Beheren alleen Spelers', async ({ page }) => {
+    await inloggen(page, 'coord@MPladder.stb');
+    await expect(page.locator('#ladder-list-mp')).toBeVisible({ timeout: 25000 });
+    await page.click('#nav-admin-btn');
+    await page.click('#admin-sectie-ladders .card-header');
+    const knopMp = page.locator(`#admin-ladders-list button[onclick="openLadderBeheren('mp')"]`);
+    await expect(knopMp).toBeVisible({ timeout: 20000 });
+    await knopMp.click();
+    expect(await page.locator('#ladder-beheren-knoppen button').allTextContents()).toEqual(['Spelers']);
   });
 });

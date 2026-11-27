@@ -57,7 +57,7 @@ import { renderToernooi, herlaadToernooien, selecteerToernooi, gaNaarToernooiOve
   voegTeamToe, hernoemTeam, verwijderTeam, zetSpelerTeam, zetTeamTelling, zetTeamBesteN } from './toernooi.js';
 import { openLadderInstellingen, slaLadderInstellingenOp,
   openNieuweLadderModal, maakNieuweLadder, verschuifLadder,
-  verwijderLadder, openLadderSpelersModal, slaLadderSpelersOp,
+  verwijderLadder, openLadderSpelersModal, slaLadderSpelersOp, openLadderBeheren,
   renderAdminLadders, openSnapshotsModal, slaSnapshotOp,
   herstelSnapshot , draaiActiviteitNu, maakSnapshotNu } from './beheer.js';
 import { renderKnockoutLadderKaart, openKnockoutIndeling,
@@ -241,6 +241,7 @@ window.maakNieuweLadder = maakNieuweLadder;
 window.verschuifLadder = verschuifLadder;
 window.verwijderLadder = verwijderLadder;
 window.openLadderSpelersModal = openLadderSpelersModal;
+window.openLadderBeheren = openLadderBeheren;   // v6.5.1
 window.slaLadderSpelersOp = slaLadderSpelersOp;
 window.renderAdminLadders = renderAdminLadders;
 window.openSnapshotsModal = openSnapshotsModal;
@@ -270,7 +271,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v6.5.0';
+  const VERSION = 'v6.5.1';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -314,7 +315,7 @@ window.kiesTRankingLadder = kiesTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v6.5.0';
+  const LOKALE_VERSIE = 'v6.5.1';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 
