@@ -307,12 +307,13 @@
   <!-- v6.0.0 -->
   <section id="adres">
     <div class="section-header">
-      <div class="section-icon">🔗</div>
       <h2>Het toernooi heeft een eigen adres</h2>
     </div>
     <p>Het toernooi staat los van de ladder, op <strong>…/goyer-ladder/toernooi/</strong>,
     met een eigen inlog. In de ladder-app is het tabblad <em>Toernooi</em> een link naar
-    die pagina. Je kunt hem ook los op je beginscherm zetten.</p>
+    die pagina; dat tabblad ziet alleen de wedstrijdleiding. Op de toernooipagina brengt
+    het tabblad <em>Ladder</em> de wedstrijdleiding weer terug in de ladder-app. Je kunt de
+    toernooipagina ook los op je beginscherm zetten.</p>
     <ul>
       <li><strong>Elk toernooi heeft een eigen link en QR-code</strong> (knop <em>QR-code
       tonen</em> op het tabblad Toernooi). Wie die opent, ziet meteen de namen van dát
@@ -331,19 +332,20 @@
 
   <section id="overzicht">
     <div class="section-header">
-      <div class="section-icon">🗂</div>
       <h2>Het overzichtsscherm</h2>
     </div>
 
     <p>De tab <strong>Toernooi</strong> opent op een overzicht. Bovenaan staat <span class="badge badge-green">➕ Nieuw toernooi</span>, daaronder drie lijsten:</p>
 
     <div class="card">
-      <p><strong>Loopt nu</strong> — het toernooi dat op dit moment gespeeld wordt.</p>
+      <p><strong>Loopt nu</strong> — de toernooien die op dit moment gespeeld worden. Dat kunnen er meer tegelijk zijn.</p>
       <p><strong>Concept</strong> — klaargezet maar nog niet gestart. Je mag er meerdere klaarzetten.</p>
       <p><strong>Oud</strong> — afgesloten en geannuleerde toernooien.</p>
     </div>
 
     <p>Met <strong>Openen →</strong> ga je een toernooi in. Vanuit een geopend toernooi kom je met <strong>← Toernooien</strong> weer terug op dit overzicht.</p>
+
+    <p><strong>➕ Nieuw toernooi</strong> begint altijd met een leeg formulier. Ben je eerder aan een toernooi begonnen zonder het op te slaan, dan staat onder die knop <strong>Verder met niet-opgeslagen toernooi</strong>, met de naam en het aantal spelers. Daarmee ga je verder waar je was. Begin je toch een nieuw toernooi, dan vervalt het oude zodra je iets invult.</p>
 
     <div class="note">
       <p>Een <strong>deelnemer</strong> ziet dit overzicht niet. Die komt meteen in het lopende toernooi terecht.</p>
@@ -353,7 +355,6 @@
   <!-- ══════════════════════════════════════════════════════ -->
   <section id="aanmaken">
     <div class="section-header">
-      <div class="section-icon">📝</div>
       <h2>Toernooi aanmaken</h2>
     </div>
 
@@ -371,7 +372,7 @@
     <div class="card-step">
       <div class="step-num">2</div>
       <div class="step-body">
-        <p><strong>Tabblad Spelers</strong> — deelnemers zoeken en selecteren, gastspelers toevoegen, en het <strong>wachtwoord voor gastspelers</strong>.</p>
+        <p><strong>Tabblad Spelers</strong> — deelnemers zoeken en selecteren, gastspelers toevoegen, en de <strong>pincode voor de deelnemers</strong> (vier cijfers).</p>
       </div>
     </div>
 
@@ -386,15 +387,11 @@
       <p>Met <strong>+ Dag toevoegen</strong> komt er een dag bij. Op het tabblad van de dag die je bekijkt staat een <strong>✕</strong> om die dag weer weg te halen.</p>
     </div>
 
-    <div class="warn">
-      <p>Een toernooi <strong>klaarzetten</strong> mag altijd, ook als er al een loopt. <strong>Starten</strong> kan pas als het lopende toernooi is afgesloten of geannuleerd — er kan er maar één tegelijk gespeeld worden.</p>
-    </div>
   </section>
 
   <!-- ══════════════════════════════════════════════════════ -->
   <section id="dagen">
     <div class="section-header">
-      <div class="section-icon">📅</div>
       <h2>Wat je per dag instelt</h2>
     </div>
 
@@ -426,7 +423,6 @@
   <!-- ══════════════════════════════════════════════════════ -->
   <section id="flights">
     <div class="section-header">
-      <div class="section-icon">✈</div>
       <h2>Flights indelen</h2>
     </div>
 
@@ -456,7 +452,6 @@
   <!-- ══════════════════════════════════════════════════════ -->
   <section id="levensloop">
     <div class="section-header">
-      <div class="section-icon">▶</div>
       <h2>Dag starten en terugzetten</h2>
     </div>
 
@@ -495,7 +490,6 @@
   <!-- ══════════════════════════════════════════════════════ -->
   <section id="spelen">
     <div class="section-header">
-      <div class="section-icon">👀</div>
       <h2>Tijdens het spelen</h2>
     </div>
 
@@ -521,42 +515,40 @@
 
     <p>Vult de <strong>wedstrijdleiding</strong> een getal in, dan is dat het laatste woord: die hole staat vast en wordt zwart.</p>
 
-    <h3>Twee schakelaars</h3>
+    <h3>Stand tonen, meekijken en QR-code</h3>
     <div class="card">
-      <p><strong>Toernooi-modus</strong> — deelnemers zien alleen de Toernooi-tab en de titelbalk toont de toernooinaam. Handig zodat niemand per ongeluk een ladderpartij start.</p>
       <p><strong>Stand tonen aan deelnemers</strong> — uit betekent dat het klassement én de onderlinge stand alleen bij jou staan. Jij ziet ze altijd.</p>
     </div>
 
     <p>Met <strong>🔗 Live meekijklink kopiëren</strong> geef je een link door waarmee iemand kan meekijken zonder in te loggen.</p>
+    <p>Met <strong>📱 QR-code tonen</strong> laat je de code van dit toernooi zien. Wie hem scant, ziet meteen de namen van dit toernooi en logt in met de pincode.</p>
   </section>
 
   <!-- ══════════════════════════════════════════════════════ -->
   <section id="gastlogins">
     <div class="section-header">
-      <div class="section-icon">⌨</div>
       <h2>Gastlogins</h2>
     </div>
 
-    <p>Een gastspeler is iemand zonder eigen account. Vul je op het tabblad <strong>Spelers</strong> een wachtwoord in, dan krijgt elke gast bij het starten een inlog voor dit ene toernooi. Ze loggen in met hun <strong>voor- en achternaam</strong> plus dat wachtwoord.</p>
+    <p>Een gastspeler is iemand zonder eigen account. Bij het opslaan van het toernooi krijgt elke gast een inlog voor dit ene toernooi. Iedereen die meedoet, gast of clublid, komt binnen via de link of QR-code van het toernooi: <strong>naam kiezen uit de lijst</strong> en de <strong>vier cijfers</strong> van de pincode intikken. De pincode vul je in op het tabblad <strong>Spelers</strong>.</p>
 
     <div class="card">
-      <p><strong>⌨ Gastlogins tonen</strong> — het lijstje dat je doorgeeft aan je gasten.</p>
+      <p><strong>⌨ Gastlogins tonen</strong> — de pincode en de inlognamen van de gasten, om door te geven.</p>
       <p><strong>⌨ Gastlogins aanmaken</strong> — verschijnt als er gasten zonder inlog zijn. Maakt ze alsnog aan; hun al ingevulde scores blijven staan.</p>
     </div>
 
     <div class="warn">
-      <p>Laat je het wachtwoord leeg, dan vraagt de app er bij het starten uitdrukkelijk naar. Zonder wachtwoord krijgen de gasten <strong>geen inlog</strong> en kunnen ze nergens in.</p>
+      <p>Laat je de pincode leeg terwijl er gasten meedoen, dan vraagt de app bij het opslaan of je toch door wilt. Zonder pincode krijgen de gasten <strong>geen inlog</strong> en kunnen ze niet op hun eigen telefoon meedoen.</p>
     </div>
 
     <div class="note">
-      <p>Na afloop van het toernooi werkt zo'n gastinlog niet meer.</p>
+      <p>Na afloop van het toernooi werken de pincode en de gastinlogs niet meer.</p>
     </div>
   </section>
 
   <!-- ══════════════════════════════════════════════════════ -->
   <section id="standen">
     <div class="section-header">
-      <div class="section-icon">📊</div>
       <h2>Standen en klassement</h2>
     </div>
 
@@ -565,7 +557,7 @@
     <div class="formula-box">Toernooi &nbsp;·&nbsp; Dag 1 &nbsp;·&nbsp; Dag 2 &nbsp;·&nbsp; + Dag toevoegen</div>
 
     <div class="card">
-      <p><strong>Tabblad Toernooi</strong> — het klassement over alle dagen, de meekijklink, de gastlogins en het afsluiten.</p>
+      <p><strong>Tabblad Toernooi</strong> — het klassement over alle dagen, de meekijklink, de QR-code, de gastlogins en het afsluiten.</p>
       <p><strong>Tabblad Dag N</strong> — de dagstand, de onderlinge stand, de scorekaart en de knoppen van die dag.</p>
     </div>
 
@@ -579,7 +571,6 @@
   <!-- ══════════════════════════════════════════════════════ -->
   <section id="afsluiten">
     <div class="section-header">
-      <div class="section-icon">🏅</div>
       <h2>Afsluiten</h2>
     </div>
 
@@ -600,7 +591,6 @@
   <!-- ══════════════════════════════════════════════════════ -->
   <section id="misgaat">
     <div class="section-header">
-      <div class="section-icon">🛟</div>
       <h2>Als er iets misgaat</h2>
     </div>
 
@@ -608,10 +598,6 @@
       <p><strong>Toernooi annuleren</strong> — het toernooi verdwijnt uit beeld en komt in de lijst <em>Oud</em>. Het is daar te herstellen of definitief te verwijderen. De gastlogins blijven werken.</p>
       <p><strong>↺ Toernooi opnieuw instellen</strong> — gooit het toernooi weg en zet alle instellingen terug in het aanmaakscherm. Alleen mogelijk zolang er nog geen scores zijn.</p>
       <p><strong>✏️ Dag N wijzigen</strong> — datum, baan, holes en de rest. Alleen zolang de dag op concept staat.</p>
-    </div>
-
-    <div class="warn">
-      <p>Herstellen van een oud toernooi kan <strong>niet</strong> zolang er een ander toernooi loopt. Sluit of annuleer dat eerst.</p>
     </div>
 
     <div class="tip">
