@@ -1858,8 +1858,13 @@ test.describe('Toernooi — de hele route', () => {
     await slaOpEnStart(page);   // mag nu, terwijl "Eerste" loopt
     await expect(page.locator('#toernooi-detail')).toContainText('Tweede', { timeout: 15000 });
 
-    const eerste = await haalToernooi('Eerste');
-    const tweede = await haalToernooi('Tweede');
+    // v6.5.0: wachten tot de start in de DATABASE staat. Het scherm toont
+    // "Tweede" al voordat de start is weggeschreven; deze proef las de database
+    // te vroeg en viel wisselvallig om (gemeten 27 nov 2026: op 6.4.0 2 van 3,
+    // op 6.4.1 1 van 3; met wachten 5 van 5 groen). De app was goed.
+    const gestart = (t) => t.dagen?.[0]?.gestart === true;
+    const eerste = await haalToernooi('Eerste', 40, gestart);
+    const tweede = await haalToernooi('Tweede', 40, gestart);
     expect(eerste.dagen[0].gestart, 'Eerste loopt').toBe(true);
     expect(tweede.dagen[0].gestart, 'en Tweede ook').toBe(true);
 

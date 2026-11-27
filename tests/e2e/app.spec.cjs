@@ -1334,3 +1334,108 @@ test.describe.serial('Spelvormen', () => {
     }
   });
 });
+
+// ============================================================
+//  v6.5.0 — NIEUW SEIZOEN PER LADDER
+// ------------------------------------------------------------
+//  Sierk, 27 november 2026: "Dit moet per ladder kunnen en ik wil een aantal
+//  opties om de beginstand vast te stellen". Deze proef draait op een EIGEN
+//  proefladder, zodat de standen van 'mp' (waar de andere proeven op leunen)
+//  niet op 0 gaan — en meteen bewijst dat een andere ladder ongemoeid blijft.
+// ============================================================
+test.describe('Nieuw seizoen', () => {
+  test('NIEUW SEIZOEN: per ladder, beginstand op gewonnen, terugzetpunt blijft', async ({ page }) => {
+    test.setTimeout(180000);
+    const idVan = async (naam) => (await beheerDb.collection('spelers').where('naam', '==', naam).get()).docs[0]?.id;
+    const coordId = await idVan('Coen Coordinator');
+    const anna = await idVan('Anna Speler'), bram = await idVan('Bram Speler'), cees = await idVan('Cees Speler');
+    expect(coordId && anna && bram && cees, 'de proefspelers bestaan').toBeTruthy();
+    const LADDER = 'proefseizoen';
+    const mpVoor = (await beheerDb.collection('ladders/mp/standen').get()).docs.map(d => [d.id, d.data().partijen]).sort();
+
+    await beheerDb.doc(`ladders/${LADDER}`).set({
+      naam: 'Proefseizoen', spelerIds: [anna, bram, cees], uitslagen: [], actievePartijen: [],
+      betaald: { [anna]: true },
+      config: { laagStijg: 4, laagZak: 2, hoogStijg: 1, hoogZak: 1, drempel: 4, activiteitPeriode: 'maand' },
+    });
+    // Anna staat bovenaan maar won niets; Bram won alles.
+    await beheerDb.doc(`ladders/${LADDER}/standen/${anna}`).set({ rank: 1, partijen: 2, gewonnen: 0 });
+    await beheerDb.doc(`ladders/${LADDER}/standen/${bram}`).set({ rank: 2, partijen: 4, gewonnen: 4 });
+    await beheerDb.doc(`ladders/${LADDER}/standen/${cees}`).set({ rank: 3, partijen: 6, gewonnen: 3 });
+    const oudProef = await beheerDb.collection('snapshots').add({ label: 'Oud proef', ladderId: LADDER, timestamp: Date.now() - 5000, spelers: [] });
+    const oudMp    = await beheerDb.collection('snapshots').add({ label: 'Oud mp', ladderId: 'mp', timestamp: Date.now() - 5000, spelers: [] });
+    await beheerDb.doc(`spelers/${coordId}`).update({ rol: 'beheerder' });
+
+    try {
+      await inloggen(page, 'coord@MPladder.stb');
+      await expect(page.locator('#ladder-list-mp')).toBeVisible({ timeout: 25000 });
+      await page.click('#nav-admin-btn');
+      await expect(page.locator('#admin-sectie-seizoen'), 'de losse kaart Seizoen is weg').toHaveCount(0);
+      await page.click('#admin-sectie-ladders .card-header');
+      const rij = page.locator('#admin-ladders-list .admin-row', { hasText: 'Proefseizoen' });
+      await expect(rij).toBeVisible({ timeout: 20000 });
+      await rij.locator('button:has-text("Nieuw seizoen")').click();
+
+      const venster = page.locator('#modal-nieuw-seizoen');
+      await expect(venster).toHaveClass(/open/);
+      await expect(page.locator('#seizoen-titel')).toContainText('Proefseizoen');
+      const rijen = page.locator('#seizoen-voorbeeld-tabel tr[data-uid]');
+      await expect(rijen).toHaveCount(3, { timeout: 15000 });
+      const volgorde = () => rijen.evaluateAll(trs => trs.map(tr => tr.dataset.uid));
+      expect(await volgorde(), 'eerst de huidige stand').toEqual([anna, bram, cees]);
+
+      // Winstpercentage toont het minimum; terug naar gewonnen.
+      await page.selectOption('#seizoen-methode', 'winstpercentage');
+      await expect(page.locator('#seizoen-min-wrap')).toBeVisible();
+      await page.selectOption('#seizoen-methode', 'gewonnen');
+      await expect(page.locator('#seizoen-min-wrap')).toBeHidden();
+      expect(await volgorde(), 'op gewonnen: Bram 4, Cees 3, Anna 0').toEqual([bram, cees, anna]);
+
+      await page.fill('#seizoen-naam', 'Proefseizoen 2027');
+      await expect(page.locator('#seizoen-gevolg')).toContainText('Bij bevestigen');
+      await expect(page.locator('#seizoen-gevolg')).toContainText('Eindstand Proefseizoen 2027');
+
+      // Eén tik, geen tussenvraag.
+      let vragen = 0;
+      page.on('dialog', d => { vragen++; d.accept(); });
+      await page.click('#seizoen-start-knop');
+      await expect(venster, 'het venster gaat dicht').not.toHaveClass(/open/, { timeout: 45000 });
+      expect(vragen, 'geen extra vraag na de knop').toBe(0);
+
+      // ── De nieuwe stand is precies wat het venster liet zien ──
+      await expect.poll(async () => {
+        const st = (await beheerDb.collection(`ladders/${LADDER}/standen`).get()).docs.map(d => ({ uid: d.id, ...d.data() }));
+        return st.sort((a, b) => a.rank - b.rank).map(s => `${s.uid}:${s.rank}:${s.partijen}:${s.gewonnen}`);
+      }, { timeout: 20000, message: 'nieuwe stand, tellers op 0' })
+        .toEqual([`${bram}:1:0:0`, `${cees}:2:0:0`, `${anna}:3:0:0`]);
+      const ladderNa = (await beheerDb.doc(`ladders/${LADDER}`).get()).data();
+      expect(ladderNa.betaald, 'betaald-vinkjes uit').toBeUndefined();
+
+      // ── Terugzetpunt staat er, het oude snapshot van deze ladder niet ──
+      const snaps = (await beheerDb.collection('snapshots').where('ladderId', '==', LADDER).get()).docs.map(d => d.data());
+      expect(snaps.map(s => s.label), 'alleen het terugzetpunt').toEqual(['Eindstand Proefseizoen 2027']);
+      const annaInSnap = (snaps[0].spelers || []).find(s => s.uid === anna);
+      expect(annaInSnap && [annaInSnap.rank, annaInSnap.partijen], 'het terugzetpunt heeft de oude stand').toEqual([1, 2]);
+      expect((await oudProef.get()).exists, 'het oude snapshot van deze ladder is weg').toBe(false);
+
+      // ── De andere ladder is ongemoeid ──
+      expect((await oudMp.get()).exists, 'het snapshot van MP staat er nog').toBe(true);
+      const mpNa = (await beheerDb.collection('ladders/mp/standen').get()).docs.map(d => [d.id, d.data().partijen]).sort();
+      expect(mpNa, 'de standen van MP zijn niet veranderd').toEqual(mpVoor);
+
+      // ── Het archief heeft de eindstand ──
+      const archief = (await beheerDb.doc('ladder/archief').get()).data()?.seizoenen || [];
+      const ditSeizoen = archief.find(s => s.ladderId === LADDER && s.naam === 'Proefseizoen 2027');
+      expect(ditSeizoen?.eindstand?.map(e => e.rank), 'eindstand in het archief').toEqual([1, 2, 3]);
+    } finally {
+      await beheerDb.doc(`spelers/${coordId}`).update({ rol: 'coordinator' });
+      for (const d of (await beheerDb.collection(`ladders/${LADDER}/standen`).get()).docs) await d.ref.delete();
+      await beheerDb.doc(`ladders/${LADDER}`).delete();
+      for (const d of (await beheerDb.collection('snapshots').where('ladderId', '==', LADDER).get()).docs) await d.ref.delete();
+      await oudMp.delete().catch(() => {});
+      const ar = beheerDb.doc('ladder/archief');
+      const seiz = ((await ar.get()).data()?.seizoenen || []).filter(s => s.ladderId !== LADDER);
+      await ar.set({ seizoenen: seiz }, { merge: true });
+    }
+  });
+});

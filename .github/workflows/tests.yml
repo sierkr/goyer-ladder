@@ -163,7 +163,7 @@ jobs:
           ./tests/node_modules/.bin/firebase emulators:exec
           --config firebase.regels.json
           --project demo-goyer --only firestore,auth,functions
-          "node tests/e2e/seed.cjs && ./tests/node_modules/.bin/playwright test --config=playwright.config.cjs app.spec -g 'RONDE-QR|SPELERS-QR|SPELVORM-' && ./tests/node_modules/.bin/playwright test --config=playwright.config.cjs toernooi.spec"
+          "node tests/e2e/seed.cjs && ./tests/node_modules/.bin/playwright test --config=playwright.config.cjs app.spec -g 'RONDE-QR|SPELERS-QR|SPELVORM-|NIEUW SEIZOEN' && ./tests/node_modules/.bin/playwright test --config=playwright.config.cjs toernooi.spec"
 
       - name: Rapport bewaren bij een fout
         if: failure()

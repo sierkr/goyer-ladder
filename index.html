@@ -1796,33 +1796,36 @@
   </div>
 </div>
 
-<!-- Nieuw seizoen modal -->
+<!-- Nieuw seizoen modal — v6.5.0: per ladder, met een keuze voor de beginstand
+     en de nieuwe stand meteen als lijst. Zie js/archief.js. -->
 <div class="modal-overlay" id="modal-nieuw-seizoen" style="align-items:center">
-  <div class="modal" style="border-radius:16px;max-height:90vh">
-    <h3>Nieuw seizoen starten</h3>
-    <p style="font-size:13px;color:var(--mid);margin-bottom:16px">
-      Per ladder: eindstand wordt gearchiveerd, scorekaarten en snapshots worden verwijderd,
-      ranks hernummerd (1..N), tellers partijen/gewonnen op 0.
-    </p>
+  <div class="modal" style="border-radius:16px;max-height:90vh;overflow-y:auto">
+    <h3 id="seizoen-titel">Nieuw seizoen</h3>
     <div class="form-group">
       <label>Naam seizoen</label>
-      <input type="text" id="seizoen-naam" placeholder="bijv. Seizoen 2026">
+      <input type="text" id="seizoen-naam" placeholder="bijv. Seizoen 2027" oninput="tekenSeizoenGevolg()">
     </div>
     <div class="form-group">
-      <label>Welke ladders?</label>
-      <div id="nieuw-seizoen-ladders" style="margin-top:6px"></div>
+      <label>Beginstand</label>
+      <select id="seizoen-methode" onchange="tekenSeizoenVoorbeeld()"></select>
     </div>
-    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px;background:var(--soft-bg);border-radius:8px;margin-bottom:12px">
-      <input type="checkbox" id="seizoen-omdraaien" style="accent-color:var(--green);width:18px;height:18px">
-      <span style="font-size:13px;color:var(--mid)">↕️ Volgorde omdraaien: eerste wordt laatste, laatste wordt eerste</span>
-    </label>
+    <div class="form-group" id="seizoen-min-wrap" style="display:none">
+      <label>Minimaal aantal partijen voor een percentage</label>
+      <input type="number" id="seizoen-min-partijen" min="1" max="50" value="3" inputmode="numeric"
+        style="text-align:center;width:80px" oninput="tekenSeizoenVoorbeeld()">
+      <p style="font-size:11px;color:var(--light);margin:6px 0 0">Wie minder speelde, komt onder de anderen in de huidige volgorde.</p>
+    </div>
+    <div class="form-group">
+      <label>Zo wordt de nieuwe stand</label>
+      <div id="seizoen-voorbeeld" style="max-height:40vh;overflow-y:auto"></div>
+    </div>
+    <p id="seizoen-gevolg" style="font-size:13px;color:var(--mid);line-height:1.5;margin:0 0 14px"></p>
     <div class="modal-actions">
       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('modal-nieuw-seizoen')">Annuleren</button>
-      <button class="btn btn-gold" style="flex:2" onclick="bevestigNieuwSeizoen()">🏆 Archiveren & resetten</button>
+      <button class="btn btn-gold" style="flex:2" id="seizoen-start-knop" onclick="bevestigNieuwSeizoen()">Nieuw seizoen starten</button>
     </div>
   </div>
 </div>
-
 <!-- Archief seizoen detail modal -->
 <div class="modal-overlay" id="modal-live-scorebord">
   <div class="modal">
@@ -2746,17 +2749,8 @@
       </div>
     </div>
   </div>
-  <div class="card" id="admin-sectie-seizoen">
-    <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
-      <h2>Seizoen</h2>
-    </div>
-    <div class="card-collapse ingeklapt">
-      <div class="card-body">
-        <p style="font-size:13px;color:var(--mid);margin-bottom:14px">Start een nieuw seizoen om de huidige ladder en uitslagen te archiveren. De rankings en statistieken worden gereset.</p>
-        <button class="btn btn-gold btn-block" onclick="openNieuwSeizoenModal()">🏆 Nieuw seizoen starten</button>
-      </div>
-    </div>
-  </div>
+  <!-- v6.5.0: de kaart "Seizoen" stond hier. Een nieuw seizoen start je nu per
+       ladder, met de knop "Nieuw seizoen" in Ladders beheren hierboven. -->
 
   <!-- v3.0.0-11.60: Initieel wachtwoord beheer — alleen zichtbaar voor beheerder -->
   <div class="card" id="admin-sectie-wachtwoord">
