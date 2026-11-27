@@ -467,6 +467,32 @@ async function slaLadderSpelersOp() {
   } catch(e) { meldFout('Spelers van de ladder opslaan', e); }
 }
 
+// v6.5.1: het venster achter "Beheren". Elke knop doet precies wat de losse
+// knop in de rij tot v6.5.0 deed; wie wat ziet is ook gelijk gebleven: een
+// coördinator alleen Spelers, de beheerder ook Instellingen, Nieuw seizoen
+// (niet bij knock-out) en Verwijderen (niet bij MP). Elke knop sluit eerst dit
+// venster, zodat er nooit twee vensters over elkaar staan.
+function openLadderBeheren(ladderId) {
+  const l = alleLadders.find(x => x.id === ladderId);
+  if (!l) return;
+  const isBeheerder = isBeheerderRol();
+  const knockout = (l.data?.type || l.type) === 'knockout';
+  const id = escAttr(l.id);
+  document.getElementById('ladder-beheren-titel').textContent = l.naam || l.id;
+  document.getElementById('ladder-beheren-sub').textContent =
+    `${(l.spelerIds || []).length} spelers${knockout ? ' · knock-out' : ''}`;
+  const knoppen = [
+    `<button class="btn btn-ghost btn-block" onclick="closeModal('modal-ladder-beheren');openLadderSpelersModal('${id}')">Spelers</button>`,
+  ];
+  if (isBeheerder) {
+    knoppen.push(`<button class="btn btn-ghost btn-block" onclick="closeModal('modal-ladder-beheren');openLadderInstellingen('${id}')">Instellingen</button>`);
+    if (!knockout) knoppen.push(`<button class="btn btn-ghost btn-block" onclick="closeModal('modal-ladder-beheren');openNieuwSeizoenModal('${id}')">Nieuw seizoen</button>`);
+    if (l.id !== 'mp') knoppen.push(`<button class="btn btn-block" style="background:#fde8e8;color:var(--red);border:none" onclick="closeModal('modal-ladder-beheren');verwijderLadder('${id}')">Ladder verwijderen</button>`);
+  }
+  document.getElementById('ladder-beheren-knoppen').innerHTML = knoppen.join('');
+  document.getElementById('modal-ladder-beheren').classList.add('open');
+}
+
 async function renderAdminLadders() {
 
   try {
@@ -475,11 +501,12 @@ async function renderAdminLadders() {
   const isBeheerder = isBeheerderRol();
   // Gebruik cache — listeners houden alleLadders al up to date
 
-  // v6.5.0: flex-wrap — met de knop "Nieuw seizoen" erbij paste een rij met
-  // een lange laddernaam niet meer op een telefoon (tandwiel en kruisje vielen
-  // van het scherm). Nu lopen de knoppen dan door naar een tweede regel.
+  // v6.5.1: één knop "Beheren" per ladder (Sierk, 27 november 2026, keuze 3
+  // uit ladders-beheren-voorstellen.png). Tot v6.5.0 stonden Spelers, Nieuw
+  // seizoen, het tandwiel en het kruisje los in de rij en liepen ze over twee
+  // regels. De keuzes staan nu in een venster: openLadderBeheren().
   list.innerHTML = alleLadders.map((l, idx) => `
-    <div class="admin-row" style="flex-wrap:wrap">
+    <div class="admin-row">
       ${isBeheerder ? `
       <div style="display:flex;flex-direction:column;gap:2px;margin-right:4px">
         <button onclick="verschuifLadder(${idx},-1)" ${idx === 0 ? 'disabled' : ''}
@@ -487,17 +514,11 @@ async function renderAdminLadders() {
         <button onclick="verschuifLadder(${idx},1)" ${idx === alleLadders.length-1 ? 'disabled' : ''}
           style="background:${idx===alleLadders.length-1?'#f0ede4':'#fde8e8'};border:none;border-radius:4px;width:22px;height:22px;cursor:${idx===alleLadders.length-1?'default':'pointer'};font-size:11px;color:${idx===alleLadders.length-1?'var(--light)':'var(--red)'}">↓</button>
       </div>` : ''}
-      <div style="flex:1;min-width:110px">
+      <div style="flex:1;min-width:0">
         <div style="font-weight:600">${esc(l.naam)}</div>
         <div style="font-size:11px;color:var(--light)">${(l.spelerIds||[]).length} spelers${(l.data?.type || l.type) === 'knockout' ? ' · knock-out' : ''}</div>
       </div>
-      <button class="btn btn-sm btn-ghost" onclick="openLadderSpelersModal('${escAttr(l.id)}')">👥 Spelers</button>
-      ${isBeheerder && (l.data?.type || l.type) !== 'knockout' ? `
-        <button class="btn btn-sm btn-ghost seizoen-knop" onclick="openNieuwSeizoenModal('${escAttr(l.id)}')">Nieuw seizoen</button>` : ''}
-      ${isBeheerder ? `
-        <button class="btn btn-sm btn-ghost" onclick="openLadderInstellingen('${escAttr(l.id)}')">⚙️</button>
-        ${l.id !== 'mp' ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="verwijderLadder('${escAttr(l.id)}')">✕</button>` : '<div style="width:38px"></div>'}
-      ` : ''}
+      <button class="btn btn-sm btn-ghost ladder-beheren-knop" onclick="openLadderBeheren('${escAttr(l.id)}')">Beheren</button>
     </div>
   `).join('');
   } catch(e) { console.error('renderAdminLadders mislukt:', e); }
@@ -865,4 +886,4 @@ window.kiesBackupBestand = kiesBackupBestand;
 // Expose functions to global scope (needed because script is type=module)
 // ============================================================
 
-export { openLadderInstellingen, slaLadderInstellingenOp, openNieuweLadderModal, maakNieuweLadder, verschuifLadder, verwijderLadder, openLadderSpelersModal, slaLadderSpelersOp, puntenVeldGewijzigd, renderAdminLadders, openSnapshotsModal, slaSnapshotOp, laadSnapshots, herstelSnapshot , draaiActiviteitNu , maakSnapshotNu };
+export { openLadderBeheren, openLadderInstellingen, slaLadderInstellingenOp, openNieuweLadderModal, maakNieuweLadder, verschuifLadder, verwijderLadder, openLadderSpelersModal, slaLadderSpelersOp, puntenVeldGewijzigd, renderAdminLadders, openSnapshotsModal, slaSnapshotOp, laadSnapshots, herstelSnapshot , draaiActiviteitNu , maakSnapshotNu };

@@ -1485,6 +1485,17 @@
   </div>
 </div>
 
+<!-- v6.5.1: Beheren per ladder — de keuzes die tot v6.5.0 los in de rij
+     stonden. Gevuld door openLadderBeheren() in js/beheer.js. -->
+<div class="modal-overlay" id="modal-ladder-beheren">
+  <div class="modal">
+    <h3 id="ladder-beheren-titel">Ladder</h3>
+    <div id="ladder-beheren-sub" style="font-size:12px;color:var(--mid);margin:-4px 0 12px"></div>
+    <div id="ladder-beheren-knoppen" style="display:flex;flex-direction:column;gap:8px"></div>
+    <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="closeModal('modal-ladder-beheren')">Sluiten</button>
+  </div>
+</div>
+
 <!-- Ladder instellingen modal -->
 <div class="modal-overlay" id="modal-ladder-instellingen">
   <div class="modal">
@@ -2706,7 +2717,7 @@
   </div>
   <div class="card" id="admin-sectie-ladders">
     <div class="card-header inklapbaar ingeklapt" onclick="toggleAdminKaart(this)">
-      <h2>Ladders beheren</h2>
+      <h2>Ladders</h2>
       <div onclick="event.stopPropagation()">
         <button class="btn btn-sm btn-primary" onclick="openNieuweLadderModal()">+ Ladder</button>
       </div>
@@ -2752,7 +2763,7 @@
     </div>
   </div>
   <!-- v6.5.0: de kaart "Seizoen" stond hier. Een nieuw seizoen start je nu per
-       ladder, met de knop "Nieuw seizoen" in Ladders beheren hierboven. -->
+       ladder: Ladders › Beheren › Nieuw seizoen (v6.5.1). -->
 
   <!-- v3.0.0-11.60: Initieel wachtwoord beheer — alleen zichtbaar voor beheerder -->
   <div class="card" id="admin-sectie-wachtwoord">
