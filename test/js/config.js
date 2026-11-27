@@ -85,6 +85,12 @@ export function toernooiAdres(toernooiId) {
   return u.href;
 }
 
+// v6.4.1: het adres van de ladder-app, vanuit beide ingangen (zie hierboven:
+// document.baseURI is in allebei de hoofdmap). Op test komt er vanzelf /test/ in.
+export function ladderAdres() {
+  return new URL('./', typeof document !== 'undefined' ? document.baseURI : location.href).href;
+}
+
 export const app = IS_TOERNOOI_APP
   ? initializeApp(firebaseConfig, 'toernooi')
   : initializeApp(firebaseConfig);

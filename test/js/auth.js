@@ -7,7 +7,7 @@ import { db, auth, googleProvider, STATE_DOC, USERS_DOC,
   BANEN_DOC, ARCHIEF_DOC, UITDAGINGEN_DOC, TOERNOOI_DOC, TOERNOOIEN_COL,
   INVITE_DOC, SNAPSHOTS_COL, LADDERS_COL, DEFAULT_STATE, BANEN_DB_MIGRATIE, esc, escAttr,
   EMAIL_SUFFIX, DEFAULT_HCP, CONFIG_DOC, IS_TEST, laadInitieelWachtwoord,
-  IS_TOERNOOI_APP, toernooiAdres,
+  IS_TOERNOOI_APP, toernooiAdres, ladderAdres,
   laadUiStijl, pasUiStijlToe, laadBanen, effectieveStijl, normaliseerClubStijl,
   genereerEmail, loginNaamVan, functions, httpsCallable,
   isVerbindingGesloten } from './config.js';
@@ -348,6 +348,23 @@ function zetToernooiTabAlsLink() {
   knop.onclick = (e) => { e?.preventDefault?.(); location.href = toernooiAdres(); };
 }
 
+// v6.4.1: de weg terug. Sierk, 27 november 2026: "Ik heb op de toernooi tab
+// geklikt en kom nu niet meer terug in de volledige app." Het tabblad Toernooi
+// in de ladder-app gaat in hetzelfde venster naar de toernooipagina; in de app
+// op het beginscherm is er geen terugknop van de browser. Daarom in de
+// toernooipagina een tabblad "Ladder" — voor dezelfde mensen die in de
+// ladder-app het tabblad Toernooi zien (magToernooiLeidenRol). Een deelnemer
+// met de pincode ziet het niet: de ladder-app is niet van zijn inlog.
+// Een eigen knop, niet nav-ladder-btn: die verbergt toonAlleenToernooi(), en
+// in de ladder-app is hij het gewone tabblad.
+function zetLadderLink() {
+  const knop = document.getElementById('nav-naar-ladder-btn');
+  if (!knop) return;
+  const tonen = IS_TOERNOOI_APP && !!huidigeBruiker && !isPinSessie() && magToernooiLeidenRol();
+  knop.style.display = tonen ? '' : 'none';
+  knop.onclick = (e) => { e?.preventDefault?.(); location.href = ladderAdres(); };
+}
+
 // Vóór het inloggen: teksten en tabbladen van de toernooipagina.
 function zetToernooiIngang() {
   const logo = document.querySelector('#login-scherm .login-logo');
@@ -378,6 +395,7 @@ function pasToernooiModusNavToe() {
   // houdt Help, met de toernooihandleiding voorop.
   if (IS_TOERNOOI_APP) {
     toonAlleenToernooi();
+    zetLadderLink();   // v6.4.1
     if (magToernooiLeidenRol()) {
       const help = document.getElementById('nav-help-btn');
       if (help) help.style.display = '';
@@ -1057,6 +1075,8 @@ function uitloggen() {
   document.getElementById('nav-archief-btn').style.display  = 'none';
   document.getElementById('nav-toernooi-btn').style.display = 'none';
   document.getElementById('nav-profiel-btn').style.display  = 'none';
+  const naarLadder = document.getElementById('nav-naar-ladder-btn');   // v6.4.1
+  if (naarLadder) naarLadder.style.display = 'none';
   document.getElementById('logout-btn').style.display       = 'none';
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));

@@ -1610,6 +1610,10 @@ test.describe('Toernooi — de hele route', () => {
     await expect(gastPagina.locator('#toernooi-detail button:has-text("Ladder")')).toHaveCount(0);
     await expect(page.locator('#toernooi-detail'), 'de coordinator houdt het blok')
       .toContainText('Bezig');
+    // v6.4.1: de weg terug naar de ladder-app is er voor de wedstrijdleiding,
+    // niet voor wie met de pincode binnenkwam.
+    await expect(gastPagina.locator('#nav-naar-ladder-btn'), 'geen knop Ladder voor de pincode-gast').toBeHidden();
+    await expect(page.locator('#nav-naar-ladder-btn'), 'de coordinator heeft de knop Ladder').toBeVisible();
     await gastPagina.close();
 
     // v5.11.7 / v5.38.0: een gast met ALLEEN een voornaam komt er ook in. Vroeger
@@ -2581,6 +2585,93 @@ test.describe('Toernooi — de hele route', () => {
     await expect(page.locator('#nav-toernooi-btn'), 'het tabblad Toernooi').toBeVisible({ timeout: 20000 });
     await expect(page.locator('#help-knop-toernooi'), 'de toernooihandleiding').toBeAttached();
     await expect(page.locator('#help-knop-toernooi')).not.toHaveCSS('display', 'none');
+  });
+
+  // ============================================================
+  //  v6.4.1 — DE WEG TERUG NAAR DE LADDER
+  // ------------------------------------------------------------
+  //  Sierk, 27 november 2026: "Ik heb op de toernooi tab geklikt en kom nu
+  //  niet meer terug in de volledige app." Het tabblad Toernooi gaat in
+  //  hetzelfde venster naar de toernooipagina, en in de app op het
+  //  beginscherm is er geen terugknop van de browser. Nu heeft de
+  //  toernooipagina een tabblad "Ladder" voor de wedstrijdleiding.
+  // ============================================================
+
+  test('TERUG: de wedstrijdleiding gaat van de toernooipagina naar de ladder en weer terug', async ({ browser }) => {
+    test.setTimeout(180000);
+    const ctx = await browser.newContext();   // één "telefoon"
+    try {
+      const p = await ctx.newPage();
+      p.on('dialog', d => d.accept());
+      // In de ladder-app als Coen. Daar is de knop er niet: daar is Ladder
+      // gewoon het eerste tabblad.
+      await p.goto('/index.html');
+      await p.waitForSelector('#login-scherm', { state: 'visible' });
+      await p.fill('#login-email', 'coord@MPladder.stb');
+      await p.fill('#login-pass', WACHTWOORD);
+      await klikInloggen(p);
+      await p.waitForSelector('#login-scherm', { state: 'hidden', timeout: 20000 });
+      await expect(p.locator('#page-ladder')).toHaveClass(/active/, { timeout: 20000 });
+      await expect(p.locator('#nav-toernooi-btn')).toBeVisible({ timeout: 20000 });
+      await expect(p.locator('#nav-naar-ladder-btn'), 'niet in de ladder-app').toBeHidden();
+
+      // Op het tabblad Toernooi tikken, zoals Sierk deed: de toernooipagina,
+      // met een eigen inlog.
+      await p.click('#nav-toernooi-btn');
+      await p.waitForURL(/\/toernooi\/$/, { timeout: 15000 });
+      await expect(p.locator('#login-scherm')).toHaveClass(/actief/, { timeout: 20000 });
+      await p.fill('#login-email', 'coord@MPladder.stb');
+      await p.fill('#login-pass', WACHTWOORD);
+      await klikInloggen(p);
+      await p.waitForSelector('#login-scherm', { state: 'hidden', timeout: 20000 });
+      await expect(p.locator('#page-toernooi')).toHaveClass(/active/, { timeout: 15000 });
+      await expect(p.locator('#nav-ladder-btn'), 'het gewone ladder-tabblad blijft weg').toBeHidden();
+      const terug = p.locator('#nav-naar-ladder-btn');
+      await expect(terug, 'de weg terug').toBeVisible({ timeout: 15000 });
+      await expect(terug).toHaveText('Ladder');
+
+      // Terug: de ladder-app, nog steeds ingelogd als Coen.
+      await terug.click();
+      await p.waitForURL(u => !/\/toernooi\//.test(new URL(u).pathname), { timeout: 15000 });
+      await expect(p.locator('#login-scherm'), 'geen nieuwe inlog nodig').not.toHaveClass(/actief/, { timeout: 25000 });
+      await expect(p.locator('#page-ladder')).toHaveClass(/active/, { timeout: 25000 });
+      await expect(p.locator('#logout-btn')).toHaveText(/^Coen/, { timeout: 25000 });
+      await expect(p.locator('#nav-ladder-btn')).toBeVisible();
+      await expect(p.locator('#nav-naar-ladder-btn')).toBeHidden();
+
+      // En nog een keer heen: de toernooi-inlog is bewaard gebleven.
+      await p.click('#nav-toernooi-btn');
+      await p.waitForURL(/\/toernooi\/$/, { timeout: 15000 });
+      await expect(p.locator('#page-toernooi')).toHaveClass(/active/, { timeout: 25000 });
+      await expect(p.locator('#login-scherm')).not.toHaveClass(/actief/);
+      await expect(terug).toBeVisible({ timeout: 15000 });
+
+      // Uitloggen in de toernooipagina: de knop gaat mee weg.
+      await p.click('#logout-btn');
+      await expect(p.locator('#login-scherm')).toHaveClass(/actief/, { timeout: 15000 });
+      await expect(terug, 'na uitloggen weg').toBeHidden();
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  test('TERUG: een gewone speler ziet in de toernooipagina geen knop Ladder', async ({ page }) => {
+    // Zelfde regel als v6.1.4, omgekeerd: wie in de ladder-app geen tabblad
+    // Toernooi heeft, krijgt in de toernooipagina ook geen tabblad Ladder.
+    await inloggen(page, 'anna@MPladder.stb');
+    await expect(page.locator('#page-toernooi')).toHaveClass(/active/, { timeout: 15000 });
+    await expect(page.locator('#nav-naar-ladder-btn')).toBeHidden();
+  });
+
+  test('TERUG: de toernooileider heeft de knop Ladder ook', async ({ page }) => {
+    const email = 'leider@mpladder.stb';
+    let uid;
+    try { uid = (await getAuth().getUserByEmail(email)).uid; }
+    catch { uid = (await getAuth().createUser({ email, password: WACHTWOORD })).uid; }
+    await beheerDb.doc(`spelers/${uid}`).set({ uid, naam: 'Toos Leider', email, rol: 'toernooileider', hcp: 0, eersteLogin: false });
+    await inloggen(page, email);
+    await expect(page.locator('#page-toernooi')).toHaveClass(/active/, { timeout: 15000 });
+    await expect(page.locator('#nav-naar-ladder-btn')).toBeVisible({ timeout: 15000 });
   });
 
   test('TOERNOOILEIDER: maakt een toernooi met een gast, zonder ladder', async ({ page }) => {
