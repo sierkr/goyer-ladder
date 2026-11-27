@@ -866,9 +866,15 @@ test.describe('Toernooi — de hele route', () => {
     await page.reload();
     await page.waitForSelector('#login-scherm', { state: 'hidden', timeout: 20000 });
     await naarToernooi(page);
-    // v5.24.0: je landt op het startscherm; het halfafgemaakte formulier zit
-    // achter "➕ Nieuw toernooi", waar je het ook zelf zou zoeken.
-    await openAanmaakscherm(page);
+    // v5.24.0: je landt op het startscherm.
+    // v6.4.2: het halfafgemaakte formulier zit niet meer achter "Nieuw
+    // toernooi" (dat begint leeg), maar achter een eigen knop die zegt wat het is.
+    const verder = page.locator('#t-verder-concept-knop');
+    await expect(verder, 'de knop Verder').toBeVisible({ timeout: 15000 });
+    await expect(verder).toContainText('Concept');
+    await expect(verder).toContainText('4 spelers');
+    await verder.click();
+    await expect(page.locator('#toernooi-setup-wrap')).toBeVisible({ timeout: 15000 });
 
     // Het formulier is hersteld…
     await expect(page.locator('#t-naam')).toHaveValue('Concept', { timeout: 15000 });
@@ -1712,6 +1718,127 @@ test.describe('Toernooi — de hele route', () => {
   //  toernooien gelijktijdig … te organiseren". Nu: beide lopen, en wie via de
   //  link van een toernooi binnenkomt ziet dát toernooi — niet het nieuwste.
   // ============================================================
+  // ============================================================
+  //  v6.4.2 — "NIEUW TOERNOOI" BEGINT LEEG
+  // ------------------------------------------------------------
+  //  Sierk, 27 november 2026: "Ik maak een nieuw toernooi aan, selecteer de
+  //  onderste 7 namen en ineens staan daar ook de bovenste 3 namen bij???"
+  //  Het onthouden formulier van een niet-opgeslagen toernooi werd stil
+  //  teruggezet, en zijn spelers gingen mee de flight in.
+  // ============================================================
+  test('NIEUW TOERNOOI: begint leeg, ook als er een niet-opgeslagen toernooi was', async ({ page }) => {
+    test.setTimeout(180000);
+    jaOpAlles(page);
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+
+    // Een toernooi begonnen met Anna en Bram, en niet opgeslagen.
+    await vulAanmaakformulier(page, 'Oud', 1);
+    for (const n of ['Anna Speler', 'Bram Speler']) await kiesSpeler(page, n);
+    await page.waitForTimeout(1200);            // de concept-opslag wacht 500 ms
+
+    // De app later opnieuw openen.
+    await page.reload();
+    await page.waitForSelector('#login-scherm', { state: 'hidden', timeout: 20000 });
+    await expect(page.locator('#page-toernooi')).toHaveClass(/active/, { timeout: 15000 });
+
+    // Het startscherm noemt het niet-opgeslagen toernooi…
+    const verder = page.locator('#t-verder-concept-knop');
+    await expect(verder, 'de knop Verder met niet-opgeslagen toernooi').toBeVisible({ timeout: 15000 });
+    await expect(verder).toContainText('Oud');
+    await expect(verder).toContainText('2 spelers');
+
+    // …maar "Nieuw toernooi" begint leeg.
+    await openAanmaakscherm(page);   // tikt "Nieuw toernooi" op het startscherm
+    await expect(page.locator('#t-naam'), 'geen naam van eerder').toHaveValue('');
+    await naarSetupTab(page, 'spelers');
+    await expect(page.locator('#t-geselecteerde-spelers'), 'geen spelers van eerder')
+      .toContainText('Nog geen deelnemers');
+
+    // Cees en Nina kiezen: alleen die twee staan in de flight.
+    await vulAanmaakformulier(page, 'Nieuw', 1);
+    for (const n of ['Cees Speler', 'Nina Nieuw']) await kiesSpeler(page, n);
+    await naarFlightIndeling(page);
+    const flight = page.locator('#flight-lijst');
+    await expect(flight).toContainText('Cees');
+    await expect(flight).toContainText('Nina');
+    await expect(flight, 'Anna van het oude formulier staat er niet in').not.toContainText('Anna');
+    await expect(flight, 'en Bram ook niet').not.toContainText('Bram');
+
+    // Wie nieuw begint, overschrijft het onthouden formulier.
+    await page.waitForTimeout(1200);
+    const onthouden = await page.evaluate(() => JSON.parse(localStorage.getItem('toernooiConcept_v1') || 'null'));
+    expect(onthouden?.naam, 'het onthouden formulier is nu het nieuwe').toBe('Nieuw');
+    expect((onthouden?.spelers || []).map(sp => sp.naam).sort()).toEqual(['Cees Speler', 'Nina Nieuw']);
+  });
+
+  test('NIEUW TOERNOOI: een formulier van de testomgeving komt niet in live', async ({ page }) => {
+    // Test en live delen het geheugen van de browser (zelfde adres). Sinds
+    // v6.4.2 onthoudt test onder een eigen naam; live mag die niet oppakken.
+    await page.goto(TOERNOOI_PAGINA);
+    await page.evaluate(() => localStorage.setItem('toernooiConcept_test_v1',
+      JSON.stringify({ naam: 'Van test', spelers: [{ uid: 'x', naam: 'Iemand', hcp: 1 }], timestamp: Date.now() })));
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await expect(page.locator('#toernooi-start-wrap button:has-text("Nieuw toernooi")')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#t-verder-concept-knop'), 'geen knop voor een formulier van test').toHaveCount(0);
+  });
+
+  // ============================================================
+  //  v6.4.2 — DE ONDERLINGE STAND MET GELIJKE VAKJES
+  // ------------------------------------------------------------
+  //  Sierk, 27 november 2026: "Dit ziet er ook slordig uit." De kolommen
+  //  waren zo breed als de naam erboven; "Erik P" brak over twee regels.
+  //  Gekozen: voorbeeld 2 — gelijke vakjes, namen staand in de kop.
+  // ============================================================
+  test('ONDERLINGE STAND: alle vakjes even breed, namen staand, geen streepjes', async ({ page }) => {
+    test.setTimeout(180000);
+    const antwoorden = ['Ferdinand van Dam', '11'];
+    page.on('dialog', async d => {
+      if (d.type() === 'prompt') await d.accept(antwoorden.shift() ?? '');
+      else await d.accept();
+    });
+    await page.setViewportSize({ width: 390, height: 844 });   // telefoonbreedte
+    await inloggen(page, 'coord@MPladder.stb');
+    await naarToernooi(page);
+    await vulAanmaakformulier(page, 'Matrix', 1);
+    for (const n of ['Anna Speler', 'Bram Speler', 'Cees Speler']) await kiesSpeler(page, n);
+    await page.fill('#t-toernooi-pin', '1234');
+    await page.click('#toernooi-setup-wrap button:has-text("Gastspeler toevoegen")');
+    await expect(page.locator('#t-geselecteerde-spelers')).toContainText('Ferdinand');
+    await naarFlightIndeling(page);
+    await slaOpEnStart(page);
+    await naarDagTab(page, 1);
+
+    const tabel = page.locator('#t-matrix table');
+    await expect(tabel).toBeVisible({ timeout: 20000 });
+    // Eerst wachten tot de tabel echt getekend is; anders meet je nullen.
+    await expect.poll(() => tabel.evaluate(t => t.rows[1]?.cells[1]?.getBoundingClientRect().width || 0),
+      { timeout: 10000, message: 'de tabel heeft maten' }).toBeGreaterThan(0);
+    const maten = await tabel.evaluate(t => {
+      const rijen = [...t.rows];
+      const kop = [...rijen[0].cells].slice(1).map(c => c.getBoundingClientRect().width);
+      const vakjes = rijen.slice(1).flatMap(r => [...r.cells].slice(1).map(c => c.getBoundingClientRect().width));
+      const hoogtes = rijen.slice(1).map(r => r.getBoundingClientRect().height);
+      const namen = [...t.querySelectorAll('.t-matrix-kopnaam')].map(d => {
+        const b = d.getBoundingClientRect(); return { breed: b.width, hoog: b.height, tekst: d.textContent };
+      });
+      const streepjes = rijen.slice(1).flatMap(r => [...r.cells].slice(1)).filter(c => c.textContent.trim() === '—').length;
+      return { kop, vakjes, hoogtes, namen, streepjes };
+    });
+    const spreiding = (a) => Math.max(...a) - Math.min(...a);
+    expect(maten.kop.length, 'vier spelers, vier kolommen').toBe(4);
+    expect(spreiding(maten.kop), `kopvakjes even breed: ${maten.kop.join(', ')}`).toBeLessThanOrEqual(1);
+    expect(spreiding(maten.vakjes), `vakjes even breed: ${maten.vakjes.join(', ')}`).toBeLessThanOrEqual(1);
+    expect(spreiding(maten.hoogtes), `rijen even hoog: ${maten.hoogtes.join(', ')}`).toBeLessThanOrEqual(1);
+    expect(Math.min(...maten.vakjes), 'een vakje is minstens 30 breed').toBeGreaterThanOrEqual(29.5);
+    for (const nm of maten.namen) {
+      expect(nm.hoog, `"${nm.tekst}" staat rechtop (hoger dan breed)`).toBeGreaterThan(nm.breed);
+    }
+    expect(maten.streepjes, 'geen streepje op de diagonaal').toBe(0);
+    expect(maten.namen.map(nm => nm.tekst)).toContain('Ferdinand');
+  });
+
   test('TWEE TOERNOOIEN: tegelijk starten mag, en de link bepaalt het toernooi', async ({ page, browser }) => {
     test.setTimeout(240000);
     jaOpAlles(page);
