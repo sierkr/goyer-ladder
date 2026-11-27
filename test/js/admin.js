@@ -69,7 +69,7 @@ function renderAdmin() {
 
   // v5.47.0: 'admin-sectie-kijkalsspeler' erbij — "Bekijk als gewone speler"
   // is alleen voor de beheerder, niet voor een coordinator.
-  ['admin-sectie-kijkalsspeler','admin-sectie-spelers','admin-sectie-seizoen','admin-sectie-wachtwoord','admin-sectie-uistijl'].forEach(id => {
+  ['admin-sectie-kijkalsspeler','admin-sectie-spelers','admin-sectie-wachtwoord','admin-sectie-uistijl'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = isBeheerder ? '' : 'none';
   });

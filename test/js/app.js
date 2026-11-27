@@ -33,7 +33,7 @@ import { renderAdmin, renderAdminSpelersEnAccounts, openAddPlayer,
   toggleWachtwoordBeheer, slaInitieelWachtwoordOp,
   renderUiStijlKaart, kiesUiStijl } from './admin.js';
 import { renderArchief, openArchiefDetail, openNieuwSeizoenModal,
-  bevestigNieuwSeizoen, stuurUitdaging, reageerUitdaging,
+  bevestigNieuwSeizoen, tekenSeizoenVoorbeeld, tekenSeizoenGevolg, stuurUitdaging, reageerUitdaging,
   verwijderUitdaging, openToernooiDetail, toonUitdagingBadge,
   verwijderOudeUitslagen, verwijderArchiefSeizoen } from './archief.js';
 import { renderToernooi, herlaadToernooien, selecteerToernooi, gaNaarToernooiOverzicht,
@@ -175,6 +175,8 @@ window.resetData = resetData;
 window.closeModal = closeModal;
 window.openNieuwSeizoenModal = openNieuwSeizoenModal;
 window.bevestigNieuwSeizoen = bevestigNieuwSeizoen;
+window.tekenSeizoenVoorbeeld = tekenSeizoenVoorbeeld;   // v6.5.0
+window.tekenSeizoenGevolg = tekenSeizoenGevolg;         // v6.5.0
 window.verwijderArchiefSeizoen = verwijderArchiefSeizoen;
 window.openArchiefDetail = openArchiefDetail;
 window.openToernooiDetail = openToernooiDetail;
@@ -268,7 +270,7 @@ window.toggleAdminKaart = toggleAdminKaart;
 // ─── Versienummer — direct zetten zodat zichtbaar is dat app.js laadt ────────
 // v3.0.0-11.3: TEST-suffix als app draait onder /test/ (maakt productie vs test zichtbaar)
 document.addEventListener('DOMContentLoaded', () => {
-  const VERSION = 'v6.4.2';
+  const VERSION = 'v6.5.0';
   const IS_TEST = location.pathname.includes('/test/');
   const label = VERSION + (IS_TEST ? ' TEST' : '');
   const badge = document.getElementById('versie-badge');
@@ -312,7 +314,7 @@ window.kiesTRankingLadder = kiesTRankingLadder;
 // In plaats daarvan een niet-storende banner met "Update beschikbaar" knop.
 // Zo wordt scoring nooit onderbroken door een automatische reload.
 (function initVersieCheck() {
-  const LOKALE_VERSIE = 'v6.4.2';
+  const LOKALE_VERSIE = 'v6.5.0';
   let _versieCheckBezig = false;
   let _updateBannerZichtbaar = false;
 

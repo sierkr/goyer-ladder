@@ -21,6 +21,7 @@ const suites = [
   ['Exact & playing handicap',   './toernooihcp.test.cjs'],     // v6.1.0
   ['Dag afsluiten',              './afsluiten.test.cjs'],       // v6.1.3
   ['Snapshot vóór activiteit',   './snapshot.test.cjs'],        // v6.2.1
+  ['Nieuw seizoen: beginstand',  './seizoen.test.cjs'],         // v6.5.0
 ];
 
 let totOk = 0, totFout = 0;

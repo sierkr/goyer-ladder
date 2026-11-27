@@ -475,8 +475,11 @@ async function renderAdminLadders() {
   const isBeheerder = isBeheerderRol();
   // Gebruik cache — listeners houden alleLadders al up to date
 
+  // v6.5.0: flex-wrap — met de knop "Nieuw seizoen" erbij paste een rij met
+  // een lange laddernaam niet meer op een telefoon (tandwiel en kruisje vielen
+  // van het scherm). Nu lopen de knoppen dan door naar een tweede regel.
   list.innerHTML = alleLadders.map((l, idx) => `
-    <div class="admin-row">
+    <div class="admin-row" style="flex-wrap:wrap">
       ${isBeheerder ? `
       <div style="display:flex;flex-direction:column;gap:2px;margin-right:4px">
         <button onclick="verschuifLadder(${idx},-1)" ${idx === 0 ? 'disabled' : ''}
@@ -484,11 +487,13 @@ async function renderAdminLadders() {
         <button onclick="verschuifLadder(${idx},1)" ${idx === alleLadders.length-1 ? 'disabled' : ''}
           style="background:${idx===alleLadders.length-1?'#f0ede4':'#fde8e8'};border:none;border-radius:4px;width:22px;height:22px;cursor:${idx===alleLadders.length-1?'default':'pointer'};font-size:11px;color:${idx===alleLadders.length-1?'var(--light)':'var(--red)'}">↓</button>
       </div>` : ''}
-      <div style="flex:1">
+      <div style="flex:1;min-width:110px">
         <div style="font-weight:600">${esc(l.naam)}</div>
         <div style="font-size:11px;color:var(--light)">${(l.spelerIds||[]).length} spelers${(l.data?.type || l.type) === 'knockout' ? ' · knock-out' : ''}</div>
       </div>
       <button class="btn btn-sm btn-ghost" onclick="openLadderSpelersModal('${escAttr(l.id)}')">👥 Spelers</button>
+      ${isBeheerder && (l.data?.type || l.type) !== 'knockout' ? `
+        <button class="btn btn-sm btn-ghost seizoen-knop" onclick="openNieuwSeizoenModal('${escAttr(l.id)}')">Nieuw seizoen</button>` : ''}
       ${isBeheerder ? `
         <button class="btn btn-sm btn-ghost" onclick="openLadderInstellingen('${escAttr(l.id)}')">⚙️</button>
         ${l.id !== 'mp' ? `<button class="btn btn-sm" style="background:#fde8e8;color:var(--red);border:none;cursor:pointer;padding:6px 10px;border-radius:6px;font-size:12px" onclick="verwijderLadder('${escAttr(l.id)}')">✕</button>` : '<div style="width:38px"></div>'}

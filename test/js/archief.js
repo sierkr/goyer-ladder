@@ -8,6 +8,7 @@ import { store, huidigeBruiker, archiefData, uitdagingenData, alleLadders, activ
 import { slaActievePartijenOp, getLadderData, getLadderConfig, getUsers, saveUsers, isBeheerderRol, isCoordinatorRol, toast, laadUitdagingen } from './auth.js';
 import { renderAdmin, renderProfiel } from './admin.js';
 import { renderLadder } from './ladder.js';
+import { slaSnapshotOp } from './beheer.js';   // v6.5.0: terugzetpunt vóór een nieuw seizoen
 import { getFirestore, doc, collection, onSnapshot, setDoc, getDoc, updateDoc, deleteDoc, deleteField, getDocs, addDoc, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { closeModal } from './admin.js';
 
@@ -15,173 +16,293 @@ import { closeModal } from './admin.js';
 //  SEIZOENEN & ARCHIEF
 // ============================================================
 // ============================================================
-//  SEIZOENEN & ARCHIEF — v3.0.0-11.11
-//  Archiveert en reset per ladder (meerdere tegelijk mogelijk).
-//  Verwijdert uitslagen/ en snapshots/ die bij de ladder horen.
-//  Docs zonder ladderId (legacy) worden meegenomen als je alle ladders selecteert.
+//  NIEUW SEIZOEN — PER LADDER, MET EEN KEUZE VOOR DE BEGINSTAND  (v6.5.0)
+// ------------------------------------------------------------
+//  Sierk, 27 november 2026: "Ik wil binnenkort een nieuw seizoen starten maar
+//  deze tab staat apart van de ladders. Dit moet per ladder kunnen en ik wil
+//  een aantal opties om de beginstand vast te stellen bv huidige stand, ahv
+//  gewonnen partijen, ahv winstpercentage, en welke nog meer?"
+//
+//  Tot v6.4.3: een losse kaart "Seizoen" in Beheer, ladders aanvinken, en één
+//  keuze (volgorde omdraaien). Nu: een knop "Nieuw seizoen" bij elke ladder in
+//  Beheer › Ladders (renderAdminLadders in js/beheer.js), een keuze uit negen
+//  beginstanden, en de nieuwe beginstand meteen als lijst in het venster. Wat
+//  je ziet is wat er komt: bevestigen gebruikt precies die lijst
+//  (_seizoen.volgorde), ook bij loting.
+//
+//  ⚠ Terugzetpunt. Vroeger werden alle snapshots van de ladder gewist en was
+//  er geen weg terug. Nu maakt de app EERST een snapshot "Eindstand <naam>",
+//  en die blijft staan. Lukt die snapshot niet, dan gebeurt er niets
+//  (BOUWNORMEN F5). Terugzetten herstelt plek, partijen en gewonnen; de
+//  gewiste scorekaarten en uitslagen komen niet terug.
+//
+//  De server (resetLadderSeizoen) is ongewijzigd: hij zet de standen op de
+//  volgorde die de app meegeeft, met de tellers op 0.
 // ============================================================
-function openNieuwSeizoenModal() {
-  const jaar = new Date().getFullYear();
-  document.getElementById('seizoen-naam').value = `Seizoen ${jaar}`;
 
-  // Vul dynamisch de ladder-checkbox-lijst
-  const listEl = document.getElementById('nieuw-seizoen-ladders');
-  if (listEl) {
-    const laddersMetSpelers = alleLadders.filter(l => (l.spelerIds || []).length > 0);
-    if (laddersMetSpelers.length === 0) {
-      listEl.innerHTML = '<p style="font-size:13px;color:var(--light)">Geen ladders met spelers gevonden.</p>';
-    } else {
-      listEl.innerHTML = laddersMetSpelers.map(l => {
-        const aantal = (l.spelerIds || []).length;
-        const id = escAttr(l.id);
-        return `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px 10px;background:var(--soft-bg);border-radius:8px;margin-bottom:6px">
-          <input type="checkbox" class="seizoen-ladder-check" data-ladder-id="${id}" checked style="accent-color:var(--green);width:18px;height:18px">
-          <span style="flex:1"><strong>${esc(l.naam)}</strong> <span style="font-size:12px;color:var(--light)">(${aantal} spelers)</span></span>
-        </label>`;
-      }).join('');
+// De beginstanden, in de volgorde van de keuzelijst.
+const SEIZOEN_METHODES = [
+  ['huidig',          'Huidige stand'],
+  ['omgedraaid',      'Omgedraaid (de laatste wordt eerste)'],
+  ['gewonnen',        'Meeste gewonnen partijen'],
+  ['winstpercentage', 'Winstpercentage'],
+  ['gespeeld',        'Meeste partijen gespeeld'],
+  ['saldo',           'Saldo (gewonnen min verloren)'],
+  ['handicap',        'Handicap, laagste eerst'],
+  ['loting',          'Loting'],
+  ['zonderOnder',     'Huidige stand, zonder partijen onderaan'],
+];
+
+// Rekent de nieuwe beginstand uit. `lijst` staat in de huidige volgorde (plek 1
+// eerst) en heeft per speler { uid, rank, partijen, gewonnen, hcp }. De lijst
+// zelf wordt niet veranderd. Bij gelijke uitkomst beslist steeds de huidige
+// stand. `opties.minPartijen` (winstpercentage, standaard 3): wie minder
+// speelde komt onder de anderen, in de huidige volgorde — anders staat iemand
+// met 1 uit 1 bovenaan. Wie 0 partijen speelde heeft geen percentage en staat
+// daar dus altijd. `opties.random` alleen voor de tests (loting).
+function seizoenBeginstand(lijst, methode, opties) {
+  const o = opties || {};
+  const nu = (lijst || []).slice().sort((a, b) => (a.rank || 1e9) - (b.rank || 1e9));
+  const plek = new Map(nu.map((s, i) => [s, i]));
+  const opStand = (a, b) => plek.get(a) - plek.get(b);
+  const getal = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const gespeeld = (s) => Math.max(0, getal(s.partijen));
+  const gewonnen = (s) => Math.max(0, getal(s.gewonnen));
+  const aflopend = (waarde) => (a, b) => (waarde(b) - waarde(a)) || opStand(a, b);
+  switch (methode) {
+    case 'omgedraaid':
+      return nu.reverse();
+    case 'gewonnen':
+      return nu.sort(aflopend(gewonnen));
+    case 'gespeeld':
+      return nu.sort(aflopend(gespeeld));
+    case 'saldo':
+      return nu.sort(aflopend(s => gewonnen(s) - (gespeeld(s) - gewonnen(s))));
+    case 'winstpercentage': {
+      const min = Math.max(1, Math.floor(getal(o.minPartijen === undefined ? 3 : o.minPartijen)));
+      const telt = nu.filter(s => gespeeld(s) >= min);
+      const rest = nu.filter(s => gespeeld(s) < min);
+      telt.sort((a, b) => (gewonnen(b) / gespeeld(b) - gewonnen(a) / gespeeld(a))
+        || (gespeeld(b) - gespeeld(a)) || opStand(a, b));
+      return telt.concat(rest);
     }
+    case 'handicap': {
+      const hcp = (s) => (s.hcp === null || s.hcp === undefined || s.hcp === '' || !Number.isFinite(Number(s.hcp)))
+        ? Infinity : Number(s.hcp);
+      return nu.sort((a, b) => (hcp(a) - hcp(b)) || opStand(a, b));
+    }
+    case 'loting': {
+      const r = typeof o.random === 'function' ? o.random : Math.random;
+      for (let i = nu.length - 1; i > 0; i--) {
+        const j = Math.floor(r() * (i + 1));
+        const t = nu[i]; nu[i] = nu[j]; nu[j] = t;
+      }
+      return nu;
+    }
+    case 'zonderOnder':
+      return nu.filter(s => gespeeld(s) > 0).concat(nu.filter(s => !(gespeeld(s) > 0)));
+    default:
+      return nu;
   }
-
-  document.getElementById('modal-nieuw-seizoen').classList.add('open');
 }
 
+let _seizoen = null;        // { ladderId, ladderNaam, stand, volgorde, methode }
+let _seizoenBezig = false;
+
+// Leest de stand van één ladder: wie erin staat, op welke plek, met tellers.
+async function _leesSeizoenStand(ladderId) {
+  const ladderSnap = await getDoc(doc(db, 'ladders', ladderId));
+  if (!ladderSnap.exists()) return null;
+  const data = ladderSnap.data();
+  const spelerIds = data.spelerIds || [];
+  const users = (await getUsers()) || [];
+  const standenSnap = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
+  const stand = standenSnap.docs
+    .filter(d => spelerIds.includes(d.id))
+    .map(d => {
+      const profiel = users.find(u => u.uid === d.id) || {};
+      const s = d.data();
+      return {
+        uid:      d.id,
+        naam:     profiel.naam || d.id,
+        hcp:      (typeof profiel.hcp === 'number' && Number.isFinite(profiel.hcp)) ? profiel.hcp : null,
+        rank:     s.rank     || 0,
+        partijen: s.partijen || 0,
+        gewonnen: s.gewonnen || 0,
+      };
+    })
+    .sort((a, b) => (a.rank || 999) - (b.rank || 999));
+  return { naam: data.naam || ladderId, stand };
+}
+
+async function openNieuwSeizoenModal(ladderId) {
+  const ladder = alleLadders.find(l => l.id === ladderId);
+  if (!ladder) { toast('Ladder niet gevonden'); return; }
+  _seizoen = null;
+  const jaar = new Date().getFullYear();
+  document.getElementById('seizoen-titel').textContent = `Nieuw seizoen — ${ladder.naam || ladderId}`;
+  document.getElementById('seizoen-naam').value = `Seizoen ${jaar}`;
+  const keuze = document.getElementById('seizoen-methode');
+  keuze.innerHTML = SEIZOEN_METHODES.map(([id, tekst]) => `<option value="${id}">${esc(tekst)}</option>`).join('');
+  keuze.value = 'huidig';
+  document.getElementById('seizoen-min-partijen').value = '3';
+  document.getElementById('seizoen-voorbeeld').innerHTML =
+    '<p style="font-size:13px;color:var(--light)">Stand laden…</p>';
+  document.getElementById('modal-nieuw-seizoen').classList.add('open');
+  tekenSeizoenGevolg();
+  try {
+    const gelezen = await _leesSeizoenStand(ladderId);
+    if (!gelezen) { toast('Ladder niet gevonden'); closeModal('modal-nieuw-seizoen'); return; }
+    _seizoen = { ladderId, ladderNaam: gelezen.naam, stand: gelezen.stand, volgorde: gelezen.stand.slice(), methode: 'huidig' };
+    tekenSeizoenVoorbeeld();
+  } catch (e) {
+    console.error('Stand voor nieuw seizoen laden mislukt:', e);
+    document.getElementById('seizoen-voorbeeld').innerHTML =
+      '<p style="font-size:13px;color:var(--alert-text)">De stand kon niet geladen worden. Sluit het venster en probeer het opnieuw.</p>';
+  }
+}
+
+// Tekent de nieuwe beginstand onder de keuze. Wordt ook aangeroepen als de
+// keuze of het minimum verandert; bij loting wordt er dan opnieuw geloot.
+function tekenSeizoenVoorbeeld() {
+  const vak = document.getElementById('seizoen-voorbeeld');
+  if (!_seizoen || !vak) return;
+  const methode = document.getElementById('seizoen-methode').value || 'huidig';
+  const minRuw = parseInt(document.getElementById('seizoen-min-partijen').value, 10);
+  const minPartijen = Number.isFinite(minRuw) && minRuw >= 1 ? minRuw : 3;
+  document.getElementById('seizoen-min-wrap').style.display = methode === 'winstpercentage' ? '' : 'none';
+  _seizoen.methode = methode;
+  _seizoen.volgorde = seizoenBeginstand(_seizoen.stand, methode, { minPartijen });
+  if (_seizoen.volgorde.length === 0) {
+    vak.innerHTML = '<p style="font-size:13px;color:var(--light)">Deze ladder heeft geen spelers.</p>';
+    return;
+  }
+  const extra = methode === 'winstpercentage' ? 'Winst' : (methode === 'handicap' ? 'Hcp' : '');
+  const extraWaarde = (s) => {
+    if (methode === 'winstpercentage') {
+      return (s.partijen >= minPartijen && s.partijen > 0) ? Math.round(100 * s.gewonnen / s.partijen) + '%' : '–';
+    }
+    if (methode === 'handicap') return s.hcp === null ? '–' : esc(String(s.hcp).replace('.', ','));
+    return '';
+  };
+  const th = 'style="text-align:left;padding:4px 6px;font-size:11px;color:var(--mid);font-weight:600"';
+  const td = 'style="padding:4px 6px;border-top:1px solid var(--border)"';
+  vak.innerHTML = `
+    <table id="seizoen-voorbeeld-tabel" style="width:100%;border-collapse:collapse;font-size:13px">
+      <tr><th ${th}>Nieuw</th><th ${th}>Naam</th><th ${th}>Was</th><th ${th}>Gesp.</th><th ${th}>Gew.</th>${extra ? `<th ${th}>${extra}</th>` : ''}</tr>
+      ${_seizoen.volgorde.map((s, i) => `
+        <tr data-uid="${escAttr(s.uid)}">
+          <td ${td}><strong>${i + 1}</strong></td>
+          <td ${td}>${esc(s.naam)}</td>
+          <td ${td}>${s.rank || '–'}</td>
+          <td ${td}>${s.partijen}</td>
+          <td ${td}>${s.gewonnen}</td>
+          ${extra ? `<td ${td}>${extraWaarde(s)}</td>` : ''}
+        </tr>`).join('')}
+    </table>`;
+  tekenSeizoenGevolg();
+}
+
+// De zin boven de knop: wat er gebeurt als je bevestigt.
+function tekenSeizoenGevolg() {
+  const el = document.getElementById('seizoen-gevolg');
+  if (!el) return;
+  const naam = (document.getElementById('seizoen-naam')?.value || '').trim() || 'het seizoen';
+  const ladder = _seizoen?.ladderNaam || 'deze ladder';
+  el.innerHTML = `<strong>Bij bevestigen:</strong> de eindstand van ${esc(ladder)} gaat naar het archief en er
+    blijft een snapshot "Eindstand ${esc(naam)}" staan om terug te kunnen. Daarna wordt de lijst hierboven de
+    nieuwe stand, gaan gespeeld en gewonnen op 0, worden de scorekaarten, uitslagen en andere snapshots van
+    deze ladder gewist en gaan de betaald-vinkjes uit. De andere ladders blijven zoals ze zijn.`;
+}
+
+const _seizoenSleutel = (lijst) => JSON.stringify((lijst || [])
+  .map(s => [s.uid, s.rank, s.partijen, s.gewonnen]));
+
 async function bevestigNieuwSeizoen() {
+  if (!_seizoen || _seizoenBezig) return;
   const naam = document.getElementById('seizoen-naam').value.trim();
   if (!naam) { toast('Geef het seizoen een naam'); return; }
+  const { ladderId, ladderNaam } = _seizoen;
+  const volgordeUids = _seizoen.volgorde.map(s => s.uid).filter(Boolean);
+  if (volgordeUids.length === 0) { toast('Deze ladder heeft geen spelers'); return; }
 
-  // Lees geselecteerde ladders uit checkbox-lijst
-  const checks = document.querySelectorAll('.seizoen-ladder-check:checked');
-  const geselecteerdeIds = Array.from(checks).map(c => c.dataset.ladderId);
-  if (geselecteerdeIds.length === 0) { toast('Selecteer minstens één ladder'); return; }
-
-  // v3.0.0-11.12: optie om volgorde om te draaien
-  const omdraaien = document.getElementById('seizoen-omdraaien')?.checked === true;
-
-  if (!confirm(
-    `Seizoen "${naam}" archiveren en resetten voor ${geselecteerdeIds.length} ladder(s)?\n\n` +
-    `- Eindstand wordt gearchiveerd\n` +
-    `- Alle partijen/gewonnen-tellers → 0\n` +
-    `- Alle scorekaarten en snapshots worden verwijderd\n` +
-    (omdraaien ? `- Volgorde omgedraaid: eerste ↔ laatste\n` : `- Ranks hernummerd (1..N)\n`) +
-    `\nDit is onomkeerbaar.`
-  )) return;
-
-  let fouten = 0;
-
+  const knop = document.getElementById('seizoen-start-knop');
+  const knopTekst = knop?.textContent;
+  _seizoenBezig = true;
+  let terugzetpunt = false;
+  if (knop) { knop.disabled = true; knop.textContent = 'Bezig…'; }
   try {
-    const alleIdsArchiefOK = [];
+    // 0) Is de stand intussen veranderd (een partij verwerkt terwijl het
+    //    venster openstond)? Dan klopt de lijst niet meer met wat er komt.
+    const vers = await _leesSeizoenStand(ladderId);
+    if (!vers || _seizoenSleutel(vers.stand) !== _seizoenSleutel(_seizoen.stand)) {
+      toast('De stand is intussen veranderd — er is niets veranderd. Open het venster opnieuw.', 9000);
+      return;
+    }
 
-    for (const ladderId of geselecteerdeIds) {
-      try {
-        // 1) Lees actuele ladder-data
-        const ladderSnap = await getDoc(doc(db, 'ladders', ladderId));
-        if (!ladderSnap.exists()) { console.warn('ladder niet gevonden:', ladderId); continue; }
-        const data = ladderSnap.data();
-        const ladderNaam = data.naam || ladderId;
+    // 1) Terugzetpunt. Lukt het niet, dan gebeurt er niets (BOUWNORMEN F5).
+    const snapLabel = `Eindstand ${naam}`;
+    const snapGelukt = await slaSnapshotOp(snapLabel, ladderId);
+    if (!snapGelukt) {
+      toast('Snapshot maken mislukt — er is niets veranderd', 9000);
+      return;
+    }
+    terugzetpunt = true;
 
-        // 2) Lees eindstand uit standen/{uid} — niet uit ladder.spelers[]
-        const standenSnap = await getDocs(collection(db, 'ladders', ladderId, 'standen'));
-        const spelerIds   = data.spelerIds || [];
-        const usersCache  = store._usersCache || [];
+    // 2) Eindstand naar het archief.
+    const seizoen = {
+      naam,
+      ladderId,
+      ladderNaam,
+      datum: new Date().toLocaleDateString('nl-NL'),
+      timestamp: Date.now(),
+      eindstand: vers.stand.map(s => ({
+        rank: s.rank, naam: s.naam,
+        partijen: s.partijen, gewonnen: s.gewonnen,
+        hcp: Math.round(s.hcp ?? 0),
+      })),
+    };
+    archiefData.unshift(seizoen);
+    await setDoc(ARCHIEF_DOC, { seizoenen: archiefData }, { merge: true }); // v3.1.0: merge zodat het toernooien-veld niet gewist wordt
 
-        const standenData = standenSnap.docs
-          .filter(d => spelerIds.includes(d.id))
-          .map(d => {
-            const profiel = usersCache.find(u => u.uid === d.id) || {};
-            return {
-              uid:      d.id,
-              naam:     profiel.naam     || d.id,
-              hcp:      profiel.hcp      ?? 0,
-              rank:     d.data().rank    || 0,
-              partijen: d.data().partijen || 0,
-              gewonnen: d.data().gewonnen || 0,
-            };
-          })
-          .sort((a, b) => (a.rank || 999) - (b.rank || 999));
+    // 3) Ladder-doc: uitslagen, lopende partijen en betaald-vinkjes leeg.
+    // v6.3.0: deleteField() is nodig — een lege kaart {} met merge laat de
+    // oude vinkjes staan.
+    await setDoc(doc(db, 'ladders', ladderId), {
+      uitslagen: [],
+      actievePartijen: [],
+      betaald: deleteField(),
+    }, { merge: true });
 
-        const seizoen = {
-          naam,
-          ladderId,
-          ladderNaam,
-          datum: new Date().toLocaleDateString('nl-NL'),
-          timestamp: Date.now(),
-          eindstand: standenData.map(s => ({
-            rank: s.rank, naam: s.naam,
-            partijen: s.partijen, gewonnen: s.gewonnen,
-            hcp: Math.round(s.hcp)
-          }))
-        };
-        archiefData.unshift(seizoen);
-        await setDoc(ARCHIEF_DOC, { seizoenen: archiefData }, { merge: true }); // v3.1.0: merge zodat het toernooien-veld niet gewist wordt
-        alleIdsArchiefOK.push(ladderId);
+    // 4) v5.2.1: standen op de nieuwe volgorde en het vorige seizoen opruimen
+    //    (punten, partijen, verwerkt, teruggedraaid), via de server.
+    await _resetSeizoenFn({ ladderId, isTest: IS_TEST, volgorde: volgordeUids });
 
-        // 3) Bepaal nieuwe volgorde: omdraaien of behouden
-        const nieuweVolgorde = omdraaien
-          ? [...standenData].reverse()
-          : standenData;
+    // 5) Uitslagen van deze ladder weg.
+    try {
+      const uSnap = await getDocs(query(UITSLAGEN_COL, where('ladderId', '==', ladderId)));
+      await Promise.all(uSnap.docs.map(d => deleteDoc(d.ref)));
+    } catch(e) { console.warn('uitslagen ladderId-filter mislukt:', e.message); }
 
-        // 4) Reset ladder-doc: wis uitslagen[] + actievePartijen[] via merge
-        // v6.3.0: ook de betaald-vinkjes (het tikkie) gaan uit — keuze Sierk,
-        // 5 november 2026: "nieuw seizoen, vinkjes uit". deleteField() is
-        // nodig: een lege kaart {} met merge laat de oude vinkjes staan.
-        await setDoc(doc(db, 'ladders', ladderId), {
-          uitslagen: [],
-          actievePartijen: [],
-          betaald: deleteField(),
-        }, { merge: true });
+    // 6) Snapshots van deze ladder weg — behalve het terugzetpunt van stap 1.
+    try {
+      const snSnap = await getDocs(query(SNAPSHOTS_COL, where('ladderId', '==', ladderId)));
+      await Promise.all(snSnap.docs.filter(d => d.data().label !== snapLabel).map(d => deleteDoc(d.ref)));
+    } catch(e) { console.warn('snapshots ladderId-filter mislukt:', e.message); }
 
-        // 5) v5.2.1: standen resetten EN het vorige seizoen opruimen, via de
-        // server. Voorheen werden alleen de standen gereset en bleven punten,
-        // partijen, verwerkt en teruggedraaid staan. Het vervelendst was dat
-        // `activiteitVerschuiving` de seizoensreset overleefde: de posities
-        // begonnen opnieuw, maar het systeem dacht nog dat er al
-        // activiteitscorrecties waren toegepast — de eerste periodieke run van
-        // het nieuwe seizoen rekende dan met een verkeerd verschil.
-        const volgordeUids = nieuweVolgorde.map(s => s.uid).filter(Boolean);
-        try {
-          const res = await _resetSeizoenFn({ ladderId, isTest: IS_TEST, volgorde: volgordeUids });
-          console.info('Seizoen gereset:', res?.data);
-        } catch (e) {
-          console.error('Seizoensreset via server mislukt:', e);
-          toast('Seizoen resetten mislukt voor deze ladder — zie console');
-          fouten++;
-          continue;
-        }
-
-        // 6) Delete uitslagen/ docs voor deze ladder
-        // Filter op ladderId veld (nieuwe docs) — legacy docs zonder ladderId worden later opgeruimd
-        try {
-          const uSnap = await getDocs(query(UITSLAGEN_COL, where('ladderId', '==', ladderId)));
-          await Promise.all(uSnap.docs.map(d => deleteDoc(d.ref)));
-        } catch(e) { console.warn('uitslagen ladderId-filter mislukt:', e.message); }
-
-        // 7) Delete snapshots/ docs voor deze ladder
-        try {
-          const snSnap = await getDocs(query(SNAPSHOTS_COL, where('ladderId', '==', ladderId)));
-          await Promise.all(snSnap.docs.map(d => deleteDoc(d.ref)));
-        } catch(e) { console.warn('snapshots ladderId-filter mislukt:', e.message); }
-
-        // 8) Update lokale alleLadders cache
-        const idx = alleLadders.findIndex(l => l.id === ladderId);
-        if (idx >= 0) {
-          alleLadders[idx].actievePartijen = [];
-          if (alleLadders[idx].data) {
-            alleLadders[idx].data.uitslagen = [];
-            alleLadders[idx].data.actievePartijen = [];
-          }
-        }
-
-        // 9) Als dit de actieve ladder is: reset ook state-variabele
-        // alleLadders[idx] is al bijgewerkt hierboven — geen state singleton meer
-      } catch(e) {
-        console.error('Seizoen reset mislukt voor ladder', ladderId, e);
-        fouten++;
+    // 7) Lokale kopie bijwerken.
+    const idx = alleLadders.findIndex(l => l.id === ladderId);
+    if (idx >= 0) {
+      alleLadders[idx].actievePartijen = [];
+      if (alleLadders[idx].data) {
+        alleLadders[idx].data.uitslagen = [];
+        alleLadders[idx].data.actievePartijen = [];
       }
     }
 
     // 10) Eenmalige legacy cleanup: docs zonder ladderId
     // (bestaande uitslagen van vóór v11.11 — testdata die bij geen specifieke ladder hoort)
-    if (alleIdsArchiefOK.length > 0) {
+    {
       try {
         const alleUitslagenSnap = await getDocs(UITSLAGEN_COL);
         const legacyDocs = alleUitslagenSnap.docs.filter(d => !d.data().ladderId);
@@ -203,15 +324,15 @@ async function bevestigNieuwSeizoen() {
     closeModal('modal-nieuw-seizoen');
     renderAdmin();
     if (typeof renderLadder === 'function') renderLadder();
-    const okCount = alleIdsArchiefOK.length;
-    if (fouten === 0) {
-      toast(`${naam} gearchiveerd voor ${okCount} ladder(s) ✓`);
-    } else {
-      toast(`Klaar met ${fouten} fout(en) — zie console`);
-    }
+    toast(`${naam} gestart voor ${ladderNaam} ✓`, 7000);
   } catch(e) {
     console.error('bevestigNieuwSeizoen mislukt:', e);
-    toast('Fout bij archiveren — zie console');
+    toast(terugzetpunt
+      ? 'Nieuw seizoen starten mislukt halverwege. Zet de snapshot "Eindstand ' + naam + '" terug in Beheer › Snapshots.'
+      : 'Nieuw seizoen starten mislukt — er is niets veranderd.', 12000);
+  } finally {
+    _seizoenBezig = false;
+    if (knop) { knop.disabled = false; knop.textContent = knopTekst; }
   }
 }
 
@@ -562,4 +683,4 @@ async function verwijderOudeUitslagen() {
   } catch(e) { console.error('Opschonen mislukt:', e); }
 }
 
-export { bevestigNieuwSeizoen, openArchiefDetail, openNieuwSeizoenModal, openToernooiDetail, reageerUitdaging, renderArchief, stuurNotificatie, stuurUitdaging, toonUitdagingBadge, verwijderOudeUitslagen, verwijderUitdaging, verwijderArchiefSeizoen };
+export { bevestigNieuwSeizoen, tekenSeizoenVoorbeeld, tekenSeizoenGevolg, seizoenBeginstand, openArchiefDetail, openNieuwSeizoenModal, openToernooiDetail, reageerUitdaging, renderArchief, stuurNotificatie, stuurUitdaging, toonUitdagingBadge, verwijderOudeUitslagen, verwijderUitdaging, verwijderArchiefSeizoen };

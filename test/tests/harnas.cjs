@@ -565,6 +565,16 @@ function laadSnapshotKern() {
   return new Function(bron)();
 }
 
+// v6.5.0: de beginstand van een nieuw seizoen. seizoenBeginstand() is een pure
+// functie en wordt ECHT uit js/archief.js geknipt.
+function laadSeizoenKern() {
+  const bron = `
+    ${knip('js/archief.js', ['seizoenBeginstand'])}
+    return { seizoenBeginstand };
+  `;
+  return new Function(bron)();
+}
+
 // Knipt een eenregelige `const NAAM = ...;` uit een module.
 function knipConstanteRegel(bestand, naam) {
   const src = fs.readFileSync(path.join(wortel, bestand), 'utf8');
@@ -578,4 +588,5 @@ module.exports = { laadStijlKern, laadToernooiKern, laadLadderKern, laadHcpKern,
                    laadKnockoutScoreKern,
                    laadNaamKern, laadMarkerKern, laadGastloginKern, laadQrKern, laadAfsluitKern,
                    laadSnapshotKern,
+                   laadSeizoenKern,
                    maakChecker };
